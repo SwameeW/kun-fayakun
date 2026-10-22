@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Every displayed verse matches the pinned Tanzil text byte for byte (NFC),
+      # every hadith has collection, number and grading, no Arabic in src/.
+      - name: Validate scripture and data
+        run: npm run validate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Validation and typechecking already ran above; build only.
+      - name: Build
+        run: npx vite build
+
+      - name: Check loading budget (shell + Chapter 0 under 1.5 MB gzipped)
+        run: npx tsx scripts/check-bundle.ts
+
+      - name: Playwright tests (WebGPU and forced WebGL2)
+        run: npx playwright test
+        env:
+          KF_SKIP_BUILD: '1'
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

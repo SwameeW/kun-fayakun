@@ -1,0 +1,21 @@
+{
+  "id": "kun",
+  "text": "كُن",
+  "verse": "36:82",
+  "wordIndexFromEnd": 2,
+  "font": "Amiri Quran 1.003",
+  "fontSha256": "e2a47644762d16bdfb6d33e0d8db8c6ff30beae84150ef5a705316bbd829455c",
+  "atlas": "kun.png",
+  "width": 1024,
+  "height": 512,
+  "pxRange": 8,
+  "aspect": 2,
+  "bounds": {
+    "left": 0.326272,
+    "bottom": 0.0625,
+    "right": 0.673728,
+    "top": 0.9375
+  },
+  "type": "mtsdf",
+  "flipY": false
+}

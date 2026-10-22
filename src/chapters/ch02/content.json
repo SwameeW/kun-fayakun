@@ -1,0 +1,92 @@
+{
+  "id": "ch02",
+  "duration": 90,
+  "intro": { "titleKey": "ch02.intro.title", "subtitleKey": "ch02.intro.subtitle", "seconds": 4 },
+  "panel": {
+    "text": [
+      { "type": "verse", "key": "41:11", "noteKey": "ch02.text.smokeNote" }
+    ],
+    "scholarly": {
+      "classical": [
+        { "key": "ch02.scholarly.classical.smoke" },
+        { "key": "ch02.scholarly.classical.order" }
+      ],
+      "modern": []
+    },
+    "science": [
+      {
+        "key": "ch02.science.bbn",
+        "figure": "bbn-abundances",
+        "values": {
+          "hMass": { "constant": "bbn.hydrogen.massFraction", "field": "value", "scale": 0.01, "digits": 1 },
+          "heMass": { "constant": "bbn.helium.massFraction", "field": "value", "scale": 0.01, "digits": 1 },
+          "heMassErr": { "constant": "bbn.helium.massFraction", "field": "uncertainty", "scale": 0.01, "digits": 1 },
+          "hNum": { "constant": "bbn.hydrogen.numberFraction", "field": "value", "scale": 0.01, "digits": 0 },
+          "heNum": { "constant": "bbn.helium.numberFraction", "field": "value", "scale": 0.01, "digits": 0 }
+        }
+      },
+      {
+        "key": "ch02.science.traces",
+        "values": {
+          "d": { "constant": "bbn.deuterium.ratio", "field": "value", "scale": 1e-6, "digits": 2 },
+          "dErr": { "constant": "bbn.deuterium.ratio", "field": "uncertainty", "scale": 1e-6, "digits": 2 },
+          "li": { "constant": "bbn.lithium7.ratio", "field": "value", "scale": 1e-10, "digits": 2 },
+          "liErr": { "constant": "bbn.lithium7.ratio", "field": "uncertainty", "scale": 1e-10, "digits": 2 }
+        }
+      },
+      {
+        "key": "ch02.science.recombination",
+        "values": {
+          "recAge": { "constant": "recombination.age", "field": "value", "digits": 0 },
+          "recT": { "constant": "recombination.temperature", "field": "value", "digits": 0 },
+          "z": { "constant": "recombination.redshift", "field": "value", "digits": 0 }
+        }
+      },
+      {
+        "key": "ch02.science.cmb",
+        "cite": ["planck-pr3-smica"],
+        "values": {
+          "cmbT": { "constant": "cmb.temperature", "field": "value", "digits": 5 },
+          "cmbTErr": { "constant": "cmb.temperature", "field": "uncertainty", "digits": 5 }
+        }
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch02.open.lithium",
+        "values": {
+          "liTheory": { "constant": "bbn.lithium7.theory", "field": "value", "scale": 1e-10, "digits": 2 },
+          "liTheoryErr": { "constant": "bbn.lithium7.theory", "field": "uncertainty", "scale": 1e-10, "digits": 2 },
+          "factor": { "constant": "bbn.lithium7.discrepancy", "field": "value", "digits": 1 },
+          "li": { "constant": "bbn.lithium7.ratio", "field": "value", "scale": 1e-10, "digits": 2 },
+          "liErr": { "constant": "bbn.lithium7.ratio", "field": "uncertainty", "scale": 1e-10, "digits": 2 }
+        }
+      },
+      { "key": "ch02.open.helium3" }
+    ]
+  },
+  "cues": [
+    { "t": 0, "type": "scene", "event": "plasma" },
+    { "t": 2, "type": "caption", "key": "ch02.caption.nuclei", "duration": 7 },
+    { "t": 10, "type": "caption", "key": "ch02.caption.opaque", "duration": 7 },
+    { "t": 19, "type": "caption", "key": "ch02.caption.atoms", "duration": 7 },
+    { "t": 19.5, "type": "scene", "event": "recombination" },
+    { "t": 30, "type": "scene", "event": "cmb-reveal" },
+    { "t": 30, "type": "overlay", "id": "cmb-legend", "visible": true },
+    { "t": 34, "type": "caption", "key": "ch02.caption.planck", "duration": 7 },
+    { "t": 42, "type": "scene", "event": "cmb-hold" },
+    { "t": 46, "type": "panel", "section": "text" },
+    { "t": 46, "type": "verse", "key": "41:11", "duration": 26 },
+    { "t": 74, "type": "panel", "section": "scholarly" },
+    { "t": 74, "type": "caption", "key": "ch02.caption.seeds", "duration": 7 },
+    { "t": 82, "type": "panel", "section": "science" }
+  ],
+  "camera": [
+    { "t": 0, "position": [0, 0, 0.6], "target": [0.1, 0.03, -1] },
+    { "t": 23, "position": [0.3, 0.15, 1.8], "target": [0.42, 0.15, -1], "ease": "linear" },
+    { "t": 36, "position": [0, 6, 40.8], "target": [1, -1.4, 0], "ease": "inOutCubic" },
+    { "t": 74, "position": [3.6, 6.4, 40.3], "target": [1, -1.4, 0], "ease": "inOutSine" },
+    { "t": 90, "position": [7.4, 7, 39.4], "target": [1, -1.4, 0], "ease": "inOutSine" }
+  ],
+  "explore": { "target": [0, 0, 0], "minDistance": 16, "maxDistance": 55 }
+}

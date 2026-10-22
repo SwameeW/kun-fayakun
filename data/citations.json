@@ -1,0 +1,91 @@
+{
+  "$comment": "Manifest of every verse key and hadith reference the project cites, by chapter. scripts/fetch-quran.ts extracts exactly these ayat from the pinned Tanzil file. References only: no scripture text belongs in this file.",
+  "verses": {
+    "ch00": [
+      "2:117",
+      "36:82"
+    ],
+    "ch01": [
+      "21:30"
+    ],
+    "ch02": [
+      "41:11"
+    ],
+    "ch04": [
+      "51:47"
+    ],
+    "ch05": [
+      "67:3",
+      "41:12",
+      "65:12"
+    ],
+    "ch06": [
+      "57:25",
+      "39:6"
+    ],
+    "ch07": [
+      "36:38",
+      "36:39",
+      "36:40",
+      "21:33"
+    ],
+    "ch08": [
+      "41:9",
+      "41:10",
+      "41:11",
+      "41:12",
+      "7:54",
+      "32:4",
+      "25:59",
+      "50:38",
+      "32:5",
+      "70:4",
+      "22:47",
+      "79:30",
+      "79:31",
+      "79:32"
+    ],
+    "ch09": [
+      "21:30",
+      "24:45"
+    ],
+    "ch10": [
+      "21:104",
+      "39:67",
+      "81:1",
+      "81:2",
+      "82:1",
+      "82:2",
+      "14:48"
+    ],
+    "optional": [
+      "86:11",
+      "55:33"
+    ]
+  },
+  "hadith": {
+    "ch00": [
+      "bukhari:3191",
+      "muslim:2653b",
+      "abudawud:4700",
+      "tirmidhi:2155"
+    ],
+    "ch07": [
+      "bukhari:3199"
+    ],
+    "ch10": [
+      "bukhari:4812",
+      "muslim:2787"
+    ]
+  },
+  "calligraphy": {
+    "ch00": [
+      {
+        "id": "kun",
+        "verse": "36:82",
+        "wordIndexFromEnd": 2,
+        "$comment": "The imperative kun ('Be'): second-to-last whitespace-separated word of the Tanzil text of 36:82. build-calligraphy.ts extracts it from data/quran.json and asserts its base letters are U+0643 U+0646; never type it."
+      }
+    ]
+  }
+}

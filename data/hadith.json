@@ -1,0 +1,109 @@
+{
+  "$comment": "Hadith references and gradings only. text.en, text.ar and text.source stay null, and reviewer and reviewedAt stay null, until a person enters the wording from the sunnah.com page named by sunnahKey and checks it. Never fill them by generation or from memory. Narrators and gradings follow docs/SPEC.md; every entry awaits scholarly review (docs/SPEC.md section 9).",
+  "hadith": [
+    {
+      "id": "bukhari-3191",
+      "collection": "Sahih al-Bukhari",
+      "number": "3191",
+      "sunnahKey": "bukhari:3191",
+      "parallels": ["bukhari:7418"],
+      "narrator": "Imran ibn Husain (may Allah be pleased with him)",
+      "grading": "Sahih",
+      "grader": "al-Bukhari, by its inclusion in Sahih al-Bukhari",
+      "disputedNote": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    },
+    {
+      "id": "muslim-2653",
+      "collection": "Sahih Muslim",
+      "number": "2653",
+      "sunnahKey": "muslim:2653b",
+      "parallels": [],
+      "narrator": "Abdullah ibn Amr (may Allah be pleased with him)",
+      "grading": "Sahih",
+      "grader": "Muslim, by its inclusion in Sahih Muslim",
+      "disputedNote": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    },
+    {
+      "id": "abudawud-4700",
+      "collection": "Sunan Abi Dawud",
+      "number": "4700",
+      "sunnahKey": "abudawud:4700",
+      "parallels": [],
+      "narrator": "Ubadah ibn as-Samit (may Allah be pleased with him)",
+      "grading": "Sahih",
+      "grader": "al-Albani",
+      "disputedNote": "The same hadith of the Pen in Jami at-Tirmidhi 2155 is noted by at-Tirmidhi as gharib by its chain. Both gradings are shown together.",
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    },
+    {
+      "id": "tirmidhi-2155",
+      "collection": "Jami at-Tirmidhi",
+      "number": "2155",
+      "sunnahKey": "tirmidhi:2155",
+      "parallels": [],
+      "narrator": "Ubadah ibn as-Samit (may Allah be pleased with him)",
+      "grading": "Gharib (by this chain)",
+      "grader": "at-Tirmidhi",
+      "disputedNote": "At-Tirmidhi notes that this hadith is gharib by this chain. The same hadith of the Pen in Sunan Abi Dawud 4700 is graded sahih by al-Albani; both gradings are shown together.",
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    },
+    {
+      "id": "bukhari-3199",
+      "collection": "Sahih al-Bukhari",
+      "number": "3199",
+      "sunnahKey": "bukhari:3199",
+      "parallels": [],
+      "narrator": "Abu Dharr (may Allah be pleased with him)",
+      "grading": "Sahih",
+      "grader": "al-Bukhari, by its inclusion in Sahih al-Bukhari",
+      "disputedNote": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    },
+    {
+      "id": "bukhari-4812",
+      "collection": "Sahih al-Bukhari",
+      "number": "4812",
+      "sunnahKey": "bukhari:4812",
+      "parallels": [],
+      "narrator": "Abu Huraira (may Allah be pleased with him)",
+      "grading": "Sahih",
+      "grader": "al-Bukhari, by its inclusion in Sahih al-Bukhari",
+      "disputedNote": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    },
+    {
+      "id": "muslim-2787",
+      "collection": "Sahih Muslim",
+      "number": "2787",
+      "sunnahKey": "muslim:2787",
+      "parallels": [],
+      "narrator": "Abu Huraira (may Allah be pleased with him)",
+      "grading": "Sahih",
+      "grader": "Muslim, by its inclusion in Sahih Muslim",
+      "disputedNote": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "text": { "en": null, "ar": null, "source": null }
+    }
+  ],
+  "excluded": [
+    {
+      "sunnahKey": "muslim:2789",
+      "reason": "Sahih Muslim 2789, the “soil on Saturday” hadith: al-Bukhari, Ali ibn al-Madini, al-Bayhaqi and others judged it defective."
+    }
+  ]
+}

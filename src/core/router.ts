@@ -1,0 +1,84 @@
+import { CHAPTERS } from '../chapters/index';
+import type { AppEvents, ChapterId, EventBus, Route } from './types';
+
+const CHAPTER_ROUTE = /^#?\/ch\/(\d{1,2})\/?(?:\?(.*))?$/;
+
+function chapterIdFromNumber(n: number): ChapterId | null {
+  return CHAPTERS.find((c) => c.number === n)?.id ?? null;
+}
+
+/** Parses "#/", "#/ch/<n>?t=<seconds>" and "#/sources"; anything else is home. */
+export function parseHash(hash: string): Route {
+  const h = hash.trim();
+  if (h === '#/sources' || h === '#/sources/') return { name: 'sources' };
+  const m = CHAPTER_ROUTE.exec(h);
+  if (m) {
+    const chapter = chapterIdFromNumber(Number(m[1]));
+    if (chapter) {
+      const raw = new URLSearchParams(m[2] ?? '').get('t');
+      const t = raw === null || raw.trim() === '' ? NaN : Number(raw);
+      return { name: 'chapter', chapter, t: Number.isFinite(t) && t >= 0 ? t : null };
+    }
+  }
+  return { name: 'home' };
+}
+
+export function formatRoute(route: Route): string {
+  switch (route.name) {
+    case 'home':
+      return '#/';
+    case 'sources':
+      return '#/sources';
+    case 'chapter': {
+      const n = Number(route.chapter.slice(2));
+      return route.t === null ? `#/ch/${n}` : `#/ch/${n}?t=${Math.round(route.t * 10) / 10}`;
+    }
+  }
+}
+
+export interface Router {
+  readonly current: Route;
+  /** Reads the initial hash and reports it like a user navigation. */
+  start(): void;
+  /** Updates the URL for an app-initiated change (no onNavigate callback). */
+  navigate(route: Route, options?: { replace?: boolean }): void;
+  dispose(): void;
+}
+
+/**
+ * Hash router. User navigation (typed URL, back/forward, links) reaches the
+ * app through onNavigate; app-initiated changes only update the URL. Both emit
+ * 'route' so the UI can follow.
+ */
+export function createRouter(events: EventBus<AppEvents>, onNavigate: (route: Route) => void): Router {
+  let current: Route = parseHash(window.location.hash);
+
+  const onHashChange = (): void => {
+    current = parseHash(window.location.hash);
+    events.emit('route', { route: current });
+    onNavigate(current);
+  };
+
+  return {
+    get current() {
+      return current;
+    },
+    start() {
+      window.addEventListener('hashchange', onHashChange);
+      onHashChange();
+    },
+    navigate(route, options) {
+      const hash = formatRoute(route);
+      if (hash !== window.location.hash) {
+        // pushState/replaceState never fire hashchange, so this does not loop back.
+        if (options?.replace) history.replaceState(history.state, '', hash);
+        else history.pushState(history.state, '', hash);
+      }
+      current = route;
+      events.emit('route', { route });
+    },
+    dispose() {
+      window.removeEventListener('hashchange', onHashChange);
+    },
+  };
+}

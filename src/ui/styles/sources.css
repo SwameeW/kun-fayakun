@@ -1,0 +1,228 @@
+/* Sources page: an opaque, scrollable document over the stage. */
+.kf-sources {
+  position: absolute;
+  inset-block: var(--kf-header-h) 0;
+  inset-inline: 0;
+  z-index: 11;
+  overflow-y: auto;
+  padding-block: var(--kf-space-4) var(--kf-space-7);
+  padding-inline: var(--kf-gutter);
+  background: var(--kf-bg);
+  outline: none;
+}
+
+.kf-src-inner {
+  max-inline-size: 52rem;
+  margin-inline: auto;
+}
+
+.kf-src-back {
+  margin-inline-start: calc(-1 * var(--kf-space-4));
+}
+
+[dir="rtl"] .kf-src-back .kf-icon {
+  scale: -1 1;
+}
+
+.kf-src-title {
+  margin-block: var(--kf-space-4) var(--kf-space-3);
+  font-family: var(--kf-font-display);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 400;
+}
+
+.kf-src-lead {
+  margin-block: 0 var(--kf-space-5);
+  font-size: 1.0625rem;
+  color: var(--kf-text);
+}
+
+.kf-src-section {
+  padding-block: var(--kf-space-5);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-src-section h3 {
+  margin-block: 0 var(--kf-space-3);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+.kf-src-section h4 {
+  margin-block: var(--kf-space-4) var(--kf-space-2);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.kf-src-section p {
+  margin-block: 0 var(--kf-space-3);
+}
+
+.kf-sources .kf-disclaimer {
+  border-inline-start: 2px solid var(--kf-gold-soft);
+  border-block: 0;
+  padding-block: var(--kf-space-1);
+  padding-inline: var(--kf-space-4) 0;
+  font-size: 1rem;
+}
+
+.kf-src-copyright {
+  max-block-size: 22rem;
+  overflow: auto;
+  margin-block: 0 var(--kf-space-3);
+  padding: var(--kf-space-4);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--kf-text);
+}
+
+.kf-src-files {
+  margin: 0 0 var(--kf-space-2);
+  padding-inline-start: var(--kf-space-5);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.kf-src-hash {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-src-keys {
+  font-variant-numeric: tabular-nums;
+  color: var(--kf-text);
+}
+
+.kf-src-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kf-src-hadith {
+  padding-block: var(--kf-space-3);
+  border-block-end: 1px solid var(--kf-line);
+}
+
+.kf-src-hadith p {
+  margin-block: 0 var(--kf-space-1);
+  font-size: 0.9375rem;
+}
+
+.kf-src-hadith-ref {
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem !important;
+}
+
+.kf-src-status {
+  font-size: 0.875rem !important;
+  color: var(--kf-text-muted);
+}
+
+.kf-src-status.is-done {
+  color: var(--kf-gold-strong);
+}
+
+.kf-src-table-wrap {
+  overflow-x: auto;
+}
+
+.kf-src-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.kf-src-table :is(th, td) {
+  padding-block: var(--kf-space-2);
+  padding-inline: 0 var(--kf-space-4);
+  border-block-end: 1px solid var(--kf-line);
+  text-align: start;
+  vertical-align: top;
+}
+
+.kf-src-table thead th {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-src-table tbody th {
+  font-weight: 500;
+}
+
+.kf-src-id,
+.kf-src-qualifier,
+.kf-src-accessed {
+  display: block;
+  font-size: 0.75rem;
+}
+
+.kf-src-id {
+  color: var(--kf-text-muted);
+}
+
+.kf-src-group + .kf-src-group {
+  margin-block-start: var(--kf-space-5);
+}
+
+.kf-src-kind {
+  margin-block: 0 var(--kf-space-2) !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-src-entry {
+  padding-block: var(--kf-space-3);
+  border-block-end: 1px solid var(--kf-line);
+}
+
+.kf-src-entry h4 {
+  margin-block: 0 var(--kf-space-2);
+}
+
+.kf-src-entry dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--kf-space-1) var(--kf-space-4);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.kf-src-entry dt {
+  color: var(--kf-text-muted);
+}
+
+.kf-src-entry dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.kf-src-licences li {
+  padding-block: var(--kf-space-1);
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 767.98px) {
+  .kf-src-entry dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kf-src-entry dd {
+    margin-block-end: var(--kf-space-2);
+  }
+}

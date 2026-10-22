@@ -1,0 +1,113 @@
+/* Loading and error screens: interface text only, never scripture. */
+.kf-loading,
+.kf-error {
+  position: absolute;
+  inset-inline: var(--kf-gutter);
+  inset-block-start: 50%;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--kf-space-3);
+  max-inline-size: 26rem;
+  margin-inline: auto;
+  padding: var(--kf-space-5);
+  border-radius: var(--kf-radius);
+  background: var(--kf-scrim-strong);
+  text-align: center;
+}
+
+/* Appears only after cue text has finished fading out, and only if loading takes a moment. */
+.kf-loading:not([hidden]) {
+  animation: kf-appear 400ms ease-in 300ms both;
+}
+
+@keyframes kf-appear {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.kf-loading-glow {
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+  background: var(--kf-gold);
+  box-shadow: 0 0 16px 4px rgb(214 178 106 / 0.35);
+}
+
+.kf-loading-label {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem;
+  color: var(--kf-text);
+}
+
+.kf-loading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-3);
+  inline-size: min(16rem, 100%);
+}
+
+.kf-loading-bar {
+  flex: 1;
+  block-size: 3px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--kf-line-strong);
+  color: var(--kf-gold);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.kf-loading-bar::-webkit-progress-bar {
+  border-radius: 3px;
+  background: var(--kf-line-strong);
+}
+
+.kf-loading-bar::-webkit-progress-value {
+  border-radius: 3px;
+  background: var(--kf-gold);
+}
+
+.kf-loading-bar::-moz-progress-bar {
+  border-radius: 3px;
+  background: var(--kf-gold);
+}
+
+.kf-loading-percent {
+  min-inline-size: 3ch;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--kf-text-muted);
+}
+
+.kf-error {
+  z-index: 5;
+  border: 1px solid rgb(242 165 155 / 0.4);
+}
+
+.kf-error-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 1.25rem;
+  color: var(--kf-danger);
+}
+
+.kf-error-message {
+  margin: 0;
+  color: var(--kf-text);
+  overflow-wrap: anywhere;
+}
+
+.kf-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--kf-space-2);
+}

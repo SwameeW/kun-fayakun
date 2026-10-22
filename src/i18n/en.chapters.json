@@ -1,0 +1,67 @@
+{
+  "$comment": "Chapter prose for ch00 to ch02 (content builder), ICU MessageFormat. Placeholders are filled from data/constants.json through each content.json, so no measured number is written here. No scripture wording belongs in this file: verses come from data/quran.json, and hadith wording only from reviewed entries in data/hadith.json. Hadith summaries are indirect speech, never quotations; the panel shows each under the label ui.hadith.summaryLabel and says separately when the verified wording is still pending. Tafsir summaries await scholarly review (docs/SPEC.md section 9).",
+
+  "ch00.intro.title": "Before creation",
+  "ch00.intro.subtitle": "Stillness, and a single word of command",
+
+  "ch00.caption.word": "The Quran speaks of creation coming to be through a single word of command.",
+  "ch00.caption.beyond": "Whether anything came before the beginning of time lies beyond what physics can test.",
+
+  "ch00.text.kunNote": "The single word shown in calligraphy in this chapter is taken from the Tanzil text of this verse and set in the Amiri Quran typeface.",
+
+  "ch00.hadith.bukhari3191.summary": "In this hadith the Prophet ﷺ speaks of Allah (glorified and exalted is He) existing when nothing else existed, of His Throne being over the water, of His writing all things in the Dhikr, and of His creating the heavens and the earth.",
+  "ch00.hadith.muslim2653.summary": "In this hadith the Prophet ﷺ tells that the measures of creation were written fifty thousand years before the heavens and the earth were created, while His Throne was over the water.",
+  "ch00.hadith.pen.summary": "In this hadith the Prophet ﷺ tells that the first thing Allah created was the Pen, and that it was commanded to write.",
+  "ch00.hadith.abudawud4700.note": "This narration and Jami at-Tirmidhi 2155 are together known as the hadith of the Pen. Al-Albani graded this narration sahih; at-Tirmidhi notes that his narration is gharib by its chain. Both gradings are shown.",
+  "ch00.hadith.tirmidhi2155.note": "The same hadith of the Pen as Sunan Abi Dawud 4700, reported through a different chain.",
+
+  "ch00.scholarly.classical.originator": "On 2:117, Ibn Kathir explains that Allah is called the Originator of the heavens and the earth because He created them when nothing like them had existed before. He quotes al-Tabari’s commentary to the same effect, that they were brought into being without any precedent, and calls that explanation sound.",
+  "ch00.scholarly.classical.command": "On the command in 2:117 and 36:82, Ibn Kathir explains that it shows the completeness of His power and authority: what He wills comes to be by His command alone, and a single command suffices, needing no repetition or confirmation.",
+  "ch00.scholarly.classical.pen": "A hadith states the first thing Allah created was the Pen, commanded to write. Many scholars, including Ibn Hajar, understood this to mean first after the Throne and the water, or first in the command to write, since other authentic hadith mention the Throne already over the water.",
+
+  "ch00.science.limits": "Physics has no tested description of what, if anything, came before the beginning of cosmic time. Our best-tested theories trace the history of the universe back about {age} billion years, to a hot, dense state.",
+  "ch00.science.theories": "Closer still to the first instant, general relativity is expected to break down, and a tested theory of quantum gravity does not yet exist. In general relativity, time is part of the universe being described, not a stage set apart from it.",
+  "ch00.open.beginningOfTime": "Did time itself have a beginning, or does the earliest moment we can describe mark only the edge of our present theories?",
+  "ch00.open.before": "Some proposals describe a phase before the hot Big Bang, such as eternal inflation or a bounce from an earlier contracting universe. None has been confirmed by observation.",
+
+  "ch01.intro.title": "The beginning",
+  "ch01.intro.subtitle": "A hot, dense beginning, and space itself stretching",
+
+  "ch01.caption.beginning": "Our universe can be traced back to a beginning that was hot and dense beyond imagining.",
+  "ch01.caption.stretch": "Space itself stretches, carrying everything within it.",
+  "ch01.caption.cooling": "As space expanded, the young universe cooled.",
+  "ch01.caption.sideBySide": "The verse and the science are placed side by side for reflection, not as proof of one another.",
+  "ch01.caption.open": "How the beginning itself came to be remains one of the deepest open questions in science.",
+
+  "ch01.scholarly.classical.joined": "In his commentary on 21:30, Ibn Kathir explains that in the beginning the heavens and the earth were joined together, one upon another, and that Allah (glorified and exalted is He) then separated them, made the heavens seven and the earth seven, and placed the air between the earth and the lowest heaven. He cites Sa’id ibn Jubayr, that the earth became separate when the sky was raised, and al-Hasan and Qatadah, that the two were separated by the air between them.",
+  "ch01.scholarly.classical.rain": "Ibn Kathir also records another early report, from Ibn Abbas (may Allah be pleased with him): the sky was closed and gave no rain, and the earth was closed and grew no plants, until both were opened, the sky with rain and the earth with vegetation.",
+  "ch01.scholarly.modern.bigBang": "Some modern writers read this as resembling the Big Bang. This is a modern reading, not the classical one.",
+
+  "ch01.science.age": "The universe is {age} billion years old, with an uncertainty of {ageErr} million years. This figure comes from the Planck satellite’s measurements of the cosmic microwave background, combined with the gravitational lensing of that radiation and with galaxy-clustering data, and it assumes the standard ΛCDM model of cosmology.",
+  "ch01.science.hotDense": "Several independent lines of evidence point to a hot, dense early universe: the expansion of space, the abundances of the lightest elements, and the cosmic microwave background, an almost perfect thermal glow that has cooled to {cmbT} kelvin today.",
+  "ch01.science.expansion": "The Big Bang was not an explosion into empty space. Space itself has been expanding everywhere, carrying distant galaxies apart and stretching their light to longer wavelengths.",
+  "ch01.science.inflation": "Cosmic inflation proposes a brief burst of extremely rapid expansion in the first instant. It would explain why the universe looks so uniform on large scales and where its first tiny ripples came from. It fits the microwave background well and is well supported, but it has not been directly confirmed.",
+  "ch01.open.firstInstant": "What happened at the very first instant, where today’s physics breaks down?",
+  "ch01.open.inflation": "Did inflation happen, and if so, what drove it? Primordial gravitational waves imprinted on the microwave background would be strong evidence; none has been detected so far.",
+
+  "ch02.intro.title": "The first light",
+  "ch02.intro.subtitle": "From glowing plasma to the oldest light we can see",
+
+  "ch02.caption.nuclei": "In its first few minutes, the universe forged helium and traces of other light nuclei from protons and neutrons.",
+  "ch02.caption.opaque": "For a long age afterwards, light could not travel freely through the hot, glowing plasma.",
+  "ch02.caption.atoms": "As it cooled, electrons joined nuclei to form the first atoms, and the universe became transparent.",
+  "ch02.caption.planck": "That light still reaches us, stretched into microwaves. This is the real sky map of it from ESA’s Planck satellite.",
+  "ch02.caption.seeds": "Its faint variations in temperature trace the seeds from which galaxies would later grow.",
+
+  "ch02.text.smokeNote": "This chapter does not identify the smoke in this verse with the glowing plasma of the early universe or with the microwave background shown in the scene.",
+
+  "ch02.scholarly.classical.smoke": "Classical commentators describe the smoke (dukhan) in this verse as steam or vapour. Ibn Kathir, commenting on 41:11, explains it as steam that rose up when the earth was created.",
+  "ch02.scholarly.classical.order": "The commentators also note that in these verses the earth’s creation is mentioned before the heavens were shaped. Ibn Kathir explains that Allah (glorified and exalted is He) created the earth first because it is the foundation, laid before the roof. He reconciles this with 79:30 through a reply of Ibn Abbas (may Allah be pleased with him), recorded by al-Bukhari: the earth itself was created first, and its spreading out came after the heavens were made.",
+
+  "ch02.science.bbn": "In its first few minutes, the universe forged the lightest nuclei. Ordinary matter emerged as about {hMass}% hydrogen and {heMass} ± {heMassErr}% helium by mass, or roughly {hNum}% hydrogen and {heNum}% helium by number of atoms.",
+  "ch02.science.traces": "Small traces of other light nuclei formed too: {d} ± {dErr} deuterium atoms for every million hydrogen atoms, a little helium-3, and a little lithium-7. The oldest stars show {li} ± {liErr} lithium-7 atoms for every ten billion hydrogen atoms, though they may have destroyed some of their own lithium.",
+  "ch02.science.recombination": "For about {recAge} years the universe was filled with a hot, opaque plasma in which light could not travel far. Once it had cooled to about {recT} kelvin, electrons and nuclei combined into neutral atoms and light was set free. This last scattering of light happened at a redshift of about {z}.",
+  "ch02.science.cmb": "That light, stretched by the expansion of space, reaches us today as the cosmic microwave background, with a temperature of {cmbT} ± {cmbTErr} kelvin. The map shows the Planck satellite’s measurement of its tiny temperature differences across the whole sky.",
+  "ch02.open.lithium": "The cosmological lithium problem: the standard theory of Big Bang nucleosynthesis gives {liTheory} ± {liTheoryErr} lithium-7 atoms for every ten billion hydrogen atoms, about {factor} times more than old stars show ({li} ± {liErr}). Whether the cause lies in how stars destroy lithium, in nuclear data, or in new physics is unresolved.",
+  "ch02.open.helium3": "The primordial amount of helium-3 is still poorly known: it can be measured only in the Solar System and in gas within our own Galaxy, both long since processed by stars."
+}

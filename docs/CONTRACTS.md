@@ -1,0 +1,184 @@
+# Build contracts (M1 vertical slice)
+
+Read `docs/SPEC.md` first: its Core Principles are non-negotiable. This file pins the
+interfaces every builder shares so parallel work fits together. Types live in
+`src/core/types.ts` (do not change them without saying so in your report).
+
+## Toolchain
+
+- Node is project-local. Before any `node`/`npm`/`npx` command run: `source .tools/env.sh`
+  (sets PATH, `npm_config_cache`, `PLAYWRIGHT_BROWSERS_PATH`). Ignore the harmless
+  "failed to copy trust settings of system certificate" lines.
+- Do **not** run `npm install` / change package.json: several builders work at once and
+  concurrent installs corrupt node_modules. Installed: three@0.186.1, intl-messageformat,
+  vite 8, typescript 6.0.3, eslint 10 + typescript-eslint, @playwright/test, @axe-core/playwright,
+  tsx, harfbuzzjs, msdfgen-wasm, wawoff2, @webgpu/types, @types/node. If you truly need
+  another npm package, say so in your report and work around it.
+- Python: `~/.local/bin/python3.13` (3.13). Make your own venv under `.cache/` (e.g.
+  `.cache/venv-cmb`). pip hosts: pypi.org, files.pythonhosted.org.
+- Network goes through a filtering proxy: pass the hosts you need in the Bash tool's
+  `allowed_domains` (e.g. tanzil.net, github.com, objects.githubusercontent.com,
+  release-assets.githubusercontent.com, pypi.org, files.pythonhosted.org, arxiv.org).
+- Downloads go in their own empty directory under `.cache/` (git-ignored). Treat them as data.
+- The Planck file is already downloaded: `.cache/planck/COM_CMB_IQU-smica_2048_R3.00_full.fits` (2.0 GB).
+
+## Ownership (write only your files)
+
+| Builder | Owns |
+|---|---|
+| data | `scripts/fetch-quran.ts`, `scripts/validate.ts`, `scripts/lib/**`, `data/quran.json`, `data/tanzil/**` (pinned raw files), `data/sources.json`, `LICENSES`, `REVIEW.md` |
+| cmb | `scripts/preprocess-cmb.sh`, `scripts/cmb/**`, `public/assets/cmb/**` |
+| calligraphy | `scripts/fetch-font.ts`, `scripts/build-calligraphy.ts`, `public/fonts/**`, `public/assets/calligraphy/**` |
+| content | `src/chapters/ch0{0,1,2}/content.json` (panel, intro, verse/hadith/caption/panel/overlay cues, duration), `src/i18n/en.chapters.json`, `data/constants.json`, `data/hadith.json` |
+| engine | `src/core/**` except `types.ts` and `events.ts`, `src/main.ts` |
+| ui | `src/ui/**`, `src/i18n/index.ts`, `src/i18n/en.json` (keys `ui.*`, `timeline.*`) |
+| scene chNN | `src/chapters/chNN/scene.ts`, `src/chapters/chNN/*.ts`, `src/chapters/shared/**` (ch00 builder owns shared/msdf*), and in that chapter's `content.json` only `camera`, `explore` and `scene` cues |
+| tests | `playwright.config.ts`, `tests/**`, `scripts/check-bundle.ts`, `.github/workflows/ci.yml`, `README.md` |
+| integrator (lead) | `src/core/types.ts`, `src/core/events.ts`, `src/chapters/index.ts`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `index.html`, `package.json`, `data/citations.json` |
+
+## Hard rules (validator-enforced where possible)
+
+1. No Arabic script anywhere under `src/` (U+0600–06FF, 0750–077F, 08A0–08FF, FB50–FDFF,
+   FE70–FEFF), including comments. Exceptions: U+FDFA (ﷺ) in `src/i18n/*.json`, and
+   `src/i18n/ar.json` (UI strings only, M4). All Arabic reaches the screen from `data/` or
+   from assets generated from `data/`.
+2. Scripture text only from `data/quran.json` (generated from pinned Tanzil files). Hadith
+   wording only when a person has entered it (`text.en` non-null **and** `reviewer` set);
+   otherwise show reference, narrator, grading, grader, dispute note and a sunnah.com link.
+3. Never reference `muslim:2789` (listed in `hadith.json` → `excluded`).
+4. Panels render the three layers in order: text → scholarly (classical, then modern) → science
+   (+ open questions).
+5. Verses fade in and out whole (no typewriter, no clipping, no cut mid-ayah). Never on a
+   loading or error screen; never on a 3D surface that is flown through, exploded or turned
+   into particles. Scene `scene` cues must not fall inside `[verse.t − 2, verse.t + duration]`.
+6. Flash safety: all brightness changes go through `ctx.exposure` (slew-limited by the engine)
+   or are themselves eased over ≥ 0.5 s; never > 3 flashes/s; with reduced motion, crossfades only.
+7. No depiction of Allah, angels, prophets, the Throne, the water beneath the Throne, the Pen,
+   the Tablet, the Kaaba — not as figures, objects or symbols. Light, silence, calligraphy, cosmos.
+8. Never "the Quran predicted/proves", "scientific miracle". Classical reading first.
+
+## Runtime URLs
+
+Everything is fetched relative to `document.baseURI` via `assets.url(path)` (Vite `base: './'`).
+
+- `data/quran.json`, `data/hadith.json`, `data/constants.json`, `data/sources.json`
+- `assets/basis/basis_transcoder.{js,wasm}` (copied by vite.config.ts)
+- `fonts/AmiriQuran.woff2` → CSS family `"Amiri Quran"` (ui declares the @font-face; `font-display: swap`)
+- `assets/calligraphy/kun.png` + `assets/calligraphy/kun.json`
+- `assets/cmb/cmb-4096.ktx2`, `assets/cmb/cmb-2048.ktx2`, `assets/cmb/cmb.json`
+
+### `assets/calligraphy/<id>.json`
+```json
+{ "id": "kun", "text": "<word, copied from data/quran.json at build time>", "verse": "36:82",
+  "wordIndexFromEnd": 2, "font": "Amiri Quran <version>", "fontSha256": "…",
+  "atlas": "kun.png", "width": 1024, "height": 512, "pxRange": 8,
+  "aspect": 2.0, "bounds": { "left": 0, "bottom": 0, "right": 1, "top": 1 },
+  "type": "msdf" | "mtsdf", "flipY": false }
+```
+`bounds` = normalised glyph-ink box inside the atlas (0..1, origin bottom-left). A quad of
+size `aspect × 1` world units shows the word. `pxRange` is the distance range in atlas pixels.
+
+### `assets/cmb/cmb.json`
+```json
+{ "width": 4096, "height": 2048, "files": { "4096": "cmb-4096.ktx2", "2048": "cmb-2048.ktx2" },
+  "projection": "equirectangular", "frame": "galactic",
+  "uAtLon0": 0.5, "lonIncreases": "left",
+  "column": "I_STOKES_INP", "unit": "uK_CMB", "range": [-300, 300],
+  "colormap": { "name": "planck", "stops": [[0.0, "#0000ff"], … [1.0, "#640000"]] },
+  "smoothingFwhmArcmin": 5, "colorSpace": "srgb",
+  "credit": "ESA and the Planck Collaboration",
+  "source": { "file": "COM_CMB_IQU-smica_2048_R3.00_full.fits", "sha256": "…", "release": "PR3 (2018)", "url": "…" } }
+```
+The texture is colour-mapped (sRGB). Sphere UV: u from galactic longitude per `uAtLon0`/`lonIncreases`,
+v = 0 at south galactic pole … 1 at north (after `flipY` handling by the loader; document it).
+
+## Chapter scale and scene events
+
+Scene cues (`{type:'scene', event}`) are the hand-off between content timing and the scene.
+Names are fixed; times live in content.json.
+
+| Chapter | Scale | Events (in order) | Notes |
+|---|---|---|---|
+| ch00 | calligraphy quad ~4 units wide at origin; camera on +z, ~6–9 units away | `kun-reveal`, `kun-hold`, `kun-fade` | Opens in total darkness and silence for several seconds. Reveal is a slow ≥ 4 s fade of light. |
+| ch01 | point at origin; expansion out to radius ~60 | `ignite`, `expand`, `cool` | Point of light grows softly (no flash); comoving lattice/dust shows space stretching. |
+| ch02 | camera starts at origin inside plasma; CMB sphere radius 10 at origin seen from outside at ~25–35 units | `plasma`, `recombination`, `cmb-reveal`, `cmb-hold` | Plasma clears to transparent space; then the real Planck map. Fog is never captioned "smoke". |
+
+The `cmb-legend` overlay cue (`{type:'overlay', id:'cmb-legend', visible}`) shows the DOM colour
+scale + credit while the map is visible. The `bbn-abundances` figure lives in the ch02 science layer.
+
+## Constant ids the UI relies on (content builder must create them)
+
+`universe.age`, `cmb.temperature`, `recombination.redshift`, `recombination.age`,
+`recombination.temperature`, `bbn.hydrogen.massFraction`, `bbn.helium.massFraction`,
+`bbn.helium.numberFraction`, `bbn.deuterium.ratio`, `bbn.lithium7.ratio`.
+
+## i18n
+
+- ICU MessageFormat via `intl-messageformat`, flat dotted keys.
+- `src/i18n/en.json` (ui builder): `ui.*`, `timeline.chNN.{title,stop,epoch}` for ALL 11 chapters,
+  `ui.disclaimer` = the spec's disclaimer, verbatim.
+- `src/i18n/en.chapters.json` (content builder): `ch00.*`, `ch01.*`, `ch02.*`.
+- `createI18n(locale)` in `src/i18n/index.ts` merges both and throws on a duplicate key.
+- Honorifics per spec §1.5. Hadith summaries (if any) are labelled as summaries, never quotes.
+
+## Module entry points
+
+- `src/main.ts` (engine): mounts the UI **first** (instant first visual), then initialises the
+  renderer. `createApp(options)` in `src/core/app.ts` returns `App` (types.ts).
+- `src/ui/index.ts` (ui): `export function mountUI(app: App, root: HTMLElement): void`.
+- `src/i18n/index.ts` (ui): `export function createI18n(locale: 'en' | 'ar'): Promise<I18n>`.
+- `src/chapters/chNN/scene.ts`: `export default function create(): ChapterModule` and imports
+  its own `./content.json`.
+
+## URL parameters and routes
+
+- Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`.
+- Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
+  (skip the intro overlay and start playing), `?fps=1` (show a small fps readout).
+
+## Test hooks (engine sets these on `<html>`)
+
+- `data-backend="webgpu|webgl2"`, `data-tier`, `data-state` (TimelineState), `data-chapter`,
+  `data-ready="true"` after the first rendered frame, `data-chapter-ready="chNN"` after a
+  chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`.
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs }, resetFrameStats() }`.
+
+## UI test ids (ui builder)
+
+`intro`, `begin`, `disclaimer`, `panel`, `panel-toggle`, `layer-text`, `layer-scholarly`,
+`layer-science`, `timeline`, `stop-chNN`, `play-pause`, `mode-toggle`, `verse-overlay`,
+`sources-page`, `cmb-legend`, `loading`, `error`.
+
+## Browsers and local testing (measured on this machine)
+
+- **The user browses with Brave** (installed: `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,
+  Brave 1.97 / Chromium 155). Brave is a primary target. Its Shields fingerprinting protection
+  can blank or randomise `GPUAdapter.info` and `WEBGL_debug_renderer_info`, so tier detection must
+  treat missing/empty GPU info as "unknown desktop GPU" (WebGPU desktop → high; the governor
+  protects), never as an error. Everything is self-hosted, so Shields' blocking does not apply.
+- Chromium/Brave **cannot launch inside the Bash sandbox** (Mach port lookups are denied): run
+  browser automation with `dangerouslyDisableSandbox: true`.
+- **Local port binding is blocked in the sandbox.** Instead of a dev server, serve the build
+  from disk with Playwright request interception: `npx vite build`, then
+  `page.route('https://kf.test/**', …)` fulfilling files from `dist/`, and open
+  `https://kf.test/index.html…`. Use **https** — WebGPU needs a secure context.
+- Real GPU in automation: `chromium.launch({ channel: 'chromium', args: ['--enable-unsafe-webgpu', '--use-angle=metal'] })`
+  gives WebGPU (Apple, metal-3) and WebGL2 on the Apple M5 Pro. The default headless shell
+  has no WebGPU and only SwiftShader WebGL2. Brave: `chromium.launch({ executablePath: <brave path>, args: ['--use-angle=metal'] })`
+  also exposes WebGPU.
+
+## three.js r186 notes
+
+- `import * as THREE from 'three/webgpu'`; TSL from `'three/tsl'`.
+- `new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL })`, then `await renderer.init()`;
+  backend: `(renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend`.
+- Post-processing: `THREE.RenderPipeline` (the old `PostProcessing` is deprecated), `pass(scene, camera)`,
+  bloom from `three/addons/tsl/display/BloomNode.js`. Engine owns the pipeline; chapters never call render.
+- KTX2: `three/addons/loaders/KTX2Loader.js`, `setTranscoderPath(assets.url('assets/basis/'))`,
+  `await loader.detectSupportAsync(renderer)` (or `detectSupport`) after `init()`.
+- Orbit: `three/addons/controls/OrbitControls.js`.
+- Sized points on WebGPU: core WebGPU points are 1 px; for sized sprites use `PointsNodeMaterial`
+  with `sizeNode` on an instanced `THREE.Sprite`/`InstancedMesh` setup as in three's
+  `webgpu_instance_points` example (check node_modules/three/examples). Must also run on WebGL2.
+- No compute shaders in M1 unless there is a non-compute WebGL2 path; prefer analytic
+  vertex-stage animation (positions as a function of time) which runs on both backends.

@@ -1,0 +1,371 @@
+/* Timeline bar: log-scale stops, true-position ticks, transport controls. */
+.kf-timeline {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 15;
+  padding-block: var(--kf-space-3) max(var(--kf-space-3), env(safe-area-inset-bottom));
+  padding-inline: var(--kf-gutter);
+  background: var(--kf-scrim-strong);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+/* A soft fade above the bar; it carries no text. */
+.kf-timeline::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 100%;
+  block-size: 1.5rem;
+  background: linear-gradient(to top, rgb(8 9 14 / 0.6), rgb(8 9 14 / 0));
+  pointer-events: none;
+}
+
+.kf-tl-track {
+  position: relative;
+  padding-inline: 2.75rem;
+}
+
+.kf-tl-stops {
+  position: relative;
+  block-size: 2.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kf-tl-item {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(var(--pos, 0) * 100%);
+  inline-size: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.kf-tl-stop {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  min-inline-size: 2.75rem;
+  block-size: 100%;
+  padding-block: 0;
+  padding-inline: var(--kf-space-1);
+  border: 0;
+  border-radius: var(--kf-radius-small);
+  background: none;
+  color: var(--kf-text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.kf-tl-stop:hover {
+  color: var(--kf-text);
+}
+
+.kf-tl-item.is-upcoming .kf-tl-stop {
+  color: var(--kf-text-faint);
+  cursor: default;
+}
+
+.kf-tl-item.is-current .kf-tl-stop {
+  color: var(--kf-gold-strong);
+}
+
+.kf-tl-dot {
+  flex: none;
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  margin-block-end: 0.15rem;
+  border: 1.5px solid var(--kf-text-muted);
+  border-radius: 50%;
+  background: var(--kf-bg);
+  transition: background-color 300ms var(--kf-ease), border-color 300ms var(--kf-ease), box-shadow 300ms var(--kf-ease);
+}
+
+.kf-tl-stop:hover .kf-tl-dot {
+  border-color: var(--kf-text);
+}
+
+.kf-tl-item.is-upcoming .kf-tl-dot {
+  border-color: var(--kf-text-faint);
+  border-style: dotted;
+}
+
+.kf-tl-item.is-current .kf-tl-dot {
+  border-color: var(--kf-gold-strong);
+  background: var(--kf-gold);
+  box-shadow: 0 0 0 4px var(--kf-gold-faint), 0 0 12px rgb(214 178 106 / 0.45);
+}
+
+/* Tooltip with the full title and epoch (the button's accessible name already holds both). */
+.kf-tl-tip {
+  position: absolute;
+  inset-block-end: calc(100% + var(--kf-space-2));
+  inset-inline: -12rem;
+  z-index: 2;
+  display: none;
+  flex-direction: column;
+  gap: 0.15rem;
+  inline-size: max-content;
+  max-inline-size: 16rem;
+  margin-inline: auto;
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-raised);
+  color: var(--kf-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: start;
+  pointer-events: none;
+}
+
+.kf-tl-tip-title {
+  color: var(--kf-text);
+  font-weight: 600;
+}
+
+.kf-tl-tip-note {
+  color: var(--kf-gold);
+}
+
+.kf-tl-stop:hover .kf-tl-tip,
+.kf-tl-stop:focus-visible .kf-tl-tip {
+  display: flex;
+}
+
+.kf-tl-item:first-child .kf-tl-tip {
+  inset-inline: 0 auto;
+  margin-inline: 0;
+}
+
+.kf-tl-item:last-child .kf-tl-tip {
+  inset-inline: auto 0;
+  margin-inline: 0;
+}
+
+/* Leaders join each stop to its true position on the log axis. */
+.kf-tl-leaders {
+  display: block;
+  inline-size: 100%;
+  block-size: 1.75rem;
+  overflow: visible;
+}
+
+.kf-tl-leader {
+  stroke: rgb(237 231 218 / 0.2);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.kf-tl-leader.is-upcoming {
+  stroke: var(--kf-line);
+}
+
+.kf-tl-leader.is-current {
+  stroke: var(--kf-gold);
+}
+
+.kf-tl-axis {
+  position: relative;
+  block-size: 1.1rem;
+  border-block-start: 1px solid var(--kf-line-strong);
+}
+
+.kf-tl-tick,
+.kf-tl-now {
+  position: absolute;
+  inset-block-start: -4px;
+  inset-inline-start: calc(var(--pos, 0) * 100%);
+  inline-size: 1px;
+  block-size: 7px;
+  background: var(--kf-text-muted);
+}
+
+.kf-tl-tick.is-upcoming {
+  background: var(--kf-text-faint);
+}
+
+.kf-tl-tick.is-current {
+  background: var(--kf-gold-strong);
+  block-size: 9px;
+  inset-block-start: -5px;
+}
+
+.kf-tl-now {
+  background: var(--kf-gold);
+  block-size: 11px;
+  inset-block-start: -5px;
+}
+
+.kf-tl-now-label {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline: -4rem;
+  inline-size: max-content;
+  margin-inline: auto;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+/* Transport controls -------------------------------------------------- */
+
+.kf-tl-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-3);
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-btn--mode[data-mode="explore"] {
+  border-color: var(--kf-gold-soft);
+  color: var(--kf-gold-strong);
+}
+
+.kf-tl-progress {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--kf-space-3);
+}
+
+.kf-tl-chapter {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-tl-clock {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--kf-text-muted);
+}
+
+.kf-tl-slider {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+  block-size: 1.5rem;
+  margin: 0;
+  background: transparent;
+  accent-color: var(--kf-gold);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.kf-tl-slider:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.kf-tl-slider::-webkit-slider-runnable-track {
+  block-size: 3px;
+  border-radius: 3px;
+  background: var(--kf-line-strong);
+}
+
+.kf-tl-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin-block-start: calc((3px - 1rem) / 2);
+  border: 2px solid var(--kf-bg);
+  border-radius: 50%;
+  background: var(--kf-gold);
+}
+
+.kf-tl-slider::-moz-range-track {
+  block-size: 3px;
+  border-radius: 3px;
+  background: var(--kf-line-strong);
+}
+
+.kf-tl-slider::-moz-range-progress {
+  block-size: 3px;
+  border-radius: 3px;
+  background: var(--kf-gold-soft);
+}
+
+.kf-tl-slider::-moz-range-thumb {
+  inline-size: 1rem;
+  block-size: 1rem;
+  border: 2px solid var(--kf-bg);
+  border-radius: 50%;
+  background: var(--kf-gold);
+}
+
+/* Compact: only the current stop keeps a visible label. */
+.kf-timeline.is-compact .kf-tl-track {
+  padding-inline: 1.25rem;
+}
+
+.kf-timeline.is-compact .kf-tl-stop {
+  min-inline-size: 1.75rem;
+}
+
+.kf-timeline.is-compact .kf-tl-item:not(.is-current) .kf-tl-label {
+  display: none;
+}
+
+/* The current label floats above its dot so it never widens the button over its neighbours. */
+.kf-timeline.is-compact .kf-tl-item.is-current .kf-tl-label {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: -6rem;
+  inline-size: max-content;
+  margin-inline: auto;
+  pointer-events: none;
+}
+
+/* Short screens: the true-position axis and its leaders are decorative (aria-hidden);
+   dropping them leaves room for whole verse cards above the timeline. */
+@media (max-height: 700px) {
+  .kf-tl-leaders,
+  .kf-tl-axis {
+    display: none;
+  }
+
+  .kf-tl-controls {
+    margin-block-start: var(--kf-space-1);
+  }
+}
+
+@media (max-height: 500px) {
+  .kf-timeline {
+    padding-block: var(--kf-space-2) max(var(--kf-space-2), env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .kf-tl-controls {
+    flex-wrap: wrap;
+    gap: var(--kf-space-2);
+  }
+
+  .kf-tl-progress {
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .kf-tl-controls .kf-btn--quiet {
+    margin-inline-start: auto;
+  }
+}

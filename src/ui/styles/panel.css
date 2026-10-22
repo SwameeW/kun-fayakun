@@ -1,0 +1,358 @@
+/* Side panel (desktop) and bottom sheet (narrow screens) with the three layers. */
+:root {
+  --kf-dir: 1;
+}
+
+[dir="rtl"] {
+  --kf-dir: -1;
+}
+
+.kf-panel {
+  position: fixed;
+  inset-block: var(--kf-header-h) var(--kf-timeline-h);
+  inset-inline-end: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  inline-size: var(--kf-panel-w);
+  background: var(--kf-surface);
+  border-inline-start: 1px solid var(--kf-line);
+  transition: translate 400ms var(--kf-ease), opacity 400ms var(--kf-ease), visibility 0s linear 0s;
+}
+
+.kf-panel.is-collapsed:not(.is-sheet) {
+  translate: calc(100% * var(--kf-dir)) 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: translate 400ms var(--kf-ease), opacity 400ms var(--kf-ease), visibility 0s linear 400ms;
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-panel.is-collapsed:not(.is-sheet) {
+  translate: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-panel.is-collapsed:not(.is-sheet) {
+    translate: none;
+  }
+}
+
+.kf-panel-head {
+  flex: none;
+  padding-block: var(--kf-space-4) var(--kf-space-2);
+  padding-inline: var(--kf-space-5);
+}
+
+.kf-panel-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem;
+  color: var(--kf-text);
+}
+
+.kf-sheet-handle {
+  display: none;
+}
+
+.kf-panel-body {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: 0 var(--kf-space-6);
+  padding-inline: var(--kf-space-5);
+  outline: none;
+  scrollbar-color: var(--kf-line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+/* Scripture never shares the screen with the loading or error screens. */
+.kf-busy .kf-panel,
+.kf-error-open .kf-panel {
+  visibility: hidden;
+}
+
+/* Layers ---------------------------------------------------------------- */
+
+.kf-layer {
+  padding-block: var(--kf-space-5);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-layer:first-child {
+  border-block-start: 0;
+  padding-block-start: var(--kf-space-3);
+}
+
+.kf-layer-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  margin-block: 0 var(--kf-space-4);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+.kf-layer.is-current .kf-layer-heading::before {
+  content: "";
+  inline-size: 0.4rem;
+  block-size: 0.4rem;
+  border-radius: 50%;
+  background: var(--kf-gold-strong);
+}
+
+.kf-subheading {
+  margin-block: var(--kf-space-4) var(--kf-space-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--kf-text);
+}
+
+.kf-subheading:first-of-type {
+  margin-block-start: 0;
+}
+
+.kf-prose {
+  margin-block: 0 var(--kf-space-3);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--kf-text);
+}
+
+.kf-cites {
+  margin-block: 0 var(--kf-space-4);
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-cites-label {
+  font-weight: 600;
+}
+
+.kf-cites ul {
+  margin: var(--kf-space-1) 0 0;
+  padding-inline-start: var(--kf-space-4);
+}
+
+.kf-cites li + li {
+  margin-block-start: var(--kf-space-1);
+}
+
+/* Scripture --------------------------------------------------------------- */
+
+.kf-verse,
+.kf-hadith {
+  margin-block-end: var(--kf-space-5);
+}
+
+.kf-verse:last-child,
+.kf-hadith:last-child {
+  margin-block-end: 0;
+}
+
+.kf-ref {
+  margin-block: 0 var(--kf-space-2);
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--kf-text);
+}
+
+.kf-arabic {
+  margin-block: var(--kf-space-2) var(--kf-space-3);
+  font-family: var(--kf-font-arabic);
+  font-size: 1.75rem;
+  line-height: 2.15;
+  text-align: start;
+  color: var(--kf-text);
+  font-feature-settings: normal;
+}
+
+.kf-arabic--hadith {
+  font-size: 1.375rem;
+}
+
+.kf-translit {
+  margin-block: 0 var(--kf-space-3);
+  font-size: 0.9375rem;
+  font-style: italic;
+  color: var(--kf-text-muted);
+}
+
+.kf-translation {
+  margin: 0 0 var(--kf-space-3);
+  padding-inline-start: var(--kf-space-4);
+  border-inline-start: 2px solid var(--kf-gold-soft);
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--kf-text);
+}
+
+.kf-translation p {
+  margin: 0;
+}
+
+.kf-attrib,
+.kf-meta {
+  margin-block: 0 var(--kf-space-2);
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-grading {
+  margin-block: 0 var(--kf-space-2);
+  font-size: 0.875rem;
+  color: var(--kf-gold-strong);
+}
+
+.kf-note {
+  margin-block: 0 var(--kf-space-2);
+  font-size: 0.875rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-pending {
+  margin-block: var(--kf-space-2);
+  padding: var(--kf-space-3);
+  border: 1px dashed var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  font-size: 0.875rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-summary {
+  margin-block: var(--kf-space-3);
+  padding: var(--kf-space-3);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-2);
+  font-size: 0.9375rem;
+}
+
+.kf-summary p {
+  margin: 0;
+}
+
+.kf-summary-label {
+  margin-block-end: var(--kf-space-1) !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-link {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.kf-verse.is-withheld .kf-ref {
+  margin-block-end: var(--kf-space-1);
+}
+
+/* Bottom sheet ------------------------------------------------------------ */
+
+.kf-panel.is-sheet {
+  inset-block: auto var(--kf-timeline-h);
+  inset-inline: 0;
+  inline-size: auto;
+  max-block-size: calc(100dvh - var(--kf-header-h) - var(--kf-timeline-h) - var(--kf-space-4));
+  border-inline-start: 0;
+  border-block-start: 1px solid var(--kf-line-strong);
+  border-start-start-radius: var(--kf-radius);
+  border-start-end-radius: var(--kf-radius);
+  box-shadow: 0 -12px 32px rgb(0 0 0 / 0.45);
+}
+
+.kf-panel.is-sheet .kf-panel-head {
+  padding: 0;
+}
+
+.kf-panel.is-sheet .kf-panel-title {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.kf-panel.is-sheet .kf-sheet-handle {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--kf-space-3);
+  inline-size: 100%;
+  min-block-size: 3.25rem;
+  padding-block: var(--kf-space-3) var(--kf-space-2);
+  padding-inline: var(--kf-space-4);
+  border: 0;
+  background: none;
+  color: var(--kf-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.kf-sheet-grip {
+  position: absolute;
+  inset-block-start: 0.4rem;
+  inset-inline: 0;
+  inline-size: 2.5rem;
+  block-size: 4px;
+  margin-inline: auto;
+  border-radius: 2px;
+  background: var(--kf-line-strong);
+}
+
+.kf-sheet-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+.kf-panel-peek {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-sheet-handle .kf-icon {
+  transition: rotate 300ms var(--kf-ease);
+}
+
+.kf-panel.is-sheet.is-collapsed .kf-sheet-handle .kf-icon {
+  rotate: 0deg;
+}
+
+.kf-panel.is-sheet.is-open .kf-sheet-handle .kf-icon {
+  rotate: 180deg;
+}
+
+.kf-panel.is-sheet.is-collapsed .kf-panel-body {
+  display: none;
+}
+
+.kf-panel.is-sheet.is-open .kf-panel-body {
+  block-size: min(62dvh, 34rem);
+  padding-inline: var(--kf-space-4);
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-sheet-handle .kf-icon {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-sheet-handle .kf-icon {
+    transition: none;
+  }
+}

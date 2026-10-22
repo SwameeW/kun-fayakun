@@ -1,0 +1,173 @@
+{
+  "constants": [
+    {
+      "id": "universe.age",
+      "description": "Age of the universe for the base-ΛCDM model, 68% interval. From Planck 2018 VI, Table 2, column TT,TE,EE+lowE+lensing+BAO (the 13.787 ± 0.020 Gyr figure). The baseline Planck-only column TT,TE,EE+lowE+lensing gives 13.797 ± 0.023 Gyr.",
+      "value": 13.787,
+      "uncertainty": 0.020,
+      "unit": "Gyr",
+      "qualifier": "assuming the standard ΛCDM model",
+      "citation": {
+        "text": "Planck Collaboration 2020, A&A 641, A6 (Planck 2018 results VI), Table 2, TT,TE,EE+lowE+lensing+BAO",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "cmb.temperature",
+      "description": "Temperature of the cosmic microwave background today, from the review of all published measurements in Fixsen (2009), stated in the abstract.",
+      "value": 2.72548,
+      "uncertainty": 0.00057,
+      "unit": "K",
+      "qualifier": null,
+      "citation": {
+        "text": "Fixsen 2009, ApJ 707, 916, abstract",
+        "url": "https://doi.org/10.1088/0004-637X/707/2/916",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "recombination.redshift",
+      "description": "Redshift z* of last scattering (photon decoupling at recombination), base-ΛCDM, 68% interval. Planck 2018 VI, Table 2, column TT,TE,EE+lowE+lensing+BAO; the same column as universe.age. The baseline column without BAO gives 1089.92 ± 0.25.",
+      "value": 1089.80,
+      "uncertainty": 0.21,
+      "unit": "",
+      "qualifier": "assuming the standard ΛCDM model",
+      "citation": {
+        "text": "Planck Collaboration 2020, A&A 641, A6 (Planck 2018 results VI), Table 2, TT,TE,EE+lowE+lensing+BAO",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "recombination.age",
+      "description": "Approximate age of the universe at last scattering, shown as the widely quoted round figure. Its origin is the WMAP first-year best fit, t_dec = 379 (+8, −7) kyr (Bennett et al. 2003, Table 3). Current values are slightly lower: the PDG 2026 Big-Bang Cosmology review (Sec. 22.4.1) gives about 370,000 years, and integrating the Friedmann equation with the Planck 2018 TT,TE,EE+lowE+lensing+BAO parameters to z* = 1089.80 gives about 372,000 years. Flagged for the science reviewer.",
+      "value": 380000,
+      "uncertainty": null,
+      "unit": "yr",
+      "qualifier": "approximate",
+      "citation": {
+        "text": "Bennett et al. 2003, ApJS 148, 1 (WMAP first-year results), Table 3; compare PDG 2026, Review 22 (Big-Bang Cosmology), Sec. 22.4.1",
+        "url": "https://doi.org/10.1086/377253",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "recombination.temperature",
+      "description": "Approximate temperature of the radiation at last scattering, derived as T* = T0 × (1 + z*) = 2.72548 K × 1090.80 ≈ 2,973 K (T0 from cmb.temperature, z* from recombination.redshift), shown rounded to about 3,000 K.",
+      "value": 3000,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "approximate; derived from T0 × (1 + z*)",
+      "citation": {
+        "text": "Derived from Fixsen 2009 (ApJ 707, 916) and Planck Collaboration 2020 (A&A 641, A6), Table 2",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.helium.massFraction",
+      "description": "Primordial helium-4 mass fraction Y_P, inferred from metal-poor extragalactic H II regions; the PDG recommended value, eq. (24.3).",
+      "value": 0.245,
+      "uncertainty": 0.003,
+      "unit": "",
+      "qualifier": "primordial value inferred from observations",
+      "citation": {
+        "text": "Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026 (Takahashi et al., Int. J. Mod. Phys. A 41, 2630011), eq. (24.3)",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.hydrogen.massFraction",
+      "description": "Primordial hydrogen mass fraction, derived as X = 1 − Y_P = 1 − 0.245 = 0.755. Deuterium, helium-3 and lithium-7 together are below 0.01% by mass and are neglected; the uncertainty is that of Y_P.",
+      "value": 0.755,
+      "uncertainty": 0.003,
+      "unit": "",
+      "qualifier": "derived as 1 − Y_P",
+      "citation": {
+        "text": "Derived from Y_P in Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, eq. (24.3)",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.helium.numberFraction",
+      "description": "Fraction of primordial atoms that are helium, derived from Y_P = 0.245 ± 0.003. With atomic masses m(4He)/m(1H) = 4.00260325413 / 1.00782503223 = 3.97153 (NIST), He/H by number = (Y_P / 3.97153) / (1 − Y_P) = 0.08171, so f_He = 0.08171 / 1.08171 = 0.07554. Error propagation: df/dY = f(1 − f) / (Y(1 − Y)) = 0.3775, times 0.003 gives ± 0.0011. Trace nuclei neglected.",
+      "value": 0.0755,
+      "uncertainty": 0.0011,
+      "unit": "",
+      "qualifier": "derived from Y_P",
+      "citation": {
+        "text": "Derived from Y_P in Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, eq. (24.3), with NIST atomic masses",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.hydrogen.numberFraction",
+      "description": "Fraction of primordial atoms that are hydrogen: 1 − f_He = 1 − 0.0755 = 0.9245 (see bbn.helium.numberFraction for the derivation). Trace nuclei neglected.",
+      "value": 0.9245,
+      "uncertainty": 0.0011,
+      "unit": "",
+      "qualifier": "derived from Y_P",
+      "citation": {
+        "text": "Derived from Y_P in Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, eq. (24.3), with NIST atomic masses",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.deuterium.ratio",
+      "description": "Primordial deuterium-to-hydrogen ratio by number, D/H = (25.08 ± 0.29) × 10^-6: the PDG recommended value from quasar absorption systems, eq. (24.2).",
+      "value": 2.508e-5,
+      "uncertainty": 2.9e-7,
+      "unit": "",
+      "qualifier": "by number, relative to hydrogen",
+      "citation": {
+        "text": "Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, eq. (24.2)",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.lithium7.ratio",
+      "description": "Primordial lithium-7-to-hydrogen ratio by number inferred from metal-poor halo stars, Li/H = (1.45 ± 0.25) × 10^-10, eq. (24.4). The review notes it should be regarded as a lower bound, since stars may have destroyed some of their lithium.",
+      "value": 1.45e-10,
+      "uncertainty": 2.5e-11,
+      "unit": "",
+      "qualifier": "observed in old stars; regarded as a lower bound",
+      "citation": {
+        "text": "Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, eq. (24.4)",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.lithium7.theory",
+      "description": "Lithium-7-to-hydrogen ratio calculated from standard Big-Bang nucleosynthesis with the CMB baryon density, Li/H = (4.72 ± 0.7) × 10^-10, eq. (24.10) (the review's reference [45]).",
+      "value": 4.72e-10,
+      "uncertainty": 7e-11,
+      "unit": "",
+      "qualifier": "standard BBN calculation",
+      "citation": {
+        "text": "Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, eq. (24.10)",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "bbn.lithium7.discrepancy",
+      "description": "Factor by which the calculated (standard BBN) primordial lithium-7 abundance exceeds the value observed in old stars (the cosmological lithium problem): a factor of 3.3, a 4.4 sigma discrepancy, Sec. 24.5.",
+      "value": 3.3,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "approximate",
+      "citation": {
+        "text": "Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, Sec. 24.5",
+        "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
+        "accessed": "2026-10-22"
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+# Python packages for scripts/preprocess-cmb.sh (Python 3.13), pinned to the versions
+# the published texture was built with. Installed into .cache/venv-cmb.
+healpy==1.20.1
+astropy==8.0.2
+astropy-iers-data==0.2026.10.19.0.52.1
+pyerfa==2.0.1.5
+PyYAML==6.0.3
+packaging==26.3
+numpy==2.5.4
+pillow==13.0.0

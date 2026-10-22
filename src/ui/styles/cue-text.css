@@ -1,0 +1,135 @@
+/* Cinematic text: verse and hadith cards, then captions in the lower third. */
+.kf-stage-text {
+  grid-row: 3;
+  padding-block: var(--kf-space-3) var(--kf-space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--kf-space-3);
+  padding-inline: var(--kf-gutter);
+}
+
+.kf-verse-overlay,
+.kf-captions {
+  display: grid;
+  justify-items: center;
+  inline-size: 100%;
+}
+
+/* Successive items stack in one grid cell, so a fading-out card never shifts its successor. */
+.kf-verse-overlay > *,
+.kf-captions > * {
+  grid-area: 1 / 1;
+}
+
+/*
+ * --kf-fit (set by cue-text.ts, 0.75 to 1) scales a card so it fits between the
+ * overlays above it and the timeline; scripture never runs under the timeline.
+ */
+.kf-card {
+  max-inline-size: min(46rem, 100%);
+  padding-block: calc(var(--kf-space-4) * var(--kf-fit, 1));
+  padding-inline: var(--kf-space-6);
+  border-radius: var(--kf-radius);
+  background: var(--kf-scrim);
+  box-shadow: 0 0 48px 24px rgb(5 6 10 / 0.55);
+  text-align: center;
+}
+
+.kf-card-arabic {
+  margin: 0 0 calc(var(--kf-space-3) * var(--kf-fit, 1));
+  font-family: var(--kf-font-arabic);
+  font-size: calc(clamp(1.375rem, min(3.4vw, 6.5cqb), 2.5rem) * var(--kf-fit, 1));
+  line-height: 2;
+  text-align: center;
+  color: var(--kf-text);
+}
+
+.kf-card-translation {
+  margin: 0 0 var(--kf-space-2);
+  font-family: var(--kf-font-display);
+  font-size: calc(clamp(0.9375rem, min(1.9vw, 3.4cqb), 1.25rem) * var(--kf-fit, 1));
+  line-height: 1.6;
+  color: var(--kf-text);
+}
+
+.kf-card-ref {
+  margin: 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  color: var(--kf-gold);
+}
+
+.kf-card--hadith .kf-card-ref {
+  margin-block-end: var(--kf-space-2);
+  font-family: var(--kf-font-display);
+  font-size: calc(1.0625rem * var(--kf-fit, 1));
+  letter-spacing: 0;
+}
+
+.kf-card-meta {
+  margin: 0 0 var(--kf-space-1);
+  font-size: calc(0.875rem * var(--kf-fit, 1));
+  color: var(--kf-text-muted);
+}
+
+/* Too little room even at the smallest scale: show only the reference, never a partial text. */
+.kf-card-note {
+  display: none;
+  margin: var(--kf-space-1) 0 0;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-card.is-condensed > :not(.kf-card-ref, .kf-card-note) {
+  display: none;
+}
+
+.kf-card.is-condensed .kf-card-note {
+  display: block;
+}
+
+.kf-card.is-condensed .kf-card-ref {
+  margin: 0;
+}
+
+.kf-caption {
+  max-inline-size: min(40rem, 100%);
+  margin: 0;
+  padding-block: var(--kf-space-2);
+  padding-inline: var(--kf-space-4);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-scrim);
+  font-size: clamp(0.9375rem, 1.6vw, 1.125rem);
+  line-height: 1.5;
+  text-align: center;
+  color: var(--kf-text);
+}
+
+@media (max-width: 767.98px) {
+  .kf-stage-text {
+    padding-block-end: var(--kf-space-3);
+  }
+
+  .kf-card {
+    padding-block: calc(var(--kf-space-3) * var(--kf-fit, 1));
+    padding-inline: var(--kf-space-4);
+  }
+
+  .kf-card-arabic {
+    font-size: calc(1.5rem * var(--kf-fit, 1));
+    line-height: 2.05;
+  }
+
+  .kf-card-translation {
+    font-size: calc(0.9375rem * var(--kf-fit, 1));
+    line-height: 1.5;
+  }
+}
+
+/* Short screens (phones held sideways): less padding around the cue text. */
+@media (max-height: 500px) {
+  .kf-stage-text {
+    padding-block: var(--kf-space-2);
+  }
+}

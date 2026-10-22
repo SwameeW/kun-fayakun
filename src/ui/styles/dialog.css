@@ -1,0 +1,58 @@
+/* Keyboard shortcuts dialog. */
+.kf-dialog {
+  inline-size: min(30rem, calc(100vw - 2 * var(--kf-gutter)));
+  max-block-size: calc(100dvh - 2 * var(--kf-gutter));
+  padding: var(--kf-space-5);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius);
+  background: var(--kf-surface);
+  color: var(--kf-text);
+}
+
+.kf-dialog::backdrop {
+  background: rgb(5 6 10 / 0.7);
+}
+
+.kf-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-3);
+  margin-block-end: var(--kf-space-4);
+}
+
+.kf-dialog h2 {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 1.375rem;
+  font-weight: 400;
+}
+
+.kf-dialog-close {
+  margin-inline-end: calc(-1 * var(--kf-space-2));
+}
+
+.kf-shortcuts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--kf-space-3) var(--kf-space-5);
+  align-items: baseline;
+  margin: 0 0 var(--kf-space-4);
+}
+
+.kf-shortcuts dd {
+  margin: 0;
+}
+
+.kf-dialog kbd {
+  display: inline-block;
+  min-inline-size: 1.75rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--kf-line-strong);
+  border-block-end-width: 2px;
+  border-radius: 4px;
+  background: var(--kf-surface-2);
+  font-family: var(--kf-font-ui);
+  font-size: 0.8125rem;
+  text-align: center;
+}

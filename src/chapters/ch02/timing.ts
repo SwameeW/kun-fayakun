@@ -1,0 +1,103 @@
+import type { Cue } from '../../core/types';
+
+/** Scene events of Chapter 2, in story order (docs/CONTRACTS.md). */
+export const CH02_EVENTS = ['plasma', 'recombination', 'cmb-reveal', 'cmb-hold'] as const;
+export type Ch02Event = (typeof CH02_EVENTS)[number];
+
+export type EventTimes = Readonly<Record<Ch02Event, number>>;
+
+/**
+ * Reads each scene event's time from the chapter's cues, so content.json stays
+ * the single place where timing lives. A missing event is a content error.
+ */
+export function readEventTimes(cues: readonly Cue[]): EventTimes {
+  const find = (event: Ch02Event): number => {
+    const cue = cues.find((c) => c.type === 'scene' && c.event === event);
+    if (!cue) throw new Error(`ch02: scene cue "${event}" is missing from content.json`);
+    return cue.t;
+  };
+  return {
+    plasma: find('plasma'),
+    recombination: find('recombination'),
+    'cmb-reveal': find('cmb-reveal'),
+    'cmb-hold': find('cmb-hold'),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Durations                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Seconds for the plasma to cool and clear: a slow ease (flash safety) whose
+ * visible dimming spans about six seconds. Reduced motion slows it slightly; with
+ * the cue times in content.json it still ends by cmb-reveal, so the two never overlap.
+ */
+const CLEAR_SECONDS = { normal: 10, reduced: 10.5 } as const;
+/**
+ * Seconds for the sphere of last scattering to fade in after cmb-reveal. At the
+ * steepest point of the ease the sphere's own area brightens by roughly
+ * 0.48 / REVEAL_SECONDS relative luminance per 1/3 s (measured 0.106 at 4.5 s);
+ * 5 s keeps every region of the screen under 0.1 per 1/3 s.
+ */
+const REVEAL_SECONDS = { normal: 5, reduced: 5.5 } as const;
+/**
+ * The sphere (radius 10) only shows once the camera is outside it, so it is never
+ * seen from too close or flown through: hidden within NEAR, fully shown beyond FAR
+ * (the explore limits keep the camera beyond FAR).
+ */
+const REVEAL_DISTANCE = { near: 10.5, far: 14 } as const;
+/** Slow spin of the map during cmb-hold: one turn in about eight minutes. */
+const SPIN_RADIANS_PER_SECOND = (2 * Math.PI) / 480;
+/** The spin eases in over this long instead of starting abruptly. */
+const SPIN_RAMP_SECONDS = 6;
+
+/* ------------------------------------------------------------------ */
+/* Easing                                                              */
+/* ------------------------------------------------------------------ */
+
+export const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
+
+/** Smooth 0..1 ramp with zero slope at both ends (Perlin's smootherstep). */
+export const smootherstep = (x: number): number => {
+  const s = clamp01(x);
+  return s * s * s * (s * (s * 6 - 15) + 10);
+};
+
+export const smoothstep = (edge0: number, edge1: number, x: number): number => {
+  const s = clamp01((x - edge0) / (edge1 - edge0));
+  return s * s * (3 - 2 * s);
+};
+
+/* ------------------------------------------------------------------ */
+/* Visual state as a pure function of chapter time                     */
+/* ------------------------------------------------------------------ */
+
+export interface Ch02State {
+  /** 0 = glowing opaque plasma, 1 = fully cooled and transparent. */
+  clear: number;
+  /** 0..1 fade of the CMB sphere (time since cmb-reveal and camera distance). */
+  reveal: number;
+  /** Extra rotation of the map about the galactic poles, in radians. */
+  spin: number;
+}
+
+/**
+ * Everything the scene shows is derived from absolute chapter time t, so seeking
+ * to any time gives the same picture as playing up to it.
+ */
+export function stateAt(t: number, times: EventTimes, cameraDistance: number, reducedMotion: boolean): Ch02State {
+  const pace = reducedMotion ? 'reduced' : 'normal';
+  const clear = smoothstep(0, 1, (t - times.recombination) / CLEAR_SECONDS[pace]);
+  const revealByTime = smootherstep((t - times['cmb-reveal']) / REVEAL_SECONDS[pace]);
+  const revealByDistance = smoothstep(REVEAL_DISTANCE.near, REVEAL_DISTANCE.far, cameraDistance);
+  return { clear, reveal: revealByTime * revealByDistance, spin: reducedMotion ? 0 : spinAt(t - times['cmb-hold']) };
+}
+
+/** Angle after `s` seconds of a spin whose speed ramps linearly up to full over SPIN_RAMP_SECONDS. */
+function spinAt(s: number): number {
+  if (s <= 0) return 0;
+  const ramp = SPIN_RAMP_SECONDS;
+  const seconds = s < ramp ? (s * s) / (2 * ramp) : s - ramp / 2;
+  return seconds * SPIN_RADIANS_PER_SECOND;
+}

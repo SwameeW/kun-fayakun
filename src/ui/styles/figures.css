@@ -1,0 +1,174 @@
+/* Science figures: DOM bars and scales with their values as text. */
+.kf-figure {
+  margin-block: var(--kf-space-3) var(--kf-space-4);
+  margin-inline: 0;
+  padding: var(--kf-space-4);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius);
+  background: var(--kf-surface-2);
+}
+
+.kf-figure-title {
+  margin-block-end: var(--kf-space-3);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--kf-text);
+}
+
+.kf-figure-note {
+  margin-block: var(--kf-space-3) 0;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-credit {
+  margin-block: var(--kf-space-2) 0;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+/* BBN abundances ---------------------------------------------------------- */
+
+.kf-bbn-group + .kf-bbn-group {
+  margin-block-start: var(--kf-space-4);
+}
+
+.kf-bbn-label {
+  margin-block: 0 var(--kf-space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-bbn-bar {
+  display: flex;
+  block-size: 0.75rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--kf-surface);
+  outline: 1px solid var(--kf-line);
+}
+
+.kf-bbn-seg {
+  block-size: 100%;
+}
+
+.kf-bbn-seg--hydrogen {
+  background: var(--kf-hydrogen);
+}
+
+.kf-bbn-seg--helium {
+  background: var(--kf-gold);
+  border-inline-start: 2px solid var(--kf-surface-2);
+}
+
+.kf-bbn-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-1) var(--kf-space-4);
+  margin: var(--kf-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--kf-text);
+}
+
+.kf-bbn-values li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+}
+
+.kf-bbn-values--traces {
+  flex-direction: column;
+}
+
+.kf-swatch {
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 2px;
+}
+
+.kf-swatch--hydrogen {
+  background: var(--kf-hydrogen);
+}
+
+.kf-swatch--helium {
+  background: var(--kf-gold);
+}
+
+.kf-sci sup {
+  font-size: 0.7em;
+  line-height: 0;
+}
+
+/* CMB colour scale -------------------------------------------------------- */
+
+.kf-cmb-slot {
+  min-block-size: 2.5rem;
+}
+
+.kf-cmb-bar {
+  block-size: 0.875rem;
+  border-radius: 3px;
+  outline: 1px solid var(--kf-line-strong);
+}
+
+.kf-cmb-ticks {
+  position: relative;
+  block-size: 1.4rem;
+  margin-block-start: var(--kf-space-1);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--kf-text-muted);
+}
+
+/* The scale container is dir="ltr" (cold to hot reads left to right in every locale). */
+.kf-cmb-tick {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: calc(var(--f) * 100%);
+  translate: calc(var(--f) * -100%) 0;
+  white-space: nowrap;
+}
+
+/* As a cue overlay over the scene: compact, leaving room for verse text below. */
+.kf-overlay-figure {
+  inline-size: min(22rem, calc(100vw - 2 * var(--kf-gutter)));
+  margin: 0;
+  padding: var(--kf-space-3) var(--kf-space-4);
+  background: var(--kf-scrim-strong);
+  border-color: var(--kf-line-strong);
+}
+
+.kf-overlay-figure .kf-figure-title {
+  margin-block-end: var(--kf-space-2);
+  font-size: 0.8125rem;
+}
+
+.kf-overlay-figure .kf-figure-note {
+  display: none;
+}
+
+.kf-overlay-figure .kf-credit {
+  margin-block-start: 0;
+}
+
+/* On small screens the overlay keeps only the scale and credit, leaving room for verses. */
+@media (max-width: 767.98px) {
+  .kf-overlay-figure {
+    inline-size: 100%;
+    padding: var(--kf-space-2) var(--kf-space-3);
+  }
+
+  .kf-overlay-figure .kf-figure-title {
+    font-size: 0.75rem;
+  }
+
+  .kf-overlay-figure .kf-credit {
+    font-size: 0.75rem;
+  }
+}

@@ -1,0 +1,101 @@
+/* Stage cards: chapter title, outro choices, explore hint, cue overlays. */
+.kf-stage-top {
+  grid-row: 1;
+  padding-block-start: var(--kf-space-3);
+  padding-inline: var(--kf-gutter);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kf-space-4);
+}
+
+.kf-stage-top .kf-explore-hint {
+  margin-inline: auto;
+}
+
+.kf-explore-hint {
+  max-inline-size: 32rem;
+  margin: 0;
+  padding-block: var(--kf-space-2);
+  padding-inline: var(--kf-space-4);
+  border: 1px solid var(--kf-line);
+  border-radius: 999px;
+  background: var(--kf-scrim);
+  font-size: 0.875rem;
+  text-align: center;
+  color: var(--kf-text);
+}
+
+.kf-title-card-slot {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-inline: var(--kf-gutter);
+}
+
+.kf-title-card-slot > * {
+  grid-area: 1 / 1;
+}
+
+/* A solid backplate under every line (soft only beyond its edge), as for verse cards:
+   a radial fade left the subtitle's ends near 1.2:1 over a bright scene. */
+.kf-title-card {
+  padding: var(--kf-space-5) var(--kf-space-6);
+  border-radius: var(--kf-radius);
+  background: var(--kf-scrim);
+  box-shadow: 0 0 48px 24px rgb(5 6 10 / 0.55);
+  text-align: center;
+}
+
+.kf-title-card-number {
+  margin: 0 0 var(--kf-space-2);
+  font-size: 0.8125rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+.kf-title-card-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: clamp(1.75rem, 4.5vw, 3rem);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--kf-text);
+}
+
+.kf-title-card-subtitle {
+  margin: var(--kf-space-3) 0 0;
+  font-family: var(--kf-font-display);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--kf-text-muted);
+}
+
+.kf-outro {
+  position: absolute;
+  inset-inline: var(--kf-gutter);
+  inset-block-start: 50%;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--kf-space-4);
+  margin-inline: auto;
+  max-inline-size: 36rem;
+  padding: var(--kf-space-5);
+  border-radius: var(--kf-radius);
+  background: var(--kf-scrim);
+  text-align: center;
+}
+
+.kf-outro-note {
+  margin: 0;
+  color: var(--kf-text-muted);
+}
+
+.kf-outro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--kf-space-3);
+}

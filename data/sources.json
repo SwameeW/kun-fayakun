@@ -1,0 +1,356 @@
+{
+  "disclaimer": "An educational reflection, not tafsir or scientific proof. Interpretations are summarised from cited scholars; for religious guidance, consult a qualified scholar. Science reflects current models and may change.",
+  "sources": [
+    {
+      "id": "tanzil-uthmani",
+      "kind": "scripture-text",
+      "title": "Tanzil Quran Text (Uthmani, Version 1.1)",
+      "author": "Tanzil Project",
+      "url": "https://tanzil.net/download/",
+      "version": "Version 1.1 (released February 2021); file downloaded 2026-10-22, copyright block dated 2007-2026",
+      "license": "Creative Commons Attribution 3.0, with Tanzil's terms of use: verbatim copies only (changing the text is not allowed), the source (Tanzil Project) must be clearly indicated with a link to tanzil.net, and the copyright notice must be kept.",
+      "licenseUrl": "https://tanzil.net/docs/Text_License",
+      "credit": "Quran text: Tanzil Project, Tanzil Quran Text (Uthmani, Version 1.1), CC BY 3.0, used verbatim. Check for updates at https://tanzil.net/",
+      "verseKeys": [
+        "2:117",
+        "7:54",
+        "14:48",
+        "21:30",
+        "21:33",
+        "21:104",
+        "22:47",
+        "24:45",
+        "25:59",
+        "32:4",
+        "32:5",
+        "36:38",
+        "36:39",
+        "36:40",
+        "36:82",
+        "39:6",
+        "39:67",
+        "41:9",
+        "41:10",
+        "41:11",
+        "41:12",
+        "50:38",
+        "51:47",
+        "55:33",
+        "57:25",
+        "65:12",
+        "67:3",
+        "70:4",
+        "79:30",
+        "79:31",
+        "79:32",
+        "81:1",
+        "81:2",
+        "82:1",
+        "82:2",
+        "86:11"
+      ],
+      "notes": "Downloaded from https://tanzil.net/pub/download/index.php with quranType=uthmani, outType=txt-2 (Text with aya numbers, 'sura|aya|text') and Tanzil's default options: pause marks on, sajdah signs on, rub-el-hizb signs off, tatweel below superscript alefs on, sequential tanweens off; agree=true. The raw file is kept verbatim in data/tanzil/quran-uthmani.txt and pinned by sha256 in scripts/fetch-quran.ts. data/quran.json stores each cited ayah as the NFC form of its line: for 34 of the 36 cited ayat NFC reorders combining marks (for example shadda after the vowel sign) or composes alef + madda into one code point. The result is canonically equivalent to the Tanzil line (same text under Unicode), not byte-identical. The Tanzil copyright block is kept verbatim in data/quran.json (meta.tanzilCopyright) and in LICENSES.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "tanzil-en-pickthall",
+      "kind": "translation",
+      "title": "The Meaning of the Glorious Koran (English translation), Tanzil file en.pickthall",
+      "author": "Mohammed Marmaduke William Pickthall",
+      "url": "https://tanzil.net/trans/en.pickthall",
+      "version": "Tanzil en.pickthall, header 'Last Update: September 4, 2010'",
+      "license": "Public domain: first published 1930; the translator died in 1936. Tanzil distributes its translation files 'for non-commercial purposes only' and asks other users to obtain permission from the translator or publisher.",
+      "licenseUrl": "https://tanzil.net/trans/",
+      "credit": "English translation: Marmaduke Pickthall, The Meaning of the Glorious Koran (1930), public domain. Text file from Tanzil (https://tanzil.net/trans/).",
+      "verseKeys": [
+        "2:117",
+        "7:54",
+        "14:48",
+        "21:30",
+        "21:33",
+        "21:104",
+        "22:47",
+        "24:45",
+        "25:59",
+        "32:4",
+        "32:5",
+        "36:38",
+        "36:39",
+        "36:40",
+        "36:82",
+        "39:6",
+        "39:67",
+        "41:9",
+        "41:10",
+        "41:11",
+        "41:12",
+        "50:38",
+        "51:47",
+        "55:33",
+        "57:25",
+        "65:12",
+        "67:3",
+        "70:4",
+        "79:30",
+        "79:31",
+        "79:32",
+        "81:1",
+        "81:2",
+        "82:1",
+        "82:2",
+        "86:11"
+      ],
+      "notes": "Downloaded from https://tanzil.net/trans/?transID=en.pickthall&type=txt-2. Kept verbatim in data/tanzil/en.pickthall.txt; data/quran.json copies each line unchanged. Tanzil's changelog lists one later fix (14 Sep 2010) although the file header still reads September 4, 2010. Tanzil asks for a link back to https://tanzil.net/trans/ when more than three of its translations are used; this project uses two and links back anyway.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "tanzil-en-transliteration",
+      "kind": "transliteration",
+      "title": "English Transliteration, Tanzil file en.transliteration",
+      "author": null,
+      "url": "https://tanzil.net/trans/en.transliteration",
+      "version": "Tanzil en.transliteration, header 'Last Update: September 6, 2010'",
+      "license": "Tanzil translation terms only: 'for non-commercial purposes only'. No translator or publisher is named (the file lists the translator as 'English Transliteration'), so permission for any other use cannot be requested. Not clearly redistributable beyond non-commercial use.",
+      "licenseUrl": "https://tanzil.net/trans/",
+      "credit": "Transliteration: Tanzil Project, en.transliteration (https://tanzil.net/trans/), non-commercial use.",
+      "verseKeys": [
+        "2:117",
+        "7:54",
+        "14:48",
+        "21:30",
+        "21:33",
+        "21:104",
+        "22:47",
+        "24:45",
+        "25:59",
+        "32:4",
+        "32:5",
+        "36:38",
+        "36:39",
+        "36:40",
+        "36:82",
+        "39:6",
+        "39:67",
+        "41:9",
+        "41:10",
+        "41:11",
+        "41:12",
+        "50:38",
+        "51:47",
+        "55:33",
+        "57:25",
+        "65:12",
+        "67:3",
+        "70:4",
+        "79:30",
+        "79:31",
+        "79:32",
+        "81:1",
+        "81:2",
+        "82:1",
+        "82:2",
+        "86:11"
+      ],
+      "notes": "Interim choice, pending the owner's decision (see REVIEW.md). Kept because it is the only pinned, verifiable transliteration available to freeze: the Quran Foundation API may not be cached or bundled, and generating a transliteration from the Arabic would be machine-made scripture text that nobody has checked. It may be used only while the project stays non-commercial; replace it or obtain clear permission before any commercial use. Downloaded from https://tanzil.net/trans/?transID=en.transliteration&type=txt-2 and kept verbatim in data/tanzil/en.transliteration.txt. The file marks long vowels and silent letters with inline HTML (<u>, <b>, <i>, <strong>); data/quran.json removes those tags and changes nothing else, and scripts/validate.ts checks that.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "amiri-quran",
+      "kind": "font",
+      "title": "Amiri Quran (Amiri font family)",
+      "author": "The Amiri Project Authors",
+      "url": "https://github.com/aliftype/amiri",
+      "version": "1.003 (GitHub release, 2025-06-13)",
+      "license": "SIL Open Font License, Version 1.1",
+      "licenseUrl": "https://github.com/aliftype/amiri/blob/1.003/OFL.txt",
+      "credit": "Amiri Quran font, Copyright 2010-2022 The Amiri Project Authors (https://github.com/aliftype/amiri), SIL Open Font License 1.1.",
+      "notes": "Latest official release on github.com/aliftype/amiri as of 2026-10-22: https://github.com/aliftype/amiri/releases/tag/1.003 (asset Amiri-1.003.zip). Self-hosted as public/fonts/AmiriQuran.woff2 and used to build the calligraphy atlas (both made by the calligraphy step). The OFL text in LICENSES was fetched from the 1.003 tag. KFGQPC Uthmanic Hafs is deliberately not used.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "planck-pr3-smica",
+      "kind": "dataset",
+      "title": "Planck PR3 (2018) SMICA CMB map, COM_CMB_IQU-smica_2048_R3.00_full.fits",
+      "author": "ESA and the Planck Collaboration",
+      "url": "https://pla.esac.esa.int/pla/aio/product-action?MAP.MAP_ID=COM_CMB_IQU-smica_2048_R3.00_full.fits",
+      "version": "Planck Legacy Release PR3 (2018), R3.00",
+      "license": "Public data from the ESA Planck Legacy Archive, free to use with acknowledgement. ESA asks users to include: 'Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada.'",
+      "licenseUrl": "https://www.cosmos.esa.int/web/planck/planck-data-use",
+      "credit": "ESA and the Planck Collaboration",
+      "notes": "Mirror: https://irsa.ipac.caltech.edu/data/Planck/release_3/all-sky-maps/maps/component-maps/cmb/COM_CMB_IQU-smica_2048_R3.00_full.fits (2,013,312,960 bytes, last modified 2018-06-04). The HEALPix temperature map is converted offline into the equirectangular textures described by public/assets/cmb/cmb.json. ESA's own image pages for this map print the credit as 'ESA/Planck Collaboration'; this project uses the spec's wording 'ESA and the Planck Collaboration'.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sunnah-bukhari",
+      "kind": "hadith-collection",
+      "title": "Sahih al-Bukhari",
+      "author": "al-Bukhari",
+      "url": "https://sunnah.com/bukhari",
+      "version": null,
+      "license": "References only. No hadith wording is reproduced in M1; any wording must be entered by a person from sunnah.com after checking sunnah.com's terms.",
+      "licenseUrl": null,
+      "credit": "Hadith reference: sunnah.com",
+      "hadithIds": [
+        "bukhari-3191",
+        "bukhari-3199",
+        "bukhari-4812"
+      ],
+      "notes": "https://sunnah.com/bukhari:3191 (parallel https://sunnah.com/bukhari:7418), https://sunnah.com/bukhari:3199, https://sunnah.com/bukhari:4812. sunnah.com's terms of use were not readable by the build tools (HTTP 403) and are unverified.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sunnah-muslim",
+      "kind": "hadith-collection",
+      "title": "Sahih Muslim",
+      "author": "Muslim ibn al-Hajjaj",
+      "url": "https://sunnah.com/muslim",
+      "version": null,
+      "license": "References only. No hadith wording is reproduced in M1; any wording must be entered by a person from sunnah.com after checking sunnah.com's terms.",
+      "licenseUrl": null,
+      "credit": "Hadith reference: sunnah.com",
+      "hadithIds": [
+        "muslim-2653",
+        "muslim-2787"
+      ],
+      "notes": "https://sunnah.com/muslim:2653b and https://sunnah.com/muslim:2787. Narrations judged defective are deliberately excluded and never shown (listed in data/hadith.json under excluded).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sunnah-abudawud",
+      "kind": "hadith-collection",
+      "title": "Sunan Abi Dawud",
+      "author": "Abu Dawud",
+      "url": "https://sunnah.com/abudawud",
+      "version": null,
+      "license": "References only. No hadith wording is reproduced in M1; any wording must be entered by a person from sunnah.com after checking sunnah.com's terms.",
+      "licenseUrl": null,
+      "credit": "Hadith reference: sunnah.com",
+      "hadithIds": [
+        "abudawud-4700"
+      ],
+      "notes": "https://sunnah.com/abudawud:4700",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sunnah-tirmidhi",
+      "kind": "hadith-collection",
+      "title": "Jami at-Tirmidhi",
+      "author": "al-Tirmidhi",
+      "url": "https://sunnah.com/tirmidhi",
+      "version": null,
+      "license": "References only. No hadith wording is reproduced in M1; any wording must be entered by a person from sunnah.com after checking sunnah.com's terms.",
+      "licenseUrl": null,
+      "credit": "Hadith reference: sunnah.com",
+      "hadithIds": [
+        "tirmidhi-2155"
+      ],
+      "notes": "https://sunnah.com/tirmidhi:2155",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "threejs",
+      "kind": "software",
+      "title": "three.js",
+      "author": "three.js authors",
+      "url": "https://threejs.org/",
+      "version": "0.186.1 (r186)",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/mrdoob/three.js/blob/dev/LICENSE",
+      "credit": "three.js, Copyright 2010-2026 three.js authors, MIT License.",
+      "notes": "Includes the Basis Universal transcoder (separate entry) shipped from three/examples/jsm/libs/basis.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "basis-universal",
+      "kind": "software",
+      "title": "Basis Universal transcoder (basis_transcoder.js / .wasm)",
+      "author": "Binomial LLC",
+      "url": "https://github.com/BinomialLLC/basis_universal",
+      "version": "as bundled with three 0.186.1",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://github.com/BinomialLLC/basis_universal/blob/master/LICENSE",
+      "credit": "Basis Universal transcoder, Binomial LLC, Apache License 2.0.",
+      "notes": "Copied into the build by vite.config.ts for KTX2 texture loading.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "intl-messageformat",
+      "kind": "software",
+      "title": "intl-messageformat (FormatJS)",
+      "author": "Oath Inc. and FormatJS contributors",
+      "url": "https://formatjs.github.io/docs/intl-messageformat/",
+      "version": "12.1.4",
+      "license": "BSD-3-Clause (intl-messageformat); MIT (its dependencies @formatjs/icu-messageformat-parser, @formatjs/icu-skeleton-parser, @formatjs/fast-memoize)",
+      "licenseUrl": "https://github.com/formatjs/formatjs/blob/main/packages/intl-messageformat/LICENSE.md",
+      "credit": "intl-messageformat, Copyright (c) 2023 Oath Inc., BSD 3-Clause License; @formatjs packages, Copyright (c) 2023 FormatJS, MIT License.",
+      "notes": null,
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "quran-foundation-api",
+      "kind": "api",
+      "title": "Quran Foundation Content API v4",
+      "author": "Quran Foundation",
+      "url": "https://api-docs.quran.foundation/",
+      "version": "v4",
+      "license": "Quran Foundation API terms. Per the project spec, the terms forbid caching beyond one week and bundling; re-read the terms before M4.",
+      "licenseUrl": null,
+      "credit": "Quran Foundation",
+      "notes": "Planned for M4 (recitation through a server-side OAuth2 proxy). Not used at runtime yet. 'npm run validate -- --online' can compare the Tanzil text with GET /content/api/v4/quran/verses/uthmani?verse_key=... (field text_uthmani) when QF_CLIENT_ID and QF_CLIENT_SECRET are set; that text is held in memory only and never written to disk.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    }
+  ],
+  "reviews": []
+}

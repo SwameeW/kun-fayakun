@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.cache/
+.tools/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+.venv/
+.claude/

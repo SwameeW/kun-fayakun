@@ -1,0 +1,224 @@
+{
+  "id": "ch00",
+  "duration": 96,
+  "intro": {
+    "titleKey": "ch00.intro.title",
+    "subtitleKey": "ch00.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "text": [
+      {
+        "type": "verse",
+        "key": "2:117"
+      },
+      {
+        "type": "verse",
+        "key": "36:82",
+        "noteKey": "ch00.text.kunNote"
+      },
+      {
+        "type": "hadith",
+        "id": "bukhari-3191",
+        "summaryKey": "ch00.hadith.bukhari3191.summary"
+      },
+      {
+        "type": "hadith",
+        "id": "muslim-2653",
+        "summaryKey": "ch00.hadith.muslim2653.summary"
+      },
+      {
+        "type": "hadith",
+        "id": "abudawud-4700",
+        "summaryKey": "ch00.hadith.pen.summary",
+        "noteKey": "ch00.hadith.abudawud4700.note"
+      },
+      {
+        "type": "hadith",
+        "id": "tirmidhi-2155",
+        "noteKey": "ch00.hadith.tirmidhi2155.note"
+      }
+    ],
+    "scholarly": {
+      "classical": [
+        {
+          "key": "ch00.scholarly.classical.originator"
+        },
+        {
+          "key": "ch00.scholarly.classical.command"
+        },
+        {
+          "key": "ch00.scholarly.classical.pen"
+        }
+      ],
+      "modern": []
+    },
+    "science": [
+      {
+        "key": "ch00.science.limits",
+        "values": {
+          "age": {
+            "constant": "universe.age",
+            "field": "value",
+            "digits": 1
+          }
+        }
+      },
+      {
+        "key": "ch00.science.theories"
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch00.open.beginningOfTime"
+      },
+      {
+        "key": "ch00.open.before"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 5.5,
+      "type": "scene",
+      "event": "kun-reveal"
+    },
+    {
+      "t": 10.5,
+      "type": "scene",
+      "event": "kun-hold"
+    },
+    {
+      "t": 12,
+      "type": "caption",
+      "key": "ch00.caption.word",
+      "duration": 6
+    },
+    {
+      "t": 20,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 20,
+      "type": "verse",
+      "key": "2:117",
+      "duration": 18
+    },
+    {
+      "t": 40,
+      "type": "verse",
+      "key": "36:82",
+      "duration": 15
+    },
+    {
+      "t": 56.5,
+      "type": "scene",
+      "event": "kun-fade"
+    },
+    {
+      "t": 58,
+      "type": "hadith",
+      "id": "bukhari-3191",
+      "duration": 7
+    },
+    {
+      "t": 65,
+      "type": "hadith",
+      "id": "muslim-2653",
+      "duration": 7
+    },
+    {
+      "t": 72,
+      "type": "hadith",
+      "id": "abudawud-4700",
+      "duration": 8
+    },
+    {
+      "t": 80,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 80,
+      "type": "hadith",
+      "id": "tirmidhi-2155",
+      "duration": 8
+    },
+    {
+      "t": 88,
+      "type": "panel",
+      "section": "science"
+    },
+    {
+      "t": 88.5,
+      "type": "caption",
+      "key": "ch00.caption.beyond",
+      "duration": 6
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        -0.55,
+        8
+      ],
+      "target": [
+        0,
+        -0.55,
+        0
+      ]
+    },
+    {
+      "t": 13,
+      "position": [
+        0,
+        -0.55,
+        8
+      ],
+      "target": [
+        0,
+        -0.55,
+        0
+      ]
+    },
+    {
+      "t": 19,
+      "position": [
+        0,
+        -2.8,
+        11
+      ],
+      "target": [
+        0,
+        -2.8,
+        0
+      ],
+      "ease": "inOutSine"
+    },
+    {
+      "t": 96,
+      "position": [
+        0,
+        -2.8,
+        11
+      ],
+      "target": [
+        0,
+        -2.8,
+        0
+      ]
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 4,
+    "maxDistance": 14
+  }
+}
