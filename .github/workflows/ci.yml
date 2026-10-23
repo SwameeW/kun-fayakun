@@ -13,9 +13,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Scripture, data, types, lint, the loading budget and the unit tests: no browser.
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Every displayed verse matches the pinned Tanzil text byte for byte (NFC),
+      # every hadith has collection, number and grading, no Arabic in src/.
+      - name: Validate scripture and data
+        run: npm run validate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Validation and typechecking already ran above; build only.
+      - name: Build
+        run: npx vite build
+
+      - name: Check loading budget (shell + Chapter 0 under 1.5 MB gzipped; shell within 10 KB of its baseline)
+        run: npx tsx scripts/check-bundle.ts
+
+      - name: Unit tests
+        run: npx playwright test --project=unit
+
+  # The browser tests, split across runners: CI has no GPU, so every frame is drawn in software
+  # (SwiftShader) and one runner would take well over an hour for the film and the explorer.
+  browser:
+    runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v5
 
@@ -49,26 +91,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      # Every displayed verse matches the pinned Tanzil text byte for byte (NFC),
-      # every hadith has collection, number and grading, no Arabic in src/.
-      - name: Validate scripture and data
-        run: npm run validate
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      # Validation and typechecking already ran above; build only.
       - name: Build
         run: npx vite build
 
-      - name: Check loading budget (shell + Chapter 0 under 1.5 MB gzipped; shell within 10 KB of its baseline)
-        run: npx tsx scripts/check-bundle.ts
-
-      - name: Playwright tests (WebGPU and forced WebGL2)
-        run: npx playwright test
+      - name: Playwright tests (WebGPU, forced WebGL2 and the emulated phone), shard ${{ matrix.shard }} of 6
+        run: npx playwright test --project=webgpu --project=webgl2 --project=mobile --shard=${{ matrix.shard }}/6
         env:
           KF_SKIP_BUILD: '1'
 
@@ -76,7 +103,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/

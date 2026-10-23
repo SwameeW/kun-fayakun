@@ -5,6 +5,7 @@
  */
 import { test as base, expect, type Page } from '@playwright/test';
 import type { App, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
+import { SLOW } from './env';
 
 export interface KfOptions {
   /** Add ?forceWebGL=1 to every navigation (the "webgl2" project). */
@@ -58,7 +59,7 @@ export interface Kf {
 }
 
 /** Chapters fetch large textures (the 4096 px CMB) and compile pipelines; be generous. */
-export const CHAPTER_READY_TIMEOUT = 90_000;
+export const CHAPTER_READY_TIMEOUT = 90_000 * SLOW;
 
 export function chapterRoute(id: ChapterId, t?: number): string {
   const n = Number(id.slice(2));

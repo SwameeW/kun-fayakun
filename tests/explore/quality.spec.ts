@@ -7,6 +7,7 @@
  */
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
 import { JD, place, view, waitForUniverse } from '../support/universe';
+import { SLOW } from '../support/env';
 
 const stats = (page: import('@playwright/test').Page): Promise<FrameStats> => page.evaluate(() => (window as unknown as KfHook).__kf.frameStats());
 
@@ -30,7 +31,7 @@ test('the menu offers Auto and the tiers this device may run; Ultra only on WebG
 });
 
 test('a chosen tier applies at once (closing the menu) and is kept on this browser over Auto; Esc closes the menu, not the explorer', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await page.getByTestId('universe-detail').click();
@@ -61,7 +62,7 @@ test('a chosen tier applies at once (closing the menu) and is kept on this brows
 });
 
 test('keyboard browsing of the menu applies nothing: arrows only select, Enter applies the selection once, Esc puts it back', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   // Count what reaches the explorer (the menu calls the app's command).
@@ -109,7 +110,7 @@ test('keyboard browsing of the menu applies nothing: arrows only select, Enter a
 });
 
 test('on Auto, frames that run slow cost internal resolution first, then a tier', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   const start = (await view(page))?.detail;
@@ -148,7 +149,7 @@ test('?detail= fixes the tier: the governor holds still at full resolution', asy
 });
 
 test('switching between the lowest and highest tiers five times leaves the GPU resources where they were', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(420_000 * SLOW);
   // ?profile=1 holds the internal resolution still (a GPU shared with other tests would otherwise
   // lower it, resizing the scene pass's targets mid-comparison); tiers still switch on request.
   await kf.open('/universe/earth', { query: { jd: JD, profile: '1' } });

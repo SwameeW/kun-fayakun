@@ -8,6 +8,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { JD, place, settled, step, view, waitForUniverse } from '../support/universe';
+import { SLOW } from '../support/env';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 
@@ -34,7 +35,7 @@ test('every world is listed with its distance and light-time, live from the ephe
 });
 
 test('a choice from the list, by mouse or keyboard, flies there and the address follows', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   const nav = page.getByTestId('universe-bodies');
@@ -81,7 +82,7 @@ test('the panel folds to a rail of portraits and unfolds, focus staying on its t
 });
 
 test('near a world a note gives facts from cited data, and the log lists what was seen, once each', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/saturn', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -107,7 +108,7 @@ test('near a world a note gives facts from cited data, and the log lists what wa
 });
 
 test('something seen for the first time gets a quiet toast, and the log says how many entries it holds (no totals)', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/saturn', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -125,7 +126,7 @@ test('something seen for the first time gets a quiet toast, and the log says how
 });
 
 test('a note and the trip indicator share their place but never show at once (no ghost text), and have the same width', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await expect(page.locator('.kf-note.is-visible')).toBeVisible({ timeout: 20_000 });
@@ -158,7 +159,7 @@ test('a note and the trip indicator share their place but never show at once (no
 });
 
 test('names beside the worlds stay inside the view (never cut off at its edge or under the interface)', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);

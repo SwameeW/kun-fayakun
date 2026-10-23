@@ -7,9 +7,10 @@
  */
 import { expect, test, type KfHook } from '../support/fixtures';
 import { fly, JD, place, step, view, waitForUniverse } from '../support/universe';
+import { SLOW } from '../support/env';
 
 test('Earth to the Moon, the Sun and Jupiter: on time, never inside a body, arriving exactly where planned', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -31,7 +32,7 @@ test('Earth to the Moon, the Sun and Jupiter: on time, never inside a body, arri
 });
 
 test('Esc first stops a trip where it is, in free flight; only a second Esc leaves the explorer', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -66,7 +67,7 @@ test('Esc first stops a trip where it is, in free flight; only a second Esc leav
 });
 
 test('with reduced motion, Esc during a cut is spent stopping it; only a second Esc leaves the explorer', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD, reducedMotion: '1' } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -91,7 +92,7 @@ test('with reduced motion, Esc during a cut is spent stopping it; only a second 
 });
 
 test('free flight at rest says so ("holding still"), never "0 km/s"', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -108,7 +109,7 @@ test('free flight at rest says so ("holding still"), never "0 km/s"', async ({ p
 });
 
 test('W A S D, R F and Q E fly freely at a pace set by the height, and O orbits again', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
@@ -145,7 +146,7 @@ test('W A S D, R F and Q E fly freely at a pace set by the height, and O orbits 
 });
 
 test('approaching the Sun the light changes smoothly: no more than three flashes a second on any part of the screen', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);

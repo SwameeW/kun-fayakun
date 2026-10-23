@@ -6,11 +6,12 @@
 import type { Page } from '@playwright/test';
 import type { BodyId, UniversePose, UniverseView } from '../../src/core/types';
 import { expect, type KfHook } from './fixtures';
+import { SLOW } from './env';
 
 /** A date inside the Moon table's span, so the sky does not depend on the day the test runs. */
 export const JD = '2461336.75';
 /** Loading, compiling and the fades take a few seconds; software renderers take much longer. */
-export const UNIVERSE_TIMEOUT = 90_000;
+export const UNIVERSE_TIMEOUT = 90_000 * SLOW;
 
 export async function waitForUniverse(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveAttribute('data-universe-ready', 'true', { timeout: UNIVERSE_TIMEOUT });

@@ -9,9 +9,10 @@
 import type { Page } from '@playwright/test';
 import { canvasStats, expectCanvasNotBlank } from '../support/canvas';
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
+import { SLOW } from '../support/env';
 
 /** Loading, compiling and the fades take a few seconds; software renderers take much longer. */
-const UNIVERSE_TIMEOUT = 90_000;
+const UNIVERSE_TIMEOUT = 90_000 * SLOW;
 /** A date inside the Moon table's span, so the sky does not depend on the day the test runs. */
 const JD = '2461336.75';
 /** The explorer's picture comes up over about 2.2 s after it is ready. */
@@ -76,7 +77,7 @@ test('a chapter that offers the explorer fetches its code ahead of a visit, and 
 });
 
 test('from Chapter 7 the film’s compressed system stretches out to true scale, then flies on to the Earth', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.openUniverse();
@@ -139,7 +140,7 @@ test.describe('with reduced motion', () => {
 });
 
 test('five round trips ch07 -> universe -> ch07 resume the film where it was and keep GPU memory stable', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(600_000 * SLOW);
   await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.pause();
@@ -190,7 +191,7 @@ test('five round trips ch07 -> universe -> ch07 resume the film where it was and
 });
 
 test('back and forward move between a chapter and the explorer', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   await kf.openChapter('ch08', { t: 40, query: { jd: JD } });
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.pause();
@@ -214,7 +215,7 @@ test('back and forward move between a chapter and the explorer', async ({ page, 
 });
 
 test('leaving the explorer steps back in the history instead of adding to it', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(300_000 * SLOW);
   await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.pause();
@@ -267,7 +268,7 @@ test('keyboard focus moves into the explorer when it opens and back to the way i
 });
 
 test('with reduced motion a flight is a dimmed cut that lands already adapted to the new light', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD, reducedMotion: '1' } });
   await waitForUniverse(page);
   await page.waitForTimeout(FADE_IN_MS);
@@ -297,7 +298,7 @@ test('with reduced motion a flight is a dimmed cut that lands already adapted to
 });
 
 test('an explorer that cannot load says so and hands back to the film it was opened from', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   // The explorer's code (its engine and interface chunks) never arrives, as on a dropped connection.
   await page.route(/\/assets\/explore-[^/]+\.js$/, (route) => route.abort());
   await kf.openChapter('ch07', { t: 150, query: { jd: JD } });

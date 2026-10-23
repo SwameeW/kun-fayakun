@@ -14,6 +14,7 @@ import type { VerseKey } from '../src/core/types';
 import { canvasStats } from './support/canvas';
 import { chapterContent, normalizeSpace, quranByKey } from './support/data';
 import { expect, test, type Kf, type KfHook } from './support/fixtures';
+import { SLOW } from './support/env';
 
 const NAMES = ['kāf', 'lām', 'fāʾ', 'alif maqṣūra', 'fāʾ', 'lām', 'kāf'];
 const OPEN_NAME = 'Explore the letters of this phrase';
@@ -198,7 +199,7 @@ test('the letter analysis has no accessibility violations', async ({ page, kf })
 });
 
 test('the film is held while the analysis is open: no cue scrolls it away and the chapter cannot end', async ({ page, kf }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   // Across the science panel cue at t=162.
   const region = await openAnalysis(page, kf, 157);
   await expect(page.getByTestId('film-held')).toHaveText(HELD_TEXT);
@@ -217,7 +218,7 @@ test('the film is held while the analysis is open: no cue scrolls it away and th
   await region.getByRole('button', { name: 'Close' }).click();
   await expect(region).toBeHidden();
   await expect(page.getByTestId('film-held')).toHaveText('');
-  await expect.poll(async () => (await snapshot(page)).time, { timeout: 10_000 }).toBeGreaterThan(before.time + 0.5);
+  await expect.poll(async () => (await snapshot(page)).time, { timeout: 10_000 * SLOW }).toBeGreaterThan(before.time + 0.5);
 
   // Across the chapter's end at t=172: no outro starts and the next chapter never loads.
   const end = await openAnalysis(page, kf, 167);
@@ -253,7 +254,7 @@ test('an explicit seek or collapsing the panel closes the analysis and releases 
 });
 
 test('the cues a seek replays do not scroll the panel before the analysis closes', async ({ page, kf }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   const region = await openAnalysis(page, kf, 150);
   // Neither recent reader activity nor focus in the panel may be what keeps it still: only the open analysis.
   await page.evaluate(() => {
@@ -275,7 +276,7 @@ test('the cues a seek replays do not scroll the panel before the analysis closes
 });
 
 test('an opening still waiting for the asset never opens after the visitor moved on', async ({ page, kf }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   const opener = page.getByRole('button', { name: OPEN_NAME });
 
   // (1) The next chapter loads while the asset is still on its way.
@@ -297,7 +298,7 @@ test('an opening still waiting for the asset never opens after the visitor moved
   await expect(page.getByTestId('film-held')).toHaveText('');
   await expect(page.locator('.kf-discovery.is-open')).toHaveCount(0);
   await expect(page.locator('html')).not.toHaveClass(/kf-discovery-layer-open/);
-  await expect.poll(async () => (await snapshot(page)).time, { message: 'the next chapter runs on', timeout: 20_000 }).toBeGreaterThan(0.5);
+  await expect.poll(async () => (await snapshot(page)).time, { message: 'the next chapter runs on', timeout: 20_000 * SLOW }).toBeGreaterThan(0.5);
 
   // (2) The panel is collapsed while the asset is on its way.
   await page.unroute(ASSET_ROUTE);
@@ -379,7 +380,7 @@ test('the mirrored pairs glide toward the centre and meet it with a soft ring', 
   expect(x(partner)).toBeLessThan(0);
   // The meeting ring is eased over at least 0.6 s, at low intensity.
   const centre = tiles.nth(3);
-  await expect(centre).toHaveClass(/is-meeting/, { timeout: 3000 });
+  await expect(centre).toHaveClass(/is-meeting/, { timeout: 3000 * SLOW });
   const ring = await centre.evaluate((el) => {
     const style = getComputedStyle(el, '::after');
     return { duration: Number.parseFloat(style.transitionDuration), opacity: Number.parseFloat(style.opacity) };
@@ -387,11 +388,11 @@ test('the mirrored pairs glide toward the centre and meet it with a soft ring', 
   expect(ring.duration).toBeGreaterThanOrEqual(0.6);
   expect(ring.opacity).toBeLessThanOrEqual(0.8);
   // After the three pairs, the centre is named.
-  await expect(region.locator('.kf-discovery-live')).toHaveText('Letter 4, alif maqṣūra, is the centre.', { timeout: 10_000 });
+  await expect(region.locator('.kf-discovery-live')).toHaveText('Letter 4, alif maqṣūra, is the centre.', { timeout: 10_000 * SLOW });
 });
 
 test('opening the analysis dims the scene gently, never in a step', async ({ page, kf }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   // The young Sun in its lit disk: the brightest wide view of the chapter.
   await kf.openChapter('ch07', { autoplay: true, t: 30 });
   await kf.ensurePanelOpen();
@@ -406,7 +407,7 @@ test('opening the analysis dims the scene gently, never in a step', async ({ pag
     expect(b).toBeGreaterThan(1);
     expect(Math.abs(b - a)).toBeLessThanOrEqual(Math.max(0.2, b * 0.02));
     initial = b;
-  }).toPass({ timeout: 30_000 });
+  }).toPass({ timeout: 30_000 * SLOW });
   await opener.click();
   const start = Date.now();
   const samples: Array<{ ms: number; luma: number }> = [];

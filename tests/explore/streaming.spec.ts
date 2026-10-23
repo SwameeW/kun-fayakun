@@ -9,9 +9,10 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
+import { SLOW } from '../support/env';
 
 const JD = '2461336.75';
-const UNIVERSE_TIMEOUT = 90_000;
+const UNIVERSE_TIMEOUT = 90_000 * SLOW;
 /** No frame longer than this many medians while the maps arrive. */
 const WORST_OVER_MEDIAN = 1.5;
 
@@ -42,7 +43,7 @@ const median = (values: number[]): number => [...values].sort((a, b) => a - b)[M
 const textures = (page: Page): Promise<number> => page.evaluate(() => (window as unknown as KfHook).__kf.frameStats().memory.textures);
 
 test('the Earth’s High maps arrive without a hitch, and going back uploads nothing', { tag: '@perf' }, async ({ page, kf, pageErrors }, testInfo) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   // Opened on Jupiter, so the Earth's floors are all that is resident for it.
   await kf.open('/universe/jupiter', { query: { jd: JD, tier: 'high' } });
   await expect(page.locator('html')).toHaveAttribute('data-universe-ready', 'true', { timeout: UNIVERSE_TIMEOUT });

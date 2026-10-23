@@ -9,6 +9,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { CDPSession, Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { JD, overflow, place, settled, view, waitForUniverse } from '../support/universe';
+import { SLOW } from '../support/env';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 
@@ -49,7 +50,7 @@ async function middle(page: Page): Promise<Point> {
 }
 
 test('a pinch zooms in log distance, two fingers pan, and touch-action is none only in the explorer', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(150_000 * SLOW);
   // The film's own canvas setting, to compare with after the explorer has gone.
   await kf.open('/', { query: { jd: JD } });
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
@@ -90,7 +91,7 @@ test('a pinch zooms in log distance, two fingers pan, and touch-action is none o
 });
 
 test('a double tap on a world flies there; one finger orbits', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await page.waitForTimeout(400);
@@ -188,7 +189,7 @@ test('landscape: the sheet sits clear of the readout, the world beside it when p
 });
 
 test('every control is a 44 px touch target; the pulled-up sheet lists the worlds first, each row whole', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await settled(page, ['universe-readout', 'universe-bodies']);
@@ -245,7 +246,7 @@ test('every control is a 44 px touch target; the pulled-up sheet lists the world
 });
 
 test('a note folds to its title on a touch of the scene (the world gets the screen back), and opens again from its title', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   const card = page.locator('.kf-note.is-visible');

@@ -4,6 +4,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, type KfHook } from './support/fixtures';
+import { SLOW } from './support/env';
 
 interface FocusTarget {
   /** CSS selector the focused element may match. */
@@ -54,7 +55,7 @@ async function expectState(html: Locator, state: string): Promise<void> {
 }
 
 test('keyboard-only run-through', async ({ page, kf }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(240_000 * SLOW);
   const html = page.locator('html');
 
   await kf.open('/');

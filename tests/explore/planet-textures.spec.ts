@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import type { PlanetsManifest, PlanetTexture } from '../../src/explore/assets/planets';
 import { expect, test, type KfHook } from '../support/fixtures';
+import { SLOW } from '../support/env';
 
 const manifest = JSON.parse(readFileSync(new URL('../../public/assets/planets/planets.json', import.meta.url), 'utf8')) as PlanetsManifest & {
   facts: { jupiter: { greatRedSpot: { westLongitudeSystemIII: number; latitudePlanetographic: number } } };
@@ -116,7 +117,7 @@ test.beforeEach(async ({ page, kf }) => {
 });
 
 test('every published planet texture decodes through the app loader with its size, mips and colour space', async ({ page, pageErrors }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(300_000 * SLOW);
   for (const entry of files) {
     const got = await page.evaluate(async (path) => {
       const texture = await (window as unknown as KfHook).__kf.app.assets.ktx2(path);
@@ -133,7 +134,7 @@ test('every published planet texture decodes through the app loader with its siz
 });
 
 test('raw maps put the Earth and the rings where planets.json says they are', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(180_000 * SLOW);
   const raw = files.filter((f): f is PlanetTexture => f.codec === 'r8' || f.codec === 'rgba8');
   expect(raw.length).toBeGreaterThan(0);
   for (const entry of raw) {
@@ -195,7 +196,7 @@ test('raw maps put the Earth and the rings where planets.json says they are', as
 });
 
 test('compressed maps put the Sahara, Tycho, the Great Red Spot and Saturn\'s seasons where planets.json says', async ({ page, pageErrors }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(300_000 * SLOW);
   // The GPU formats KTX2Loader picks (ASTC, BC7, ETC) cannot be read back here, so each file goes
   // through the same Basis transcoder the loader runs (assets/basis), asked for plain RGBA8. Rows
   // come out as stored, so v = 0.5 + latitude / 180 picks the row as it does on the GPU.

@@ -6,9 +6,10 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, type Kf, type KfHook } from '../support/fixtures';
+import { SLOW } from '../support/env';
 
 const JD = '2461336.75';
-const UNIVERSE_TIMEOUT = 90_000;
+const UNIVERSE_TIMEOUT = 90_000 * SLOW;
 
 async function openOn(page: Page, kf: Kf, body: string): Promise<void> {
   await kf.open(`/universe/${body}`, { query: { jd: JD } });

@@ -46,8 +46,11 @@ const desktopChromium = {
 export default defineConfig<KfOptions>({
   testDir: 'tests',
   outputDir: 'test-results',
-  timeout: 120_000,
-  expect: { timeout: 15_000 },
+  // CI has no GPU: every frame is drawn in software (SwiftShader), many times slower than on a
+  // real GPU, so waits on animations and loading get three times as long there. Nothing that
+  // fails is let through; it is only given longer to happen.
+  timeout: CI ? 360_000 : 120_000,
+  expect: { timeout: CI ? 45_000 : 15_000 },
   fullyParallel: false,
   forbidOnly: CI,
   retries: CI ? 1 : 0,

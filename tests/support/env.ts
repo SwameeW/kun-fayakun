@@ -19,3 +19,9 @@ export function flag(name: string): boolean {
 }
 
 export const platform: string = nodeProcess?.platform ?? 'unknown';
+
+/**
+ * How many times longer waits are on CI, which has no GPU: every frame is drawn in software
+ * (SwiftShader). Only limits grow; what a test checks does not change.
+ */
+export const SLOW: number = env('CI') ? 3 : 1;
