@@ -112,6 +112,8 @@ export function createTimeline(app: App, announce: (text: string) => void): Time
   });
 
   const chapterLabel = h('span', { class: 'kf-tl-chapter' });
+  // A quiet line in the chapter label's place while something holds the film (e.g. the letter analysis).
+  const heldStatus = h('span', { class: 'kf-tl-held', role: 'status', 'data-testid': 'film-held' });
   // Clock digits read left to right in every locale.
   const clock = h('span', { class: 'kf-tl-clock', 'aria-hidden': 'true', dir: 'ltr' });
   const slider = h('input', {
@@ -163,7 +165,7 @@ export function createTimeline(app: App, announce: (text: string) => void): Time
     { class: 'kf-tl-controls' },
     playButton,
     modeButton,
-    h('div', { class: 'kf-tl-progress' }, chapterLabel, slider, clock),
+    h('div', { class: 'kf-tl-progress' }, chapterLabel, heldStatus, slider, clock),
     sourcesLink,
   );
 
@@ -208,6 +210,12 @@ export function createTimeline(app: App, announce: (text: string) => void): Time
     playLabel.textContent = i18n.t(paused ? 'ui.timeline.play' : 'ui.timeline.pause');
     playButton.replaceChildren(icon(paused ? 'play' : 'pause'), playLabel);
     playButton.title = playLabel.textContent;
+  }
+
+  function renderHeld(held: boolean, reasons: readonly string[]): void {
+    const key = `ui.timeline.held.${reasons[0] ?? ''}`;
+    heldStatus.textContent = held ? i18n.t(i18n.has(key) ? key : 'ui.timeline.held.other') : '';
+    controls.classList.toggle('is-held', held);
   }
 
   function renderMode(): void {
@@ -279,6 +287,9 @@ export function createTimeline(app: App, announce: (text: string) => void): Time
     if (route.name === 'home') renderChapter(null);
   });
   app.events.on('paused', renderPaused);
+  app.events.on('held', ({ held, reasons }) => {
+    renderHeld(held, reasons);
+  });
   app.events.on('mode', renderMode);
   app.events.on('time', ({ t, duration }) => {
     // Let a drag in progress own the slider; the engine catches up within a frame or two.

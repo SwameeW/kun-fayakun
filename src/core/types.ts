@@ -426,6 +426,10 @@ export interface AppEvents {
   /** A chapter was entered; the panel renders its content. */
   chapter: { chapter: ChapterId; content: ChapterContent };
   paused: { paused: boolean };
+  /** The film clock was held or let go, or the set of holds changed (see AppCommands.holdFilm). */
+  held: { held: boolean; reasons: readonly string[] };
+  /** An explicit jump within the active chapter (the slider, a shortcut, a deep link to the same chapter). */
+  seek: { chapter: ChapterId; t: number };
   mode: { mode: 'cinematic' | 'explore' };
   quality: { profile: QualityProfile; reason: 'initial' | 'governor' | 'override' };
   renderer: { backend: 'webgpu' | 'webgl2' };
@@ -446,6 +450,13 @@ export interface AppCommands {
   setMode(mode: 'cinematic' | 'explore'): void;
   /** Forwards a panel control to the active chapter (null: give control back to the film). */
   interact(id: string, value: number | null): void;
+  /**
+   * Holds the film clock (intro, chapter time and outro) while a reader is busy with something
+   * the film must not run past, e.g. the letter analysis. The scene keeps moving and a pause stays
+   * a pause; no cue fires and the chapter cannot end until every hold is released. Holds belong to
+   * the chapter: leaving it drops them. The returned function releases this hold (idempotent).
+   */
+  holdFilm(reason: string): () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -502,6 +513,8 @@ export interface App extends AppCommands {
   readonly content: ChapterContent | null;
   readonly time: number;
   readonly paused: boolean;
+  /** True while any holdFilm() hold is in place. */
+  readonly held: boolean;
   readonly mode: 'cinematic' | 'explore';
   readonly quality: QualityProfile;
   readonly backend: 'webgpu' | 'webgl2';

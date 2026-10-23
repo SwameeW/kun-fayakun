@@ -44,8 +44,8 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 
 /**
  * The single state machine: idle → loading → intro → playing ⇄ explore → outro,
- * plus a paused flag. Owns the cinematic clock, cue scheduling, scene events
- * and camera keyframes for the active chapter.
+ * plus a paused flag and film holds. Owns the cinematic clock, cue scheduling,
+ * scene events and camera keyframes for the active chapter.
  */
 export class Timeline {
   private stateValue: TimelineState = 'idle';
@@ -63,6 +63,8 @@ export class Timeline {
   private introLeft = 0;
   private outroLeft = 0;
   private sinceTimeEvent = 0;
+  /** Open holds (token → reason). While any exists the film clock stands still; the scene does not. */
+  private readonly holds = new Map<symbol, string>();
   private darkWaiters: Array<{ resolve: () => void; left: number }> = [];
 
   constructor(private readonly host: TimelineHost) {}
@@ -83,6 +85,9 @@ export class Timeline {
   get paused(): boolean {
     return this.pausedValue;
   }
+  get held(): boolean {
+    return this.holds.size > 0;
+  }
   get mode(): 'cinematic' | 'explore' {
     return this.stateValue === 'explore' ? 'explore' : 'cinematic';
   }
@@ -97,6 +102,7 @@ export class Timeline {
    * last moment, until the next one starts on top of it in the same frame.
    */
   beginLoading(id: ChapterId, keepLit = false): void {
+    this.clearHolds();
     this.retire(keepLit);
     this.chapterValue = id;
     this.t = 0;
@@ -137,6 +143,7 @@ export class Timeline {
 
   /** Back to no chapter (the timeline/home). The scene fades out before it is removed. */
   stop(): void {
+    this.clearHolds();
     this.retire();
     this.chapterValue = null;
     this.t = 0;
@@ -161,7 +168,21 @@ export class Timeline {
       this.setState('playing');
     }
     this.apply(a, a.cues.seek(target, reset));
+    this.host.events.emit('seek', { chapter: a.id, t: target });
     this.emitTime();
+  }
+
+  /**
+   * Stops the film clock until the returned function is called. Separate from pause: the
+   * scene keeps moving (the reader is looking at it), and a pause the reader made stays theirs.
+   */
+  hold(reason: string): () => void {
+    const token = Symbol(reason);
+    this.holds.set(token, reason);
+    this.emitHeld();
+    return () => {
+      if (this.holds.delete(token)) this.emitHeld();
+    };
   }
 
   setPaused(paused: boolean): void {
@@ -192,6 +213,8 @@ export class Timeline {
     if (!a) return;
     // WCAG 2.2.2: while paused, nothing moves on its own.
     const motionDt = this.pausedValue ? 0 : dt;
+    // A hold stops only the film's clock: no cue fires and the chapter cannot end, but the scene keeps motionDt.
+    const filmDt = this.holds.size > 0 ? 0 : motionDt;
 
     if (this.retiring) {
       a.module.update(this.retiringT, motionDt);
@@ -200,12 +223,12 @@ export class Timeline {
     }
 
     if (this.stateValue === 'intro') {
-      this.introLeft -= motionDt;
+      this.introLeft -= filmDt;
       if (this.introLeft <= 0) this.setState('playing');
     } else if (this.stateValue === 'playing') {
-      this.t = Math.min(a.content.duration, this.t + motionDt);
+      this.t = Math.min(a.content.duration, this.t + filmDt);
     } else if (this.stateValue === 'outro') {
-      this.outroLeft -= motionDt;
+      this.outroLeft -= filmDt;
     }
 
     // Cue times count from the end of the intro card.
@@ -213,16 +236,17 @@ export class Timeline {
     this.host.camera.update(this.t, dt);
     a.module.update(this.t, motionDt);
 
-    if (this.stateValue === 'playing' && this.t >= a.content.duration && this.host.continuesAfter(a.id)) {
+    const ending = this.stateValue === 'playing' && this.t >= a.content.duration && this.holds.size === 0;
+    if (ending && this.host.continuesAfter(a.id)) {
       // The next chapter opens exactly where this one ends: hand over at once, with no fade.
       this.outroLeft = Infinity;
       this.setState('outro');
       this.host.onChapterEnd(a.id);
-    } else if (this.stateValue === 'playing' && this.t >= a.content.duration) {
+    } else if (ending) {
       this.outroLeft = OUTRO_SECONDS;
       this.host.exposure.setFade(0);
       this.setState('outro');
-    } else if (this.stateValue === 'outro' && this.outroLeft <= 0) {
+    } else if (this.stateValue === 'outro' && this.outroLeft <= 0 && this.holds.size === 0) {
       this.outroLeft = Infinity;
       this.host.onChapterEnd(a.id);
     }
@@ -264,6 +288,17 @@ export class Timeline {
     a.module.exit();
     this.active = null;
     this.retiring = false;
+  }
+
+  /** Holds belong to the chapter they were taken in; their owners close on the 'chapter' event. */
+  private clearHolds(): void {
+    if (this.holds.size === 0) return;
+    this.holds.clear();
+    this.emitHeld();
+  }
+
+  private emitHeld(): void {
+    this.host.events.emit('held', { held: this.holds.size > 0, reasons: [...new Set(this.holds.values())] });
   }
 
   private tickDarkWaiters(dt: number): void {
