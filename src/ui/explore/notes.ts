@@ -1,6 +1,7 @@
 import type { App, UniverseView } from '../../core/types';
 import { h } from '../dom';
 import { createFadeSlot } from '../fade';
+import { icon } from '../icons';
 import type { Formatters } from './format';
 
 /**
@@ -8,16 +9,27 @@ import type { Formatters } from './format';
  * its numbers from cited data): it fades in when the visitor arrives, out when they leave or set
  * off on a trip, one at a time, and says where its numbers come from. It is announced once, politely,
  * when it appears; its numbers (a phase, a tilt) are rounded so they do not churn.
+ *
+ * It shares the top of the view with the trip indicator, never at the same time: the stylesheet
+ * fades the note right out before the indicator comes in, and the indicator out before a note comes
+ * back, and both have the same width. Its title folds it (to the title alone) and opens it again; on a
+ * phone it folds by itself after a few seconds, or as soon as the visitor touches the scene, so the
+ * world gets the screen back.
  */
 
 export interface Notes {
   readonly element: HTMLElement;
   update(view: UniverseView): void;
+  /** Folds the note showing to its title (a touch on the scene, on a phone). */
+  fold(): void;
 }
 
 type Values = Readonly<Record<string, number>>;
 
-export function createNotes(app: App, f: Formatters, announce: (text: string) => void): Notes {
+/** On a phone a note folds to its title this long after it appears, ms. */
+const FOLD_MS = 6500;
+
+export function createNotes(app: App, f: Formatters, announce: (text: string) => void, compact: () => boolean): Notes {
   const { i18n } = app;
   const n = (v: number | undefined, digits = 0): string => f.number(v ?? 0, digits);
   /** The lines of each note, from its values. */
@@ -79,16 +91,36 @@ export function createNotes(app: App, f: Formatters, announce: (text: string) =>
   const slot = createFadeSlot(element, 900, 300);
   let shownKey = '';
   let currentId: string | null = null;
-  let body: HTMLElement | null = null;
+  let card: HTMLElement | null = null;
+  let foldTimer = 0;
+
+  const setFolded = (target: HTMLElement, folded: boolean): void => {
+    target.classList.toggle('is-folded', folded);
+    const toggle = target.querySelector<HTMLButtonElement>('.kf-note-toggle');
+    // Its name is its title (what it shows); aria-expanded says whether the rest is open.
+    toggle?.setAttribute('aria-expanded', String(!folded));
+  };
 
   const render = (id: string, v: Values): HTMLElement => {
-    const card = h('div', { class: 'kf-note', 'data-note': id });
-    card.append(
-      h('p', { class: 'kf-note-title' }, i18n.t(TITLES[id] ?? '')),
+    const bodyId = `kf-note-body-${id}`;
+    const toggle = h(
+      'button',
+      { type: 'button', class: 'kf-note-toggle', 'aria-expanded': 'true', 'aria-controls': bodyId },
+      h('span', { class: 'kf-note-title' }, i18n.t(TITLES[id] ?? '')),
+      icon('chevron'),
+    );
+    const body = h(
+      'div',
+      { id: bodyId, class: 'kf-note-body' },
       ...lines(id, v).map((line) => h('p', { class: 'kf-note-line' }, line)),
       h('p', { class: 'kf-note-source' }, i18n.t(SOURCES[id] ?? '')),
     );
-    return card;
+    const next = h('div', { class: 'kf-note', 'data-note': id }, toggle, body);
+    toggle.addEventListener('click', () => {
+      window.clearTimeout(foldTimer);
+      setFolded(next, !next.classList.contains('is-folded'));
+    });
+    return next;
   };
 
   return {
@@ -98,7 +130,8 @@ export function createNotes(app: App, f: Formatters, announce: (text: string) =>
       if (!d) {
         if (currentId !== null) slot.want(null);
         currentId = null;
-        body = null;
+        card = null;
+        window.clearTimeout(foldTimer);
         return;
       }
       if (d.id !== currentId) {
@@ -106,27 +139,39 @@ export function createNotes(app: App, f: Formatters, announce: (text: string) =>
         const id = d.id;
         const values = d.values;
         shownKey = lines(id, values).join('|');
+        window.clearTimeout(foldTimer);
         slot.want({
           key: id,
           render: () => {
-            body = render(id, values);
-            return body;
+            card = render(id, values);
+            return card;
           },
           onShow: () => {
             announce(`${i18n.t(TITLES[id] ?? '')}. ${lines(id, values)[0] ?? ''}`);
+            // On a phone the note gives the world its screen back after a while.
+            if (compact()) {
+              const shown = card;
+              foldTimer = window.setTimeout(() => {
+                if (shown && shown === card) setFolded(shown, true);
+              }, FOLD_MS);
+            }
           },
         });
         return;
       }
       // Same note, new numbers (a phase, a tilt): its lines are rewritten in place, quietly.
       const key = lines(d.id, d.values).join('|');
-      if (key !== shownKey && body) {
+      if (key !== shownKey && card) {
         shownKey = key;
         const fresh = lines(d.id, d.values);
-        body.querySelectorAll('.kf-note-line').forEach((el, i) => {
+        card.querySelectorAll('.kf-note-line').forEach((el, i) => {
           if (fresh[i] !== undefined && el.textContent !== fresh[i]) el.textContent = fresh[i];
         });
       }
+    },
+    fold() {
+      window.clearTimeout(foldTimer);
+      if (card && compact()) setFolded(card, true);
     },
   };
 }

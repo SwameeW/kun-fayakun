@@ -9,10 +9,13 @@ import { createQualityMenu } from './quality-menu';
 /**
  * The celestial navigator: every world the explorer shows, each with a small live portrait (lit as
  * the camera sees it), its distance and how long its light takes to arrive, all live from the
- * ephemeris; a compact orrery to fly by; the phenomena seen on this visit; the detail menu; and the
- * keys. On a wide screen it is a side panel (folding to a rail of portraits); on a phone a bottom
- * sheet (folding to a row of them). Every move is a real button: the list works by keyboard and
- * screen reader, the map is a pointer shortcut to the same moves.
+ * ephemeris; a compact orrery to fly by; the phenomena seen on this visit (its summary says how many
+ * entries it holds; no totals, no scores); the detail menu; and the keys. On a wide screen it is a
+ * side panel (folding to a rail of portraits); on a phone a bottom sheet (folding to a row of them)
+ * that puts the list first, the log next and the orrery last as a small strip, sized to what it holds
+ * and fading at the edge where it scrolls. Every move is a real button (the world in view marked
+ * aria-current): the list works by keyboard and screen reader, the map is a pointer shortcut to the
+ * same moves.
  */
 
 export interface Navigator {
@@ -23,7 +26,6 @@ export interface Navigator {
   update(view: UniverseView, slow: boolean): void;
   /** Folds it (a phone's sheet after a choice, so the view is clear for the trip). */
   setExpanded(expanded: boolean): void;
-  closeMenus(): boolean;
   /** Called when its size or layout changes (the explorer reframes around it). */
   onResize(fn: () => void): void;
 }
@@ -31,7 +33,7 @@ export interface Navigator {
 /** Wide enough (and tall enough) for the side panel; otherwise the bottom sheet. */
 const PANEL_QUERY = '(min-width: 900px) and (min-height: 560px)';
 
-export function createNavigator(app: App, f: Formatters): Navigator {
+export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void): Navigator {
   const { i18n } = app;
   const panelQuery = window.matchMedia(PANEL_QUERY);
   const coarse = window.matchMedia('(pointer: coarse)');
@@ -57,7 +59,7 @@ export function createNavigator(app: App, f: Formatters): Navigator {
   const list = h('ul', { id: listId, class: 'kf-nav-list', 'aria-label': i18n.t('ui.universe.bodies') });
   for (const id of BODY_IDS) {
     const portrait = createBodyIcon(id);
-    const button = h('button', { type: 'button', class: 'kf-nav-body', 'aria-pressed': 'false', 'data-body': id }, portrait.element, h('span', { class: 'kf-nav-name' }, f.name(id)));
+    const button = h('button', { type: 'button', class: 'kf-nav-body', 'data-body': id }, portrait.element, h('span', { class: 'kf-nav-name' }, f.name(id)));
     button.addEventListener('click', () => {
       go(id);
     });
@@ -70,13 +72,15 @@ export function createNavigator(app: App, f: Formatters): Navigator {
 
   const seenList = h('ul', { class: 'kf-nav-seen-list' });
   const seenEmpty = h('p', { class: 'kf-nav-seen-empty' }, i18n.t('ui.universe.seenEmpty'));
-  const seen = h('details', { class: 'kf-nav-seen', 'data-testid': 'universe-seen' }, h('summary', {}, i18n.t('ui.universe.seen')), seenEmpty, seenList);
+  const seenSummary = h('summary', {}, i18n.t('ui.universe.seen'));
+  const seen = h('details', { class: 'kf-nav-seen', 'data-testid': 'universe-seen' }, seenSummary, seenEmpty, seenList);
   // Opened at the foot of the list, it scrolls into view rather than opening out of sight.
   seen.addEventListener('toggle', () => {
     if (seen.open) seen.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    requestAnimationFrame(edge);
   });
 
-  const quality = createQualityMenu(app);
+  const quality = createQualityMenu(app, onApplied);
   const keys = h(
     'details',
     { class: 'kf-nav-keys' },
@@ -107,6 +111,7 @@ export function createNavigator(app: App, f: Formatters): Navigator {
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
     notify();
+    requestAnimationFrame(edge);
   };
 
   const setExpanded = (next: boolean): void => {
@@ -126,6 +131,12 @@ export function createNavigator(app: App, f: Formatters): Navigator {
     apply();
   });
   new ResizeObserver(notify).observe(element);
+  // Where the sheet's list scrolls on, its foot fades (a row is never simply cut off).
+  const edge = (): void => {
+    body.classList.toggle('has-more', body.scrollTop + body.clientHeight < body.scrollHeight - 2);
+  };
+  body.addEventListener('scroll', edge, { passive: true });
+  new ResizeObserver(edge).observe(body);
 
   const go = (id: BodyId): void => {
     app.focusBody(id);
@@ -148,8 +159,12 @@ export function createNavigator(app: App, f: Formatters): Navigator {
       for (const b of view.bodies) {
         const row = rows.get(b.id);
         if (!row) continue;
-        const pressed = String(b.id === view.focus);
-        if (row.button.getAttribute('aria-pressed') !== pressed) row.button.setAttribute('aria-pressed', pressed);
+        // The world in view: aria-current (a navigation list's "you are here"), not a toggle's pressed state.
+        const current = b.id === view.focus;
+        if (row.button.hasAttribute('aria-current') !== current) {
+          if (current) row.button.setAttribute('aria-current', 'true');
+          else row.button.removeAttribute('aria-current');
+        }
         if (!slow) continue;
         row.icon.update(b);
         const d = f.distance(b.distanceKm);
@@ -162,17 +177,13 @@ export function createNavigator(app: App, f: Formatters): Navigator {
         seenShown = view.witnessed.length;
         seenEmpty.hidden = seenShown > 0;
         seenList.replaceChildren(...view.witnessed.map((id) => h('li', {}, i18n.t(`ui.universe.seen.${id}`))));
+        // How many entries the log holds (no total to reach: there is nothing to complete).
+        seenSummary.textContent = seenShown > 0 ? i18n.t('ui.universe.seenCount', { count: i18n.number(seenShown, 0) }) : i18n.t('ui.universe.seen');
+        edge();
       }
       quality.update(view.detail);
     },
     setExpanded,
-    closeMenus() {
-      if (quality.open) {
-        quality.close();
-        return true;
-      }
-      return false;
-    },
     onResize(fn) {
       resizeListeners.add(fn);
     },

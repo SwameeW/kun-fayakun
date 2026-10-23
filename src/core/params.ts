@@ -16,6 +16,11 @@ export interface LaunchParams {
   /** ?profile=1: measure GPU time with timestamp queries (where supported) and hold the render scale at 1. */
   profile: boolean;
   /**
+   * ?gpuTime=1: measure GPU time with timestamp queries (where supported) without holding anything
+   * still: the solar-system explorer's governor then judges GPU time rather than frame time.
+   */
+  gpuTime: boolean;
+  /**
    * ?jd=<Julian date>: pins "now" for the sky, so tests and screenshots of astronomy
    * views do not depend on the day they run. Null (the default) follows the real clock.
    * The solar-system explorer reads it (as UTC) unless its own route pins a date.
@@ -68,6 +73,7 @@ export function readLaunchParams(search: string = window.location.search): Launc
     autoplay: flag(q.get('autoplay')) ?? false,
     showFps: flag(q.get('fps')) ?? false,
     profile: flag(q.get('profile')) ?? false,
+    gpuTime: flag(q.get('gpuTime')) ?? false,
     jd: parseJulianDate(q.get('jd')),
     detail: DETAILS.find((d) => d === q.get('detail')?.trim().toLowerCase()) ?? null,
   };

@@ -153,7 +153,7 @@ class Engine implements KunFayakunApp {
   private warming = false;
   /** Set by the __kf.step test hook: frames still render, but only step() advances time. */
   private manualClock = false;
-  /** The last GPU time measured (?profile=1 timestamp queries), ms. */
+  /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms. */
   private lastGpuMs: number | null = null;
   /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
   private readonly cadence = createFrameCadence();
@@ -342,7 +342,7 @@ class Engine implements KunFayakunApp {
   }
 
   private async initGraphics(): Promise<Graphics> {
-    const handle = await createRenderer(this.canvas, { forceWebGL: this.params.forceWebGL, trackTimestamp: this.params.profile });
+    const handle = await createRenderer(this.canvas, { forceWebGL: this.params.forceWebGL, trackTimestamp: this.timesGpu });
     this.backendName = handle.backend;
     const { profile, reason } = chooseInitialTier({ backend: handle.backend, gpu: handle.gpu, override: this.params.tier });
     this.profile = profile;
@@ -426,7 +426,7 @@ class Engine implements KunFayakunApp {
           this.cadence.sample(raw);
           if (this.universeHost.owns) {
             // The explorer governs its own detail ladder and render scale; the film's governors rest.
-            this.universeHost.sample(raw, this.params.profile ? this.lastGpuMs : null, this.cadence.interval);
+            this.universeHost.sample(raw, this.timesGpu ? this.lastGpuMs : null, this.cadence.interval);
           } else {
             const scale = gfx.resolution.sample(raw);
             if (scale !== null) gfx.handle.setResolutionScale(scale);
@@ -491,12 +491,17 @@ class Engine implements KunFayakunApp {
     if (!this.warming) gfx.post.render();
   }
 
-  /** Renderer facts for frameStats(); with ?profile=1 also the frame's GPU time. */
+  /** GPU time is measured (timestamp queries) with ?profile=1, or ?gpuTime=1 (which holds nothing still). */
+  private get timesGpu(): boolean {
+    return this.params.profile || this.params.gpuTime;
+  }
+
+  /** Renderer facts for frameStats(); with ?profile=1 or ?gpuTime=1 also the frame's GPU time. */
   private measure(gfx: Graphics): void {
     const renderer = gfx.handle.renderer;
     const { geometries, textures } = renderer.info.memory;
     this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls, geometries, textures, experience: this.experience });
-    if (!this.params.profile) return;
+    if (!this.timesGpu) return;
     renderer
       .resolveTimestampsAsync('render')
       .then((ms) => {

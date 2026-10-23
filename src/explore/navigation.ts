@@ -20,8 +20,9 @@
  * turns and widening the lens a touch at speed, never through a body. Esc (cancelTravel) stops it:
  * the camera coasts to rest where it is, in free flight. A body asked for during a trip is flown to
  * once the camera has arrived (never a swerve in mid-air). With reduced motion a trip is a dimmed
- * cut instead, and the lens and the bank stay still. Entering, the camera glides in from far away to
- * the first body (none with reduced motion).
+ * cut instead, and the lens and the bank stay still; Esc before the cut calls it off (the light
+ * comes back where the visitor was). Entering, the camera pushes in gently on the first body, which
+ * already fills much of the view (none with reduced motion).
  */
 
 import type { BodyId } from '../core/types';
@@ -147,10 +148,18 @@ const DRAG_RADIANS_PER_PX = 0.0055;
 /** Keyboard rates: radians and natural-log units of height per second. */
 const KEY_TURN = 1.1;
 const KEY_ZOOM = 1.2;
-/** Entry glide: from this many times the framing distance, over this long. */
-const APPROACH = { from: 70, seconds: 6.5 } as const;
+/**
+ * Entry glide: a slow push in from this many times the framing distance, over this long, swinging
+ * round by `swing` radians and settling `drop` radians lower. The first frame already has the world
+ * filling a good part of the view (never a dot in an empty sky), and the glide is a camera move, not
+ * a journey: the picture comes up under it.
+ */
+const APPROACH = { from: 2.4, seconds: 5.5, swing: 0.32, drop: 0.1 } as const;
 /** Reduced-motion cut: the dim (a share of the light), and how long each half takes. */
 const CUT = { dim: 0.15, seconds: 1.1 } as const;
+/** A cut's dim at progress s: down over its first third, held, back up over its last half (eased both ways). */
+const cutDim = (s: number): number =>
+  s < 0.5 ? CUT.dim + (1 - CUT.dim) * (1 - smootherstep(0, 0.35, s)) : CUT.dim + (1 - CUT.dim) * smootherstep(0.55, 1, s);
 /** Bank into a trip's turns: radians per (radian per second) of turn, its limit, and its spring. */
 const BANK = { perTurnRate: 0.55, max: 0.14, omega: 3.5 } as const;
 /** The lens widens by up to this many degrees at a trip's fastest, and eases back (its spring, rad/s). */
@@ -165,7 +174,11 @@ const STILL = 1e-6;
 const PAN_LIMIT = 2;
 
 interface Trip {
-  kind: 'travel' | 'cut' | 'approach';
+  /**
+   * 'travel' a flight, 'cut' a reduced-motion cut, 'approach' the entry glide; 'uncut' a cut that
+   * Esc stopped before it moved the camera: the light comes back where the visitor was.
+   */
+  kind: 'travel' | 'cut' | 'approach' | 'uncut';
   from: BodyId;
   to: BodyId;
   elapsed: number;
@@ -177,6 +190,11 @@ interface Trip {
   lnFrom: number;
   dirTo: Km;
   lnTo: number;
+  /** Cut: how the camera moved and what it orbited before it (an uncut hands back to them). */
+  modeBefore: NavMode;
+  focusBefore: BodyId;
+  /** Uncut: the dim it starts from. */
+  dimFrom: number;
 }
 
 export class Navigator {
@@ -204,14 +222,17 @@ export class Navigator {
   private readonly velocity = km();
   private readonly frame: TravelFrame = { position: km(), forward: km(0, 0, -1), up: km(0, 1, 0), pace: 0 };
   private readonly pose = rigPose();
-  private readonly scratch = { a: km(), b: km(), c: km(), d: km(), e: km() };
+  private readonly scratch = { a: km(), b: km(), c: km(), d: km(), e: km(), before: km() };
+  /** tripState's object, rewritten on each read (no garbage per frame). */
+  private readonly tripView: { from: BodyId; to: BodyId; progress: number; endKm: number } = { from: 'earth', to: 'earth', progress: 0, endKm: 0 };
 
   constructor(focus: BodyId) {
     this.focus = focus;
   }
 
+  /** A trip is under way (not the entry glide, nor the light coming back after Esc called a cut off). */
   get travelling(): boolean {
-    return this.trip !== null && this.trip.kind !== 'approach';
+    return this.trip !== null && this.trip.kind !== 'approach' && this.trip.kind !== 'uncut';
   }
 
   /** True during the entry glide too. */
@@ -226,8 +247,13 @@ export class Navigator {
   /** The trip under way: where from and to, its progress (0 to 1) and the height above the destination it ends at, km. */
   get tripState(): { from: BodyId; to: BodyId; progress: number; endKm: number } | null {
     const t = this.trip;
-    if (!t || t.kind === 'approach') return null;
-    return { from: t.from, to: t.to, progress: clamp(t.elapsed / t.seconds, 0, 1), endKm: Math.exp(t.lnTo) };
+    if (!t || t.kind === 'approach' || t.kind === 'uncut') return null;
+    const v = this.tripView;
+    v.from = t.from;
+    v.to = t.to;
+    v.progress = clamp(t.elapsed / t.seconds, 0, 1);
+    v.endKm = Math.exp(t.lnTo);
+    return v;
   }
 
   /** The view bodies are framed in (call when the window or the interface around it changes). */
@@ -309,9 +335,9 @@ export class Navigator {
     }
     // Swing in from a little to one side and above, so the arrival has some parallax.
     const { azimuth, elevation } = angles(dirTo);
-    const dirFrom = direction(azimuth - 0.6, clamp(elevation + 0.18, -MAX_ELEVATION, MAX_ELEVATION), km());
+    const dirFrom = direction(azimuth - APPROACH.swing, clamp(elevation + APPROACH.drop, -MAX_ELEVATION, MAX_ELEVATION), km());
     const lnFrom = Math.log(APPROACH.from * this.framingKm(body));
-    this.trip = { kind: 'approach', from: id, to: id, elapsed: 0, seconds: APPROACH.seconds, plan: null, dirFrom, lnFrom, dirTo, lnTo };
+    this.trip = { kind: 'approach', from: id, to: id, elapsed: 0, seconds: APPROACH.seconds, plan: null, dirFrom, lnFrom, dirTo, lnTo, modeBefore: 'orbit', focusBefore: id, dimFrom: 1 };
     this.orbit.settle(dirFrom, Math.exp(lnFrom));
     this.approachStep(world, this.trip, 0, this.last);
     this.hasPose = true;
@@ -351,11 +377,28 @@ export class Navigator {
         lnFrom: Math.log(startAltitude),
         dirTo: endDir,
         lnTo: Math.log(framing - to.radiusKm),
+        modeBefore: this.modeValue,
+        focusBefore: this.focus,
+        dimFrom: 1,
       };
     } else {
       // The trip starts from the pose on screen: free flight's, or the orbit's (pan included).
       const plan = planTravel({ from, to, pose: this.last, endDir, endDistance: framing, bodies: world.all, sun: world.body('sun') });
-      this.trip = { kind: 'travel', from: this.focus, to: id, elapsed: 0, seconds: plan.seconds, plan, dirFrom: km(), lnFrom: 0, dirTo: endDir, lnTo: Math.log(framing - to.radiusKm) };
+      this.trip = {
+        kind: 'travel',
+        from: this.focus,
+        to: id,
+        elapsed: 0,
+        seconds: plan.seconds,
+        plan,
+        dirFrom: km(),
+        lnFrom: 0,
+        dirTo: endDir,
+        lnTo: Math.log(framing - to.radiusKm),
+        modeBefore: this.modeValue,
+        focusBefore: this.focus,
+        dimFrom: 1,
+      };
     }
     this.handoff = null;
     this.modeValue = 'orbit';
@@ -363,13 +406,34 @@ export class Navigator {
   }
 
   /**
-   * Stops a trip where the camera is (Esc): it coasts to rest in free flight. Returns false when
-   * there is nothing to stop: no trip, the entry glide (not a trip the visitor asked for: Esc then
-   * goes straight back) or a reduced-motion cut (too short to stop halfway).
+   * Stops a trip where the camera is (Esc): it coasts to rest in free flight. A reduced-motion cut
+   * that has not yet moved the camera is called off: the light comes back where the visitor was, as
+   * they were (orbiting or flying); one that has already cut lets the light come back at the
+   * destination. Either way the Esc is spent here, so only a second one leaves the explorer. Returns
+   * false when there is nothing to stop: no trip, or the entry glide (not a trip the visitor asked
+   * for: Esc then goes straight back).
    */
   cancelTravel(world: NavWorld): boolean {
     const trip = this.trip;
-    if (!trip || trip.kind !== 'travel') return false;
+    if (!trip || trip.kind === 'approach') return false;
+    if (trip.kind === 'uncut') return true;
+    if (trip.kind === 'cut') {
+      const s = clamp(trip.elapsed / trip.seconds, 0, 1);
+      if (s < 0.5) {
+        // Still dimming at the start: the light eases back from where it is, at the same pose.
+        this.trip = {
+          ...trip,
+          kind: 'uncut',
+          to: trip.from,
+          elapsed: 0,
+          seconds: CUT.seconds * 0.6,
+          dimFrom: cutDim(s),
+        };
+        this.focus = trip.focusBefore;
+        this.queued = null;
+      }
+      return true;
+    }
     this.trip = null;
     this.queued = null;
     const near = nearestSurface(world.all, this.last.position).body as NavBody | null;
@@ -469,7 +533,7 @@ export class Navigator {
     this.controls.roll = roll;
     this.controls.boost = boost;
     const active = move.x !== 0 || move.y !== 0 || move.z !== 0 || roll !== 0;
-    if (!active || this.trip?.kind === 'cut') return;
+    if (!active || this.trip?.kind === 'cut' || this.trip?.kind === 'uncut') return;
     if (this.trip?.kind === 'travel') {
       // Taking the controls stops the trip: the camera flies on from where it is.
       this.cancelTravel(world);
@@ -513,7 +577,7 @@ export class Navigator {
   update(world: NavWorld, dt: number, out: NavOutput): NavOutput {
     const { e } = this.scratch;
     copy(e, this.last.position);
-    const before = { x: this.last.forward.x, y: this.last.forward.y, z: this.last.forward.z };
+    const before = copy(this.scratch.before, this.last.forward);
     out.dim = 1;
     out.cut = false;
     out.progress = 1;
@@ -527,6 +591,14 @@ export class Navigator {
       const s = clamp(trip.elapsed / trip.seconds, 0, 1);
       if (trip.kind === 'approach') {
         this.approachStep(world, trip, s, pose);
+      } else if (trip.kind === 'uncut') {
+        // The camera never moved: it holds the pose it had (riding with its body) while the light comes back up, eased.
+        const body = world.body(trip.from);
+        const r = body.radiusKm + Math.exp(trip.lnFrom);
+        set(pose.position, body.position.x + trip.dirFrom.x * r, body.position.y + trip.dirFrom.y * r, body.position.z + trip.dirFrom.z * r);
+        copy(pose.forward, this.last.forward);
+        copy(pose.up, this.last.up);
+        out.dim = trip.dimFrom + (1 - trip.dimFrom) * smootherstep(0, 1, s);
       } else {
         out.progress = s;
         out.from = trip.from;
@@ -543,7 +615,12 @@ export class Navigator {
           lensWiden = LENS.widen * Math.sin(Math.PI * p) ** 2;
         }
       }
-      if (s >= 1) {
+      if (s >= 1 && trip.kind === 'uncut') {
+        // Called off: back to orbiting or flying as before (the rigs were never moved meanwhile).
+        this.trip = null;
+        this.modeValue = trip.modeBefore;
+        this.focus = trip.focusBefore;
+      } else if (s >= 1) {
         // Arrived: the orbit takes over exactly where the trip ends (same place, gaze and up).
         this.trip = null;
         const body = world.body(trip.to);
@@ -650,7 +727,7 @@ export class Navigator {
     const body = world.body(first ? trip.from : trip.to);
     const dir = first ? trip.dirFrom : trip.dirTo;
     const ln = first ? trip.lnFrom : trip.lnTo;
-    nav.dim = first ? CUT.dim + (1 - CUT.dim) * (1 - smootherstep(0, 0.35, s)) : CUT.dim + (1 - CUT.dim) * smootherstep(0.55, 1, s);
+    nav.dim = cutDim(s);
     const r = body.radiusKm + Math.exp(ln);
     set(out.position, body.position.x + dir.x * r, body.position.y + dir.y * r, body.position.z + dir.z * r);
     if (first && trip.kind === 'cut' && this.hasPose) {

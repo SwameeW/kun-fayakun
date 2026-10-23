@@ -187,6 +187,82 @@ test('landscape: the sheet sits clear of the readout, the world beside it when p
   expect(pageErrors).toEqual([]);
 });
 
+test('every control is a 44 px touch target; the pulled-up sheet lists the worlds first, each row whole', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await settled(page, ['universe-readout', 'universe-bodies']);
+  const small = (selectors: string): Promise<string[]> =>
+    page.evaluate((sel) => {
+      const out: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+        // A world's button takes taps over its whole row (its ::after covers it): the row is its target.
+        const r = (el.closest('.kf-nav-row') ?? el).getBoundingClientRect();
+        if (r.width === 0 || r.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
+        if (r.width < 43.5 || r.height < 43.5) out.push(`${(el.getAttribute('aria-label') ?? el.textContent).trim().slice(0, 24)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+      }
+      return out;
+    }, selectors);
+  expect(await small('[data-testid="universe-back"], [data-testid="universe-nav-toggle"], .kf-nav-body')).toEqual([]);
+  // Pulled up: the list first, every row inside the sheet's scrolling part (none cut mid-line).
+  await page.getByTestId('universe-nav-toggle').click();
+  const nav = page.getByTestId('universe-bodies');
+  await expect(nav).toHaveClass(/is-expanded/);
+  await page.waitForTimeout(500);
+  const rows = await page.evaluate(() => {
+    const wrap = document.querySelector('.kf-nav-body-wrap')?.getBoundingClientRect();
+    const list = document.querySelector('.kf-nav-list')?.getBoundingClientRect();
+    const map = document.querySelector('.kf-nav-map')?.getBoundingClientRect();
+    const cut = [...document.querySelectorAll('.kf-nav-row')]
+      .map((r) => r.getBoundingClientRect())
+      .filter((r) => !wrap || r.top < wrap.top - 0.5 || r.bottom > wrap.bottom + 0.5).length;
+    return { cut, listFirst: Boolean(list && map && list.top < map.top) };
+  });
+  expect(rows).toEqual({ cut: 0, listFirst: true });
+  expect(await small('.kf-nav-body, .kf-nav-seen summary, .kf-nav-keys summary, [data-testid="universe-detail"]')).toEqual([]);
+  // The detail menu closes on a choice, and on a tap outside it.
+  await page.getByTestId('universe-detail').click();
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'true');
+  expect(await small('.kf-nav-detail-option, [data-testid="universe-detail-close"]')).toEqual([]);
+  await page.getByTestId('universe-detail-low').tap();
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('html')).toHaveAttribute('data-detail', 'low');
+  await page.getByTestId('universe-detail').click();
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'true');
+  // A tap on the scene above the sheet.
+  const cdp = await page.context().newCDPSession(page);
+  const sheetTop = (await nav.boundingBox())?.y ?? 400;
+  await tap(cdp, { x: 40, y: Math.max(140, sheetTop - 30) });
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+  // During a trip, Stop is a touch target too, and says nothing about a key a phone does not have.
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.focusBody('jupiter');
+  });
+  await expect(page.getByTestId('universe-trip')).toHaveClass(/is-active/);
+  await expect(page.getByTestId('universe-stop')).toHaveText('Stop');
+  expect(await small('[data-testid="universe-stop"]')).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a note folds to its title on a touch of the scene (the world gets the screen back), and opens again from its title', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const card = page.locator('.kf-note.is-visible');
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await expect(card.locator('.kf-note-body')).toBeVisible();
+  const cdp = await page.context().newCDPSession(page);
+  await tap(cdp, await middle(page));
+  await expect(card).toHaveClass(/is-folded/);
+  await expect(card.locator('.kf-note-body')).toBeHidden();
+  const toggle = card.locator('.kf-note-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.tap();
+  await expect(card.locator('.kf-note-body')).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(pageErrors).toEqual([]);
+});
+
 /**
  * Whether a body's centre is on screen in the part the interface leaves clear: below the readout,
  * and above the sheet (a phone held upright) or left of it (held sideways, the sheet pulled up).

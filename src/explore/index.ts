@@ -74,10 +74,12 @@ const EXPOSURE_POWER = 1.8;
 /**
  * With the Sun large in view it is shown as photographed through a solar filter, so its disc shows
  * colour, limb darkening and granulation rather than a white blank: the filter comes in as its
- * radius grows between these sizes (CSS px), taking the disc from brilliant white to the filter's
- * amber at a moderate brightness (display terms). The readout says so while the filter is on.
+ * radius grows between these sizes (CSS px on a view whose narrower side is `refPx`; in proportion
+ * on any other, so a phone, which frames the Sun from further out, shows the same filtered disc as a
+ * wide screen), taking the disc from brilliant white to the filter's amber at a moderate brightness
+ * (display terms, the same on every detail level). The readout says so while the filter is on.
  */
-const SUN_FILTER = { fromPx: 12, toPx: 110, color: [1, 0.5, 0.12], white: 5, filtered: 0.62 } as const;
+const SUN_FILTER = { fromPx: 12, toPx: 110, refPx: 800, color: [1, 0.5, 0.12], white: 5, filtered: 0.62 } as const;
 /**
  * The Moon is dark (it reflects about an eighth of its light, less than half the Earth's share), so
  * with the Moon in view the exposure opens a little further, as a camera's would; beside the Earth
@@ -107,7 +109,24 @@ const MOON_ORBIT_COLOR = [0.26, 0.29, 0.34] as const;
  * may sit, and below what disc radius (px) a tag is anchored at the body's centre beside its ring
  * marker rather than at its limb.
  */
-const LABEL = { seconds: 0.35, maxDiscPx: 70, clearX: 90, clearY: 22, markerPx: 4 } as const;
+const LABEL = {
+  seconds: 0.35,
+  /** A tag that gives way to another fades out this quickly (no ghost of one over the other). */
+  hideSeconds: 0.1,
+  maxDiscPx: 70,
+  markerPx: 4,
+  opacity: 0.92,
+  /** A tag's box (CSS px): its width (the longest name), its height above its point, and its gap from it. */
+  widthPx: 86,
+  tagPx: 26,
+  gapPx: 10,
+  /** Kept this far inside the clear view; an edge pointer's length; how far past a line a form holds. */
+  marginPx: 10,
+  pointerPx: 18,
+  holdPx: 14,
+  /** A tag that gave way comes back only with this much more room than it needs (no flicker at the edge). */
+  clearAgain: 1.3,
+} as const;
 /**
  * Up close only the focus's own orbit is drawn (and the Moon's around the Earth); the others come
  * in as the view widens, between these distances in bounding radii of the focus. Changes ease.
@@ -156,6 +175,31 @@ interface Placed {
   screenX: number;
   screenY: number;
   inView: boolean;
+}
+
+/** A tag beside a body, and its pointer at the edge of the view when it is just out of frame. */
+type MutableLabel = SceneLabel & { position: [number, number, number]; textKey: string };
+/** Where a body's name goes: to its right (the tag), to its left, at the edge of the view, or nowhere. */
+type LabelForm = 'right' | 'left' | 'edge' | 'none';
+interface BodyLabels {
+  tag: number;
+  edge: number;
+  /** The form it took last (its choice holds until the body is a margin past the line). */
+  form: LabelForm;
+  /** It gave way to another tag (and needs more room to come back). */
+  blocked: boolean;
+  tagLabel: MutableLabel;
+  edgeLabel: MutableLabel;
+  edgeAt: [number, number, number];
+  edgeOffset: [number, number];
+}
+
+function bodyLabels(id: BodyId): BodyLabels {
+  // The text is the body's name: its key comes from the system's specs on the first frame.
+  const edgeOffset: [number, number] = [0, 0];
+  const tagLabel: MutableLabel = { id: `body-${id}`, textKey: '', position: [0, 0, 0], opacity: 0 };
+  const edgeLabel: MutableLabel = { id: `edge-${id}`, textKey: '', position: [0, 0, 0], opacity: 0, offset: edgeOffset };
+  return { tag: 0, edge: 0, form: 'none', blocked: false, tagLabel, edgeLabel, edgeAt: [0, 0, 0], edgeOffset };
 }
 
 const unit = (out: Km, from: Km, to: Km): Km => {
@@ -240,7 +284,12 @@ export default function create(): UniverseModule {
     BODY_IDS.map((id) => [id, { rel: km(), drawn: km(), distance: 0, k: 1, radiusPx: 0, screenX: 0, screenY: 0, inView: false }]),
   ) as Record<BodyId, Placed>;
   const labelOpacity = new Map<BodyId, number>(BODY_IDS.map((id) => [id, 0]));
-  let labels: SceneLabel[] = [];
+  /** Each body's tag and edge pointer (their labels reused frame to frame), and the boxes taken this frame. */
+  const labelState = Object.fromEntries(BODY_IDS.map((id) => [id, bodyLabels(id)])) as Record<BodyId, BodyLabels>;
+  const labelOrder: BodyId[] = [...BODY_IDS];
+  const taken = BODY_IDS.map(() => ({ x: 0, y: 0 }));
+  let takenCount = 0;
+  const labels: SceneLabel[] = [];
   const dotList: ImpostorDot[] = BODY_IDS.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: 6, marker: 0 }));
   /** Saturn's rings' span and pole, for the lens (set from physical.json on load, the pole each frame). */
   const ringSphere = { pole: km(0, 1, 0), innerKm: 0, outerKm: 0 };
@@ -257,6 +306,28 @@ export default function create(): UniverseModule {
     ecliptic: { x: 0, y: 0, z: 0 },
   }));
   const phaseAngles = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
+  /** What discoveries are judged from, rewritten each frame (its records too): no garbage per frame. */
+  const discPx = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
+  const inView = Object.fromEntries(BODY_IDS.map((id) => [id, false])) as Record<BodyId, boolean>;
+  const discoveryInput: DiscoveryInput = {
+    focus: DEFAULT_BODY,
+    travelling: false,
+    altitudeKm: 0,
+    radiusKm: 1,
+    framedAltitudeKm: 0,
+    phaseAngle: phaseAngles,
+    discPx,
+    inView,
+    moonLit: 0,
+    moonWaxing: false,
+    earthLitFromMoon: 0,
+    ringTiltDeg: 0,
+    sunEarthKm: 0,
+    sunCameraKm: 0,
+    sunlight: 1,
+    solarFilter: false,
+  };
+  const helio = km();
   const cameraEcliptic = { x: 0, y: 0, z: 0, heading: 0 };
 
   const look = new Matrix4();
@@ -325,46 +396,86 @@ export default function create(): UniverseModule {
     return Math.exp(Math.log(from) + (Math.log(to) - Math.log(from)) * w);
   };
 
-  const detailState = (): UniverseView['detail'] => ({
-    tier: detail.tier,
-    choice: governor?.choice ?? 'auto',
-    available,
-    renderScale,
-    fixed,
-  });
+  /*
+   * The view the interface, the engine and tests read: one object (and its parts), rewritten once a
+   * frame by refreshView() and handed out as it is, so reading it several times a frame costs nothing
+   * and a trip makes no garbage. Readers copy what they keep (page.evaluate serialises it).
+   */
+  const detailView: UniverseView['detail'] = { tier: detail.tier, choice: 'auto', available, renderScale, fixed };
+  const tripView: NonNullable<UniverseView['trip']> = { progress: 0, remainingKm: 0, startKm: 0, endKm: 0 };
+  const viewState: UniverseView = {
+    focus: DEFAULT_BODY,
+    travelling: false,
+    from: null,
+    moving: false,
+    distanceKm: 0,
+    altitudeKm: 0,
+    sunlight: 1,
+    solarFilter: false,
+    jdTdb: 0,
+    unixMs: 0,
+    mode: 'orbit',
+    speedKmS: 0,
+    trip: null,
+    bodies: bodyViews,
+    camera: cameraEcliptic,
+    discovery: null,
+    witnessed: [],
+    detail: detailView,
+    auKm: 1,
+    lightKmS: 0,
+  };
 
-  const view = (): UniverseView => {
+  const refreshView = (): void => {
     const cam = origin.camera;
     const focus = nav.focus;
     const spec = system?.specs[focus];
-    const p = system?.bodies[focus].position ?? km();
-    const distanceKm = Math.hypot(cam.x - p.x, cam.y - p.y, cam.z - p.z);
+    const p = system?.bodies[focus].position;
+    const distanceKm = p ? Math.hypot(cam.x - p.x, cam.y - p.y, cam.z - p.z) : 0;
     const auKm = system?.auKm ?? 1;
     const fromSun = Math.max(1, Math.hypot(cam.x, cam.y, cam.z));
     const altitudeKm = distanceKm - (spec?.radiusKm ?? 0);
+    const v = viewState;
+    v.focus = focus;
+    v.travelling = nav.travelling;
+    v.from = navOut.from;
+    v.moving = nav.moving;
+    v.distanceKm = distanceKm;
+    v.altitudeKm = altitudeKm;
+    v.sunlight = (auKm / fromSun) ** 2;
+    v.solarFilter = filterAmount > 0.5;
+    v.jdTdb = jdTdb;
+    v.unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    v.mode = navOut.mode;
+    v.speedKmS = navOut.speedKmS;
     const trip = nav.tripState;
-    return {
-      focus,
-      travelling: nav.travelling,
-      from: navOut.from,
-      moving: nav.moving,
-      distanceKm,
-      altitudeKm,
-      sunlight: (auKm / fromSun) ** 2,
-      solarFilter: filterAmount > 0.5,
-      jdTdb,
-      unixMs: (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000,
-      mode: navOut.mode,
-      speedKmS: navOut.speedKmS,
-      trip: trip ? { progress: trip.progress, remainingKm: Math.max(0, altitudeKm), startKm: tripStartKm, endKm: trip.endKm } : null,
-      bodies: bodyViews,
-      camera: cameraEcliptic,
-      discovery: discovery ? { id: discovery.id, values: discovery.values } : null,
-      witnessed: discoveries?.witnessed ?? [],
-      detail: detailState(),
-      auKm,
-      lightKmS,
-    };
+    if (trip) {
+      tripView.progress = trip.progress;
+      tripView.remainingKm = Math.max(0, altitudeKm);
+      tripView.startKm = tripStartKm;
+      tripView.endKm = trip.endKm;
+    }
+    v.trip = trip ? tripView : null;
+    v.discovery = discovery;
+    v.witnessed = discoveries?.witnessed ?? v.witnessed;
+    syncDetailView();
+    v.auKm = auKm;
+    v.lightKmS = lightKmS;
+  };
+
+  /** The detail part of the view (also right after a choice or a governor's decision, between frames). */
+  const syncDetailView = (): void => {
+    detailView.tier = detail.tier;
+    detailView.choice = governor?.choice ?? 'auto';
+    detailView.available = available;
+    detailView.renderScale = renderScale;
+    detailView.fixed = fixed;
+  };
+
+  /** Rewritten in place on every read too (no garbage), so a read right after a command (a trip asked for) is current. */
+  const view = (): UniverseView => {
+    refreshView();
+    return viewState;
   };
 
   /** Frustum culling off for every body's meshes (the warm-up then compiles them all, in view or not), or back on. */
@@ -396,6 +507,7 @@ export default function create(): UniverseModule {
       ctx.graphics.setDprCap(detail.dprCap);
     }
     setHook('data-detail', entered ? detail.tier : null);
+    syncDetailView();
   };
 
   const applyDecision = (decision: GovernorDecision | null): void => {
@@ -405,6 +517,7 @@ export default function create(): UniverseModule {
       renderScale = decision.scale;
       if (entered) ctx?.graphics.setRenderScale(renderScale);
     }
+    syncDetailView();
   };
 
   /** The body under a point of the canvas (client px), nearest the camera when discs overlap. */
@@ -546,7 +659,8 @@ export default function create(): UniverseModule {
       return (sys.auKm / Math.max(Math.hypot(q.x - sun.x, q.y - sun.y, q.z - sun.z), 1)) ** 2;
     };
     // The Sun: brilliant and white when small, through its filter (amber, moderate) when it fills the view.
-    filterAmount = smoothstep(SUN_FILTER.fromPx, SUN_FILTER.toPx, placed.sun.radiusPx);
+    const filterScale = Math.min(widthPx, viewportPx) / SUN_FILTER.refPx;
+    filterAmount = smoothstep(SUN_FILTER.fromPx * filterScale, SUN_FILTER.toPx * filterScale, placed.sun.radiusPx);
     const [fr, fg, fb] = SUN_FILTER.color;
     filterColor[0] = 1 + (fr - 1) * filterAmount;
     filterColor[1] = 1 + (fg - 1) * filterAmount;
@@ -682,8 +796,10 @@ export default function create(): UniverseModule {
       filtered: filterAmount,
     });
 
-    describe(camera);
     trackTrips();
+    refreshView();
+    describe(camera);
+    viewState.discovery = discovery;
     entering = false;
   };
 
@@ -703,12 +819,16 @@ export default function create(): UniverseModule {
       const p = placed[id];
       const body = sys.bodies[id].position;
       v.distanceKm = Math.max(0, p.distance - sys.specs[id].radiusKm);
-      v.lightSeconds = lightKmS > 0 ? p.distance / lightKmS : 0;
+      // The light-time of the distance shown beside it (to the surface), so the two always agree.
+      v.lightSeconds = lightKmS > 0 ? v.distanceKm / lightKmS : 0;
       v.screen.x = p.screenX;
       v.screen.y = p.screenY;
       v.screen.radiusPx = p.radiusPx;
       v.screen.inView = p.inView;
-      renderToEcliptic({ x: body.x - sun.x, y: body.y - sun.y, z: body.z - sun.z }, v.ecliptic);
+      helio.x = body.x - sun.x;
+      helio.y = body.y - sun.y;
+      helio.z = body.z - sun.z;
+      renderToEcliptic(helio, v.ecliptic);
       if (id === 'sun') {
         v.lit = 1;
         v.limbAngle = 0;
@@ -741,35 +861,33 @@ export default function create(): UniverseModule {
     unit(sunDir, moon, sun);
     unit(toEarth, moon, earth);
     const moonCos = dot3(sunDir, toEarth);
-    const geoSun = { x: sun.x - earth.x, y: sun.y - earth.y, z: sun.z - earth.z };
-    const geoMoon = { x: moon.x - earth.x, y: moon.y - earth.y, z: moon.z - earth.z };
-    // Ecliptic north is +y in the render frame.
-    const waxing = geoSun.z * geoMoon.x - geoSun.x * geoMoon.z > 0;
+    // Ecliptic north is +y in the render frame: waxing while the Moon is east of the Sun, seen from the Earth.
+    const waxing = (sun.z - earth.z) * (moon.x - earth.x) - (sun.x - earth.x) * (moon.z - earth.z) > 0;
     unit(scratch, earth, sun);
     unit(scratch2, earth, moon);
     const earthFromMoon = (1 + dot3(scratch, scratch2)) / 2;
     const saturnBasis = sys.bodies.saturn.basis;
     unit(scratch, sys.bodies.saturn.position, sun);
     const ringTilt = Math.asin(Math.min(1, Math.max(-1, (saturnBasis[3] ?? 0) * scratch.x + (saturnBasis[4] ?? 1) * scratch.y + (saturnBasis[5] ?? 0) * scratch.z)));
-    const v = view();
-    const input: DiscoveryInput = {
-      focus: nav.focus,
-      travelling: nav.travelling,
-      altitudeKm: v.altitudeKm,
-      radiusKm: sys.specs[nav.focus].radiusKm,
-      framedAltitudeKm: world ? nav.framingKm(world.body(nav.focus)) - sys.specs[nav.focus].radiusKm : 0,
-      phaseAngle: phaseAngles,
-      discPx: Object.fromEntries(BODY_IDS.map((id) => [id, placed[id].radiusPx])) as Record<BodyId, number>,
-      inView: Object.fromEntries(BODY_IDS.map((id) => [id, placed[id].inView])) as Record<BodyId, boolean>,
-      moonLit: (1 + moonCos) / 2,
-      moonWaxing: waxing,
-      earthLitFromMoon: earthFromMoon,
-      ringTiltDeg: (ringTilt * 180) / Math.PI,
-      sunEarthKm: Math.hypot(earth.x - sun.x, earth.y - sun.y, earth.z - sun.z),
-      sunCameraKm: Math.hypot(origin.camera.x - sun.x, origin.camera.y - sun.y, origin.camera.z - sun.z),
-      sunlight: v.sunlight,
-      solarFilter: v.solarFilter,
-    };
+    const v = viewState;
+    const input = discoveryInput;
+    input.focus = nav.focus;
+    input.travelling = nav.travelling;
+    input.altitudeKm = v.altitudeKm;
+    input.radiusKm = sys.specs[nav.focus].radiusKm;
+    input.framedAltitudeKm = world ? nav.framingKm(world.body(nav.focus)) - sys.specs[nav.focus].radiusKm : 0;
+    for (const id of BODY_IDS) {
+      discPx[id] = placed[id].radiusPx;
+      inView[id] = placed[id].inView;
+    }
+    input.moonLit = (1 + moonCos) / 2;
+    input.moonWaxing = waxing;
+    input.earthLitFromMoon = earthFromMoon;
+    input.ringTiltDeg = (ringTilt * 180) / Math.PI;
+    input.sunEarthKm = Math.hypot(earth.x - sun.x, earth.y - sun.y, earth.z - sun.z);
+    input.sunCameraKm = Math.hypot(origin.camera.x - sun.x, origin.camera.y - sun.y, origin.camera.z - sun.z);
+    input.sunlight = v.sunlight;
+    input.solarFilter = v.solarFilter;
     discovery = discoveries.update(input);
   };
 
@@ -788,36 +906,133 @@ export default function create(): UniverseModule {
     wasTravelling = travelling;
   };
 
-  /** Names beside the bodies: eased, hidden behind other bodies, and never on top of each other. */
+  /**
+   * Names beside the bodies: eased, hidden behind other bodies, never on top of each other and
+   * never cut off by the edge of the view or tucked under the interface. A tag sits to the right of
+   * its body; one that would run past the right of the clear view goes to its left instead (a short
+   * line to its left limb); a body just out of frame (in front of the camera) gets a small pointer at
+   * the edge, on its side, with its name. Each choice holds until the body is clearly past the line
+   * (no flicker between two). Where two would collide the lesser one gives way quickly (no ghost of
+   * one over the other) and comes back only once there is clear room. Everything here is rewritten
+   * in place each frame (no garbage per frame).
+   */
   const updateLabels = (dt: number, viewportPx: number, widthPx: number): void => {
     const c = ctx;
     if (!c || !system) return;
     const camera = c.camera;
     right.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    const order = [...BODY_IDS].sort((a, b) => (a === nav.focus ? -1 : b === nav.focus ? 1 : placed[b].radiusPx - placed[a].radiusPx));
-    const taken: Array<{ x: number; y: number }> = [];
-    const next: SceneLabel[] = [];
-    const ease = 1 - Math.exp(-Math.max(0, dt) / LABEL.seconds);
-    for (const id of order) {
+    labelOrder.sort((a, b) => (a === nav.focus ? -1 : b === nav.focus ? 1 : placed[b].radiusPx - placed[a].radiusPx));
+    takenCount = 0;
+    labels.length = 0;
+    const show = 1 - Math.exp(-Math.max(0, dt) / LABEL.seconds);
+    const hide = 1 - Math.exp(-Math.max(0, dt) / LABEL.hideSeconds);
+    // The clear part of the view, in CSS px (inside what the interface covers, with a margin).
+    const left = insets.left + LABEL.marginPx;
+    const rightEdge = widthPx - insets.right - LABEL.marginPx;
+    const top = insets.top + LABEL.tagPx;
+    const bottom = viewportPx - insets.bottom - LABEL.marginPx;
+    for (const id of labelOrder) {
       const spec = system.specs[id];
       const p = placed[id];
+      const state = labelState[id];
+      state.tagLabel.textKey = spec.nameKey;
+      state.edgeLabel.textKey = spec.nameKey;
       // At the limb of a visible disc; at the centre of a point, beside its ring marker.
       const drawnRadius = spec.radiusKm * p.k * 1.08 * smoothstep(LABEL.markerPx, LABEL.markerPx * 3, p.radiusPx);
       const anchor = projected.set(p.drawn.x, p.drawn.y, p.drawn.z).addScaledVector(right, drawnRadius);
-      const position: [number, number, number] = [anchor.x, anchor.y, anchor.z];
+      const ax = anchor.x;
+      const ay = anchor.y;
+      const az = anchor.z;
       anchor.project(camera);
+      const inFront = anchor.z < 1 && anchor.z > -1;
       const sx = ((anchor.x + 1) / 2) * widthPx;
       const sy = ((1 - anchor.y) / 2) * viewportPx;
-      let want = anchor.z < 1 && anchor.z > -1 && p.radiusPx < LABEL.maxDiscPx ? 0.92 : 0;
-      if (want > 0 && occluded(id)) want = 0;
-      if (want > 0 && taken.some((t) => Math.abs(t.x - sx) < LABEL.clearX && Math.abs(t.y - sy) < LABEL.clearY)) want = 0;
-      if (want > 0) taken.push({ x: sx, y: sy });
-      const was = labelOpacity.get(id) ?? 0;
-      const now = was + (want - was) * (entering ? 1 : ease);
-      labelOpacity.set(id, now < 1e-3 && want === 0 ? 0 : now);
-      if (now > 1e-3) next.push({ id: `body-${id}`, textKey: spec.nameKey, position, opacity: now });
+      const wanted = inFront && p.radiusPx < LABEL.maxDiscPx && !occluded(id);
+      // Which form: the tag at its right; at its left (no room on the right); or a pointer at the edge
+      // (its point is out of the clear view). Each holds until the body is a margin past the line.
+      const hold = (form: LabelForm): number => (state.form === form ? LABEL.holdPx : -LABEL.holdPx);
+      const outside = sx < left + hold('edge') || sx > rightEdge - hold('edge') || sy < top + hold('edge') || sy > bottom - hold('edge');
+      const noRoom = sx + LABEL.gapPx + LABEL.widthPx > rightEdge - hold('left');
+      const form: LabelForm = !wanted ? 'none' : outside ? 'edge' : noRoom ? 'left' : 'right';
+      if (form !== 'none') state.form = form;
+      const offView = form === 'edge' || form === 'left';
+      let x = sx;
+      let y = sy;
+      let edgeDx = 0;
+      let edgeDy = 0;
+      if (form === 'edge') {
+        x = Math.min(rightEdge, Math.max(left, sx));
+        y = Math.min(bottom, Math.max(top, sy));
+        if (sx < left) edgeDx = LABEL.pointerPx;
+        else if (sx > rightEdge) edgeDx = -LABEL.pointerPx;
+        if (sy < top) edgeDy = LABEL.pointerPx * 0.7;
+        else if (sy > bottom) edgeDy = -LABEL.pointerPx * 0.7;
+        if (edgeDx === 0) edgeDx = sx < widthPx / 2 ? LABEL.pointerPx : -LABEL.pointerPx;
+      } else if (form === 'left') {
+        // At the left limb, the tag ending a short line to its left.
+        projected.set(p.drawn.x, p.drawn.y, p.drawn.z).addScaledVector(right, -drawnRadius).project(camera);
+        x = ((projected.x + 1) / 2) * widthPx;
+        y = ((1 - projected.y) / 2) * viewportPx;
+        edgeDx = -LABEL.gapPx;
+        edgeDy = -LABEL.tagPx / 2;
+      }
+      // Its box, for collisions: the tag extends right of its point (or left, for a pointer at the right edge).
+      const boxX = offView && edgeDx < 0 ? x + edgeDx - LABEL.widthPx : x + (offView ? edgeDx : LABEL.gapPx);
+      const boxY = y + (offView ? edgeDy : 0) - LABEL.tagPx;
+      const room = state.blocked ? LABEL.clearAgain : 1;
+      let blocked = false;
+      for (let t = 0; t < takenCount; t++) {
+        const other = taken[t];
+        if (!other) continue;
+        if (Math.abs(other.x - boxX) < LABEL.widthPx * room && Math.abs(other.y - boxY) < LABEL.tagPx * room) blocked = true;
+      }
+      state.blocked = wanted && blocked;
+      const showTag = wanted && !blocked && !offView;
+      const showEdge = wanted && !blocked && offView;
+      if (showTag || showEdge) {
+        const slot = taken[takenCount];
+        if (slot) {
+          slot.x = boxX;
+          slot.y = boxY;
+          takenCount += 1;
+        }
+      }
+      // Easing: in at the usual pace, out quickly when it gave way to another (no ghosting).
+      const settleTo = (was: number, want: number): number => {
+        const k = entering ? 1 : want > was ? show : blocked ? hide : show;
+        const now = was + (want - was) * k;
+        return now < 1e-3 && want === 0 ? 0 : now;
+      };
+      state.tag = settleTo(state.tag, showTag ? LABEL.opacity : 0);
+      state.edge = settleTo(state.edge, showEdge ? LABEL.opacity : 0);
+      labelOpacity.set(id, state.tag);
+      if (state.tag > 1e-3) {
+        const label = state.tagLabel;
+        label.position[0] = ax;
+        label.position[1] = ay;
+        label.position[2] = az;
+        label.opacity = state.tag;
+        labels.push(label);
+      }
+      if (state.edge > 1e-3) {
+        // The pointer's point (at the edge of the clear view, or the left limb), back in the scene's frame at the anchor's depth.
+        if (offView) {
+          projected.set((x / widthPx) * 2 - 1, 1 - (y / viewportPx) * 2, anchor.z).unproject(camera);
+          state.edgeAt[0] = projected.x;
+          state.edgeAt[1] = projected.y;
+          state.edgeAt[2] = projected.z;
+          state.edgeOffset[0] = edgeDx;
+          state.edgeOffset[1] = edgeDy;
+        }
+        const label = state.edgeLabel;
+        label.position[0] = state.edgeAt[0];
+        label.position[1] = state.edgeAt[1];
+        label.position[2] = state.edgeAt[2];
+        label.offset = state.edgeOffset;
+        label.opacity = state.edge;
+        labels.push(label);
+      }
     }
-    labels = next;
   };
 
   /** True when another body's disc covers this body's centre and is nearer. */
@@ -873,7 +1088,8 @@ export default function create(): UniverseModule {
     if (!world || !entered) return false;
     if (command === 'stop') {
       const did = nav.cancelTravel(world);
-      if (did) stopped = true;
+      // A cut that had already moved the camera finishes (it "arrives"); anything else stopped where it was.
+      if (did && !nav.travelling) stopped = true;
       return did;
     }
     const was = nav.mode;
@@ -924,7 +1140,16 @@ export default function create(): UniverseModule {
 
       // The mission maps stream by detail (Low on entry, the focus raised after); the Earth's air from the cited model.
       const renderer = c.renderer;
-      const textures = createPlanetTextures({ assets: c.assets, manifest, detail, upload: (t) => { renderer.initTexture(t); } });
+      const textures = createPlanetTextures({
+        assets: c.assets,
+        manifest,
+        detail,
+        upload: (t) => {
+          renderer.initTexture(t);
+          // An upload costs a frame or two of main-thread time: nothing is judged for a while after it.
+          governor?.holdOff();
+        },
+      });
       textures.setRingPlaceholder(ringTransmission(physical.saturnRings), physical.saturnRings.innerKm, physical.saturnRings.outerKm);
       const sunKm = system.specs.sun.radiusKm;
       const air = earthAir(c.data, system.specs.earth.radiusKm, Math.asin(sunKm / physical.auKm));
@@ -1043,7 +1268,13 @@ export default function create(): UniverseModule {
       adaptation.setFade(1);
       adaptation.setTarget(exposureFor(nav.focus));
       adaptation.jump();
-      for (const id of BODY_IDS) labelOpacity.set(id, 0);
+      for (const id of BODY_IDS) {
+        labelOpacity.set(id, 0);
+        labelState[id].tag = 0;
+        labelState[id].edge = 0;
+        labelState[id].form = 'none';
+        labelState[id].blocked = false;
+      }
       // The rung's picture settings (bloom, pixel ratio), the full internal resolution, and a hold-off while it all settles.
       applyDetail(detail);
       renderScale = governor?.scale ?? 1;
@@ -1146,7 +1377,7 @@ export default function create(): UniverseModule {
       // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
       bodies?.suspend();
       entered = false;
-      labels = [];
+      labels.length = 0;
       ctx?.exposure.setVeil(1);
     },
 

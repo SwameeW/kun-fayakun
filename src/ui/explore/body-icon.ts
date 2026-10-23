@@ -12,13 +12,19 @@ export interface BodyIcon {
   update(view: UniverseBodyView): void;
 }
 
+/**
+ * Lit colours, and the night side: never black on the panel's black. It is held at a dim glow of the
+ * body's own colour (as earthshine lights the Moon's dark face, and as a photograph lifts a night
+ * side), and every disc has a faint rim, so a world seen almost new from far away stays legible.
+ */
 const STYLE: Readonly<Record<BodyId, { lit: [string, string]; night: string }>> = {
   sun: { lit: ['#fff4d6', '#f2a63c'], night: '#f2a63c' },
-  earth: { lit: ['#bfe0ff', '#2e68a8'], night: '#0a1522' },
-  moon: { lit: ['#f1ede4', '#9d988e'], night: '#121212' },
-  jupiter: { lit: ['#f6e6cc', '#c49a6c'], night: '#16110c' },
-  saturn: { lit: ['#f6e7c1', '#c9a96a'], night: '#15120b' },
+  earth: { lit: ['#bfe0ff', '#2e68a8'], night: '#1c3150' },
+  moon: { lit: ['#f1ede4', '#9d988e'], night: '#34332f' },
+  jupiter: { lit: ['#f6e6cc', '#c49a6c'], night: '#3a2d20' },
+  saturn: { lit: ['#f6e7c1', '#c9a96a'], night: '#383022' },
 };
+const RIM = 'rgb(237 231 218 / 0.32)';
 
 /** The lit part of a unit disc, bright limb toward +x, for a lit share k (0 new, 1 full). */
 export function phasePath(k: number): string {
@@ -66,6 +72,8 @@ export function createBodyIcon(id: BodyId): BodyIcon {
     for (const [y, h] of [[-0.42, 0.16], [-0.05, 0.12], [0.28, 0.17]] as const) belts.append(svg('rect', { x: -1, y, width: 2, height: h, fill: '#7a4f2c' }));
     parts.push(belts);
   }
+  // The faint rim, over the disc (not the Sun's, which is all light).
+  if (id !== 'sun') parts.push(svg('circle', { r: 0.97, fill: 'none', stroke: RIM, 'stroke-width': 0.07 }));
   if (ringFront) parts.push(ringFront);
   const element = svg('svg', { class: `kf-body-icon kf-body-icon--${id}`, viewBox: id === 'saturn' ? '-2.1 -1.25 4.2 2.5' : '-1.5 -1.5 3 3', 'aria-hidden': 'true', focusable: 'false' }, ...parts);
 

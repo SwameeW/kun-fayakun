@@ -154,6 +154,8 @@ export function angles(dir: Km): { azimuth: number; elevation: number } {
  */
 export const HORIZON_VIEW = 0.3;
 
+const lookScratch = km();
+
 /**
  * The unit direction to look from `position` at a body (centre `centre`, radius `radius`): at the
  * centre, or, once the horizon would climb past HORIZON_VIEW above the middle of the view, that
@@ -166,7 +168,7 @@ export function lookDirection(position: Km, centre: Km, radius: number, up: Km, 
   set(out, out.x / r, out.y / r, out.z / r);
   const tilt = Math.max(0, Math.asin(Math.min(1, radius / r)) - HORIZON_VIEW);
   if (tilt <= 0) return out;
-  const u = squareUp(out, up, { x: 0, y: 0, z: 0 });
+  const u = squareUp(out, up, lookScratch);
   const c = Math.cos(tilt);
   const s = Math.sin(tilt);
   return normalize(set(out, out.x * c + u.x * s, out.y * c + u.y * s, out.z * c + u.z * s));
@@ -436,13 +438,15 @@ export class FreeFlight {
     this.goal.pitch += controls.pitch * FLIGHT.turnRate * dt;
     this.goal.roll += controls.roll * FLIGHT.rollRate * dt;
     const look = reducedMotion ? Infinity : FLIGHT.lookOmega;
-    const before = { yaw: this.yaw.x, pitch: this.pitch.x, roll: this.roll.x };
+    const yawBefore = this.yaw.x;
+    const pitchBefore = this.pitch.x;
+    const rollBefore = this.roll.x;
     stepSpring(this.yaw, this.goal.yaw, look, dt);
     stepSpring(this.pitch, this.goal.pitch, look, dt);
     stepSpring(this.roll, this.goal.roll, look, dt);
-    const dYaw = this.yaw.x - before.yaw;
-    const dPitch = this.pitch.x - before.pitch;
-    const dRoll = this.roll.x - before.roll;
+    const dYaw = this.yaw.x - yawBefore;
+    const dPitch = this.pitch.x - pitchBefore;
+    const dRoll = this.roll.x - rollBefore;
     // Yaw about the camera's up, pitch about its right, roll about its line of sight.
     const right = normalize(cross(this.forward, this.up, a));
     if (dYaw !== 0) rotateAbout(this.forward, this.up, -dYaw, this.forward);
@@ -492,6 +496,20 @@ export class FreeFlight {
       normalize(a);
       const inward = dot(this.velocity, a);
       if (inward < 0) addScaled(this.velocity, a, -inward);
+    }
+    // Never beyond the explorer's horizon either (the orbit rig's ceiling): at MAX_ALTITUDE_KM above
+    // the nearest surface the camera is held, its outward speed taken away. Speed grows with height,
+    // so without this a held boost would overflow the doubles in a few minutes.
+    const far = nearestSurface(bodies, position);
+    if (far.body && far.altitude > MAX_ALTITUDE_KM) {
+      const body = far.body;
+      sub(position, body.position, a);
+      const d = len(a);
+      const k = (body.radiusKm + MAX_ALTITUDE_KM) / Math.max(d, 1e-9);
+      set(position, body.position.x + a.x * k, body.position.y + a.y * k, body.position.z + a.z * k);
+      normalize(a);
+      const outward = dot(this.velocity, a);
+      if (outward > 0) addScaled(this.velocity, a, -outward);
     }
     // Re-anchor to the body whose surface is nearest in its own radii (with some stickiness), so the
     // camera travels with the world it is near.

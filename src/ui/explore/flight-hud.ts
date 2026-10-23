@@ -9,13 +9,16 @@ import type { Formatters } from './format';
  * The readout (where the chapters' scale bar sits) gives true distances, since bodies far away are
  * drawn in scaled space and one metres-per-pixel bar would mislead: the world in view and the height
  * above it, how the camera moves (orbiting it, or in free flight at a stated speed, with a way back
- * to orbiting), and plainly what the view is (true scale; surfaces illustrative; the date and its
- * source; the Sun through a filter when it fills the view).
+ * to orbiting), and plainly what the view is (true scale; the date and its source; the Sun through a
+ * filter when it fills the view; whose imagery the surface is, folded into one short line).
  *
  * During a trip a short indicator shows the distance falling through its orders of magnitude: a
- * scale of powers of ten from the height the trip began at to the one it ends at, a marker sliding
- * along it, the light-time, and a way to stop (Esc). Its scale is decorative (aria-hidden): its line
- * of text says the same. Nothing here is a live region (it changes every frame).
+ * scale with a tick for each factor of ten from the height the trip began at (named in plain words
+ * at its left) to the destination (named at its right), a marker sliding along it, the light-time,
+ * and a way to stop (Esc, said only where there is a keyboard). Its scale is decorative
+ * (aria-hidden): its line of text says the same. Nothing here is a live region (it changes every
+ * frame). When the indicator goes while it holds keyboard focus (its Stop was pressed), focus moves
+ * to the readout's Orbit button or, failing that, to the explorer itself, never to the page.
  */
 
 export interface FlightHud {
@@ -26,15 +29,12 @@ export interface FlightHud {
 
 /** Sunlight is a percentage of the Earth's below this share, and "times the Earth's" from it on. */
 const TIMES_FROM = 2;
-const SUPERSCRIPT = '⁰¹²³⁴⁵⁶⁷⁸⁹';
-const power = (n: number): string =>
-  `10${String(n)
-    .split('')
-    .map((d) => SUPERSCRIPT[Number(d)] ?? d)
-    .join('')}`;
+/** Below this speed (km/s, 1 m/s) free flight is "holding still"; below 1 km/s a speed is in m/s (never "0 km/s"). */
+const STILL_KM_S = 0.001;
 
-export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId) => string): FlightHud {
+export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId) => string, fallbackFocus: () => HTMLElement): FlightHud {
   const { i18n } = app;
+  const coarse = window.matchMedia('(pointer: coarse)');
 
   const title = h('p', { class: 'kf-universe-title' });
   const altitude = h('p', { class: 'kf-universe-line kf-universe-altitude' });
@@ -44,13 +44,26 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
     app.steerUniverse('orbit');
   });
   const mode = h('p', { class: 'kf-universe-line kf-universe-mode' }, modeText, orbit);
-  const scale = h('p', { class: 'kf-universe-line kf-universe-scale' }, i18n.t('ui.universe.trueScale'));
+  // In full on a wide screen; on a phone the short form, so the line never wraps (only one is ever shown).
+  const scale = h(
+    'p',
+    { class: 'kf-universe-line kf-universe-scale kf-universe-part' },
+    h('span', { class: 'kf-universe-long' }, i18n.t('ui.universe.trueScale')),
+    h('span', { class: 'kf-universe-short' }, i18n.t('ui.universe.trueScaleShort')),
+  );
   const sunlight = h('p', { class: 'kf-universe-line kf-universe-extra' });
   const filter = h('p', { class: 'kf-universe-line kf-universe-extra kf-universe-filter', hidden: true }, i18n.t('ui.universe.filter'));
   const date = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-extra' });
-  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative', hidden: true }, i18n.t('ui.universe.illustrative'));
-  const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true });
-  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, sunlight, filter, date, illustrative, imagery);
+  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative kf-universe-part', hidden: true }, i18n.t('ui.universe.illustrative'));
+  // Whose imagery the surface is: one short line that opens to the full credits (the Sources page has them too).
+  const imageryText = h('p', { class: 'kf-universe-imagery-text' });
+  const imagery = h(
+    'details',
+    { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true },
+    h('summary', {}, i18n.t('ui.universe.imageryTitle')),
+    imageryText,
+  );
+  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, illustrative, sunlight, filter, date, imagery);
 
   /** Per body: its maps' credits (and the Earth's caption), once planets.json has loaded. */
   let credits: Partial<Record<BodyId, string>> = {};
@@ -69,16 +82,26 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   );
 
   const tripTitle = h('p', { class: 'kf-trip-title' });
-  const stop = h('button', { type: 'button', class: 'kf-btn kf-trip-stop', 'data-testid': 'universe-stop' }, i18n.t('ui.universe.stop'));
+  const stop = h('button', { type: 'button', class: 'kf-btn kf-trip-stop', 'data-testid': 'universe-stop' });
+  const labelStop = (): void => {
+    // The key is only worth naming where there is a keyboard.
+    stop.textContent = i18n.t(coarse.matches ? 'ui.universe.stopTouch' : 'ui.universe.stop');
+    if (coarse.matches) stop.removeAttribute('aria-keyshortcuts');
+    else stop.setAttribute('aria-keyshortcuts', 'Escape');
+  };
+  labelStop();
+  coarse.addEventListener('change', labelStop);
   stop.addEventListener('click', () => {
     app.steerUniverse('stop');
   });
   const marker = h('span', { class: 'kf-trip-marker' });
   const fill = h('span', { class: 'kf-trip-fill' });
-  const unit = h('span', { class: 'kf-trip-unit' }, i18n.t('ui.universe.tripUnit'));
-  const ruler = h('div', { class: 'kf-trip-ruler', 'aria-hidden': 'true' }, fill, marker, unit);
+  const startLabel = h('span', { class: 'kf-trip-end kf-trip-end--start' });
+  const endLabel = h('span', { class: 'kf-trip-end kf-trip-end--to' });
+  const ruler = h('div', { class: 'kf-trip-ruler', 'aria-hidden': 'true' }, fill, marker);
+  const scaleRow = h('div', { class: 'kf-trip-scale', 'aria-hidden': 'true' }, startLabel, ruler, endLabel);
   const tripLine = h('p', { class: 'kf-trip-line' });
-  const trip = h('div', { class: 'kf-trip', 'data-testid': 'universe-trip' }, h('div', { class: 'kf-trip-head' }, tripTitle, stop), ruler, tripLine);
+  const trip = h('div', { class: 'kf-trip', 'data-testid': 'universe-trip' }, h('div', { class: 'kf-trip-head' }, tripTitle, stop), scaleRow, tripLine);
 
   const dateFormat = new Intl.DateTimeFormat(i18n.locale, { dateStyle: 'long', timeZone: 'UTC' });
   const text = new Map<Element, string>();
@@ -100,34 +123,43 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
     return i18n.t('ui.universe.sunlight', { percent: `${i18n.number(percent, digits)}%` });
   };
 
-  /** Speed in km/s (three figures), or as a multiple of the speed of light once past it (a camera, not a craft). */
+  /** Two significant figures (or three from 100 up), for speeds. */
+  const figures = (value: number): string => {
+    const magnitude = 10 ** Math.max(-3, Math.floor(Math.log10(Math.max(value, 1e-3))) - (value >= 100 ? 2 : 1));
+    const rounded = Math.round(value / magnitude) * magnitude;
+    return i18n.number(rounded, magnitude < 1 ? Math.min(3, Math.round(-Math.log10(magnitude))) : 0);
+  };
+  /** Speed in m/s below 1 km/s, km/s up to the speed of light, then as a multiple of it (a camera, not a craft). */
   const formatSpeed = (kmS: number, lightKmS: number): string => {
     if (lightKmS > 0 && kmS >= lightKmS) {
       const times = kmS / lightKmS;
       return i18n.t('ui.universe.speedLight', { times: i18n.number(times, times < 10 ? 1 : 0) });
     }
-    const magnitude = 10 ** Math.max(0, Math.floor(Math.log10(Math.max(kmS, 1))) - 2);
-    return i18n.t('ui.universe.speed', { speed: i18n.number(Math.round(kmS / magnitude) * magnitude, kmS < 10 ? 1 : 0) });
+    if (kmS < 1) return f.keep(i18n.t('ui.universe.speedM', { speed: figures(kmS * 1000) }));
+    return f.keep(i18n.t('ui.universe.speed', { speed: figures(kmS) }));
   };
 
-  // The trip's scale of powers of ten (log height above the destination), rebuilt for each trip.
+  // The trip's scale (log height above the destination): a tick per factor of ten, rebuilt for each trip.
   let scaleFor = '';
   let hi = 1;
   let lo = 0;
-  const buildScale = (startKm: number, endKm: number): void => {
-    const key = `${startKm.toPrecision(3)}:${endKm.toPrecision(3)}`;
+  const buildScale = (startKm: number, endKm: number, to: BodyId): void => {
+    const key = `${startKm.toPrecision(3)}:${endKm.toPrecision(3)}:${to}`;
     if (key === scaleFor) return;
     scaleFor = key;
     hi = Math.log10(Math.max(startKm, 10));
     lo = Math.log10(Math.max(1, Math.min(endKm, startKm / 10)));
     for (const old of ruler.querySelectorAll('.kf-trip-tick')) old.remove();
     for (let p = Math.floor(hi); p >= Math.ceil(lo); p--) {
-      const tick = h('span', { class: 'kf-trip-tick', 'data-power': String(p) }, h('span', { class: 'kf-trip-tick-label' }, power(p)));
+      const tick = h('span', { class: 'kf-trip-tick', 'data-power': String(p) });
       tick.style.setProperty('--at', ((hi - p) / Math.max(1e-6, hi - lo)).toFixed(4));
-      ruler.insertBefore(tick, unit);
+      ruler.append(tick);
     }
+    write(startLabel, f.distanceWords(startKm));
+    write(endLabel, f.name(to));
   };
 
+  let tripShown = false;
   return {
     readout,
     trip,
@@ -144,7 +176,9 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
       const modeLine = view.travelling
         ? i18n.t('ui.universe.modeTravel')
         : flying
-          ? i18n.t('ui.universe.modeFlight', { speed: formatSpeed(view.speedKmS, view.lightKmS) })
+          ? view.speedKmS < STILL_KM_S
+            ? i18n.t('ui.universe.modeHold')
+            : i18n.t('ui.universe.modeFlight', { speed: formatSpeed(view.speedKmS, view.lightKmS) })
           : i18n.t('ui.universe.modeOrbit');
       write(modeText, modeLine);
       orbit.hidden = !flying;
@@ -155,14 +189,23 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
       write(date, i18n.t('ui.universe.date', { date: dateFormat.format(new Date(view.unixMs)) }));
       // Whose imagery this is (the focus's maps), or, for the procedural Sun, that it is illustrative.
       const line = credits[view.focus];
+      if (!line && imagery.open) imagery.open = false;
       imagery.hidden = !line;
-      write(imagery, line ?? '');
+      write(imageryText, line ?? '');
       illustrative.hidden = view.focus !== 'sun';
 
       const t = view.travelling ? view.trip : null;
       trip.classList.toggle('is-active', t !== null);
-      if (!t) return;
-      buildScale(t.startKm, t.endKm);
+      if (!t) {
+        if (tripShown && trip.contains(document.activeElement)) {
+          // Its Stop was pressed (or the trip ended under the keyboard's focus): focus goes somewhere that stays.
+          (orbit.hidden ? fallbackFocus() : orbit).focus({ preventScroll: true });
+        }
+        tripShown = false;
+        return;
+      }
+      tripShown = true;
+      buildScale(t.startKm, t.endKm, view.focus);
       const now = Math.log10(Math.max(t.remainingKm, 1));
       const at = Math.min(1, Math.max(0, (hi - now) / Math.max(1e-6, hi - lo)));
       marker.style.setProperty('--at', at.toFixed(4));

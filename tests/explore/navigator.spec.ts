@@ -18,10 +18,10 @@ test('every world is listed with its distance and light-time, live from the ephe
   for (const name of ['Sun', 'Earth', 'Moon', 'Jupiter', 'Saturn']) await expect(nav.getByRole('button', { name, exact: true })).toBeVisible();
   const row = (body: string) => nav.locator(`.kf-nav-row[data-body="${body}"]`);
   // The Sun is about 1 au away, its light about 8 minutes old; Saturn's over an hour.
-  await expect(row('sun')).toContainText(/0\.9\d AU|1\.0\d AU/);
-  await expect(row('sun')).toContainText(/light 8 min/);
-  await expect(row('saturn')).toContainText(/light 1 h/);
-  await expect(nav.getByRole('button', { name: 'Earth', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(row('sun')).toContainText(/0\.9\d\sAU|1\.0\d\sAU/);
+  await expect(row('sun')).toContainText(/light 8\smin/);
+  await expect(row('saturn')).toContainText(/light 1\sh/);
+  await expect(nav.getByRole('button', { name: 'Earth', exact: true })).toHaveAttribute('aria-current', 'true');
   // Moving the camera changes the numbers.
   await step(page, 1);
   await place(page, { body: 'earth', distanceKm: 30_000 });
@@ -41,7 +41,7 @@ test('a choice from the list, by mouse or keyboard, flies there and the address 
   await nav.getByRole('button', { name: 'Jupiter', exact: true }).click();
   await expect.poll(async () => (await view(page))?.travelling).toBe(true);
   await expect(page.locator('html')).toHaveAttribute('data-travel', 'flying');
-  await expect(nav.getByRole('button', { name: 'Jupiter', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(nav.getByRole('button', { name: 'Jupiter', exact: true })).toHaveAttribute('aria-current', 'true');
   await expect(page).toHaveURL(/#\/universe\/jupiter/);
   await expect(page.locator('html')).toHaveAttribute('data-travel', 'arrived', { timeout: 30_000 });
   // The keyboard: focus the Moon's button and press Enter.
@@ -90,12 +90,12 @@ test('near a world a note gives facts from cited data, and the log lists what wa
   const note = page.getByTestId('universe-note');
   await expect(note).toContainText(/Saturn’s rings/);
   // The rings' span from the Cassini profile, and the source named.
-  await expect(note).toContainText(/74,500 km to 137,000 km/);
+  await expect(note).toContainText(/74,500\skm to 137,000\skm/);
   await expect(note).toContainText(/Cassini/);
   await place(page, { body: 'earth', distanceKm: 6378 + 900, azimuthDeg: 60, elevationDeg: 5 });
   await step(page, 90);
   await expect(note).toContainText(/Earth’s atmosphere/);
-  await expect(note).toContainText(/8\.5 km/);
+  await expect(note).toContainText(/8\.5\skm/);
   const seen = page.getByTestId('universe-seen');
   await seen.locator('summary').click();
   await expect(seen).toContainText('Saturn’s rings in sunlight');
@@ -103,6 +103,84 @@ test('near a world a note gives facts from cited data, and the log lists what wa
   // Once each, and no score or count anywhere.
   expect(await seen.locator('li').count()).toBe(new Set(await seen.locator('li').allTextContents()).size);
   await expect(seen).not.toContainText(/\d+\s*\/\s*\d+|score|points/i);
+  expect(pageErrors).toEqual([]);
+});
+
+test('something seen for the first time gets a quiet toast, and the log says how many entries it holds (no totals)', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000);
+  await kf.open('/universe/saturn', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await step(page, 1);
+  await place(page, { body: 'saturn', distanceKm: 400_000, azimuthDeg: 25, elevationDeg: 10 });
+  await step(page, 30);
+  const toast = page.getByTestId('universe-toast');
+  // A polite live region, there from the start; it never takes focus.
+  await expect(toast).toHaveAttribute('aria-live', 'polite');
+  await expect(toast).toContainText('Saturn’s rings in sunlight');
+  await expect(toast).toContainText('Added to Seen on this visit');
+  const summary = page.getByTestId('universe-seen').locator('summary');
+  await expect(summary).toContainText(/Seen on this visit \(\d+\)/);
+  await expect(summary).not.toContainText(/\/|of \d/);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a note and the trip indicator share their place but never show at once (no ghost text), and have the same width', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await expect(page.locator('.kf-note.is-visible')).toBeVisible({ timeout: 20_000 });
+  await settled(page, ['universe-readout']);
+  // Sample both cards' opacity on every frame from the moment a trip starts, through its arrival.
+  const worst = await page.evaluate(async () => {
+    const kf = (window as unknown as KfHook).__kf;
+    const slot = document.querySelector<HTMLElement>('[data-testid="universe-note"]');
+    const trip = document.querySelector<HTMLElement>('[data-testid="universe-trip"]');
+    if (!slot || !trip) return { both: 1, widths: [0, 0] };
+    const noteOpacity = (): number => {
+      const card = slot.querySelector<HTMLElement>('.kf-note');
+      if (!card || getComputedStyle(slot).visibility === 'hidden') return 0;
+      return Number(getComputedStyle(slot).opacity) * Number(getComputedStyle(card).opacity);
+    };
+    const tripOpacity = (): number => (getComputedStyle(trip).visibility === 'hidden' ? 0 : Number(getComputedStyle(trip).opacity));
+    const widths = [slot.getBoundingClientRect().width, trip.getBoundingClientRect().width];
+    kf.app.focusBody('moon');
+    let both = 0;
+    const until = performance.now() + 9000;
+    while (performance.now() < until) {
+      await new Promise((r) => requestAnimationFrame(r));
+      both = Math.max(both, Math.min(noteOpacity(), tripOpacity()));
+    }
+    return { both, widths };
+  });
+  expect(worst.both).toBeLessThan(0.05);
+  expect(Math.abs((worst.widths[0] ?? 0) - (worst.widths[1] ?? 0))).toBeLessThan(2);
+  expect(pageErrors).toEqual([]);
+});
+
+test('names beside the worlds stay inside the view (never cut off at its edge or under the interface)', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await step(page, 1);
+  const poses = [
+    { body: 'earth', distanceKm: 26_000 },
+    { body: 'moon', distanceKm: 7_000, azimuthDeg: 70 },
+    { body: 'moon', distanceKm: 90_000, from: 'earth', azimuthDeg: 30 },
+    { body: 'jupiter', distanceKm: 3e6, azimuthDeg: -50, elevationDeg: 20 },
+    { body: 'sun', distanceKm: 4e7, azimuthDeg: 40 },
+  ] as const;
+  for (const pose of poses) {
+    await place(page, pose);
+    await step(page, 60);
+    const outside = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.kf-hud-tag')]
+        .filter((t) => Number(t.style.opacity || '1') > 0.05)
+        .map((t) => ({ text: t.textContent, r: t.getBoundingClientRect() }))
+        .filter(({ r }) => r.left < 0 || r.top < 0 || r.right > window.innerWidth || r.bottom > window.innerHeight)
+        .map(({ text, r }) => `${text} ${Math.round(r.left)},${Math.round(r.top)}..${Math.round(r.right)},${Math.round(r.bottom)}`),
+    );
+    expect(outside, JSON.stringify(pose)).toEqual([]);
+  }
   expect(pageErrors).toEqual([]);
 });
 

@@ -7,6 +7,7 @@ import { formatters } from './format';
 import { createNavigator } from './navigator';
 import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
+import { createToast } from './toast';
 
 /**
  * The solar-system explorer's interface, loaded with the explorer (its own chunk, never in the
@@ -36,8 +37,13 @@ const SURFACE_KEYS: Readonly<Record<BodyId, string>> = {
   jupiter: 'ui.universe.clouds',
   saturn: 'ui.universe.clouds',
 };
-/** The hint fades this long after the explorer opens, or at the visitor's first move. */
+/**
+ * The hint comes once the camera has settled after the opening push-in (or after HINT_WAIT_SECONDS
+ * at most), and fades HINT_SECONDS later or at the visitor's first move; a visitor who moves first
+ * never needs it. Toasts for what joins the log wait for the same moment.
+ */
 const HINT_SECONDS = 9;
+const HINT_WAIT_SECONDS = 8;
 /** The navigator's numbers and portraits refresh this often (they change slowly; the readout every frame). */
 const SLOW_MS = 250;
 
@@ -52,9 +58,13 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   });
   const backText = back.querySelector('.kf-universe-back-text') as HTMLElement;
 
-  const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id]);
-  const notes = createNotes(app, f, announce);
-  const navigator = createNavigator(app, f);
+  // A quiet toast marks what joins the log of what was seen, and a detail level applied.
+  const toast = createToast('universe-toast');
+  const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
+  const notes = createNotes(app, f, announce, () => navigator.layout === 'sheet');
+  const navigator = createNavigator(app, f, (title, line) => {
+    toast.show(title, line);
+  });
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));
 
@@ -68,7 +78,17 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     hud.trip,
     notes.element,
     hud.readout,
+    toast.element,
     navigator.element,
+  );
+
+  // On a phone a touch on the scene folds the note to its title: the world gets the screen back.
+  window.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (visible && event.target instanceof HTMLCanvasElement) notes.fold();
+    },
+    { capture: true, passive: true },
   );
 
   // The visitor's remembered detail choice, before the explorer builds its first frame.
@@ -140,11 +160,25 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   let wasTravelling = false;
   let hintTimer = 0;
   let lastSlow = 0;
+  /** The opening is still settling: the hint and toasts wait (until when, at the latest, performance.now() ms). */
+  let settling = false;
+  let settleBy = 0;
+  /** How many of the log's entries have had their toast. */
+  let toasted = 0;
 
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
     notes.update(view);
+    if (settling && ((!view.moving && !view.travelling) || now >= settleBy)) {
+      settling = false;
+      if (visible) armHint();
+    }
+    // Something seen for the first time: a quiet toast says it joined the log (one at a time).
+    if (!settling && view.witnessed.length > toasted) {
+      for (const id of view.witnessed.slice(toasted)) toast.show(i18n.t(`ui.universe.seen.${id}`), i18n.t('ui.universe.seenToast'));
+      toasted = view.witnessed.length;
+    }
     const slow = now - lastSlow >= SLOW_MS;
     if (slow) lastSlow = now;
     navigator.update(view, slow || shownFocus !== view.focus);
@@ -175,6 +209,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   /** The hint goes once the visitor moves the view, or after HINT_SECONDS. */
   const dismissHint = (): void => {
     window.clearTimeout(hintTimer);
+    settling = false;
     element.classList.add('is-hinted');
     window.removeEventListener('pointerdown', dismissHint, true);
     window.removeEventListener('wheel', dismissHint, true);
@@ -201,6 +236,8 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     ready = next;
     loading.hidden = ready || !visible;
     element.classList.toggle('is-ready', ready);
+    // The scene's name tags (the shared tag layer) come up with the picture.
+    document.documentElement.classList.toggle('kf-universe-lit', ready);
     if (!ready) return;
     const view = app.universe();
     if (view) {
@@ -211,13 +248,21 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     }
     if (visible) {
       takeFocus();
-      armHint();
+      // The hint waits for the camera to settle; a first move before then means it is not needed.
+      settling = true;
+      settleBy = performance.now() + HINT_WAIT_SECONDS * 1000;
+      window.addEventListener('pointerdown', dismissHint, true);
+      window.addEventListener('wheel', dismissHint, { capture: true, passive: true });
+      window.addEventListener('keydown', dismissOnMove, true);
       reportInsets();
     }
   };
   app.events.on('universe', ({ ready: next }) => {
     setReady(next);
   });
+
+  // Hidden until the camera settles (setReady and render arm it).
+  element.classList.add('is-hinted');
 
   return {
     element,

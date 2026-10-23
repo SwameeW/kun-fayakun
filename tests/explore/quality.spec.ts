@@ -29,7 +29,7 @@ test('the menu offers Auto and the tiers this device may run; Ultra only on WebG
   expect(pageErrors).toEqual([]);
 });
 
-test('a chosen tier applies at once and is kept on this browser over Auto; Esc closes the menu, not the explorer', async ({ page, kf, pageErrors }) => {
+test('a chosen tier applies at once (closing the menu) and is kept on this browser over Auto; Esc closes the menu, not the explorer', async ({ page, kf, pageErrors }) => {
   test.setTimeout(180_000);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -37,6 +37,10 @@ test('a chosen tier applies at once and is kept on this browser over Auto; Esc c
   await page.getByTestId('universe-detail-low').check();
   await expect(page.locator('html')).toHaveAttribute('data-detail', 'low');
   expect((await view(page))?.detail.choice).toBe('low');
+  // A choice closes the menu; opened again, Esc closes it and leaves the explorer where it is.
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+  await page.getByTestId('universe-detail').click();
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('html')).toHaveAttribute('data-experience', 'universe');
@@ -53,6 +57,54 @@ test('a chosen tier applies at once and is kept on this browser over Auto; Esc c
   await page.reload();
   await waitForUniverse(page);
   expect((await view(page))?.detail.choice).toBe('auto');
+  expect(pageErrors).toEqual([]);
+});
+
+test('keyboard browsing of the menu applies nothing: arrows only select, Enter applies the selection once, Esc puts it back', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // Count what reaches the explorer (the menu calls the app's command).
+  await page.evaluate(() => {
+    const w = window as unknown as KfHook & { kfDetailCalls: string[] };
+    const app = w.__kf.app;
+    const original = app.setUniverseDetail.bind(app);
+    w.kfDetailCalls = [];
+    app.setUniverseDetail = (choice) => {
+      w.kfDetailCalls.push(choice);
+      original(choice);
+    };
+  });
+  const calls = (): Promise<string[]> => page.evaluate(() => (window as unknown as { kfDetailCalls: string[] }).kfDetailCalls);
+  const before = await kf.htmlData('detail');
+  await page.getByTestId('universe-detail').click();
+  await expect(page.getByTestId('universe-detail-auto')).toBeFocused();
+  // Down three times: past every tier on the way, applying none of them.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(400);
+  expect(await calls()).toEqual([]);
+  expect(await kf.htmlData('detail')).toBe(before);
+  const available = (await view(page))?.detail.available ?? [];
+  const expected = ['auto', ...available][3];
+  // Enter applies the one selected, once, and closes the menu.
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+  expect(await calls()).toEqual([expected]);
+  await expect(page.locator('html')).toHaveAttribute('data-detail', expected ?? '');
+  // Esc after moving the selection applies nothing and puts the selection back.
+  await page.getByTestId('universe-detail').click();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+  expect(await calls()).toEqual([expected]);
+  expect((await view(page))?.detail.choice).toBe(expected);
+  // A click on a tier applies it at once and closes the menu.
+  await page.getByTestId('universe-detail').click();
+  await page.getByTestId('universe-detail-auto').click();
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+  expect((await calls()).at(-1)).toBe('auto');
+  // Applying says what the level draws, quietly.
+  await expect(page.getByTestId('universe-toast')).toContainText(/maps/);
   expect(pageErrors).toEqual([]);
 });
 
@@ -96,19 +148,39 @@ test('?detail= fixes the tier: the governor holds still at full resolution', asy
 });
 
 test('switching between the lowest and highest tiers five times leaves the GPU resources where they were', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(240_000);
-  await kf.open('/universe/earth', { query: { jd: JD } });
+  test.setTimeout(420_000);
+  // ?profile=1 holds the internal resolution still (a GPU shared with other tests would otherwise
+  // lower it, resizing the scene pass's targets mid-comparison); tiers still switch on request.
+  await kf.open('/universe/earth', { query: { jd: JD, profile: '1' } });
   await waitForUniverse(page);
   // A still camera: a body out of view uploads nothing, so the counts must be compared from one pose.
   await place(page, { body: 'earth', distanceKm: 40_000, azimuthDeg: 30 });
   const top = (await view(page))?.detail.available[0] ?? 'high';
+  // The maps stream after a change (one upload a frame, upgrades fetched and transcoded, the ones a
+  // level no longer wants dropped after the streamer's 8 s hold), so each change is given time to
+  // finish: until the counts have held still for longer than that hold.
+  const steady = async (quietMs = 9000): Promise<void> => {
+    let last = JSON.stringify((await stats(page)).memory);
+    let since = Date.now();
+    const until = Date.now() + 60_000;
+    while (Date.now() < until && Date.now() - since < quietMs) {
+      await page.waitForTimeout(250);
+      const now = JSON.stringify((await stats(page)).memory);
+      if (now !== last) {
+        last = now;
+        since = Date.now();
+      }
+    }
+  };
   const choose = async (tier: string): Promise<void> => {
     await page.evaluate((t) => {
       (window as unknown as KfHook).__kf.app.setUniverseDetail(t as 'low');
     }, tier);
     await expect(page.locator('html')).toHaveAttribute('data-detail', tier);
-    await page.waitForTimeout(500);
+    await steady();
   };
+  // Every body's first maps have arrived before anything is compared.
+  await steady();
   await choose('low');
   await choose(top);
   const baseline = (await stats(page)).memory;
@@ -116,6 +188,7 @@ test('switching between the lowest and highest tiers five times leaves the GPU r
     await choose('low');
     await choose(top);
   }
-  expect((await stats(page)).memory).toEqual(baseline);
+  // Back where they were (a map still on its way under a busy GPU gets the time it needs to land and settle).
+  await expect.poll(async () => (await stats(page)).memory, { timeout: 30_000, intervals: [1000] }).toEqual(baseline);
   expect(pageErrors).toEqual([]);
 });

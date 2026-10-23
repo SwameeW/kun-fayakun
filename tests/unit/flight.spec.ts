@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 import type { MoonFile, PlanetsFile } from '../../src/astro/ephemeris';
 import type { PhysicalFile } from '../../src/astro/physical';
 import { BODY_IDS, type BodyId } from '../../src/core/types';
-import { FLIGHT, OrbitRig, springOf, stepSpring, type Spring } from '../../src/explore/flight';
+import { FLIGHT, MAX_ALTITUDE_KM, OrbitRig, springOf, stepSpring, type Spring } from '../../src/explore/flight';
 import { Navigator, navOutput, type NavBody, type NavOutput, type NavWorld } from '../../src/explore/navigation';
 import { km, type Km } from '../../src/explore/space/origin';
 import { createSolarSystem } from '../../src/explore/system';
@@ -172,4 +172,23 @@ test('a drag low over a world turns gently (precise close in), far away at full 
   const far = turned(500_000);
   expect(far).toBeGreaterThan(0.5);
   expect(low).toBeLessThan(far * 0.12);
+});
+
+test('free flight has a ceiling: a boost held outward for an hour stops at the orbit rig’s limit, never at Infinity', () => {
+  const w = setup();
+  const nav = new Navigator('earth');
+  nav.begin(w, 'earth', false);
+  const out: NavOutput = navOutput();
+  nav.update(w, 1 / 60, out);
+  // Back away from the Earth (the view looks at it), on and on, with Shift held.
+  nav.setFlightKeys(w, km(0, 0, -1), 0, true);
+  const nearest = (): number => Math.min(...w.all.map((b) => distance(out.position, b.position) - b.radiusKm));
+  for (let i = 0; i < 36_000; i++) {
+    nav.update(w, 0.1, out);
+    if (!Number.isFinite(out.position.x + out.position.y + out.position.z)) throw new Error(`not finite after ${i} frames`);
+  }
+  expect(nearest()).toBeLessThanOrEqual(MAX_ALTITUDE_KM * 1.0001);
+  expect(nearest()).toBeGreaterThan(MAX_ALTITUDE_KM * 0.5);
+  // Held at the ceiling, it is not still pushing outward at full speed.
+  expect(out.speedKmS).toBeLessThan(FLIGHT.speedPerAltitude * FLIGHT.boost * MAX_ALTITUDE_KM);
 });

@@ -65,6 +65,48 @@ test('Esc first stops a trip where it is, in free flight; only a second Esc leav
   expect(pageErrors).toEqual([]);
 });
 
+test('with reduced motion, Esc during a cut is spent stopping it; only a second Esc leaves the explorer', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000);
+  await kf.open('/universe/earth', { query: { jd: JD, reducedMotion: '1' } });
+  await waitForUniverse(page);
+  await step(page, 1);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.focusBody('saturn');
+  });
+  // Still dimming at the Earth (the cut has not happened yet).
+  await step(page, 20);
+  expect((await view(page))?.travelling).toBe(true);
+  await page.keyboard.press('Escape');
+  await step(page, 90);
+  const after = await view(page);
+  expect(after?.travelling).toBe(false);
+  expect(after?.focus).toBe('earth');
+  await expect(page.locator('html')).toHaveAttribute('data-experience', 'universe');
+  await expect(page.locator('html')).toHaveAttribute('data-travel', 'stopped');
+  // Now there is nothing to stop: Esc goes back to the start.
+  await page.keyboard.press('Escape');
+  await step(page, 120);
+  await expect(page.locator('html')).toHaveAttribute('data-experience', 'film', { timeout: 30_000 });
+  expect(pageErrors).toEqual([]);
+});
+
+test('free flight at rest says so ("holding still"), never "0 km/s"', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await step(page, 1);
+  await place(page, { body: 'earth', distanceKm: 6378 + 3000, azimuthDeg: 20 });
+  await step(page, 2);
+  await page.keyboard.down('KeyS');
+  await step(page, 40);
+  await page.keyboard.up('KeyS');
+  await expect(page.getByTestId('universe-readout')).toContainText(/Free flight, [\d,.]+\s(km|m)\/s/);
+  await step(page, 600);
+  await expect(page.getByTestId('universe-readout')).toContainText('Free flight, holding still');
+  await expect(page.getByTestId('universe-readout')).not.toContainText(/\b0\s?km\/s/);
+  expect(pageErrors).toEqual([]);
+});
+
 test('W A S D, R F and Q E fly freely at a pace set by the height, and O orbits again', async ({ page, kf, pageErrors }) => {
   test.setTimeout(180_000);
   await kf.open('/universe/earth', { query: { jd: JD } });

@@ -16,7 +16,7 @@ import {
   type DeviceInfo,
   type GovernorDecision,
 } from '../../src/explore/quality';
-import { constant, steady, type Trace } from '../support/frames';
+import { constant, steady, vsync, vsyncPattern, type Trace } from '../support/frames';
 
 const MIN_SCALE = Object.fromEntries(EXPLORE_TIERS.map((t) => [t, DETAIL[t].minRenderScale])) as Record<ExploreTier, number>;
 const DESKTOP: DeviceInfo = { backend: 'webgpu', description: 'apple metal-3 apple m5 pro', software: false, mobile: false, maxTextureSize: 16_384 };
@@ -47,7 +47,7 @@ interface Change {
 function run(
   g: DetailGovernor,
   seconds: number,
-  frame: (state: { tier: ExploreTier; scale: number; t: number }) => { seconds: number; gpuMs?: number | null },
+  frame: (state: { tier: ExploreTier; scale: number; t: number }) => { seconds: number; gpuMs?: number | null; interval?: number },
   start = 0,
 ): Change[] {
   const changes: Change[] = [];
@@ -55,7 +55,7 @@ function run(
   while (t < start + seconds) {
     const before = g.tier;
     const f = frame({ tier: g.tier, scale: g.scale, t });
-    const d = g.sample(f.seconds, f.gpuMs ?? null);
+    const d = g.sample(f.seconds, f.gpuMs ?? null, f.interval ?? null);
     t += f.seconds;
     if (d) changes.push({ at: t, tier: g.tier, scale: g.scale, reason: d.reason, tierChanged: g.tier !== before });
   }
@@ -114,6 +114,30 @@ test('a single hitch costs nothing: neither a long frame nor a stall', () => {
   expect(run(g, 10, trace(steady(60, 1)), 30)).toEqual([]);
   expect(g.tier).toBe('high');
   expect(g.scale).toBe(1);
+  // And on a vsync-paced display, the odd missed vsync (one frame in thirty) is no slowdown either.
+  const paced = governor();
+  expect(run(paced, 120, trace(vsyncPattern([...Array<number>(29).fill(1), 2])))).toEqual([]);
+  expect(paced.scale).toBe(1);
+});
+
+test('on a vsync-paced display, 40-45 fps (frames missing their vsync) lowers the scale to the floor, then the tier', () => {
+  // rAF on a real display reports whole refresh intervals: 1:1 is 40 fps, 2:1 45 fps, 3:2 about 43 fps.
+  for (const [label, pattern] of [
+    ['1:1', [1, 2]],
+    ['2:1', [1, 1, 2]],
+    ['3:2', [1, 1, 1, 2, 2]],
+  ] as const) {
+    const g = governor();
+    const changes = run(g, 30, trace(vsyncPattern(pattern)));
+    const firstTier = changes.findIndex((c) => c.tierChanged);
+    expect(firstTier, label).toBeGreaterThan(0);
+    const before = changes.slice(0, firstTier);
+    expect(before.every((c) => c.tier === 'high' && c.reason === 'slow'), label).toBe(true);
+    const floor = before.find((c) => c.scale <= MIN_SCALE.high + 1e-9);
+    expect(floor, label).toBeDefined();
+    expect(floor?.at ?? Infinity, label).toBeLessThan(6);
+    expect(changes[firstTier]?.tier, label).toBe('medium');
+  }
 });
 
 test('sustained 25 ms frames lower the render scale to the floor within 6 s, and only then the tier', () => {
@@ -153,6 +177,30 @@ test('no oscillation over 10 simulated minutes near the edge of what the GPU man
   // It ends somewhere that runs at the display's rate.
   const last = frame({ tier: g.tier, scale: g.scale });
   expect(last.seconds).toBeLessThan((1 / 60) * GOVERNOR.slowFrame);
+});
+
+test('no oscillation over 10 simulated minutes on a vsync-paced display either', () => {
+  // The same GPU-bound scene, as a real display reports it: every frame a whole number of 60 Hz
+  // intervals (a frame needing 17 ms shows as 33.3). Timer noise of a millisecond either way. The
+  // engine tells the governor the display runs at 60 Hz (it learned so from the light frames before
+  // the explorer opened); frames that only ever miss would otherwise teach a fresh cadence "30 Hz".
+  const cost: Record<ExploreTier, number> = { ultra: 28, high: 18.5, medium: 11, low: 7 };
+  const noise = steady(60, 1, 11);
+  const frame = ({ tier, scale }: { tier: ExploreTier; scale: number }) => {
+    const ms = cost[tier] * (0.25 + 0.75 * scale * scale) + (noise(0) - 1 / 60) * 1000;
+    return { seconds: vsync(ms), interval: 1 / 60 };
+  };
+  const g = governor();
+  const changes = run(g, 600, frame);
+  // It reacts (High at full resolution misses every vsync) and then settles: one drop at most,
+  // tries upward that back off, and almost nothing in the last five minutes.
+  expect(changes.length).toBeGreaterThan(0);
+  expect(changes.filter((c) => c.tierChanged).length).toBeLessThanOrEqual(2);
+  expect(changes.length).toBeLessThanOrEqual(16);
+  expect(changes.filter((c) => c.at > 300).length).toBeLessThanOrEqual(3);
+  // Where it ends makes every vsync.
+  const settled = cost[g.tier] * (0.25 + 0.75 * g.scale * g.scale);
+  expect(settled).toBeLessThan(1000 / 60);
 });
 
 test('the visitor’s choice is kept: the tier never changes, only the internal resolution', () => {
@@ -216,6 +264,24 @@ test('after 20 s stable it tries the tier above (never Ultra); a try that runs s
   expect(roomy.tier).toBe('high');
 });
 
+test('a tier whose tries keep failing is not tried again this visit (no endless pops on a device that cannot run it)', () => {
+  // Medium is comfortable, High never fits (a desktop started at Medium because its adapter is hidden).
+  const g = governor({ tier: 'medium' });
+  const frame = ({ tier }: { tier: ExploreTier }) => ({ seconds: vsync(tier === 'high' ? 24 : 12) });
+  const changes = run(g, 3600, frame);
+  const tries = changes.filter((c) => c.reason === 'probe');
+  expect(tries.length).toBe(GOVERNOR.maxTierFailures);
+  expect(changes.filter((c) => c.reason === 'probe-failed').length).toBe(GOVERNOR.maxTierFailures);
+  expect(tries.every((c) => c.tier === 'high')).toBe(true);
+  // An hour on, still Medium, still at full resolution, and the last try long past.
+  expect(g.tier).toBe('medium');
+  expect(g.scale).toBe(1);
+  expect(tries.at(-1)?.at ?? Infinity).toBeLessThan(600);
+  // The visitor choosing Auto again starts afresh: the governor may try once more.
+  g.choose('auto');
+  expect(run(g, 120, frame, 3600).some((c) => c.reason === 'probe')).toBe(true);
+});
+
 test('with GPU timings it tries upward only where the tier above should fit', () => {
   const tight = governor({ tier: 'medium' });
   // 10 ms of GPU work in a 16.7 ms frame: comfortable, but a tier above would not fit.
@@ -246,9 +312,13 @@ test('a phone that slows after a long steady spell is read as heat: it steps dow
   const drop = changes.find((c) => c.tierChanged && c.tier === 'low');
   expect(drop).toBeDefined();
   expect(drop?.at ?? 0).toBeGreaterThan(60);
-  // Cooler at Low, it would fit Medium again at once, yet it waits out the heat lock before trying.
-  const tries = changes.filter((c) => c.at > (drop?.at ?? 0) && c.reason === 'probe');
-  expect(tries.every((c) => c.at - (drop?.at ?? 0) >= GOVERNOR.thermalLockSeconds)).toBe(true);
+  // Cooler at Low, it would fit Medium again at once, yet it waits out the heat lock before trying:
+  // no try inside the lock, and (so the check is not vacuous) at least one once it has passed.
+  const dropAt = drop?.at ?? 0;
+  const tries = changes.filter((c) => c.at > dropAt && c.reason === 'probe');
+  expect(tries.filter((c) => c.at - dropAt < GOVERNOR.thermalLockSeconds)).toEqual([]);
+  expect(tries.length).toBeGreaterThanOrEqual(1);
+  expect(tries.every((c) => c.at - dropAt >= GOVERNOR.thermalLockSeconds)).toBe(true);
 
   // A desktop does the same drop but tries again after the ordinary 20 s.
   const desk = governor({ tier: 'medium', available: ['medium', 'low'] });

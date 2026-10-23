@@ -256,3 +256,56 @@ test('taking the flight controls during a trip stops it too, and a body asked fo
   expect(queued.focus).toBe('sun');
   expect(queued.travelling).toBe(true);
 });
+
+test('with reduced motion, Esc during a cut is spent there: before the cut it is called off (the light eases back where the visitor was), after it the light returns at the destination', () => {
+  const world = setup();
+  const start = (): { nav: Navigator; out: ReturnType<typeof navOutput>; at: Km } => {
+    const nav = new Navigator('earth');
+    nav.setView(VIEW, 50);
+    nav.reducedMotion = true;
+    nav.begin(world, 'earth', false);
+    const out = navOutput();
+    nav.update(world, 1 / 60, out);
+    return { nav, out, at: { ...out.position } };
+  };
+
+  // Early: still dimming at the start. Called off: no cut, the dim only rises back (eased), and the camera never moves.
+  const early = start();
+  early.nav.flyTo(world, 'saturn');
+  for (let i = 0; i < 20; i++) early.nav.update(world, 1 / 60, early.out);
+  const dimAtEsc = early.out.dim;
+  expect(dimAtEsc).toBeLessThan(1);
+  expect(early.nav.cancelTravel(world)).toBe(true);
+  expect(early.nav.travelling).toBe(false);
+  expect(early.nav.focus).toBe('earth');
+  let last = dimAtEsc;
+  let frames = 0;
+  while (early.nav.busy && frames < 600) {
+    early.nav.update(world, 1 / 60, early.out);
+    expect(early.out.cut).toBe(false);
+    expect(early.out.dim).toBeGreaterThanOrEqual(last - 1e-12);
+    // Eased back: no frame brightens by more than a sliver (flash safety).
+    expect(early.out.dim - last).toBeLessThan(0.06);
+    expect(distance(early.out.position, early.at)).toBeLessThan(1);
+    last = early.out.dim;
+    frames += 1;
+  }
+  expect(early.out.dim).toBe(1);
+  expect(early.nav.mode).toBe('orbit');
+  expect(early.nav.focus).toBe('earth');
+  // A second Esc has nothing to stop: it goes on to leave the explorer.
+  expect(early.nav.cancelTravel(world)).toBe(false);
+
+  // Late: already cut to Saturn. The Esc is swallowed and the light comes back at Saturn.
+  const late = start();
+  late.nav.flyTo(world, 'saturn');
+  let cutSeen = false;
+  while (!cutSeen) {
+    late.nav.update(world, 1 / 60, late.out);
+    cutSeen = late.out.cut;
+  }
+  expect(late.nav.cancelTravel(world)).toBe(true);
+  while (late.nav.busy) late.nav.update(world, 1 / 60, late.out);
+  expect(late.nav.focus).toBe('saturn');
+  expect(late.out.dim).toBe(1);
+});

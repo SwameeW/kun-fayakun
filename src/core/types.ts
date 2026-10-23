@@ -499,7 +499,7 @@ export interface UniverseBodyView {
   id: BodyId;
   /** From the camera to the surface (cloud tops, photosphere), km. */
   distanceKm: number;
-  /** Light-time from the body's centre to the camera, s. */
+  /** Light-time over distanceKm (from its surface to the camera), s: the two always agree. */
   lightSeconds: number;
   /** As the camera sees it: lit share of the disc (0 to 1) and the bright limb's direction on screen (radians from screen right, counterclockwise). */
   lit: number;

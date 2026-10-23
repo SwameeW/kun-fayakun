@@ -105,7 +105,8 @@ export interface TravelFrame {
   pace: number;
 }
 
-const scratch = { a: km(), b: km(), c: km(), d: km(), e: km(), k: km(), q: km(), t: km() };
+/** Scratch vectors (one trip is planned or framed at a time); `arc` holds the frame's point on the arc. */
+const scratch = { a: km(), b: km(), c: km(), d: km(), e: km(), k: km(), q: km(), t: km(), arc: km() };
 
 /** The trip's length for a camera this far (km) from the destination's centre, arriving at `endDistance`. */
 export function travelSeconds(startDistance: number, endDistance: number): number {
@@ -267,7 +268,7 @@ export function travelFrame(plan: TravelPlan, s: number, out: TravelFrame): Trav
   out.pace = pace;
   const phi = phiForPace(plan, pace);
   const u = arcParameter(A, B, plan.lift, phi);
-  const Q = arcPoint(A, B, plan.lift, u, km());
+  const Q = arcPoint(A, B, plan.lift, u, scratch.arc);
   const via = liftAxis(A, B, k);
 
   // Leaving: round A from where the camera was, its distance from A scaled to start exactly there.

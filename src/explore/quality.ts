@@ -8,20 +8,26 @@
  * Ultra is never chosen automatically: a visitor may opt into it, on a WebGPU device that is not a
  * software renderer or a phone and takes textures of 8192 px.
  *
- * What it watches. GPU time per frame when the renderer measures it (timestamp queries), else the
- * frame's duration against the display's own rate (learned, so a 30 Hz-capped display is not read
- * as load). Frames are judged in half-second buckets by their median, so one hitch (or several in
- * a bucket of thirty) decides nothing, and stalls over 0.25 s (a tab switch, a compile, a texture
- * upload) are left out altogether. Nothing is judged for 2 s after the tier changes or a texture
- * is uploaded (holdOff).
+ * What it watches. The frame's duration against the display's own rate (learned, so a 30 Hz-capped
+ * display is not read as load). That is all the shipped page gives it: GPU time per frame exists
+ * only where the page measures it with timestamp queries (?gpuTime=1, or ?profile=1, which also
+ * holds everything still), and then the governor judges GPU time instead. Frames are judged in
+ * half-second buckets by their mean, each frame counted at most two display intervals: a display
+ * paced to vsync reports a GPU-bound page as whole intervals (16.7 or 33.3 ms), and a bucket where
+ * one frame in three misses its vsync (45 fps) must read as slow, which a median would hide while
+ * half the frames still make it. Counting a frame as at most one missed vsync keeps a single hitch
+ * (or a short burst) from deciding anything, and stalls over 0.25 s (a tab switch, a compile) are
+ * left out altogether. Nothing is judged for 2 s after the tier changes or a texture is uploaded
+ * (holdOff).
  *
  * What it does. Slow frames first cost resolution: the scene renders at a lower internal scale (the
  * screen's own resolution untouched), in steps down to the tier's floor (minRenderScale); only slow
  * frames at the floor drop a tier. Comfortable frames win the resolution back. After 20 s stable at
  * full resolution it may try the tier above (never Ultra); a try that runs slow is undone and the
- * tier is not tried again for 20 s, longer after each failure, so it settles rather than swings.
- * On a phone, a slowdown after a long stable spell is read as heat (thermal throttling): it steps
- * down as usual and does not try upward again for minutes.
+ * tier is not tried again for 20 s, longer after each failure, and after three failures not again
+ * this visit (a device that cannot run it is not shown the switch over and over). On a phone, a
+ * slowdown after a long stable spell is read as heat (thermal throttling): it steps down as usual
+ * and does not try upward again for minutes.
  *
  * A visitor's own choice (the quality menu's Ultra, High, Medium or Low) is kept: the governor then
  * never changes the tier, only the internal resolution. A tier fixed by the address (?detail=,
@@ -81,8 +87,10 @@ export function initialTier(device: DeviceInfo): ExploreTier {
 /* ------------------------------------------------------------------ */
 
 export const GOVERNOR = {
-  /** Frames are judged in buckets this long, by their median. */
+  /** Frames are judged in buckets this long, by their mean load. */
   bucketSeconds: 0.5,
+  /** Each frame counts at most this many display intervals in a bucket's mean (one missed vsync). */
+  frameCap: 2,
   /** Frame time (as a multiple of the display's interval) above which a bucket is slow; below which it is comfortable. */
   slowFrame: 1.2,
   comfortableFrame: 1.06,
@@ -104,6 +112,8 @@ export const GOVERNOR = {
   /** After a failed try upward: nothing upward for this long, doubled for each further failure, up to the cap. */
   lockSeconds: 20,
   maxLockSeconds: 320,
+  /** A tier whose tries failed this many times is not tried again this visit. */
+  maxTierFailures: 3,
   /** Nothing is judged for this long after a tier change, a texture upload or entering. */
   holdOffSeconds: 2,
   /** The scale a tier starts at after a drop (the cheaper tier usually has room to climb back). */
@@ -206,10 +216,11 @@ export function createDetailGovernor(options: GovernorOptions): DetailGovernor {
     slowRun = 0;
     comfortableFor = 0;
   };
-  const median = (values: number[]): number => {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = sorted.length >> 1;
-    return sorted.length % 2 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+  /** The bucket's load: its frames' mean, each counted at most GOVERNOR.frameCap intervals. */
+  const bucketLoad = (values: readonly number[]): number => {
+    let sum = 0;
+    for (const v of values) sum += Math.min(GOVERNOR.frameCap, v);
+    return values.length > 0 ? sum / values.length : 0;
   };
 
   const judge = (load: number, gpu: boolean): 'slow' | 'comfortable' | 'ok' => {
@@ -295,7 +306,9 @@ export function createDetailGovernor(options: GovernorOptions): DetailGovernor {
       comfortableFor = 0;
       return { scale, reason: 'comfortable' };
     }
-    const up = choice === 'auto' ? higher(tier) : null;
+    const above = choice === 'auto' ? higher(tier) : null;
+    // A tier that has failed its tries too often is left alone for the rest of the visit.
+    const up = above && (tierFailures.get(above) ?? 0) < GOVERNOR.maxTierFailures ? above : null;
     if (scale >= 1 && up && stableFor >= GOVERNOR.tierUpAfter && comfortableFor >= GOVERNOR.tierUpAfter && tierLock <= 0) {
       // With GPU timings, only when the tier above should fit; without, a try.
       if (judgedOnGpu && !gpuHeadroom) return null;
@@ -334,7 +347,7 @@ export function createDetailGovernor(options: GovernorOptions): DetailGovernor {
       bucket.push(gpu !== null ? gpu / 1000 / interval : frameSeconds / interval);
       bucketTime += frameSeconds;
       if (bucketTime < GOVERNOR.bucketSeconds) return null;
-      const load = median(bucket);
+      const load = bucketLoad(bucket);
       gpuHeadroom = gpu !== null && load < GOVERNOR.headroomGpu;
       const seconds = bucketTime;
       bucket = [];

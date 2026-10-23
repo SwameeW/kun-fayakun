@@ -221,7 +221,8 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
   (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
   (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
-  holds the render scale at 1), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
+  holds the render scale at 1), `?gpuTime=1` (the same timestamp queries without holding anything
+  still: the explorer's governor then judges GPU time), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
   from 1 CE to 9999 CE, anything else is ignored; the explorer reads it as UTC),
   `?detail=ultra|high|medium|low` (fixes the explorer's detail tier and holds its governor still;
   `?tier=` fixes it too, mapped high→high, mid→medium, low→low; Ultra only where the device allows it).
@@ -308,35 +309,58 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   destination after its first third, banks a little into turns and widens the lens a touch at
   speed; with reduced motion it is a cut under the veil, the exposure jumping to the new body while
   the picture is dim, with neither bank nor lens. Esc stops a trip (the camera coasts to rest in free
-  flight) or folds a pulled-up navigator sheet; with neither to do, Esc goes back to the film.
+  flight; a reduced-motion cut not yet made is called off, the light easing back where the visitor
+  was, and one already made finishes) or folds a pulled-up navigator sheet; with neither to do, Esc
+  goes back to the film. Entering, the camera pushes in on the first world from 2.4 times its framing
+  distance over 5.5 s (it fills much of the view from the first frame; none with reduced motion), and
+  the hint waits until the camera has settled.
 - **Flight** (`src/explore/flight.ts`, `src/explore/input.ts`). Exact critically damped springs on
   the orbit's angles, its log height above the surface and its pan, and on free flight's turn
   rates; the lens is a spring too. Orbit: drag (one finger) turns round the focus (gently when low),
   wheel or pinch zooms in log height, right/middle/Shift drag or two fingers pan, a double click or
   tap on a body travels there. Free flight (W A S D, R F up and down, Q E roll, Shift five times
   faster, arrows look): speed is proportional to the height above the nearest surface, the camera
-  rides along with the body it is near, never enters one, and O (or the readout's button) orbits
-  again with the gaze easing round. `touch-action: none` is set on the canvas only while the
-  explorer is on screen and restored after.
+  rides along with the body it is near, never enters one nor rises past the orbit rig's ceiling
+  (50 au above the nearest surface), says "holding still" at rest (speeds under 1 km/s in m/s), and
+  O (or the readout's button) orbits again with the gaze easing round. `touch-action: none` is set
+  on the canvas only while the explorer is on screen and restored after.
 - **Detail** (`src/explore/detail.ts` presets, `src/explore/quality.ts` governor). The explorer
   starts on a rung from what the device says (phone Low, or Medium for an Apple GPU on WebGPU;
   software Low; hidden adapter, WebGL2 or an integrated GPU Medium; else High; Ultra only by choice,
   on non-software, non-mobile WebGPU with 8192 px textures). Its governor judges half-second
-  buckets by their median (GPU time when timestamps are measured, else frame time against the
-  display's rate the engine learned), ignores stalls over 0.25 s and the 2 s after a tier change,
-  lowers the scene pass's internal resolution (`PostPipeline.setSceneScale`) to the rung's
-  `minRenderScale` before dropping a rung, tries the rung above after 20 s stable (never Ultra) and
-  backs off 20 s (doubling) after a failed try; a phone slowing after a long steady spell is read as
-  heat and not tried upward for 3 minutes. A visitor's choice (the navigator's detail menu,
-  remembered in localStorage `kf.ui.exploreDetail`) is kept: then only the resolution adapts. The
+  buckets by their mean, each frame counted at most two display intervals, so a vsync-paced display
+  that drops one frame in three (45 fps) reads as slow while one hitch decides nothing. The shipped
+  page judges frame time against the display's rate the engine learned; GPU time only where timestamp
+  queries run (`?gpuTime=1`; `?profile=1` measures too but holds the governor still). It ignores
+  stalls over 0.25 s and the 2 s after a tier change or a texture upload, lowers the scene pass's
+  internal resolution (`PostPipeline.setSceneScale`) to the rung's `minRenderScale` before dropping
+  a rung, tries the rung above after 20 s stable (never Ultra), backs off 20 s (doubling) after a
+  failed try and stops trying a rung after three failures in a visit; a phone slowing after a long
+  steady spell is read as heat and not tried upward for 3 minutes. A visitor's choice (the navigator's detail menu,
+  remembered in localStorage `kf.ui.exploreDetail`) is kept: then only the resolution adapts. In the
+  menu (headed, with a close control and a line per level on what it draws, read from the presets)
+  the arrow keys only select; a click or tap, Enter or Space applies the selection and closes it,
+  leaving it with the selection moved applies it, Esc puts it back; an applied level is named in a
+  toast with what it draws. The
   explorer's pixel-ratio cap and bloom follow the rung while it is on screen; the host gives the film
   its own back when it leaves (`UniverseHostDeps.claimPicture`/`restorePicture`), and the film's
   governors rest while the explorer runs.
 - **Navigator and notes** (`src/ui/explore`). Every body with a live portrait (phase and lit side
-  as the camera sees it), its distance and light-time, an orrery to fly by (directions true for the
-  date, distances compressed), the log of what was seen (no counts or scores) and the detail menu;
-  a side panel on wide screens, a bottom sheet on phones (held sideways, pulled up at the right, the
-  world framed beside it). Notes near a body give numbers derived
+  as the camera sees it, never black: a dim night side and a faint rim), its distance (to the
+  surface, km up to 0.1 au, never broken from its unit) and the light-time of that same distance, an
+  orrery to fly by (directions true for the date, distances compressed), the log of what was seen
+  (its summary says how many entries it holds, with no total, score or achievement; each new entry
+  gets a quiet toast, a polite live region) and the detail menu; a side panel on wide screens (the
+  menu opening beside it), a bottom sheet on phones (the list first, the log, then the orrery as a
+  small strip, none held sideways; sized to what it holds, fading where it scrolls; held sideways,
+  pulled up at the right, the world framed beside it). The world in view is marked `aria-current`.
+  Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
+  the view (the same width) and never show at once: a trip takes the note out first, and a note comes
+  back only after the indicator has gone. A note's title folds it; on a phone it folds by itself after
+  6.5 s or at a touch on the scene. Names beside the bodies stay inside the clear view (at a body's
+  left when its right has no room; a body just out of frame gets a pointer at the edge), each choice
+  holding until the body is clearly past the line, and a name that gives way to another fades
+  quickly (no ghosting); they come up with the picture, never over a black screen. Notes near a body give numbers derived
   from cited data only (`src/explore/discoveries.ts`: IAU rotation rates, JPL elements, the Cassini
   ring profile, and `light.speed`, `earth.atmosphere.scaleHeight`, `sun.effectiveTemperature` in
   data/constants.json). Exploration shows no scripture.

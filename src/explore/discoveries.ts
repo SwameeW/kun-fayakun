@@ -158,6 +158,8 @@ const DEG = 180 / Math.PI;
 export class Discoveries {
   private shown: DiscoveryId | null = null;
   private readonly seen: Phenomenon[] = [];
+  /** One note object per id, its values rewritten in place each frame (no garbage per frame). */
+  private readonly notes = new Map<DiscoveryId, Discovery>();
 
   constructor(private readonly facts: Facts) {}
 
@@ -175,11 +177,19 @@ export class Discoveries {
     this.shown = null;
   }
 
+  /** The note to show now (the same object for the same note, its numbers current), or null. */
   update(input: DiscoveryInput): Discovery | null {
     this.observe(input);
     const id = this.noteFor(input);
     this.shown = id;
-    return id ? { id, values: this.values(id, input) } : null;
+    if (!id) return null;
+    let note = this.notes.get(id);
+    if (!note) {
+      note = { id, values: {} };
+      this.notes.set(id, note);
+    }
+    this.fill(id, input, note.values);
+    return note;
   }
 
   private noteFor(input: DiscoveryInput): DiscoveryId | null {
@@ -196,24 +206,47 @@ export class Discoveries {
     return low ? 'earth-air' : 'earth';
   }
 
-  private values(id: DiscoveryId, input: DiscoveryInput): Record<string, number> {
+  /** Writes a note's numbers into `out` (its keys are fixed per note). */
+  private fill(id: DiscoveryId, input: DiscoveryInput, out: Record<string, number>): void {
     const f = this.facts;
     switch (id) {
       case 'earth':
-        return { sidereal: f.earth.siderealDayHours, solar: f.earth.solarDayHours, tilt: f.earth.tiltDeg };
+        out.sidereal = f.earth.siderealDayHours;
+        out.solar = f.earth.solarDayHours;
+        out.tilt = f.earth.tiltDeg;
+        return;
       case 'earth-air': {
         // An exponential atmosphere keeps exp(-h / H) of its air above height h.
         const depth = 6 * f.earth.scaleHeightKm;
-        return { scaleHeight: f.earth.scaleHeightKm, depth, below: (1 - Math.exp(-6)) * 100, share: (depth / f.earth.radiusKm) * 100 };
+        out.scaleHeight = f.earth.scaleHeightKm;
+        out.depth = depth;
+        out.below = (1 - Math.exp(-6)) * 100;
+        out.share = (depth / f.earth.radiusKm) * 100;
+        return;
       }
       case 'moon':
-        return { lit: input.moonLit * 100, waxing: input.moonWaxing ? 1 : 0, terminator: f.moon.terminatorKmH, rotation: f.moon.rotationDays };
+        out.lit = input.moonLit * 100;
+        out.waxing = input.moonWaxing ? 1 : 0;
+        out.terminator = f.moon.terminatorKmH;
+        out.rotation = f.moon.rotationDays;
+        return;
       case 'sun':
-        return { lightSeconds: Math.max(0, input.sunEarthKm - f.sun.radiusKm) / f.lightKmS, temperature: f.sun.temperatureK, rotation: f.sun.rotationDays };
+        out.lightSeconds = Math.max(0, input.sunEarthKm - f.sun.radiusKm) / f.lightKmS;
+        out.temperature = f.sun.temperatureK;
+        out.rotation = f.sun.rotationDays;
+        return;
       case 'jupiter':
-        return { day: f.jupiter.dayHours, flattening: f.jupiter.flatteningPercent, lightSeconds: input.sunCameraKm / f.lightKmS };
+        out.day = f.jupiter.dayHours;
+        out.flattening = f.jupiter.flatteningPercent;
+        out.lightSeconds = input.sunCameraKm / f.lightKmS;
+        return;
       case 'saturn':
-        return { inner: f.saturn.ringInnerKm, outer: f.saturn.ringOuterKm, tilt: Math.abs(input.ringTiltDeg), edgeOn: f.saturn.edgeOnYears, day: f.saturn.dayHours };
+        out.inner = f.saturn.ringInnerKm;
+        out.outer = f.saturn.ringOuterKm;
+        out.tilt = Math.abs(input.ringTiltDeg);
+        out.edgeOn = f.saturn.edgeOnYears;
+        out.day = f.saturn.dayHours;
+        return;
     }
   }
 

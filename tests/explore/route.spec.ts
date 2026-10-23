@@ -61,7 +61,7 @@ test('a deep link to a body opens on it, at the date it pins', async ({ page, kf
   // The pinned UTC date, as TDB (69.2 s later) and moving on in real time since.
   expect(state?.jdTdb ?? 0).toBeGreaterThan(Number(JD));
   expect(state?.jdTdb ?? 0).toBeLessThan(Number(JD) + 0.01);
-  await expect(page.getByRole('button', { name: 'Saturn', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Saturn', exact: true })).toHaveAttribute('aria-current', 'true');
   expect(pageErrors).toEqual([]);
 });
 
