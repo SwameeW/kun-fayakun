@@ -190,7 +190,7 @@ export type TextBlock =
   | { type: 'verse'; key: VerseKey; noteKey?: I18nKey }
   | { type: 'hadith'; id: HadithId; summaryKey?: I18nKey; noteKey?: I18nKey };
 
-export type FigureId = 'bbn-abundances' | 'cmb-legend' | 'hubble-tension' | 'decay-chain' | 'expansion';
+export type FigureId = 'bbn-abundances' | 'cmb-legend' | 'hubble-tension' | 'decay-chain' | 'expansion' | 'cosmic-futures';
 
 export interface ScienceBlock extends ProseBlock {
   figure?: FigureId;
@@ -211,6 +211,11 @@ export interface PanelContent {
    * forcing a pairing the sources do not make.
    */
   notes?: Partial<Record<'text' | 'scholarly', I18nKey>>;
+  /**
+   * A visitor-led letter analysis offered at the end of the scholarly layer (docs/SPEC.md,
+   * Chapter 7): the id of its generated asset, public/assets/analysis/<id>.json.
+   */
+  discovery?: string;
 }
 
 /**

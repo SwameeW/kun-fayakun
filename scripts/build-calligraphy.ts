@@ -38,8 +38,9 @@ import { readJson, relPath, rootPath, writeJson } from './lib/files';
 import { expectedWord } from './lib/rules/assets';
 import { describeCodePoints } from './lib/text';
 
-const ATLAS_WIDTH = 1024;
-const ATLAS_HEIGHT = 512;
+/** Atlas size of the entry being built: a single word gets 1024 x 512, a phrase twice the width. */
+let atlasWidth = 1024;
+let atlasHeight = 512;
 /** Distance range in atlas pixels: the field spans PX_RANGE / 2 on each side of the edge. */
 const PX_RANGE = 8;
 /** Minimum empty border around the ink, in atlas pixels (room for the glow and for filtering). */
@@ -56,6 +57,12 @@ const QURAN_PATH = rootPath('data', 'quran.json');
 /** Base letters (combining marks removed) each calligraphy id must have. Code points only. */
 const EXPECTED_BASE_LETTERS: Readonly<Record<string, readonly number[]>> = {
   kun: [0x0643, 0x0646], // kaf, nun
+  // 21:104, five words from the twelfth from the end ("as We began the first creation, We will repeat it");
+  // NFD letters with spaces (alef forms decompose to bare alef plus a mark), ending in the small waw U+06E5.
+  'kama-badana': [
+    0x0643, 0x0645, 0x0627, 0x0020, 0x0628, 0x062f, 0x0627, 0x0646, 0x0627, 0x0020, 0x0627, 0x0648, 0x0644, 0x0020, 0x062e, 0x0644, 0x0642,
+    0x0020, 0x0646, 0x0639, 0x064a, 0x062f, 0x0647, 0x06e5,
+  ],
 };
 
 /* ------------------------------------------------------------------ */
@@ -320,8 +327,8 @@ const hex = (cps: readonly number[]): string => cps.map((cp) => `U+${cp.toString
 function citedWord(quran: QuranFile, entry: CalligraphyCitation): string {
   const verse = quran.ayat.find((a) => a.key === entry.verse);
   if (!verse) throw new Error(`${entry.id}: verse ${entry.verse} is not in data/quran.json`);
-  const word = expectedWord(verse.arabic, entry.wordIndexFromEnd);
-  if (word === null) throw new Error(`${entry.id}: ${entry.verse} has no word ${entry.wordIndexFromEnd} from the end`);
+  const word = expectedWord(verse.arabic, entry.wordIndexFromEnd, entry.wordCount ?? 1);
+  if (word === null) throw new Error(`${entry.id}: ${entry.verse} has no word ${entry.wordIndexFromEnd} from the end (or not ${entry.wordCount ?? 1} words from it)`);
   const expected = EXPECTED_BASE_LETTERS[entry.id];
   if (!expected) throw new Error(`${entry.id}: add its expected base letters to EXPECTED_BASE_LETTERS`);
   const actual = baseLetters(word);
@@ -402,7 +409,7 @@ function glyphContours(font: hb.Font, glyph: ShapedGlyph): Contour[] {
  * Sanity checks on the shaping result: no missing glyphs, letters laid out right
  * to left in logical order, and every mark horizontally over its own base letter.
  */
-function checkShaping(word: string, glyphs: readonly ShapedGlyph[], inks: readonly Box[]): void {
+function checkShaping(word: string, glyphs: readonly ShapedGlyph[], inks: readonly (Box | null)[]): void {
   if (glyphs.some((g) => g.gid === 0)) throw new Error('shaping produced .notdef: the font lacks a character');
   const clusters = new Set(glyphs.map((g) => g.cluster));
   const bases = glyphs.map((g, i) => ({ g, ink: inks[i] })).filter((b) => !b.g.mark);
@@ -659,11 +666,11 @@ interface Layout {
 }
 
 function fitLayout(ink: Box): Layout {
-  const scale = Math.min((ATLAS_WIDTH - 2 * MARGIN) / (ink.maxX - ink.minX), (ATLAS_HEIGHT - 2 * MARGIN) / (ink.maxY - ink.minY));
+  const scale = Math.min((atlasWidth - 2 * MARGIN) / (ink.maxX - ink.minX), (atlasHeight - 2 * MARGIN) / (ink.maxY - ink.minY));
   return {
     scale,
-    offsetX: ATLAS_WIDTH / 2 - ((ink.minX + ink.maxX) / 2) * scale,
-    offsetY: ATLAS_HEIGHT / 2 - ((ink.minY + ink.maxY) / 2) * scale,
+    offsetX: atlasWidth / 2 - ((ink.minX + ink.maxX) / 2) * scale,
+    offsetY: atlasHeight / 2 - ((ink.minY + ink.maxY) / 2) * scale,
   };
 }
 
@@ -687,8 +694,8 @@ function generateMsdf(msdfgen: Msdfgen, contours: readonly Contour[], ink: Box, 
     range: PX_RANGE / scale,
     edgeColoring: 'simple',
     edgeThresholdAngle: 3,
-    width: ATLAS_WIDTH,
-    height: ATLAS_HEIGHT,
+    width: atlasWidth,
+    height: atlasHeight,
     // Sign-correction pass. A no-op for the Skia-merged outline (identical output); kept as a guard.
     scanline: true,
   });
@@ -698,12 +705,12 @@ function generateMsdf(msdfgen: Msdfgen, contours: readonly Contour[], ink: Box, 
 /** Writes the true signed distance (same range as the MSDF) into the alpha channel. */
 function writeTrueDistanceAlpha(rgba: Uint8Array, index: WindingIndex, edges: EdgeGrid): void {
   const reach = PX_RANGE / 2 + 1;
-  const grid: SampleGrid = { columns: ATLAS_WIDTH, rows: ATLAS_HEIGHT, x0: 0.5, y0: ATLAS_HEIGHT - 0.5, step: 1 };
+  const grid: SampleGrid = { columns: atlasWidth, rows: atlasHeight, x0: 0.5, y0: atlasHeight - 0.5, step: 1 };
   const inside = insideMask(index, grid);
-  for (let r = 0; r < ATLAS_HEIGHT; r += 1) {
-    for (let c = 0; c < ATLAS_WIDTH; c += 1) {
-      const i = r * ATLAS_WIDTH + c;
-      const distance = edges.distance(c + 0.5, ATLAS_HEIGHT - r - 0.5, reach);
+  for (let r = 0; r < atlasHeight; r += 1) {
+    for (let c = 0; c < atlasWidth; c += 1) {
+      const i = r * atlasWidth + c;
+      const distance = edges.distance(c + 0.5, atlasHeight - r - 0.5, reach);
       const signed = inside[i] ? distance : -distance;
       rgba[i * 4 + 3] = Math.round(Math.max(0, Math.min(1, signed / PX_RANGE + 0.5)) * 255);
     }
@@ -721,16 +728,16 @@ const median3 = (a: number, b: number, c: number): number => Math.max(Math.min(a
  * decoded as a shader would (byte / 255). Writes median(RGB) and A into `out`.
  */
 function sampleAtlas(rgba: Uint8Array, x: number, y: number, out: Float32Array): void {
-  const fx = Math.max(0, Math.min(ATLAS_WIDTH - 1, x - 0.5));
-  const fy = Math.max(0, Math.min(ATLAS_HEIGHT - 1, ATLAS_HEIGHT - y - 0.5));
+  const fx = Math.max(0, Math.min(atlasWidth - 1, x - 0.5));
+  const fy = Math.max(0, Math.min(atlasHeight - 1, atlasHeight - y - 0.5));
   const c0 = Math.floor(fx);
   const r0 = Math.floor(fy);
   const tx = fx - c0;
   const ty = fy - r0;
-  const i00 = (r0 * ATLAS_WIDTH + c0) * 4;
-  const i01 = (r0 * ATLAS_WIDTH + Math.min(ATLAS_WIDTH - 1, c0 + 1)) * 4;
-  const i10 = (Math.min(ATLAS_HEIGHT - 1, r0 + 1) * ATLAS_WIDTH + c0) * 4;
-  const i11 = (Math.min(ATLAS_HEIGHT - 1, r0 + 1) * ATLAS_WIDTH + Math.min(ATLAS_WIDTH - 1, c0 + 1)) * 4;
+  const i00 = (r0 * atlasWidth + c0) * 4;
+  const i01 = (r0 * atlasWidth + Math.min(atlasWidth - 1, c0 + 1)) * 4;
+  const i10 = (Math.min(atlasHeight - 1, r0 + 1) * atlasWidth + c0) * 4;
+  const i11 = (Math.min(atlasHeight - 1, r0 + 1) * atlasWidth + Math.min(atlasWidth - 1, c0 + 1)) * 4;
   const channel = (k: number): number => {
     const top = (rgba[i00 + k] ?? 0) * (1 - tx) + (rgba[i01 + k] ?? 0) * tx;
     const bottom = (rgba[i10 + k] ?? 0) * (1 - tx) + (rgba[i11 + k] ?? 0) * tx;
@@ -787,10 +794,10 @@ function compareMasks(grid: SampleGrid, truth: Uint8Array, decoded: Float32Array
 function decodeCheck(rgba: Uint8Array, index: WindingIndex, edges: EdgeGrid): DecodeCheck {
   const step = 1 / CHECK_UPSCALE;
   const grid: SampleGrid = {
-    columns: (ATLAS_WIDTH - 1) * CHECK_UPSCALE + 1,
-    rows: (ATLAS_HEIGHT - 1) * CHECK_UPSCALE + 1,
+    columns: (atlasWidth - 1) * CHECK_UPSCALE + 1,
+    rows: (atlasHeight - 1) * CHECK_UPSCALE + 1,
     x0: 0.5,
-    y0: ATLAS_HEIGHT - 0.5,
+    y0: atlasHeight - 0.5,
     step,
   };
   const truth = insideMask(index, grid);
@@ -924,6 +931,7 @@ interface CalligraphyMeta {
   text: string;
   verse: string;
   wordIndexFromEnd: number;
+  wordCount: number;
   font: string;
   fontSha256: string;
   atlas: string;
@@ -952,6 +960,8 @@ function buildEntry(
   msdfgen: Msdfgen,
   module: MsdfgenModule,
 ): void {
+  atlasWidth = (entry.wordCount ?? 1) > 1 ? 2048 : 1024;
+  atlasHeight = 512;
   const word = citedWord(quran, entry);
   console.log(`${entry.id}: word ${entry.wordIndexFromEnd} from the end of ${entry.verse} is ${describeCodePoints(word)}`);
 
@@ -959,7 +969,8 @@ function buildEntry(
   const font = new hb.Font(face);
   const glyphs = shapeWord(font, face, word);
   const perGlyph = glyphs.map((g) => glyphContours(font, g));
-  const inks = perGlyph.map(contourBounds);
+  // A space between the words of a phrase has no outline (null ink).
+  const inks = perGlyph.map((contours) => (contours.length > 0 ? contourBounds(contours) : null));
   checkShaping(word, glyphs, inks);
   for (const [i, g] of glyphs.entries()) {
     const ink = inks[i];
@@ -977,16 +988,18 @@ function buildEntry(
   const atlasContours = mapContours(contours, (p) => ({ x: p.x * layout.scale + layout.offsetX, y: p.y * layout.scale + layout.offsetY }));
   const inkAtlas = contourBounds(atlasContours);
   const pieces = flatten(atlasContours, 0.1, 1e-3);
-  const index = new WindingIndex(pieces, ATLAS_HEIGHT);
-  const edges = new EdgeGrid(boundaryPieces(pieces, index), ATLAS_WIDTH);
+  const index = new WindingIndex(pieces, atlasHeight);
+  const edges = new EdgeGrid(boundaryPieces(pieces, index), atlasWidth);
   writeTrueDistanceAlpha(rgba, index, edges);
 
   const check = decodeCheck(rgba, index, edges);
   console.log(`  ${formatReport(`MSDF median at ${CHECK_UPSCALE}x`, check.rgb)}`);
   console.log(`  ${formatReport(`true-distance alpha at ${CHECK_UPSCALE}x`, check.trueDistance)}`);
   for (const path of writePreviews(entry.id, check, inkAtlas, index, msdfgen, module)) console.log(`  preview ${path}`);
-  if (Math.max(check.rgb.maxEdgeDistance, check.trueDistance.maxEdgeDistance) > EDGE_TOLERANCE) {
-    throw new Error(`${entry.id}: the atlas does not reproduce the outline (tolerance ${EDGE_TOLERANCE} px); nothing was written`);
+  // The tolerance is a share of the atlas width (0.35 px of 1024), so a wider phrase atlas is held to the same accuracy on screen.
+  const tolerance = EDGE_TOLERANCE * (atlasWidth / 1024);
+  if (Math.max(check.rgb.maxEdgeDistance, check.trueDistance.maxEdgeDistance) > tolerance) {
+    throw new Error(`${entry.id}: the atlas does not reproduce the outline (tolerance ${tolerance} px); nothing was written`);
   }
 
   const meta: CalligraphyMeta = {
@@ -994,25 +1007,26 @@ function buildEntry(
     text: word,
     verse: entry.verse,
     wordIndexFromEnd: entry.wordIndexFromEnd,
+    wordCount: entry.wordCount ?? 1,
     font: amiri.label,
     fontSha256: amiri.ttfSha256,
     atlas: `${entry.id}.png`,
-    width: ATLAS_WIDTH,
-    height: ATLAS_HEIGHT,
+    width: atlasWidth,
+    height: atlasHeight,
     pxRange: PX_RANGE,
-    aspect: ATLAS_WIDTH / ATLAS_HEIGHT,
+    aspect: atlasWidth / atlasHeight,
     bounds: {
-      left: round6(inkAtlas.minX / ATLAS_WIDTH),
-      bottom: round6(inkAtlas.minY / ATLAS_HEIGHT),
-      right: round6(inkAtlas.maxX / ATLAS_WIDTH),
-      top: round6(inkAtlas.maxY / ATLAS_HEIGHT),
+      left: round6(inkAtlas.minX / atlasWidth),
+      bottom: round6(inkAtlas.minY / atlasHeight),
+      right: round6(inkAtlas.maxX / atlasWidth),
+      top: round6(inkAtlas.maxY / atlasHeight),
     },
     type: 'mtsdf',
     flipY: false,
   };
   mkdirSync(OUT_DIR, { recursive: true });
   const pngPath = resolve(OUT_DIR, meta.atlas);
-  writeFileSync(pngPath, msdfgen.createPng(new module.Bitmap(ATLAS_WIDTH, ATLAS_HEIGHT, rgba.slice().buffer), 9));
+  writeFileSync(pngPath, msdfgen.createPng(new module.Bitmap(atlasWidth, atlasHeight, rgba.slice().buffer), 9));
   const jsonPath = resolve(OUT_DIR, `${entry.id}.json`);
   writeJson(jsonPath, meta);
   console.log(`  wrote ${relPath(pngPath)} and ${relPath(jsonPath)}`);

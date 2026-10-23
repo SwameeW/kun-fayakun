@@ -1,0 +1,1537 @@
+{
+  "$comment": "The film's shot list (docs: film/screenplay.md). Each chapter's shots tile its timeline exactly; captions, verses and panel sections refer to the chapter's content.json cues. Lens: focal length on a full-frame sensor (24 mm high); fov is the vertical field of view it gives. Re-time a shot here and in the chapter's content.json; npm run validate checks they agree.",
+  "version": 1,
+  "sensorHeightMm": 24,
+  "acts": [
+    {
+      "id": "cold-open",
+      "title": "Cold open",
+      "chapters": [
+        "ch00"
+      ],
+      "grade": "white-hot"
+    },
+    {
+      "id": "act-1",
+      "title": "The Beginning",
+      "chapters": [
+        "ch00",
+        "ch01",
+        "ch02"
+      ],
+      "grade": "white-hot to amber"
+    },
+    {
+      "id": "act-2",
+      "title": "The Building of the Heavens",
+      "chapters": [
+        "ch03",
+        "ch04",
+        "ch05",
+        "ch06"
+      ],
+      "grade": "deep blue and violet"
+    },
+    {
+      "id": "act-3",
+      "title": "A Home Is Prepared",
+      "chapters": [
+        "ch07",
+        "ch08",
+        "ch09"
+      ],
+      "grade": "warm earth and ocean"
+    },
+    {
+      "id": "finale",
+      "title": "The Return",
+      "chapters": [
+        "ch10"
+      ],
+      "grade": "soft white"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ch00",
+      "duration": 96
+    },
+    {
+      "id": "ch01",
+      "duration": 80
+    },
+    {
+      "id": "ch02",
+      "duration": 90
+    },
+    {
+      "id": "ch03",
+      "duration": 84
+    },
+    {
+      "id": "ch04",
+      "duration": 92
+    },
+    {
+      "id": "ch05",
+      "duration": 104
+    },
+    {
+      "id": "ch06",
+      "duration": 128
+    },
+    {
+      "id": "ch07",
+      "duration": 172
+    },
+    {
+      "id": "ch08",
+      "duration": 170
+    },
+    {
+      "id": "ch09",
+      "duration": 150
+    },
+    {
+      "id": "ch10",
+      "duration": 198
+    }
+  ],
+  "shots": [
+    {
+      "id": "ch00-s1-01",
+      "chapter": "ch00",
+      "act": "act-1",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 5.5,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Absolute black: before time",
+      "lighting": "none",
+      "sound": "silence (4 s)",
+      "text": [],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch00-s1-02",
+      "chapter": "ch00",
+      "act": "act-1",
+      "scene": 1,
+      "shot": 2,
+      "start": 5.5,
+      "duration": 7.5,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The word kun forms in light (a slow fade of at least 4 s)",
+      "lighting": "the calligraphy's own light, breathing",
+      "sound": "silence, then a single breath of air",
+      "text": [
+        "ch00.caption.word"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch00-s1-03",
+      "chapter": "ch00",
+      "act": "act-1",
+      "scene": 1,
+      "shot": 3,
+      "start": 13,
+      "duration": 6,
+      "camera": "dolly back and down",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The calligraphy settles into the frame",
+      "lighting": "calligraphy glow",
+      "sound": "low pad",
+      "text": [],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch00-s2-04",
+      "chapter": "ch00",
+      "act": "act-1",
+      "scene": 2,
+      "shot": 4,
+      "start": 19,
+      "duration": 37.5,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Kun in stillness while the verses are read",
+      "lighting": "calligraphy glow",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "2:117",
+        "36:82"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch00-s3-05",
+      "chapter": "ch00",
+      "act": "act-1",
+      "scene": 3,
+      "shot": 5,
+      "start": 56.5,
+      "duration": 23.5,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The light of the word fades",
+      "lighting": "fading glow",
+      "sound": "near silence",
+      "text": [],
+      "verses": [],
+      "hadith": [
+        "bukhari-3191",
+        "muslim-2653",
+        "abudawud-4700"
+      ],
+      "panel": null
+    },
+    {
+      "id": "ch00-s3-06",
+      "chapter": "ch00",
+      "act": "act-1",
+      "scene": 3,
+      "shot": 6,
+      "start": 80,
+      "duration": 16,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Darkness before the beginning",
+      "lighting": "none",
+      "sound": "silence",
+      "text": [
+        "ch00.caption.beyond"
+      ],
+      "verses": [],
+      "hadith": [
+        "tirmidhi-2155"
+      ],
+      "panel": "scholarly, science"
+    },
+    {
+      "id": "ch01-s1-01",
+      "chapter": "ch01",
+      "act": "act-1",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 11,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "A point of light grows softly (no flash)",
+      "lighting": "the point's own light",
+      "sound": "rising pad",
+      "text": [
+        "ch01.caption.beginning"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch01-s1-02",
+      "chapter": "ch01",
+      "act": "act-1",
+      "scene": 1,
+      "shot": 2,
+      "start": 11,
+      "duration": 17,
+      "camera": "dolly back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Space stretches: comoving dust recedes",
+      "lighting": "white-hot to amber",
+      "sound": "pad, widening",
+      "text": [
+        "ch01.caption.stretch",
+        "ch01.caption.cooling"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch01-s2-03",
+      "chapter": "ch01",
+      "act": "act-1",
+      "scene": 2,
+      "shot": 3,
+      "start": 28,
+      "duration": 34,
+      "camera": "crane up and out",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The plasma condenses, warming to gold",
+      "lighting": "amber",
+      "sound": "pad",
+      "text": [],
+      "verses": [
+        "21:30"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch01-s3-04",
+      "chapter": "ch01",
+      "act": "act-1",
+      "scene": 3,
+      "shot": 4,
+      "start": 62,
+      "duration": 18,
+      "camera": "push-in",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Into the plasma (continues unbroken into Chapter 2)",
+      "lighting": "gold",
+      "sound": "pad thinning",
+      "text": [
+        "ch01.caption.sideBySide",
+        "ch01.caption.open"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "scholarly, science"
+    },
+    {
+      "id": "ch02-s1-01",
+      "chapter": "ch02",
+      "act": "act-1",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 19.5,
+      "camera": "drift",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Inside the glowing plasma; photons random-walk",
+      "lighting": "gold plasma",
+      "sound": "breath-like noise",
+      "text": [
+        "ch02.caption.nuclei",
+        "ch02.caption.opaque",
+        "ch02.caption.atoms"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch02-s2-02",
+      "chapter": "ch02",
+      "act": "act-1",
+      "scene": 2,
+      "shot": 2,
+      "start": 19.5,
+      "duration": 13.5,
+      "camera": "slow push",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Recombination: the fog clears in one breath",
+      "lighting": "plasma fading, photons streaming free",
+      "sound": "one exhaled breath, then silence",
+      "text": [],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch02-s3-03",
+      "chapter": "ch02",
+      "act": "act-1",
+      "scene": 3,
+      "shot": 3,
+      "start": 33,
+      "duration": 12.5,
+      "camera": "pull back through the shell",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The real Planck sky around the viewer, then seen whole",
+      "lighting": "CMB map",
+      "sound": "silence opening into a low pad",
+      "text": [
+        "ch02.caption.planck"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch02-s4-04",
+      "chapter": "ch02",
+      "act": "act-1",
+      "scene": 4,
+      "shot": 4,
+      "start": 45.5,
+      "duration": 44.5,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The CMB globe",
+      "lighting": "CMB map",
+      "sound": "low pad",
+      "text": [
+        "ch02.caption.seeds"
+      ],
+      "verses": [
+        "41:11"
+      ],
+      "hadith": [],
+      "panel": "text, scholarly, science"
+    },
+    {
+      "id": "ch03-s1-01",
+      "chapter": "ch03",
+      "act": "act-2",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 22,
+      "camera": "dolly back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The dark ages: near-uniform dark matter",
+      "lighting": "false-colour violet, very dim",
+      "sound": "deep drone",
+      "text": [
+        "ch03.caption.dark"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch03-s2-02",
+      "chapter": "ch03",
+      "act": "act-2",
+      "scene": 2,
+      "shot": 2,
+      "start": 22,
+      "duration": 26,
+      "camera": "crane out",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The web forms (Zel'dovich approximation)",
+      "lighting": "violet to blue-white",
+      "sound": "drone with slow swells",
+      "text": [
+        "ch03.caption.web",
+        "ch03.caption.method"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "science"
+    },
+    {
+      "id": "ch03-s3-03",
+      "chapter": "ch03",
+      "act": "act-2",
+      "scene": 3,
+      "shot": 3,
+      "start": 48,
+      "duration": 36,
+      "camera": "crane out, wide",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "First stars swell softly in the knots; first galaxies gather",
+      "lighting": "blue-white stars, warm galaxy glow",
+      "sound": "high, soft tones",
+      "text": [
+        "ch03.caption.stars",
+        "ch03.caption.webb",
+        "ch03.caption.galaxies",
+        "ch03.caption.open"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch04-s1-01",
+      "chapter": "ch04",
+      "act": "act-2",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 27,
+      "camera": "slow push",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Among the galaxies",
+      "lighting": "starlight",
+      "sound": "wind-like pad",
+      "text": [
+        "ch04.caption.galaxies",
+        "ch04.caption.stretch"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch04-s2-02",
+      "chapter": "ch04",
+      "act": "act-2",
+      "scene": 2,
+      "shot": 2,
+      "start": 27,
+      "duration": 21,
+      "camera": "drift",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Space stretches while the verse is read",
+      "lighting": "starlight",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "51:47"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch04-s3-03",
+      "chapter": "ch04",
+      "act": "act-2",
+      "scene": 3,
+      "shot": 3,
+      "start": 48,
+      "duration": 44,
+      "camera": "pull back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Light reddens with distance; both Hubble-constant values",
+      "lighting": "reddening starlight",
+      "sound": "pad",
+      "text": [
+        "ch04.caption.redshift",
+        "ch04.caption.tension",
+        "ch04.caption.sideBySide"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "scholarly, science; figure hubble-tension"
+    },
+    {
+      "id": "ch05-s1-01",
+      "chapter": "ch05",
+      "act": "act-2",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 12,
+      "camera": "drift",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The Milky Way (an artist's model), the Sun tagged",
+      "lighting": "galaxy light",
+      "sound": "low pad",
+      "text": [
+        "ch05.caption.milkyWay"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch05-s2-02",
+      "chapter": "ch05",
+      "act": "act-2",
+      "scene": 2,
+      "shot": 2,
+      "start": 12,
+      "duration": 24,
+      "camera": "logarithmic pull-back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Our galaxy becomes one point among real SDSS galaxies",
+      "lighting": "survey points",
+      "sound": "rising air",
+      "text": [
+        "ch05.caption.pullBack",
+        "ch05.caption.survey"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch05-s3-03",
+      "chapter": "ch05",
+      "act": "act-2",
+      "scene": 3,
+      "shot": 3,
+      "start": 36,
+      "duration": 20,
+      "camera": "push-in to the slice",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The equatorial slice brightens: the cosmic web",
+      "lighting": "web light",
+      "sound": "pad",
+      "text": [],
+      "verses": [
+        "67:3"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch05-s4-04",
+      "chapter": "ch05",
+      "act": "act-2",
+      "scene": 4,
+      "shot": 4,
+      "start": 56,
+      "duration": 37,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The web, the Sloan Great Wall tagged",
+      "lighting": "web light",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "65:12"
+      ],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch05-s5-05",
+      "chapter": "ch05",
+      "act": "act-2",
+      "scene": 5,
+      "shot": 5,
+      "start": 93,
+      "duration": 11,
+      "camera": "pull-back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The survey inside the limit of the observable universe",
+      "lighting": "faint rim light",
+      "sound": "pad fading",
+      "text": [
+        "ch05.caption.observable"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "scholarly"
+    },
+    {
+      "id": "ch06-s1-01",
+      "chapter": "ch06",
+      "act": "act-2",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 18,
+      "camera": "crane down",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "A massive star cut open, banded by element (not to scale)",
+      "lighting": "the star's own light",
+      "sound": "deep, slow pulse-free drone",
+      "text": [
+        "ch06.caption.star",
+        "ch06.caption.iron"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch06-s2-02",
+      "chapter": "ch06",
+      "act": "act-2",
+      "scene": 2,
+      "shot": 2,
+      "start": 18,
+      "duration": 18,
+      "camera": "dolly back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Core collapse: shock, neutrinos; the star torn apart (eased, no flash)",
+      "lighting": "white-hot, exposure dipped",
+      "sound": "a single low swell",
+      "text": [
+        "ch06.caption.collapse",
+        "ch06.caption.elements"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch06-s3-03",
+      "chapter": "ch06",
+      "act": "act-2",
+      "scene": 3,
+      "shot": 3,
+      "start": 36,
+      "duration": 50,
+      "camera": "drift, remnant above the verse",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "The debris, dimmed to a quiet glow",
+      "lighting": "element false colour",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "57:25"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch06-s4-04",
+      "chapter": "ch06",
+      "act": "act-2",
+      "scene": 4,
+      "shot": 4,
+      "start": 86,
+      "duration": 14,
+      "camera": "travel",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "A white dwarf drawing gas from a companion",
+      "lighting": "the companion's light",
+      "sound": "pad",
+      "text": [
+        "ch06.caption.whiteDwarf"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "scholarly"
+    },
+    {
+      "id": "ch06-s5-05",
+      "chapter": "ch06",
+      "act": "act-2",
+      "scene": 5,
+      "shot": 5,
+      "start": 100,
+      "duration": 28,
+      "camera": "dolly back",
+      "lens": {
+        "focalLength": 25.7,
+        "fov": 50.06,
+        "depthOfField": "deep"
+      },
+      "subject": "Type Ia supernova; the nickel-56 decay chain",
+      "lighting": "white-hot fading with the decay",
+      "sound": "a single low swell",
+      "text": [
+        "ch06.caption.typeIa",
+        "ch06.caption.us"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "science; figure decay-chain"
+    },
+    {
+      "id": "ch07-s1-01",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 16,
+      "camera": "slow crane over the disk",
+      "lens": {
+        "focalLength": 22,
+        "fov": 57.22,
+        "depthOfField": "deep"
+      },
+      "subject": "Protoplanetary disk: dust lanes, gaps carved by forming planets",
+      "lighting": "the protostar's warm light through dust",
+      "sound": "wind-like pad",
+      "text": [
+        "ch07.caption.disk",
+        "ch07.caption.gaps"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch07-s1-02",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 1,
+      "shot": 2,
+      "start": 16,
+      "duration": 24,
+      "camera": "crane continues",
+      "lens": {
+        "focalLength": 22,
+        "fov": 57.22,
+        "depthOfField": "deep"
+      },
+      "subject": "The Sun begins to shine (eased brightening)",
+      "lighting": "warming to sunlight",
+      "sound": "a slow swell",
+      "text": [
+        "ch07.caption.sun"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch07-s2-03",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 2,
+      "shot": 3,
+      "start": 40,
+      "duration": 10,
+      "camera": "dolly in",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The disk clears; the planets remain",
+      "lighting": "sunlight",
+      "sound": "pad",
+      "text": [
+        "ch07.caption.planets"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch07-s2-04",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 2,
+      "shot": 4,
+      "start": 50,
+      "duration": 19,
+      "camera": "hold on the Sun",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "The living Sun: granulation, limb darkening, corona",
+      "lighting": "sunlight",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "36:38"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch07-s3-05",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 3,
+      "shot": 5,
+      "start": 69,
+      "duration": 12,
+      "camera": "crane up, wide",
+      "lens": {
+        "focalLength": 22,
+        "fov": 57.22,
+        "depthOfField": "deep"
+      },
+      "subject": "The orrery: real orbits from JPL data, astrolabe rings",
+      "lighting": "sunlight, engraved warm rings",
+      "sound": "pad",
+      "text": [
+        "ch07.caption.orbits"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch07-s4-06",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 4,
+      "shot": 6,
+      "start": 81,
+      "duration": 20,
+      "camera": "long-lens hold beside the Earth",
+      "lens": {
+        "focalLength": 85,
+        "fov": 16.07,
+        "depthOfField": "shallow"
+      },
+      "subject": "The Moon's phases as seen from the Earth",
+      "lighting": "sunlight",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "36:39"
+      ],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch07-s5-07",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 5,
+      "shot": 7,
+      "start": 101,
+      "duration": 41,
+      "camera": "slow orbit, wide",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Each in an orbit",
+      "lighting": "sunlight, rings",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "36:40",
+        "21:33"
+      ],
+      "hadith": [],
+      "panel": "scholarly"
+    },
+    {
+      "id": "ch07-s6-08",
+      "chapter": "ch07",
+      "act": "act-3",
+      "scene": 6,
+      "shot": 8,
+      "start": 142,
+      "duration": 30,
+      "camera": "pull back to the galaxy",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The Sun's course around the Milky Way (science, not the verse's meaning)",
+      "lighting": "galaxy light",
+      "sound": "pad",
+      "text": [
+        "ch07.caption.galactic",
+        "ch07.caption.notMeaning"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "science"
+    },
+    {
+      "id": "ch08-s1-01",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 22,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "The young Earth: a molten world, lava cracks and steam",
+      "lighting": "magma glow, a young Sun",
+      "sound": "deep rumble, low",
+      "text": [
+        "ch08.caption.molten",
+        "ch08.caption.bombardment"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch08-s2-02",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 2,
+      "shot": 2,
+      "start": 22,
+      "duration": 18,
+      "camera": "dolly back, wide",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "A giant impact (eased, no flash); debris rings the Earth",
+      "lighting": "impact glow, exposure dipped",
+      "sound": "a single low swell",
+      "text": [
+        "ch08.caption.impact"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch08-s2-03",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 2,
+      "shot": 3,
+      "start": 40,
+      "duration": 12,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The debris gathers into the Moon",
+      "lighting": "sunlight",
+      "sound": "pad",
+      "text": [
+        "ch08.caption.moon"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch08-s3-04",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 3,
+      "shot": 4,
+      "start": 52,
+      "duration": 24,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "The crust cools and darkens",
+      "lighting": "dimming magma glow",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "41:9"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch08-s4-05",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 4,
+      "shot": 5,
+      "start": 76,
+      "duration": 32,
+      "camera": "slow push",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "Rain and the first oceans",
+      "lighting": "sunlight on steam and water",
+      "sound": "rain-like noise",
+      "text": [
+        "ch08.caption.oceans"
+      ],
+      "verses": [
+        "41:10"
+      ],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch08-s5-06",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 5,
+      "shot": 6,
+      "start": 108,
+      "duration": 20,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "Plates move; continents and mountains rise; clouds with atmospheric scattering",
+      "lighting": "sunlight, blue limb",
+      "sound": "wind",
+      "text": [
+        "ch08.caption.continents"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "scholarly"
+    },
+    {
+      "id": "ch08-s6-07",
+      "chapter": "ch08",
+      "act": "act-3",
+      "scene": 6,
+      "shot": 7,
+      "start": 128,
+      "duration": 42,
+      "camera": "hold, wide",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The finished Earth turning",
+      "lighting": "sunlight",
+      "sound": "near silence",
+      "text": [
+        "ch08.caption.today"
+      ],
+      "verses": [
+        "79:30",
+        "79:31",
+        "79:32"
+      ],
+      "hadith": [],
+      "panel": "science"
+    },
+    {
+      "id": "ch09-s1-01",
+      "chapter": "ch09",
+      "act": "act-3",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 58,
+      "camera": "drift, macro",
+      "lens": {
+        "focalLength": 50,
+        "fov": 26.99,
+        "depthOfField": "deep"
+      },
+      "subject": "Early ocean, close: light filtering through water, single cells",
+      "lighting": "sunlight from above through water",
+      "sound": "water",
+      "text": [
+        "ch09.caption.water",
+        "ch09.caption.traces",
+        "ch09.caption.luca"
+      ],
+      "verses": [
+        "21:30"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch09-s2-02",
+      "chapter": "ch09",
+      "act": "act-3",
+      "scene": 2,
+      "shot": 2,
+      "start": 58,
+      "duration": 14,
+      "camera": "rising pull-up",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Up through the surface to orbit",
+      "lighting": "sunlight",
+      "sound": "rising air",
+      "text": [],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch09-s3-03",
+      "chapter": "ch09",
+      "act": "act-3",
+      "scene": 3,
+      "shot": 3,
+      "start": 72,
+      "duration": 24,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "Oxygen rises: oceans and sky shift colour",
+      "lighting": "sunlight, a bluer limb",
+      "sound": "pad",
+      "text": [
+        "ch09.caption.oxygen"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch09-s4-04",
+      "chapter": "ch09",
+      "act": "act-3",
+      "scene": 4,
+      "shot": 4,
+      "start": 96,
+      "duration": 43,
+      "camera": "slow orbit",
+      "lens": {
+        "focalLength": 35,
+        "fov": 37.85,
+        "depthOfField": "deep"
+      },
+      "subject": "The land turns green",
+      "lighting": "sunlight",
+      "sound": "pad",
+      "text": [
+        "ch09.caption.land"
+      ],
+      "verses": [
+        "24:45"
+      ],
+      "hadith": [],
+      "panel": "scholarly"
+    },
+    {
+      "id": "ch09-s5-05",
+      "chapter": "ch09",
+      "act": "act-3",
+      "scene": 5,
+      "shot": 5,
+      "start": 139,
+      "duration": 11,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The living Earth (the story pauses before the first humans)",
+      "lighting": "sunlight",
+      "sound": "near silence",
+      "text": [
+        "ch09.caption.end"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "science"
+    },
+    {
+      "id": "ch10-s1-01",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 1,
+      "shot": 1,
+      "start": 0,
+      "duration": 24,
+      "camera": "drift",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The cosmos today: galaxies",
+      "lighting": "starlight",
+      "sound": "low pad",
+      "text": [
+        "ch10.caption.now",
+        "ch10.caption.futures"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch10-s2-02",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 2,
+      "shot": 2,
+      "start": 24,
+      "duration": 12,
+      "camera": "locked-off wide",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Possibility: heat death (labelled hypothesis)",
+      "lighting": "reddening, dimming",
+      "sound": "pad thinning",
+      "text": [
+        "ch10.caption.heatDeath"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "figure cosmic-futures"
+    },
+    {
+      "id": "ch10-s2-03",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 2,
+      "shot": 3,
+      "start": 36,
+      "duration": 12,
+      "camera": "locked-off wide",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Possibility: Big Rip (labelled hypothesis)",
+      "lighting": "stretching light",
+      "sound": "pad",
+      "text": [
+        "ch10.caption.bigRip"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch10-s2-04",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 2,
+      "shot": 4,
+      "start": 48,
+      "duration": 12,
+      "camera": "locked-off wide",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Possibility: Big Crunch (labelled hypothesis)",
+      "lighting": "bluing light, eased",
+      "sound": "pad",
+      "text": [
+        "ch10.caption.bigCrunch"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch10-s3-05",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 3,
+      "shot": 5,
+      "start": 60,
+      "duration": 86,
+      "camera": "slow drift",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Calm galaxies while the verses are read",
+      "lighting": "soft starlight",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "81:1",
+        "81:2",
+        "82:1",
+        "82:2",
+        "39:67",
+        "14:48"
+      ],
+      "hadith": [],
+      "panel": "text"
+    },
+    {
+      "id": "ch10-s4-06",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 4,
+      "shot": 6,
+      "start": 146,
+      "duration": 10,
+      "camera": "slow push",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "The heavens gently roll inward (labelled artistic)",
+      "lighting": "soft white",
+      "sound": "a long exhale",
+      "text": [
+        "ch10.caption.artistic"
+      ],
+      "verses": [],
+      "hadith": [],
+      "panel": "scholarly"
+    },
+    {
+      "id": "ch10-s5-07",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 5,
+      "shot": 7,
+      "start": 156,
+      "duration": 34,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Everything resolves into calm light; the calligraphy of 21:104",
+      "lighting": "soft white",
+      "sound": "near silence",
+      "text": [],
+      "verses": [
+        "21:104"
+      ],
+      "hadith": [],
+      "panel": null
+    },
+    {
+      "id": "ch10-s6-08",
+      "chapter": "ch10",
+      "act": "finale",
+      "scene": 6,
+      "shot": 8,
+      "start": 190,
+      "duration": 8,
+      "camera": "hold",
+      "lens": {
+        "focalLength": 26,
+        "fov": 49.55,
+        "depthOfField": "deep"
+      },
+      "subject": "Silence",
+      "lighting": "fade to black",
+      "sound": "silence",
+      "text": [],
+      "verses": [],
+      "hadith": [],
+      "panel": "science"
+    }
+  ],
+  "credits": {
+    "seconds": 120,
+    "backdrop": "the Planck CMB sky",
+    "createdBy": [
+      "Samee",
+      "Muhaimin"
+    ],
+    "content": "Opens with 'Created by Samee and Muhaimin', then every source, dataset, licence and reviewer from data/sources.json, data/hadith.json and the review record, and the on-screen disclaimer"
+  }
+}

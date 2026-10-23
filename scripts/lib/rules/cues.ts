@@ -18,6 +18,14 @@ const SCENE_EVENTS: Readonly<Record<string, readonly string[]>> = {
   ch00: ['kun-reveal', 'kun-hold', 'kun-fade'],
   ch01: ['ignite', 'expand', 'cool'],
   ch02: ['plasma', 'recombination', 'cmb-reveal', 'cmb-hold'],
+  ch03: ['dark', 'web', 'stars', 'galaxies'],
+  ch04: ['galaxies', 'stretch', 'redshift', 'tension'],
+  ch05: ['milky-way', 'pull-back', 'survey'],
+  ch06: ['star', 'collapse', 'white-dwarf', 'type-ia'],
+  ch07: ['disk', 'ignite', 'clear', 'orrery', 'moon', 'galaxy'],
+  ch08: ['molten', 'impact', 'moon', 'oceans', 'continents'],
+  ch09: ['ocean', 'rise', 'oxygen', 'green'],
+  ch10: ['cosmos', 'heat-death', 'big-rip', 'big-crunch', 'still', 'fold', 'light', 'calligraphy', 'silence'],
 };
 
 type TimedCue = Extract<Cue, { duration: number }>;

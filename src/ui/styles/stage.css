@@ -99,3 +99,74 @@
   justify-content: center;
   gap: var(--kf-space-3);
 }
+
+/* End credits after the last chapter: a slow roll in a fixed window (static and scrollable with reduced motion). */
+.kf-credits {
+  max-block-size: 46vh;
+  overflow: hidden;
+  margin-block-end: var(--kf-space-4);
+  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  text-align: center;
+}
+
+.kf-credits-roll {
+  animation: kf-credits-roll 110s linear 1s both;
+}
+
+@keyframes kf-credits-roll {
+  from { transform: translateY(46vh); }
+  to { transform: translateY(-100%); }
+}
+
+.kf-reduced-motion .kf-credits {
+  overflow-y: auto;
+  mask-image: none;
+}
+
+.kf-reduced-motion .kf-credits-roll {
+  animation: none;
+}
+
+.kf-credits-made {
+  font: 500 1.25rem/1.4 var(--kf-font-ui);
+  color: var(--kf-gold);
+  margin: 0 0 var(--kf-space-5);
+}
+
+.kf-credits-heading {
+  font: 600 0.85rem/1.4 var(--kf-font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+  margin: var(--kf-space-4) 0 var(--kf-space-2);
+}
+
+.kf-credits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--kf-space-3);
+  font: 400 0.85rem/1.45 var(--kf-font-ui);
+}
+
+.kf-credits-list li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.kf-credits-title {
+  color: var(--kf-text);
+}
+
+.kf-credits-credit,
+.kf-credits-license,
+.kf-credits-note,
+.kf-credits-disclaimer {
+  color: var(--kf-text-muted);
+  font-size: 0.8rem;
+}
+
+.kf-credits-disclaimer {
+  margin-block-start: var(--kf-space-5);
+}

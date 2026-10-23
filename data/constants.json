@@ -457,6 +457,178 @@
         "url": "https://doi.org/10.1051/0004-6361/201833910",
         "accessed": "2026-10-23"
       }
+    },
+    {
+      "id": "solarSystem.age",
+      "description": "Age of the solar system: the Pb-Pb age of its oldest solids (calcium-aluminium-rich inclusions), taken as its start",
+      "value": 4.5673,
+      "uncertainty": 0.00016,
+      "unit": "Gyr",
+      "qualifier": "the age of the first solids to condense around the young Sun",
+      "citation": {
+        "text": "Connelly et al. 2012, Science 338, 651, \"The Absolute Chronology and Thermal Processing of Solids in the Solar Protoplanetary Disk\" (4567.30 ± 0.16 Myr)",
+        "url": "https://doi.org/10.1126/science.1226919",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sun.galacticYear",
+      "description": "Time for the Sun to orbit the centre of the Milky Way once",
+      "value": 230,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "roughly; published estimates span about 220 to 250 million years, depending on the Sun's distance from the centre and its speed",
+      "citation": {
+        "text": "NASA Goddard Space Flight Center, StarChild: the Sun makes one orbit of the Galaxy in roughly 230 million years",
+        "url": "https://starchild.gsfc.nasa.gov/docs/StarChild/questions/question18.html",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.age",
+      "description": "Age of the Earth",
+      "value": 4.54,
+      "uncertainty": 0.05,
+      "unit": "Gyr",
+      "qualifier": "about 1% uncertainty; from the lead isotopes of ancient ores and meteorites",
+      "citation": {
+        "text": "Dalrymple 2001, Geological Society, London, Special Publications 190, 205, \"The age of the Earth in the twentieth century: a problem (mostly) solved\" (4.54 Ga, after Tera 1980)",
+        "url": "https://doi.org/10.1144/GSL.SP.2001.190.01.14",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "moon.impact.earliest",
+      "description": "Earliest common estimate for the Moon-forming impact, after the solar system's first solids",
+      "value": 30,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "timing debated; hafnium-tungsten estimates",
+      "citation": {
+        "text": "Jacobson et al. 2014, Nature 508, 84, \"Highly siderophile elements in Earth's mantle as a clock for the Moon-forming impact\" (reviews estimates from about 30 Myr to about 100 Myr; its own estimate 95 ± 32 Myr)",
+        "url": "https://doi.org/10.1038/nature13172",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "moon.impact.latest",
+      "description": "Latest common estimate for the Moon-forming impact, after the solar system's first solids",
+      "value": 100,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "timing debated",
+      "citation": {
+        "text": "Jacobson et al. 2014, Nature 508, 84 (estimate 95 ± 32 Myr after the first solids)",
+        "url": "https://doi.org/10.1038/nature13172",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "oceans.earliest",
+      "description": "Earliest evidence of liquid water oceans on Earth, from detrital zircons",
+      "value": 4.4,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "from the oxygen isotopes of zircon crystals",
+      "citation": {
+        "text": "Wilde et al. 2001, Nature 409, 175, \"Evidence from detrital zircons for the existence of continental crust and oceans on the Earth 4.4 Gyr ago\"",
+        "url": "https://doi.org/10.1038/35051550",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "life.evidence.accepted",
+      "description": "Widely accepted early evidence of life: microbial structures in hot-spring deposits of the Dresser Formation, Western Australia",
+      "value": 3.5,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "about; the deposits are about 3.48 billion years old",
+      "citation": {
+        "text": "Djokic et al. 2017, Nature Communications 8, 15263, \"Earliest signs of life on land preserved in ca. 3.5 Ga hot spring deposits\"",
+        "url": "https://doi.org/10.1038/ncomms15263",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "life.evidence.isua",
+      "description": "Reported microbial structures (stromatolites) in Isua, Greenland",
+      "value": 3.7,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "contested",
+      "citation": {
+        "text": "Nutman et al. 2016, Nature 537, 535, \"Rapid emergence of life shown by discovery of 3,700-million-year-old microbial structures\"",
+        "url": "https://doi.org/10.1038/nature19355",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "life.evidence.labrador",
+      "description": "Reported trace of life (graphite) in sedimentary rocks of Labrador, Canada",
+      "value": 3.95,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "contested",
+      "citation": {
+        "text": "Tashiro et al. 2017, Nature 549, 516, \"Early trace of life from 3.95 Ga sedimentary rocks in Labrador, Canada\"",
+        "url": "https://doi.org/10.1038/nature24019",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "life.evidence.zircon",
+      "description": "Potentially biological carbon inside a zircon crystal from Jack Hills, Western Australia",
+      "value": 4.1,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "contested",
+      "citation": {
+        "text": "Bell et al. 2015, PNAS 112, 14518, \"Potentially biogenic carbon preserved in a 4.1 billion-year-old zircon\"",
+        "url": "https://doi.org/10.1073/pnas.1517557112",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "luca.age",
+      "description": "Age of the last universal common ancestor of all life, from a genetic study",
+      "value": 4.2,
+      "uncertainty": {
+        "plus": 0.13,
+        "minus": 0.11
+      },
+      "unit": "Gyr",
+      "qualifier": "range 4.09 to 4.33 billion years; divergence-time analysis of genes duplicated before LUCA",
+      "citation": {
+        "text": "Moody et al. 2024, Nature Ecology & Evolution 8, 1654, \"The nature of the last universal common ancestor and its impact on the early Earth system\"",
+        "url": "https://doi.org/10.1038/s41559-024-02461-1",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "oxygen.rise.start",
+      "description": "Start of the Great Oxidation Event, when oxygen first appeared in the atmosphere",
+      "value": 2.43,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "about; oxygen then rose and fell for some 200 million years",
+      "citation": {
+        "text": "Poulton et al. 2021, Nature 592, 232, \"A 200-million-year delay in permanent atmospheric oxygenation\"",
+        "url": "https://doi.org/10.1038/s41586-021-03393-7",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "oxygen.rise.permanent",
+      "description": "When atmospheric oxygen rose for good",
+      "value": 2.22,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "about",
+      "citation": {
+        "text": "Poulton et al. 2021, Nature 592, 232, \"A 200-million-year delay in permanent atmospheric oxygenation\"",
+        "url": "https://doi.org/10.1038/s41586-021-03393-7",
+        "accessed": "2026-10-23"
+      }
     }
   ]
 }

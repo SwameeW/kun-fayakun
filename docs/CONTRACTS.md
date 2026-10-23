@@ -110,7 +110,12 @@ Names are fixed; times live in content.json.
 The `cmb-legend` overlay cue (`{type:'overlay', id:'cmb-legend', visible}`) shows the DOM colour
 scale + credit while the map is visible. The `bbn-abundances` figure lives in the ch02 science layer.
 ch04 shows `hubble-tension` (overlay and science layer) and the `expansion` slider; ch06 shows
-`decay-chain` (overlay and science layer).
+`decay-chain` (overlay and science layer); ch10 shows `cosmic-futures` (overlay and science layer).
+
+| ch07 | protoplanetary disk radius ~8.6; orrery with sqrt-compressed orbits (Neptune ~6.9); Sun radius 0.32 | `disk`, `ignite`, `clear`, `orrery`, `moon`, `galaxy` | Disk with gaps and protoplanets; the Sun ignites (eased); planets on their real orbits for today from JPL elements, engraved astrolabe rings; a long-lens Moon showing its real phase (JPL Horizons); then a log pull-back to the Milky Way model and the Sun's path. Labelled not to scale. `app.interact('discovery', 1/null)` dims and slows the scene for the letter analysis. |
+| ch08 | Earth radius 1 at origin; Moon (radius 0.27) at 3.4 | `molten`, `impact`, `moon`, `oceans`, `continents` | One planet shader through molten rock, steam, oceans and drifting continents; a glancing impact (eased glow, exposure dip), debris ring gathering into the Moon. |
+| ch09 | micro: 1 unit = 10 micrometres; planet: Earth radius 1 | `ocean`, `rise`, `oxygen`, `green` | Underwater light shafts, caustics and illustrative single cells; a soft dissolve up to orbit; seas and sky shift as oxygen rises; land greens. Ends before humans. |
+| ch10 | galaxy field radius 40; calligraphy quad at y 1.25 | `cosmos`, `heat-death`, `big-rip`, `big-crunch`, `still`, `fold`, `light`, `calligraphy`, `silence` | Three labelled hypotheses; calm verses; a labelled artistic fold; calm light and the 21:104 calligraphy (MSDF, `kama-badana`); silence; end credits follow. |
 
 **HUD.** A chapter may implement `labels()` (scene-anchored tags: `SceneLabel` with a world position,
 an eased opacity and an optional `offset` in CSS pixels that turns the tag into a callout with a
@@ -130,6 +135,18 @@ the MSDF calligraphy (`msdf-*`; the glow field's alpha carries precomputed light
 `galaxy-sprites.ts` (one draw call of galaxies as tiny elliptical discs; comoving positions times a
 scale factor; reddening from distance to the camera or from each galaxy's measured redshift; optional
 redshift bands and a slice emphasis).
+
+**M3 shared modules.** `blackbody.ts` (star colours from temperature, Kang et al. 2002 fits to the
+Planckian locus), `sun.ts` (a living star: granulation, limb darkening and limb reddening, corona),
+`planet.ts` (the Earth across its history from one `EarthEpoch`, and simple sunlit bodies),
+`starfield.ts` (distant stars at infinity).
+
+**Letter analysis.** `panel.discovery` names an asset in `public/assets/analysis/` built by
+`scripts/build-analysis.ts` from data/quran.json and the `analysis` entries of data/citations.json; the
+validator re-derives it. The UI (src/ui/discovery.ts) shows letters from their code points only.
+
+**Film.** film/screenplay.md and film/shotlist.json describe the whole film shot by shot; each chapter's
+shots tile its timeline.
 
 **SDSS sample.** `assets/sdss/galaxies.bin` holds int16 (x, y, z, redshift) per galaxy in the galactic
 frame (+x toward the Galactic centre, +y the north galactic pole), units in galaxies.json (`scaleMpc`,
@@ -152,7 +169,7 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - ICU MessageFormat via `intl-messageformat`, flat dotted keys.
 - `src/i18n/en.json` (ui builder): `ui.*`, `timeline.chNN.{title,stop,epoch}` for ALL 11 chapters,
   `ui.disclaimer` = the spec's disclaimer, verbatim.
-- `src/i18n/en.chapters.json` (content builder): `ch00.*` to `ch06.*`.
+- `src/i18n/en.chapters.json` (content builder): `ch00.*` to `ch10.*`.
 - `createI18n(locale)` in `src/i18n/index.ts` merges both and throws on a duplicate key.
 - Honorifics per spec §1.5. Hadith summaries (if any) are labelled as summaries, never quotes.
 

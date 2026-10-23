@@ -1,0 +1,22 @@
+{
+  "id": "kama-badana",
+  "text": "كَمَا بَدَأْنَآ أَوَّلَ خَلْقٍ نُّعِيدُهُۥ",
+  "verse": "21:104",
+  "wordIndexFromEnd": 12,
+  "wordCount": 5,
+  "font": "Amiri Quran 1.003",
+  "fontSha256": "e2a47644762d16bdfb6d33e0d8db8c6ff30beae84150ef5a705316bbd829455c",
+  "atlas": "kama-badana.png",
+  "width": 2048,
+  "height": 512,
+  "pxRange": 8,
+  "aspect": 4,
+  "bounds": {
+    "left": 0.028771,
+    "bottom": 0.0625,
+    "right": 0.971229,
+    "top": 0.9375
+  },
+  "type": "mtsdf",
+  "flipY": false
+}

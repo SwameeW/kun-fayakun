@@ -7,6 +7,8 @@ export interface CalligraphyCitation {
   id: string;
   verse: string;
   wordIndexFromEnd: number;
+  /** Words from that one onward (a short phrase); 1 when absent. */
+  wordCount?: number;
 }
 
 export interface CitationsFile {

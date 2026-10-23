@@ -3,11 +3,12 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { arabicWords } from '../arabic';
 import { calligraphyCitations, type CalligraphyCitation } from '../citations';
+import { deriveAnalysis, type AnalysisSpec } from '../analysis';
 import type { ValidationContext } from '../context';
 import { fileExists, loadJson, readBytes, relPath, rootPath } from '../files';
 import type { RuleLog } from '../report';
 import { checkFields, isRecord } from '../shape';
-import { describeCodePoints, nfc } from '../text';
+import { describeCodePoints, nfc, sha256Hex } from '../text';
 
 const CALLIGRAPHY_OWNER = 'calligraphy builder, npm run preprocess:calligraphy';
 const CMB_OWNER = 'cmb builder, npm run preprocess:cmb';
@@ -16,10 +17,12 @@ const SDSS_OWNER = 'SDSS builder, npm run preprocess:sdss';
 /** Bytes per galaxy in galaxies.bin: four int16 values (x, y, z, redshift). */
 const SDSS_STRIDE = 8;
 
-/** The word a calligraphy entry must show, from the NFC Tanzil text in quran.json. */
-export function expectedWord(arabic: string, wordIndexFromEnd: number): string | null {
+/** The word (or the phrase of `wordCount` words from it) a calligraphy entry must show, from the NFC Tanzil text in quran.json. */
+export function expectedWord(arabic: string, wordIndexFromEnd: number, wordCount = 1): string | null {
   const words = arabicWords(nfc(arabic));
-  return words[words.length - wordIndexFromEnd] ?? null;
+  const start = words.length - wordIndexFromEnd;
+  if (start < 0 || start + wordCount > words.length) return null;
+  return words.slice(start, start + wordCount).join(' ');
 }
 
 function checkCalligraphy(ctx: ValidationContext, entry: CalligraphyCitation, log: RuleLog): void {
@@ -44,7 +47,7 @@ function checkCalligraphy(ctx: ValidationContext, entry: CalligraphyCitation, lo
     problems.push(`${path}: id/verse/wordIndexFromEnd must be ${entry.id}/${entry.verse}/${entry.wordIndexFromEnd} as in data/citations.json`);
   }
   const verse = ctx.quran.status === 'ok' ? ctx.quran.value.ayat.find((a) => a.key === entry.verse) : undefined;
-  const expected = verse ? expectedWord(verse.arabic, entry.wordIndexFromEnd) : null;
+  const expected = verse ? expectedWord(verse.arabic, entry.wordIndexFromEnd, entry.wordCount ?? 1) : null;
   if (expected === null) problems.push(`${path}: cannot find word ${entry.wordIndexFromEnd} from the end of ${entry.verse} in quran.json`);
   else if (meta.text !== expected) {
     problems.push(`${path}: text (${describeCodePoints(String(meta.text))}) is not the Tanzil word (${describeCodePoints(expected)})`);
@@ -117,9 +120,33 @@ function checkSdss(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: ${String(meta.count)} galaxies; binary size and sha256 match; sdss.sample.count agrees`);
 }
 
+/** Letter analyses: each asset must equal what scripts/build-analysis.ts derives from the verified text now. */
+function checkAnalyses(ctx: ValidationContext, log: RuleLog): void {
+  const citations = loadJson<{ analysis?: Record<string, AnalysisSpec | string> }>(rootPath('data', 'citations.json'));
+  if (citations.status !== 'ok' || ctx.quran.status !== 'ok') return;
+  const ayat = ctx.quran.value.ayat;
+  for (const [id, spec] of Object.entries(citations.value.analysis ?? {})) {
+    if (typeof spec === 'string') continue;
+    const loaded = loadJson<unknown>(rootPath('public', 'assets', 'analysis', `${id}.json`));
+    const path = relPath(loaded.path);
+    if (loaded.status !== 'ok') {
+      log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: analysis builder, npm run preprocess:analysis)`);
+      continue;
+    }
+    try {
+      const expected = deriveAnalysis(id, spec, (key) => ayat.find((a) => a.key === key)?.arabic, sha256Hex);
+      if (JSON.stringify(expected) !== JSON.stringify(loaded.value)) log.fail(`${path} differs from what data/quran.json gives now; rerun npm run preprocess:analysis`);
+      else log.pass(`${path}: re-derived from data/quran.json (${expected.letters.length} base letters, the same in both directions, verses ${expected.verses.map((v) => v.key).join(' and ')})`);
+    } catch (error) {
+      log.fail(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   for (const entry of calligraphyCitations(ctx.citations)) checkCalligraphy(ctx, entry, log);
   checkFont(log);
   checkCmb(log);
   checkSdss(ctx, log);
+  checkAnalyses(ctx, log);
 }

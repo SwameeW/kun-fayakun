@@ -283,3 +283,51 @@
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
+
+/* Possible futures (Chapter 10): three schematic curves after a shared past. */
+.kf-futures-chart {
+  inline-size: 100%;
+  block-size: auto;
+}
+.kf-futures-axis {
+  stroke: var(--kf-text-muted);
+  stroke-width: 1;
+}
+.kf-futures-now {
+  stroke: var(--kf-gold-soft);
+  stroke-dasharray: 3 3;
+}
+.kf-futures-label {
+  fill: var(--kf-text-muted);
+  font: 500 10px var(--kf-font-ui);
+}
+.kf-futures-line {
+  fill: none;
+  stroke-width: 2;
+}
+.kf-futures-heat { stroke: #9fb4d8; color: #9fb4d8; }
+.kf-futures-rip { stroke: #e0956b; color: #e0956b; }
+.kf-futures-crunch { stroke: #c9b6f2; color: #c9b6f2; }
+.kf-futures-legend {
+  list-style: none;
+  margin: var(--kf-space-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+  font: 400 0.8rem/1.35 var(--kf-font-ui);
+}
+.kf-futures-item::before {
+  content: '';
+  display: inline-block;
+  inline-size: 1rem;
+  block-size: 2px;
+  margin-inline-end: 0.5rem;
+  vertical-align: middle;
+  background: currentColor;
+}
+.kf-futures-item {
+  color: var(--kf-text);
+}
+.kf-futures-item.kf-futures-heat::before { background: #9fb4d8; }
+.kf-futures-item.kf-futures-rip::before { background: #e0956b; }
+.kf-futures-item.kf-futures-crunch::before { background: #c9b6f2; }

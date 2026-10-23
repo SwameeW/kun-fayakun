@@ -76,6 +76,13 @@ export interface GalaxySpritesState {
    * plane through the origin with unit normal `normal` are dimmed to `outside`, by `amount` (0 to 1).
    */
   slab?: { normal: readonly [number, number, number]; halfThickness: number; outside: number; amount: number };
+  /** Colour multiplier for the whole field (e.g. bluer light in a collapsing universe). */
+  tint?: readonly [number, number, number];
+  /**
+   * An artistic fold (Chapter 10, labelled as art): the field rolls about the horizontal axis
+   * through the origin, more the farther a galaxy is above or below it. 0 = none.
+   */
+  fold?: number;
 }
 
 export interface GalaxySprites {
@@ -124,7 +131,15 @@ export function createGalaxySprites(options: GalaxySpritesOptions): GalaxySprite
   const flatness = mix(float(0.25), float(1), hash(seed.add(2)));
   const luck = hash(seed.add(3));
 
-  const world = position.mul(uScale);
+  const uFold = uniform(0);
+  const uTint = uniform(new Vector3(1, 1, 1));
+  const flat = position.mul(uScale);
+  const foldAngle = flat.y.mul(uFold).mul(0.11);
+  const world = vec3(
+    flat.x,
+    flat.y.mul(cos(foldAngle)).sub(flat.z.mul(sin(foldAngle))).mul(float(1).sub(uFold.mul(0.35))),
+    flat.y.mul(sin(foldAngle)).add(flat.z.mul(cos(foldAngle))),
+  );
   const distance = max(length(world.sub(cameraPosition)), 1e-3);
   const redshift = distance.mul(uRedshift).add(measured.mul(uMeasured));
   const uBandLimit = uniform(0);
@@ -164,7 +179,7 @@ export function createGalaxySprites(options: GalaxySpritesOptions): GalaxySprite
   const squashed = vec2(rotated.x, rotated.y.div(varying(flatness)));
   const r2 = dot(squashed, squashed);
   const profile = exp(r2.mul(-9)).mul(1.2).add(exp(r2.mul(-2.5)).mul(0.25)).mul(max(float(1).sub(dot(c, c)), 0));
-  material.colorNode = varying(reddened).mul(profile).mul(varying(brightness));
+  material.colorNode = varying(reddened.mul(uTint)).mul(profile).mul(varying(brightness));
   material.opacityNode = float(1);
 
   const geometry = createQuad();
@@ -185,6 +200,8 @@ export function createGalaxySprites(options: GalaxySpritesOptions): GalaxySprite
       uReference.value = state.referenceDistance;
       uMaxGrowth.value = state.maxGrowth ?? 6;
       uMeasured.value = state.measuredRedshift ?? 0;
+      uFold.value = state.fold ?? 0;
+      uTint.value.set(...(state.tint ?? [1, 1, 1]));
       uBandLimit.value = state.bands?.limit ?? 0;
       uBelow.value = state.bands?.below ?? 1;
       uAbove.value = state.bands?.above ?? 1;

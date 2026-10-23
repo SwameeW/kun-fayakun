@@ -86,6 +86,42 @@
         "wordIndexFromEnd": 2,
         "$comment": "The imperative kun ('Be'): second-to-last whitespace-separated word of the Tanzil text of 36:82. build-calligraphy.ts extracts it from data/quran.json and asserts its base letters are U+0643 U+0646; never type it."
       }
+    ],
+    "ch10": [
+      {
+        "id": "kama-badana",
+        "verse": "21:104",
+        "wordIndexFromEnd": 12,
+        "wordCount": 5,
+        "$comment": "Five words of 21:104, 'as We began the first creation, We will repeat it': the twelfth whitespace-separated word from the end of the Tanzil text and the four after it. build-calligraphy.ts extracts them from data/quran.json and asserts their base letters; never type them."
+      }
     ]
+  },
+  "analysis": {
+    "$comment": "Letter analyses (docs/SPEC.md, Chapter 7). Word positions count whitespace tokens that contain at least one base letter (Tanzil writes some pause marks as tokens of their own). scripts/build-analysis.ts derives public/assets/analysis/<id>.json from data/quran.json; never type the letters.",
+    "kullun-fi-falak": {
+      "chapter": "ch07",
+      "verses": [
+        {
+          "key": "21:33",
+          "tokens": [
+            8,
+            9,
+            10
+          ]
+        },
+        {
+          "key": "36:40",
+          "tokens": [
+            12,
+            13,
+            14
+          ],
+          "dropLeadingLetters": 1,
+          "droppedLetter": "U+0648"
+        }
+      ],
+      "expectedLength": 7
+    }
   }
 }

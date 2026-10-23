@@ -1,0 +1,405 @@
+{
+  "id": "ch08",
+  "duration": 170,
+  "intro": {
+    "titleKey": "ch08.intro.title",
+    "subtitleKey": "ch08.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "text": [
+      {
+        "type": "verse",
+        "key": "41:9"
+      },
+      {
+        "type": "verse",
+        "key": "41:10"
+      },
+      {
+        "type": "verse",
+        "key": "41:11"
+      },
+      {
+        "type": "verse",
+        "key": "41:12"
+      },
+      {
+        "type": "verse",
+        "key": "7:54"
+      },
+      {
+        "type": "verse",
+        "key": "32:4"
+      },
+      {
+        "type": "verse",
+        "key": "25:59"
+      },
+      {
+        "type": "verse",
+        "key": "50:38"
+      },
+      {
+        "type": "verse",
+        "key": "32:5"
+      },
+      {
+        "type": "verse",
+        "key": "70:4",
+        "noteKey": "ch08.text.note704"
+      },
+      {
+        "type": "verse",
+        "key": "22:47",
+        "noteKey": "ch08.text.note2247"
+      },
+      {
+        "type": "verse",
+        "key": "79:30"
+      },
+      {
+        "type": "verse",
+        "key": "79:31"
+      },
+      {
+        "type": "verse",
+        "key": "79:32"
+      }
+    ],
+    "scholarly": {
+      "classical": [
+        {
+          "key": "ch08.scholarly.classical.fourDays"
+        },
+        {
+          "key": "ch08.scholarly.classical.days"
+        },
+        {
+          "key": "ch08.scholarly.classical.order"
+        },
+        {
+          "key": "ch08.scholarly.classical.dahaha"
+        }
+      ],
+      "modern": [
+        {
+          "key": "ch08.scholarly.modern.days"
+        }
+      ]
+    },
+    "science": [
+      {
+        "key": "ch08.science.age",
+        "values": {
+          "age": {
+            "constant": "earth.age",
+            "field": "value",
+            "digits": 2
+          },
+          "plusMinus": {
+            "constant": "earth.age",
+            "field": "uncertainty",
+            "digits": 2
+          }
+        },
+        "cite": [
+          "earth.age"
+        ]
+      },
+      {
+        "key": "ch08.science.moon",
+        "values": {
+          "earliest": {
+            "constant": "moon.impact.earliest",
+            "field": "value",
+            "digits": 0
+          },
+          "latest": {
+            "constant": "moon.impact.latest",
+            "field": "value",
+            "digits": 0
+          }
+        },
+        "cite": [
+          "moon.impact.earliest"
+        ]
+      },
+      {
+        "key": "ch08.science.oceans",
+        "values": {
+          "age": {
+            "constant": "oceans.earliest",
+            "field": "value",
+            "digits": 1
+          }
+        },
+        "cite": [
+          "oceans.earliest"
+        ]
+      },
+      {
+        "key": "ch08.science.plates"
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch08.open.moon"
+      },
+      {
+        "key": "ch08.open.plates"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 0,
+      "type": "scene",
+      "event": "molten"
+    },
+    {
+      "t": 3,
+      "type": "caption",
+      "key": "ch08.caption.molten",
+      "duration": 7
+    },
+    {
+      "t": 12,
+      "type": "caption",
+      "key": "ch08.caption.bombardment",
+      "duration": 6
+    },
+    {
+      "t": 22,
+      "type": "scene",
+      "event": "impact"
+    },
+    {
+      "t": 26,
+      "type": "caption",
+      "key": "ch08.caption.impact",
+      "duration": 10
+    },
+    {
+      "t": 40,
+      "type": "scene",
+      "event": "moon"
+    },
+    {
+      "t": 42,
+      "type": "caption",
+      "key": "ch08.caption.moon",
+      "duration": 6
+    },
+    {
+      "t": 50,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 54,
+      "type": "verse",
+      "key": "41:9",
+      "duration": 20
+    },
+    {
+      "t": 76,
+      "type": "scene",
+      "event": "oceans"
+    },
+    {
+      "t": 77,
+      "type": "caption",
+      "key": "ch08.caption.oceans",
+      "duration": 9
+    },
+    {
+      "t": 88,
+      "type": "verse",
+      "key": "41:10",
+      "duration": 18
+    },
+    {
+      "t": 108,
+      "type": "scene",
+      "event": "continents"
+    },
+    {
+      "t": 110,
+      "type": "caption",
+      "key": "ch08.caption.continents",
+      "duration": 8
+    },
+    {
+      "t": 126,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 130,
+      "type": "verse",
+      "key": "79:30",
+      "duration": 9
+    },
+    {
+      "t": 140,
+      "type": "verse",
+      "key": "79:31",
+      "duration": 9
+    },
+    {
+      "t": 150,
+      "type": "verse",
+      "key": "79:32",
+      "duration": 9
+    },
+    {
+      "t": 161,
+      "type": "panel",
+      "section": "science"
+    },
+    {
+      "t": 162,
+      "type": "caption",
+      "key": "ch08.caption.today",
+      "duration": 7
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        0.8,
+        3.6
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 20,
+      "position": [
+        0.4,
+        0.9,
+        3.9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 24,
+      "position": [
+        2.5,
+        1.5,
+        7.5
+      ],
+      "target": [
+        0.3,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 40,
+      "position": [
+        -2,
+        2.2,
+        8
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 52,
+      "position": [
+        0.6,
+        0.9,
+        4.2
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 76,
+      "position": [
+        -0.8,
+        0.6,
+        3.9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 108,
+      "position": [
+        2.2,
+        1.2,
+        3.6
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 128,
+      "position": [
+        3.5,
+        1.4,
+        5.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 170,
+      "position": [
+        -3.4,
+        1.6,
+        5.6
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 1.6,
+    "maxDistance": 30
+  }
+}

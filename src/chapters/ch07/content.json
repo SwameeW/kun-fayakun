@@ -1,0 +1,393 @@
+{
+  "id": "ch07",
+  "duration": 172,
+  "intro": {
+    "titleKey": "ch07.intro.title",
+    "subtitleKey": "ch07.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "text": [
+      {
+        "type": "verse",
+        "key": "36:38"
+      },
+      {
+        "type": "verse",
+        "key": "36:39"
+      },
+      {
+        "type": "verse",
+        "key": "36:40"
+      },
+      {
+        "type": "verse",
+        "key": "21:33"
+      },
+      {
+        "type": "hadith",
+        "id": "bukhari-3199",
+        "summaryKey": "ch07.hadith.bukhari3199.summary",
+        "noteKey": "ch07.hadith.bukhari3199.note"
+      }
+    ],
+    "scholarly": {
+      "classical": [
+        {
+          "key": "ch07.scholarly.classical.mustaqarr"
+        },
+        {
+          "key": "ch07.scholarly.classical.falak"
+        },
+        {
+          "key": "ch07.scholarly.classical.letters"
+        }
+      ],
+      "modern": [
+        {
+          "key": "ch07.scholarly.modern.galactic"
+        }
+      ]
+    },
+    "discovery": "kullun-fi-falak",
+    "science": [
+      {
+        "key": "ch07.science.formation",
+        "values": {
+          "age": {
+            "constant": "solarSystem.age",
+            "field": "value",
+            "digits": 3
+          }
+        },
+        "cite": [
+          "solarSystem.age"
+        ]
+      },
+      {
+        "key": "ch07.science.disk"
+      },
+      {
+        "key": "ch07.science.orbits",
+        "cite": [
+          "jpl-approx-pos",
+          "jpl-horizons",
+          "jpl-phys-par"
+        ]
+      },
+      {
+        "key": "ch07.science.galactic",
+        "values": {
+          "period": {
+            "constant": "sun.galacticYear",
+            "field": "value",
+            "digits": 0
+          }
+        },
+        "cite": [
+          "sun.galacticYear"
+        ]
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch07.open.planets"
+      },
+      {
+        "key": "ch07.open.systems"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 0,
+      "type": "scene",
+      "event": "disk"
+    },
+    {
+      "t": 3,
+      "type": "caption",
+      "key": "ch07.caption.disk",
+      "duration": 7
+    },
+    {
+      "t": 11,
+      "type": "caption",
+      "key": "ch07.caption.gaps",
+      "duration": 7
+    },
+    {
+      "t": 16,
+      "type": "scene",
+      "event": "ignite"
+    },
+    {
+      "t": 20,
+      "type": "caption",
+      "key": "ch07.caption.sun",
+      "duration": 7
+    },
+    {
+      "t": 40,
+      "type": "scene",
+      "event": "clear"
+    },
+    {
+      "t": 42,
+      "type": "caption",
+      "key": "ch07.caption.planets",
+      "duration": 7
+    },
+    {
+      "t": 52,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 54,
+      "type": "verse",
+      "key": "36:38",
+      "duration": 14
+    },
+    {
+      "t": 70,
+      "type": "scene",
+      "event": "orrery"
+    },
+    {
+      "t": 72,
+      "type": "caption",
+      "key": "ch07.caption.orbits",
+      "duration": 8
+    },
+    {
+      "t": 81,
+      "type": "scene",
+      "event": "moon"
+    },
+    {
+      "t": 86,
+      "type": "verse",
+      "key": "36:39",
+      "duration": 14
+    },
+    {
+      "t": 108,
+      "type": "verse",
+      "key": "36:40",
+      "duration": 16
+    },
+    {
+      "t": 126,
+      "type": "verse",
+      "key": "21:33",
+      "duration": 15
+    },
+    {
+      "t": 141,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 143,
+      "type": "scene",
+      "event": "galaxy"
+    },
+    {
+      "t": 145,
+      "type": "caption",
+      "key": "ch07.caption.galactic",
+      "duration": 8
+    },
+    {
+      "t": 154,
+      "type": "caption",
+      "key": "ch07.caption.notMeaning",
+      "duration": 7
+    },
+    {
+      "t": 162,
+      "type": "panel",
+      "section": "science"
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        7,
+        14
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 57.22
+    },
+    {
+      "t": 16,
+      "position": [
+        -6,
+        9,
+        11
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 57.22
+    },
+    {
+      "t": 40,
+      "position": [
+        -9,
+        6,
+        8
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 50,
+      "position": [
+        1.2,
+        0.35,
+        2.6
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 68,
+      "position": [
+        1.4,
+        0.5,
+        2.9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 37.85
+    },
+    {
+      "t": 74,
+      "position": [
+        6,
+        6.5,
+        11
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 57.22
+    },
+    {
+      "t": 80,
+      "position": [
+        4.6,
+        6.8,
+        11.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 57.22
+    },
+    {
+      "t": 86,
+      "position": [
+        0.05,
+        0.025,
+        -0.14
+      ],
+      "target": [
+        0,
+        0,
+        -0.5
+      ],
+      "fov": 16.07
+    },
+    {
+      "t": 100,
+      "position": [
+        0.05,
+        0.03,
+        -0.13
+      ],
+      "target": [
+        0,
+        0,
+        -0.5
+      ],
+      "fov": 16.07
+    },
+    {
+      "t": 108,
+      "position": [
+        7,
+        5,
+        10
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 141,
+      "position": [
+        -8,
+        5,
+        9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 172,
+      "position": [
+        0,
+        3.2,
+        6.4
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 1,
+    "maxDistance": 40
+  }
+}

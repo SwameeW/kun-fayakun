@@ -3,6 +3,7 @@ import { externalLink, h, uniqueId } from './dom';
 import { figure } from './figures';
 import { blockCitations, formatProse } from './format';
 import { icon } from './icons';
+import { discoveryBlock } from './discovery';
 import { hadithArticle, verseArticle } from './scripture';
 import { readPreference, writePreference } from './preferences';
 import './styles/panel.css';
@@ -178,6 +179,7 @@ export function createPanel(app: App): Panel {
           layerNote(panel.notes?.scholarly),
           ...subheading('ui.panel.classical', panel.scholarly.classical),
           ...subheading('ui.panel.modern', panel.scholarly.modern),
+          panel.discovery ? discoveryBlock(app, panel.discovery) : null,
         ]),
         section('science', [
           ...panel.science.flatMap(scienceBlock),

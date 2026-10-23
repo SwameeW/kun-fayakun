@@ -21,7 +21,9 @@
     "check": "npm run validate && npm run typecheck && npm run lint && npm run build && npm test",
     "fetch:font": "tsx scripts/fetch-font.ts",
     "check:bundle": "tsx scripts/check-bundle.ts",
-    "preprocess:sdss": "bash scripts/preprocess-sdss.sh"
+    "preprocess:sdss": "bash scripts/preprocess-sdss.sh",
+    "preprocess:jpl": "bash scripts/preprocess-jpl.sh",
+    "preprocess:analysis": "tsx scripts/build-analysis.ts"
   },
   "dependencies": {
     "intl-messageformat": "12.1.4",

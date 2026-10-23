@@ -1,0 +1,140 @@
+/* The letter analysis (Chapter 7): styled apart from scripture, never in the Quran display face. */
+.kf-discovery-wrap {
+  margin-block-start: var(--kf-space-4);
+}
+
+.kf-discovery {
+  margin-block-start: var(--kf-space-3);
+  padding: var(--kf-space-4);
+  border-inline-start: 2px solid var(--kf-gold-soft);
+  border-radius: var(--kf-radius);
+  background: var(--kf-surface-2);
+  font: 400 0.9rem/1.5 var(--kf-font-ui);
+  color: var(--kf-text);
+}
+
+.kf-discovery-title {
+  margin: 0 0 var(--kf-space-2);
+  font: 600 0.95rem/1.35 var(--kf-font-ui);
+}
+
+.kf-discovery-label {
+  margin: 0 0 var(--kf-space-2);
+  font-weight: 600;
+  color: var(--kf-gold);
+}
+
+.kf-discovery-note,
+.kf-discovery-same,
+.kf-discovery-closing,
+.kf-discovery-keys {
+  margin: var(--kf-space-2) 0 0;
+}
+
+.kf-discovery-keys {
+  color: var(--kf-text-muted);
+  font-size: 0.8rem;
+}
+
+/* Seven tiles on a gentle arc of their own, the mirror axis through the centre. */
+.kf-discovery-arc {
+  position: relative;
+  list-style: none;
+  margin: var(--kf-space-4) 0 var(--kf-space-3);
+  padding: 0;
+  block-size: 6.5rem;
+}
+
+.kf-discovery-tile {
+  position: absolute;
+  inset-block-start: 0;
+  left: 50%;
+  inline-size: 2.9rem;
+  block-size: 3.4rem;
+  margin-left: -1.45rem;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  border: 1px solid rgb(237 231 218 / 0.18);
+  border-radius: 0.6rem;
+  background: rgb(5 6 10 / 0.6);
+  transform: translate(var(--kf-arc-x), var(--kf-arc-y));
+  transition: box-shadow 400ms ease, border-color 400ms ease, background-color 400ms ease;
+  cursor: default;
+}
+
+.kf-discovery-letter {
+  font: 400 1.5rem/1 'Geeza Pro', 'Noto Naskh Arabic', 'Segoe UI', sans-serif;
+}
+
+.kf-discovery-number {
+  font: 500 0.65rem/1 var(--kf-font-ui);
+  color: var(--kf-text-muted);
+}
+
+.kf-discovery-tile.is-lit {
+  border-color: var(--kf-gold);
+  box-shadow: 0 0 14px 2px rgb(214 178 106 / 0.45);
+  background: rgb(214 178 106 / 0.14);
+}
+
+.kf-discovery-tile.is-pair {
+  border-color: var(--kf-gold);
+  box-shadow: 0 0 0 2px rgb(214 178 106 / 0.5);
+}
+
+.kf-discovery-tile:focus-visible {
+  outline: 2px solid var(--kf-gold);
+  outline-offset: 3px;
+}
+
+.kf-discovery-axis {
+  position: absolute;
+  inset-block: -0.4rem 0.8rem;
+  left: 50%;
+  inline-size: 1px;
+  background: linear-gradient(to bottom, rgb(214 178 106 / 0), rgb(214 178 106 / 0.6), rgb(214 178 106 / 0));
+  pointer-events: none;
+}
+
+.kf-discovery-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-2);
+}
+
+.kf-discovery-controls .kf-btn {
+  min-block-size: 44px;
+}
+
+.kf-discovery-live {
+  min-block-size: 1.5em;
+  margin: var(--kf-space-2) 0 0;
+  color: var(--kf-text);
+}
+
+.kf-discovery-readings {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem var(--kf-space-3);
+  margin: var(--kf-space-3) 0 0;
+}
+
+.kf-discovery-readings dt {
+  color: var(--kf-text-muted);
+}
+
+.kf-discovery-readings dd {
+  margin: 0;
+}
+
+.kf-reduced-motion .kf-discovery-tile {
+  transition: none;
+}
+
+@media (max-width: 767.98px) {
+  .kf-discovery-tile {
+    inline-size: 2.5rem;
+    margin-left: -1.25rem;
+  }
+}

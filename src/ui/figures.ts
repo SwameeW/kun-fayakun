@@ -383,6 +383,65 @@ export function expansionControl(app: App): HTMLElement {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Possible futures (Chapter 10)                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The size of the universe over time in three hypotheses, as shapes only: a constant
+ * dark energy grows it forever (heat death); a strengthening one runs away to a Big Rip;
+ * a weakening one could slow it and pull it back into a Big Crunch. The curves are
+ * schematic (no axis values) and say so; the panel gives the evidence.
+ */
+export function cosmicFutures(app: App): HTMLElement {
+  const { i18n } = app;
+  const width = 320;
+  const height = 170;
+  const pad = { left: 22, right: 10, top: 10, bottom: 22 };
+  const nowT = 0.42;
+  const x = (t: number): number => pad.left + t * (width - pad.left - pad.right);
+  const y = (a: number): number => height - pad.bottom - a * (height - pad.top - pad.bottom);
+  const path = (f: (t: number) => number, until = 1): string => {
+    const points: string[] = [];
+    for (let i = 0; i <= 80; i += 1) {
+      const t = (i / 80) * until;
+      const a = Math.min(1.05, Math.max(0, f(t)));
+      points.push(`${i === 0 ? 'M' : 'L'}${x(t).toFixed(1)},${y(a).toFixed(1)}`);
+      if (a >= 1.05) break;
+    }
+    return points.join(' ');
+  };
+  // A shared past up to now (decelerating, then accelerating), then three futures.
+  const past = (t: number): number => 0.5 * (t / nowT) ** 0.8;
+  const futures = [
+    { cls: 'kf-futures-heat', key: 'ui.futures.heatDeath', f: (t: number) => (t <= nowT ? past(t) : 0.5 * Math.exp(2.1 * (t - nowT))) },
+    { cls: 'kf-futures-rip', key: 'ui.futures.bigRip', f: (t: number) => (t <= nowT ? past(t) : 0.5 / Math.max(0.02, 1 - (t - nowT) / 0.36) ** 0.9) },
+    { cls: 'kf-futures-crunch', key: 'ui.futures.bigCrunch', f: (t: number) => (t <= nowT ? past(t) : 0.5 + 0.55 * (t - nowT) - 1.25 * (t - nowT) ** 2) },
+  ] as const;
+  const chart = svg('svg', { class: 'kf-futures-chart', viewBox: `0 0 ${width} ${height}`, 'aria-hidden': 'true', focusable: 'false' });
+  chart.append(
+    svg('line', { class: 'kf-futures-axis', x1: x(0), x2: x(1), y1: y(0), y2: y(0) }),
+    svg('line', { class: 'kf-futures-axis', x1: x(0), x2: x(0), y1: y(0), y2: y(1.05) }),
+    svg('line', { class: 'kf-futures-now', x1: x(nowT), x2: x(nowT), y1: y(0), y2: y(1.05) }),
+  );
+  const nowLabel = svg('text', { class: 'kf-futures-label', x: x(nowT) + 4, y: y(1.02) });
+  nowLabel.textContent = i18n.t('ui.futures.now');
+  const timeLabel = svg('text', { class: 'kf-futures-label', x: x(1), y: height - 6, 'text-anchor': 'end' });
+  timeLabel.textContent = i18n.t('ui.futures.axisTime');
+  const sizeLabel = svg('text', { class: 'kf-futures-label', x: 4, y: pad.top + 4, transform: `rotate(90 4 ${pad.top + 4})` });
+  sizeLabel.textContent = i18n.t('ui.futures.axisSize');
+  chart.append(nowLabel, timeLabel, sizeLabel);
+  for (const future of futures) chart.append(svg('path', { class: `kf-futures-line ${future.cls}`, d: path(future.f) }));
+  return h(
+    'figure',
+    { class: 'kf-figure kf-futures', 'data-figure': 'cosmic-futures' },
+    h('figcaption', { class: 'kf-figure-title' }, i18n.t('ui.futures.title')),
+    h('div', { class: 'kf-futures-plot', dir: 'ltr' }, chart),
+    h('ul', { class: 'kf-futures-legend' }, ...futures.map((f) => h('li', { class: `kf-futures-item ${f.cls}` }, i18n.t(f.key)))),
+    h('p', { class: 'kf-figure-note' }, i18n.t('ui.futures.caption')),
+  );
+}
+
 export function figure(app: App, id: FigureId): HTMLElement {
   switch (id) {
     case 'bbn-abundances':
@@ -395,5 +454,7 @@ export function figure(app: App, id: FigureId): HTMLElement {
       return decayChain(app);
     case 'expansion':
       return expansionControl(app);
+    case 'cosmic-futures':
+      return cosmicFutures(app);
   }
 }

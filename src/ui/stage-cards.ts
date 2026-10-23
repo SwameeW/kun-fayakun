@@ -2,7 +2,7 @@ import { isPlayable } from '../chapters/index';
 import type { App, ChapterContent, ChapterId, FigureId, TimelineState } from '../core/types';
 import { commitStyles, h } from './dom';
 import { createFadeSlot } from './fade';
-import { cmbLegend, decayChain, hubbleTension } from './figures';
+import { cmbLegend, cosmicFutures, decayChain, hubbleTension } from './figures';
 import './styles/stage.css';
 
 const TITLE_FADE_MS = 1000;
@@ -98,6 +98,26 @@ export function createStageCards(app: App): StageCards {
     actions.append(replay, explore);
     outro.replaceChildren(actions);
     if (next && !isPlayable(next)) outro.prepend(h('p', { class: 'kf-outro-note' }, i18n.t('ui.outro.later')));
+    // After the last chapter, the end credits roll above the actions.
+    if (!next && index >= 0) outro.prepend(credits());
+  }
+
+  /** End credits: the creators, then every source and licence, the review status and the disclaimer. */
+  function credits(): HTMLElement {
+    const file = app.data.sources();
+    const roll = h(
+      'div',
+      { class: 'kf-credits-roll' },
+      h('p', { class: 'kf-credits-made' }, i18n.t('ui.credits.createdBy', { names: i18n.t('ui.credits.creators') })),
+      h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.sources')),
+      h('ul', { class: 'kf-credits-list' }, ...file.sources.map((s) => h('li', {}, h('span', { class: 'kf-credits-title' }, s.title), h('span', { class: 'kf-credits-credit' }, s.credit), h('span', { class: 'kf-credits-license' }, s.license)))),
+      h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.reviews')),
+      file.reviews.length > 0
+        ? h('ul', { class: 'kf-credits-list' }, ...file.reviews.map((r) => h('li', {}, `${r.reviewer}, ${r.role} (${r.area}, ${r.date})`)))
+        : h('p', { class: 'kf-credits-note' }, i18n.t('ui.credits.reviewsPending')),
+      h('p', { class: 'kf-credits-disclaimer' }, i18n.t('ui.disclaimer')),
+    );
+    return h('section', { class: 'kf-credits', 'aria-label': i18n.t('ui.credits.title'), 'data-testid': 'credits' }, roll);
   }
 
   /* Explore hint. */
@@ -114,6 +134,7 @@ export function createStageCards(app: App): StageCards {
   for (const [id, build] of [
     ['hubble-tension', () => hubbleTension(app)],
     ['decay-chain', () => decayChain(app)],
+    ['cosmic-futures', () => cosmicFutures(app)],
   ] as const) {
     const el = build();
     el.classList.add('kf-overlay-figure');

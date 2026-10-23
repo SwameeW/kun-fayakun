@@ -65,12 +65,16 @@ export default defineConfig<KfOptions>({
     stderr: 'pipe',
   },
   projects: [
+    // Pure functions (no browser): the data extraction behind generated assets.
+    { name: 'unit', testMatch: /unit\//u },
     {
       name: 'webgpu',
+      testIgnore: /unit\//u,
       use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS } },
     },
     {
       name: 'webgl2',
+      testIgnore: /unit\//u,
       use: { ...desktopChromium, forceWebGL: true },
     },
     ...(HAS_BRAVE

@@ -435,6 +435,74 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "caldwell-2003",
+      "kind": "paper",
+      "title": "Phantom Energy: Dark Energy with w < −1 Causes a Cosmic Doomsday",
+      "author": "Caldwell, Kamionkowski and Weinberg",
+      "url": "https://doi.org/10.1103/PhysRevLett.91.071301",
+      "version": "Physical Review Letters 91, 071301 (2003)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Caldwell, Kamionkowski and Weinberg, Phys. Rev. Lett. 91, 071301 (2003)",
+      "notes": null,
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "jpl-approx-pos",
+      "kind": "dataset",
+      "title": "Approximate Positions of the Planets: Keplerian elements and their rates (Table 1, 1800 AD - 2050 AD)",
+      "author": "E. M. Standish and J. G. Williams, NASA Jet Propulsion Laboratory, Solar System Dynamics",
+      "url": "https://ssd.jpl.nasa.gov/planets/approx_pos.html",
+      "version": "retrieved 2026-10-22",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Planet orbits: NASA/JPL-Caltech Solar System Dynamics, Approximate Positions of the Planets (Standish and Williams)",
+      "notes": "Used by Chapter 7 to place the planets on their orbits for the visitor's date; sizes and distances are compressed in the scene and labelled not to scale.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "jpl-phys-par",
+      "kind": "dataset",
+      "title": "Planetary Physical Parameters (mean radii)",
+      "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics",
+      "url": "https://ssd.jpl.nasa.gov/planets/phys_par.html",
+      "version": "retrieved 2026-10-22",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Planet radii: NASA/JPL-Caltech Solar System Dynamics",
+      "notes": "Relative planet sizes in Chapter 7 (compressed, not to scale).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "jpl-horizons",
+      "kind": "dataset",
+      "title": "JPL Horizons on-line solar system data and ephemeris computation service: the Moon's geocentric positions, 2026 to 2035",
+      "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics (Giorgini et al.)",
+      "url": "https://ssd.jpl.nasa.gov/horizons/",
+      "version": "Horizons API, retrieved 2026-10-22",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Moon positions: NASA/JPL-Caltech Horizons System",
+      "notes": "Chapter 7 shows the Moon's real phase for the visitor's date from these positions.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []

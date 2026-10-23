@@ -17,7 +17,8 @@ are in [docs/CONTRACTS.md](docs/CONTRACTS.md) and [src/core/types.ts](src/core/t
 |---|---|---|
 | M1, vertical slice | Core engine, timeline, panel, data pipeline and validation, Chapters 0 to 2 including the real Planck CMB | Done, pending review |
 | M2 | Chapters 3 to 6, SDSS galaxy data, GPU particle systems, HUD tags and scale bar | Done, pending review |
-| M3 | Chapters 7 to 10, JPL ephemerides | Not started |
+| M3 | Chapters 7 to 10, JPL ephemerides, the letter analysis, end credits | Done, pending review |
+| Film and simulator brief | Screenplay and shot list ([film/](film/)), then film mode, simulators, sound and showcase features | Screenplay and shot list written; the rest is planned |
 | M4 | Recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded | Not started |
 
 Not for public release until the reviews in [Review process](#review-process) are recorded.
@@ -117,6 +118,8 @@ sources. Nothing is typed from memory or generated.
 | Validation | `npm run validate` | Fails on any verse that does not match Tanzil byte for byte after NFC, any hadith without collection, number and grading, any verse key missing from `data/sources.json`, and any Arabic text in `src/` |
 | Planck CMB | `npm run preprocess:cmb` | `public/assets/cmb/`: PR3 SMICA HEALPix map to equirectangular KTX2 textures plus `cmb.json` |
 | Calligraphy | `npm run preprocess:calligraphy` | `public/assets/calligraphy/`: MSDF atlas of the word kun, set in Amiri Quran from the text in `data/quran.json` |
+| JPL solar system | `npm run preprocess:jpl` | `public/assets/jpl/`: planet elements (Standish and Williams, Table 1) with JPL radii, and the Moon's daily geocentric positions for 2026 to 2035 from Horizons |
+| Letter analysis | `npm run preprocess:analysis` | `public/assets/analysis/kullun-fi-falak.json`: the base letters of kullun fi falakin derived from data/quran.json (21:33 and 36:40), checked to read the same both ways |
 | SDSS galaxies | `npm run preprocess:sdss` | `public/assets/sdss/`: 420,000 DR20 galaxies (every one below z = 0.1, a one-in-nine sample beyond) at their comoving positions, `galaxies.bin` plus `galaxies.json`, and the SDSS acknowledgements in `data/sources.json` |
 
 ## Adding a chapter
@@ -177,7 +180,10 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
   Collaboration.
 - Galaxy positions: Sloan Digital Sky Survey DR20, with the SDSS-I/II, III, IV and V
   acknowledgements on the Sources page (per SDSS policy).
-- Later milestones: NASA JPL Horizons and DE440/441, and live
+- Planet orbits and the Moon: NASA/JPL-Caltech Solar System Dynamics (Approximate Positions of the
+  Planets; Planetary Physical Parameters; Horizons).
+- Created by Samee and Muhaimin.
+- Later milestones: live
   recitation from the Quran Foundation API (credited, never cached beyond its terms).
 
 ## Review process

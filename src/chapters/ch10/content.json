@@ -1,0 +1,360 @@
+{
+  "id": "ch10",
+  "duration": 198,
+  "intro": {
+    "titleKey": "ch10.intro.title",
+    "subtitleKey": "ch10.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "text": [
+      {
+        "type": "verse",
+        "key": "21:104"
+      },
+      {
+        "type": "verse",
+        "key": "39:67"
+      },
+      {
+        "type": "hadith",
+        "id": "bukhari-4812",
+        "summaryKey": "ch10.hadith.grasp.summary",
+        "noteKey": "ch10.hadith.note"
+      },
+      {
+        "type": "hadith",
+        "id": "muslim-2787",
+        "summaryKey": "ch10.hadith.grasp.summary",
+        "noteKey": "ch10.hadith.note"
+      },
+      {
+        "type": "verse",
+        "key": "81:1"
+      },
+      {
+        "type": "verse",
+        "key": "81:2"
+      },
+      {
+        "type": "verse",
+        "key": "82:1"
+      },
+      {
+        "type": "verse",
+        "key": "82:2"
+      },
+      {
+        "type": "verse",
+        "key": "14:48"
+      }
+    ],
+    "scholarly": {
+      "classical": [
+        {
+          "key": "ch10.scholarly.classical.scroll"
+        },
+        {
+          "key": "ch10.scholarly.classical.sun"
+        },
+        {
+          "key": "ch10.scholarly.classical.changed"
+        }
+      ],
+      "modern": [
+        {
+          "key": "ch10.scholarly.modern.futures"
+        }
+      ]
+    },
+    "science": [
+      {
+        "key": "ch10.science.accelerating",
+        "cite": [
+          "riess-1998",
+          "perlmutter-1999"
+        ]
+      },
+      {
+        "key": "ch10.science.futures",
+        "figure": "cosmic-futures",
+        "cite": [
+          "caldwell-2003"
+        ]
+      },
+      {
+        "key": "ch10.science.desi",
+        "values": {
+          "min": {
+            "constant": "desi.darkEnergy.sigma.min",
+            "field": "value",
+            "digits": 1
+          },
+          "max": {
+            "constant": "desi.darkEnergy.sigma.max",
+            "field": "value",
+            "digits": 1
+          }
+        },
+        "cite": [
+          "desi.darkEnergy.sigma.min"
+        ]
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch10.open.darkEnergy"
+      },
+      {
+        "key": "ch10.open.end"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 0,
+      "type": "scene",
+      "event": "cosmos"
+    },
+    {
+      "t": 3,
+      "type": "caption",
+      "key": "ch10.caption.now",
+      "duration": 7
+    },
+    {
+      "t": 12,
+      "type": "caption",
+      "key": "ch10.caption.futures",
+      "duration": 9
+    },
+    {
+      "t": 23,
+      "type": "overlay",
+      "id": "cosmic-futures",
+      "visible": true
+    },
+    {
+      "t": 24,
+      "type": "scene",
+      "event": "heat-death"
+    },
+    {
+      "t": 26,
+      "type": "caption",
+      "key": "ch10.caption.heatDeath",
+      "duration": 9
+    },
+    {
+      "t": 36,
+      "type": "scene",
+      "event": "big-rip"
+    },
+    {
+      "t": 38,
+      "type": "caption",
+      "key": "ch10.caption.bigRip",
+      "duration": 9
+    },
+    {
+      "t": 48,
+      "type": "scene",
+      "event": "big-crunch"
+    },
+    {
+      "t": 50,
+      "type": "caption",
+      "key": "ch10.caption.bigCrunch",
+      "duration": 9
+    },
+    {
+      "t": 60,
+      "type": "scene",
+      "event": "still"
+    },
+    {
+      "t": 61,
+      "type": "overlay",
+      "id": "cosmic-futures",
+      "visible": false
+    },
+    {
+      "t": 62,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 64,
+      "type": "verse",
+      "key": "81:1",
+      "duration": 8
+    },
+    {
+      "t": 73,
+      "type": "verse",
+      "key": "81:2",
+      "duration": 8
+    },
+    {
+      "t": 82,
+      "type": "verse",
+      "key": "82:1",
+      "duration": 8
+    },
+    {
+      "t": 91,
+      "type": "verse",
+      "key": "82:2",
+      "duration": 8
+    },
+    {
+      "t": 100,
+      "type": "verse",
+      "key": "39:67",
+      "duration": 27
+    },
+    {
+      "t": 129,
+      "type": "verse",
+      "key": "14:48",
+      "duration": 17
+    },
+    {
+      "t": 146,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 147,
+      "type": "scene",
+      "event": "fold"
+    },
+    {
+      "t": 149,
+      "type": "caption",
+      "key": "ch10.caption.artistic",
+      "duration": 7
+    },
+    {
+      "t": 156,
+      "type": "scene",
+      "event": "light"
+    },
+    {
+      "t": 160,
+      "type": "scene",
+      "event": "calligraphy"
+    },
+    {
+      "t": 166,
+      "type": "verse",
+      "key": "21:104",
+      "duration": 22
+    },
+    {
+      "t": 190,
+      "type": "scene",
+      "event": "silence"
+    },
+    {
+      "t": 191,
+      "type": "panel",
+      "section": "science"
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        2,
+        18
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 24,
+      "position": [
+        0,
+        3,
+        22
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 60,
+      "position": [
+        0,
+        2.5,
+        20
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 146,
+      "position": [
+        1.5,
+        2.6,
+        19
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 156,
+      "position": [
+        0,
+        0,
+        9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    },
+    {
+      "t": 198,
+      "position": [
+        0,
+        0,
+        9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 49.55
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 4,
+    "maxDistance": 120
+  }
+}

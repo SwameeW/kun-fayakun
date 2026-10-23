@@ -34,10 +34,10 @@ export const CHAPTERS: readonly ChapterMeta[] = [
   meta('ch04', 1e9 * YEAR, 'M2', () => import('./ch04/scene')),
   meta('ch05', 3e9 * YEAR, 'M2', () => import('./ch05/scene')),
   meta('ch06', 6e9 * YEAR, 'M2', () => import('./ch06/scene')),
-  meta('ch07', (13.787 - 4.567) * 1e9 * YEAR, 'M3'),
-  meta('ch08', (13.787 - 4.54) * 1e9 * YEAR, 'M3'),
-  meta('ch09', (13.787 - 3.7) * 1e9 * YEAR, 'M3'),
-  meta('ch10', 'end', 'M3'),
+  meta('ch07', (13.787 - 4.567) * 1e9 * YEAR, 'M3', () => import('./ch07/scene')),
+  meta('ch08', (13.787 - 4.54) * 1e9 * YEAR, 'M3', () => import('./ch08/scene')),
+  meta('ch09', (13.787 - 3.7) * 1e9 * YEAR, 'M3', () => import('./ch09/scene')),
+  meta('ch10', 'end', 'M3', () => import('./ch10/scene')),
 ];
 
 /** "Now" marker on the timeline: the present age of the universe (Planck 2018 central value). */
