@@ -18,6 +18,9 @@ export interface RendererHandle {
   readonly height: number;
   /** Applies a quality profile's device-pixel-ratio cap. */
   setDprCap(cap: number): void;
+  /** Dynamic resolution: multiplies the capped device pixel ratio (0.6..1). */
+  setResolutionScale(scale: number): void;
+  readonly pixelRatio: number;
   onResize(fn: (width: number, height: number) => void): () => void;
   dispose(): void;
 }
@@ -100,10 +103,13 @@ async function onlySoftwareWebGPU(): Promise<boolean> {
  * its WebGL2 backend by itself when WebGPU is missing; forceWebGL forces it, and so
  * does a software-only WebGPU adapter.
  */
-export async function createRenderer(canvas: HTMLCanvasElement, options: { forceWebGL: boolean }): Promise<RendererHandle> {
+export async function createRenderer(
+  canvas: HTMLCanvasElement,
+  options: { forceWebGL: boolean; trackTimestamp?: boolean },
+): Promise<RendererHandle> {
   styleCanvas(canvas);
   const forceWebGL = options.forceWebGL || (await onlySoftwareWebGPU());
-  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL });
+  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL, trackTimestamp: options.trackTimestamp === true });
   try {
     await renderer.init();
   } catch (err) {
@@ -123,6 +129,7 @@ export async function createRenderer(canvas: HTMLCanvasElement, options: { force
   renderer.setClearColor(0x000000, 1);
 
   let dprCap = 1;
+  let resolutionScale = 1;
   let width = 1;
   let height = 1;
   const listeners = new Set<(w: number, h: number) => void>();
@@ -130,7 +137,7 @@ export async function createRenderer(canvas: HTMLCanvasElement, options: { force
   const resize = (): void => {
     width = Math.max(1, canvas.clientWidth || window.innerWidth);
     height = Math.max(1, canvas.clientHeight || window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap) * resolutionScale);
     renderer.setSize(width, height, false);
     for (const fn of listeners) fn(width, height);
   };
@@ -154,6 +161,15 @@ export async function createRenderer(canvas: HTMLCanvasElement, options: { force
     setDprCap(cap) {
       dprCap = cap;
       resize();
+    },
+    setResolutionScale(scale) {
+      const next = Math.min(1, Math.max(0.5, scale));
+      if (Math.abs(next - resolutionScale) < 1e-3) return;
+      resolutionScale = next;
+      resize();
+    },
+    get pixelRatio() {
+      return renderer.getPixelRatio();
     },
     onResize(fn) {
       listeners.add(fn);

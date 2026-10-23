@@ -1,59 +1,218 @@
 {
   "id": "ch01",
   "duration": 80,
-  "intro": { "titleKey": "ch01.intro.title", "subtitleKey": "ch01.intro.subtitle", "seconds": 4 },
+  "intro": {
+    "titleKey": "ch01.intro.title",
+    "subtitleKey": "ch01.intro.subtitle",
+    "seconds": 4
+  },
   "panel": {
     "text": [
-      { "type": "verse", "key": "21:30" }
+      {
+        "type": "verse",
+        "key": "21:30"
+      }
     ],
     "scholarly": {
       "classical": [
-        { "key": "ch01.scholarly.classical.joined" },
-        { "key": "ch01.scholarly.classical.rain" }
+        {
+          "key": "ch01.scholarly.classical.joined"
+        },
+        {
+          "key": "ch01.scholarly.classical.rain"
+        }
       ],
       "modern": [
-        { "key": "ch01.scholarly.modern.bigBang" }
+        {
+          "key": "ch01.scholarly.modern.bigBang"
+        }
       ]
     },
     "science": [
       {
         "key": "ch01.science.age",
         "values": {
-          "age": { "constant": "universe.age", "field": "value", "digits": 3 },
-          "ageErr": { "constant": "universe.age", "field": "uncertainty", "scale": 0.001, "digits": 0 }
+          "age": {
+            "constant": "universe.age",
+            "field": "value",
+            "digits": 3
+          },
+          "ageErr": {
+            "constant": "universe.age",
+            "field": "uncertainty",
+            "scale": 0.001,
+            "digits": 0
+          }
         }
       },
       {
         "key": "ch01.science.hotDense",
-        "values": { "cmbT": { "constant": "cmb.temperature", "field": "value", "digits": 3 } }
+        "values": {
+          "cmbT": {
+            "constant": "cmb.temperature",
+            "field": "value",
+            "digits": 3
+          }
+        }
       },
-      { "key": "ch01.science.expansion" },
-      { "key": "ch01.science.inflation" }
+      {
+        "key": "ch01.science.expansion"
+      },
+      {
+        "key": "ch01.science.inflation"
+      }
     ],
     "openQuestions": [
-      { "key": "ch01.open.firstInstant" },
-      { "key": "ch01.open.inflation" }
+      {
+        "key": "ch01.open.firstInstant"
+      },
+      {
+        "key": "ch01.open.inflation"
+      }
     ]
   },
   "cues": [
-    { "t": 2, "type": "scene", "event": "ignite" },
-    { "t": 4, "type": "caption", "key": "ch01.caption.beginning", "duration": 6 },
-    { "t": 11, "type": "scene", "event": "expand" },
-    { "t": 12, "type": "caption", "key": "ch01.caption.stretch", "duration": 6 },
-    { "t": 24, "type": "scene", "event": "cool" },
-    { "t": 25, "type": "caption", "key": "ch01.caption.cooling", "duration": 5 },
-    { "t": 33, "type": "panel", "section": "text" },
-    { "t": 33, "type": "verse", "key": "21:30", "duration": 30 },
-    { "t": 65, "type": "panel", "section": "scholarly" },
-    { "t": 65, "type": "caption", "key": "ch01.caption.sideBySide", "duration": 6 },
-    { "t": 72, "type": "panel", "section": "science" },
-    { "t": 72, "type": "caption", "key": "ch01.caption.open", "duration": 6 }
+    {
+      "t": 2,
+      "type": "scene",
+      "event": "ignite"
+    },
+    {
+      "t": 4,
+      "type": "caption",
+      "key": "ch01.caption.beginning",
+      "duration": 6
+    },
+    {
+      "t": 11,
+      "type": "scene",
+      "event": "expand"
+    },
+    {
+      "t": 12,
+      "type": "caption",
+      "key": "ch01.caption.stretch",
+      "duration": 6
+    },
+    {
+      "t": 24,
+      "type": "scene",
+      "event": "cool"
+    },
+    {
+      "t": 25,
+      "type": "caption",
+      "key": "ch01.caption.cooling",
+      "duration": 5
+    },
+    {
+      "t": 33,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 33,
+      "type": "verse",
+      "key": "21:30",
+      "duration": 30
+    },
+    {
+      "t": 65,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 65,
+      "type": "caption",
+      "key": "ch01.caption.sideBySide",
+      "duration": 6
+    },
+    {
+      "t": 72,
+      "type": "panel",
+      "section": "science"
+    },
+    {
+      "t": 72,
+      "type": "caption",
+      "key": "ch01.caption.open",
+      "duration": 6
+    }
   ],
   "camera": [
-    { "t": 0, "position": [0, 0, 7.5], "target": [0, 0, 0] },
-    { "t": 11, "position": [0, 0.15, 6.4], "target": [0, 0, 0], "ease": "inOutSine" },
-    { "t": 28, "position": [-2.5, 3.2, 17], "target": [0, 0, 0], "ease": "inOutSine" },
-    { "t": 80, "position": [6.5, 5.5, 26], "target": [0, 0, 0], "ease": "inOutSine" }
+    {
+      "t": 0,
+      "position": [
+        0,
+        0,
+        7.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 11,
+      "position": [
+        0,
+        0.15,
+        6.4
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 28,
+      "position": [
+        -2.5,
+        3.2,
+        17
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 62,
+      "position": [
+        4.5,
+        4.8,
+        23
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 80,
+      "position": [
+        0,
+        0,
+        0.6
+      ],
+      "target": [
+        0.1,
+        0.03,
+        -1
+      ]
+    }
   ],
-  "explore": { "target": [0, 0, 0], "minDistance": 2, "maxDistance": 90 }
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 2,
+    "maxDistance": 90
+  }
 }

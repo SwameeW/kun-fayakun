@@ -62,9 +62,9 @@ def encode_one(key: str, first_level: int) -> dict[str, Any]:
     if missing:
         raise SystemExit(f"Missing mip levels: {missing}")
 
-    # Encode into the work directory and publish only after validation and the size
-    # check pass, so a failed run never leaves an invalid or over-budget file in public/.
-    out = config.PUBLIC / config.OUTPUT_FILES[key]
+    # The colour-mapped encodes are kept as verification artifacts in the work directory;
+    # the app ships the lossless temperature texture instead (temperature.py).
+    out = config.WORK / "published-colour" / config.OUTPUT_FILES[key]
     staged = config.WORK / "encoded" / config.OUTPUT_FILES[key]
     staged.parent.mkdir(parents=True, exist_ok=True)
     report = _run([

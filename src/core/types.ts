@@ -229,7 +229,11 @@ export interface CameraKeyframe {
   position: Vec3;
   target: Vec3;
   fov?: number;
-  /** Easing used to arrive at this keyframe from the previous one. */
+  /**
+   * Legacy and ignored: the camera now follows a monotone cubic spline through all
+   * keys (velocity stays continuous through intermediate keys; moves ease into and
+   * out of holds). Kept so older content.json files still validate.
+   */
   ease?: Ease;
 }
 
@@ -261,14 +265,12 @@ export interface QualityProfile {
   /** Device-pixel-ratio cap. */
   dprCap: number;
   bloom: boolean;
-  /** Preferred CMB texture width (4096 or 2048). */
-  cmbWidth: 4096 | 2048;
 }
 
 export const QUALITY_PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
-  high: { tier: 'high', particles: 2_000_000, dprCap: 2, bloom: true, cmbWidth: 4096 },
-  mid: { tier: 'mid', particles: 300_000, dprCap: 1.5, bloom: true, cmbWidth: 4096 },
-  low: { tier: 'low', particles: 80_000, dprCap: 1.5, bloom: false, cmbWidth: 2048 },
+  high: { tier: 'high', particles: 2_000_000, dprCap: 2, bloom: true },
+  mid: { tier: 'mid', particles: 300_000, dprCap: 1.5, bloom: true },
+  low: { tier: 'low', particles: 80_000, dprCap: 1.5, bloom: false },
 };
 
 /* ------------------------------------------------------------------ */
@@ -423,6 +425,11 @@ export interface ChapterMeta {
    */
   epoch: number | 'before' | 'end';
   milestone: 'M1' | 'M2' | 'M3';
+  /**
+   * When played in sequence straight after this chapter, the film continues without
+   * fading to black: that chapter ends exactly in this one's opening state.
+   */
+  continuesFrom?: ChapterId;
   /** Lazy loader; absent for chapters not yet built. */
   load?: () => Promise<{ default: ChapterFactory }>;
 }

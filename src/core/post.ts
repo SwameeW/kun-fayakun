@@ -1,5 +1,20 @@
-import { RenderPipeline, type Camera, type Scene, type WebGPURenderer } from 'three/webgpu';
-import { pass } from 'three/tsl';
+import { RenderPipeline, type Camera, type Node, type Scene, type WebGPURenderer } from 'three/webgpu';
+import {
+  dot,
+  float,
+  hash,
+  length,
+  pass,
+  renderOutput,
+  screenCoordinate,
+  screenSize,
+  screenUV,
+  smoothstep,
+  uniform,
+  vec2,
+  vec3,
+  vec4,
+} from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { ExposureControl } from './types';
 
@@ -11,27 +26,80 @@ export interface PostPipeline {
   /** Renders the scene through the pipeline; the only render call in the app. */
   render(): void;
   setBloom(enabled: boolean): void;
+  /**
+   * Film grain changes each frame only while the film plays; paused or with reduced
+   * motion it holds still (WCAG 2.2.2: nothing moves on its own while paused).
+   */
+  advanceGrain(): void;
   dispose(): void;
 }
 
 /** Soft bloom for light sources; the threshold keeps ordinary surfaces out of it. */
-const BLOOM = { strength: 0.45, radius: 0.35, threshold: 0.75 } as const;
+const BLOOM = { strength: 0.5, radius: 0.5, threshold: 0.75 } as const;
 
 /**
- * scene pass (HDR, half float) → optional TSL bloom → tone mapping (ACES) and
- * sRGB output. Exposure is renderer.toneMappingExposure, which the pipeline's
- * output transform reads every frame.
+ * Optical vignette, applied to linear light before tone mapping as a real lens
+ * would: a gentle fall-off toward the corners (25% at the corners of a 16:9
+ * frame) that draws the eye inward without a visible ring.
+ */
+const VIGNETTE = { inner: 0.4, outer: 1.1, depth: 0.25 } as const;
+
+/**
+ * Film grain and dither, in display space after tone mapping. Night-sky imagery
+ * is mostly dark gradients, which band badly at 8 bits; a triangular dither of
+ * ±1 code value removes the bands, and a fine grain (strongest in the shadows
+ * and mid-tones, as in film) gives the frame a photographic texture. Both fade
+ * out toward pure black, so darkness stays truly dark.
+ */
+const GRAIN = { amount: 0.013, dither: 1 / 255, blackEnd: 0.04 } as const;
+
+/** Luminance weights of linear sRGB / Rec. 709. */
+const LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+function vignette(hdr: Node<'vec3'>): Node<'vec3'> {
+  const aspect = screenSize.x.div(screenSize.y);
+  const r = length(screenUV.sub(0.5).mul(vec2(aspect, 1)).mul(2));
+  const fall = smoothstep(VIGNETTE.inner, VIGNETTE.outer, r);
+  return hdr.mul(float(1).sub(fall.mul(fall).mul(VIGNETTE.depth)));
+}
+
+function grain(display: Node<'vec3'>, seed: Node<'float'>): Node<'vec3'> {
+  // Hashed white noise per pixel and frame: two independent samples summed give
+  // triangular noise in [-1, 1]. (Interleaved gradient noise is better for jitter
+  // that a filter later averages, but on its own its diagonal structure shows.)
+  const p = screenCoordinate.xy.floor();
+  const pixel = p.x.add(p.y.mul(8192)).toUint();
+  const frame = seed.toUint().mul(0x9e3779b1);
+  const n1 = hash(pixel.add(frame));
+  const n2 = hash(pixel.mul(3).add(frame).add(0x68e31da4));
+  const tpdf = n1.add(n2).sub(1);
+  const luma = dot(display, LUMA);
+  const presence = smoothstep(0, GRAIN.blackEnd, luma);
+  // Film grain peaks in the shadows and lower mid-tones and thins toward white.
+  const amount = presence.mul(float(GRAIN.amount).mul(float(1).sub(luma).mul(0.7).add(0.3)).add(GRAIN.dither));
+  return display.add(tpdf.mul(amount));
+}
+
+/**
+ * scene pass (HDR, half float) → TSL bloom (optional) → vignette (linear light)
+ * → tone mapping (ACES) and sRGB output → dither and film grain. Exposure is
+ * renderer.toneMappingExposure, which renderOutput reads every frame.
  */
 export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camera: Camera, options: { bloom: boolean }): PostPipeline {
   const pipeline = new RenderPipeline(renderer);
+  // We tone-map ourselves so grain and dither can be added after it, in display space.
+  pipeline.outputColorTransform = false;
   const scenePass = pass(scene, camera);
   const color = scenePass.getTextureNode('output');
+  const seed = uniform(0);
   let bloomNode: ReturnType<typeof bloom> | null = null;
 
   const build = (withBloom: boolean): void => {
     bloomNode?.dispose();
     bloomNode = withBloom ? bloom(color, BLOOM.strength, BLOOM.radius, BLOOM.threshold) : null;
-    pipeline.outputNode = bloomNode ? color.add(bloomNode) : color;
+    const hdr = bloomNode ? color.rgb.add(bloomNode.rgb) : color.rgb;
+    const display = renderOutput(vec4(vignette(hdr), 1));
+    pipeline.outputNode = vec4(grain(display.rgb, seed), 1);
     pipeline.needsUpdate = true;
   };
   build(options.bloom);
@@ -42,6 +110,10 @@ export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camer
     },
     setBloom(enabled) {
       if (enabled !== (bloomNode !== null)) build(enabled);
+    },
+    advanceGrain() {
+      // Wraps long before float precision matters; the pattern has no visible period.
+      seed.value = (seed.value + 1) % 4096;
     },
     dispose() {
       bloomNode?.dispose();

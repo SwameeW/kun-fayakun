@@ -53,8 +53,14 @@ npm run preview          # http://localhost:4173
 | `?reducedMotion=1\|0` | Override `prefers-reduced-motion` |
 | `?autoplay=1` | Skip the intro overlay and start playing |
 | `?fps=1` | Show a small frame-rate readout |
+| `?profile=1` | Measure GPU time per frame with timestamp queries where the browser supports them; `window.__kf.frameStats()` then reports `gpuMedianMs` and `gpuP95Ms` (holds the render scale at 1) |
 
 Query options go before the hash, e.g. `/?forceWebGL=1&autoplay=1#/ch/2?t=30`.
+
+Without `?tier` or `?profile`, the engine adapts in two stages to keep frames smooth:
+dynamic resolution first (the render scale steps down to 0.6× in small steps when frames run
+slow, and probes back up after long comfortable stretches), then the quality governor drops
+one tier if frames stay above 20 ms for 2 s.
 
 Keyboard: `Space` pauses and resumes, `Right` / `Left` go to the next / previous chapter
 (with `Shift` they seek), `P` shows or hides the panel, `E` enters free explore (orbit,

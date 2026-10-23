@@ -124,6 +124,57 @@ Scholarly layer: include Sahih al-Bukhari 3199 (Abu Dharr, may Allah be pleased 
 
 Science: the Sun formed 4.567 billion years ago; protoplanetary disk; planets; the Sun orbits the galactic centre about every 225 to 250 million years (real JPL data for planets).
 
+#### Interactive discovery: "Each in an orbit" (planned for M3)
+
+An optional, visitor-led moment in which the letters of the three words *kullun fī falakin* ("each in an orbit", 21:33 and 36:40) are seen to read the same in both directions, while the Sun and Moon keep their courses in the scene behind. It must feel like contemplation, never like a trick. It ships with Chapter 7 in M3 and does not change M1/M2 priorities.
+
+**What is true, and exactly how far it goes** (verified 2026-10-23 against `data/quran.json`, Tanzil Uthmani):
+- In 21:33, the three words before *yasbaḥūn* have the base letters (all diacritics removed): kāf, lām · fāʾ, alif maqṣūra · fāʾ, lām, kāf: seven letters, symmetric about the fourth (U+0643 U+0644 · U+0641 U+0649 · U+0641 U+0644 U+0643).
+- In 36:40 the same three words are preceded by the attached conjunction *wa-* ("and"), so the first written word there is *wa-kullun*. The symmetry holds for the three words without the conjunction, as classical rhetoricians also treat a parallel case (below). This must be said on screen, not hidden.
+- It is a property of the written base letters (the rasm) of those three words only. It is not true of the whole verse, nor of the pronunciation (*kullun fī falakin* does not sound the same reversed), nor of the vowelled text.
+- The central letter in the Uthmani text is alif maqṣūra (U+0649, written without dots), not yāʾ (U+064A). Show it as the data has it.
+- Classical framing (scholarly layer, classical first): Ibn ʿĀshūr, *al-Taḥrīr wa-l-Tanwīr* on 21:33, counts the phrase as a rhetorical embellishment (*badīʿ*) whose letters read alike from either end, a kind al-Sakkākī named *al-maqlūb al-mustawī* under *qalb* (inversion); he notes al-Ḥarīrī called a similar device by another name, and gives 74:3 *rabbaka fa-kabbir* as a parallel, with the conjunction *wa-* set aside. (Checked on quran-tafsir.net, 2026-10-23; the scholar reviewer must confirm against a printed edition before release. 74:3 may be shown as the second example only after it is added to `data/citations.json` and validated.)
+- It is a literary feature. Never present it as scientific proof, a prediction, evidence for any astronomical model, or numerology (do not link "seven letters" to the seven heavens or anything else).
+
+**Quranic text handling (non-negotiable)**
+1. The verses are always shown complete and exactly as stored in `data/quran.json`: never reversed, re-ordered, split into animated letters, distorted, morphed, or turned into particles. Verse cards fade in and out whole, as everywhere else.
+2. The letter analysis is derived by `scripts/build-analysis.ts` from the verified data, never typed into source: `data/citations.json` names the verses and the word positions (counted over whitespace tokens that contain at least one base letter, because Tanzil writes some pause marks as standalone tokens), plus `dropLeadingLetters: 1` for 36:40 with the expected code point of the dropped letter. The script strips every combining mark (Unicode Mn, including harakāt, shadda, tanwīn, superscript alif and the Quranic annotation signs U+06D6–U+06ED) and tatweel (U+0640), asserts that both verses yield the same seven letters, asserts the sequence equals its reverse, and writes `public/assets/analysis/kullun-fi-falak.json` with the verse keys, the sha256 of each source verse's Arabic, the token positions, the letters as code points and their English letter names. `npm run validate` re-derives it and fails on any mismatch.
+3. The analysis is always visibly labelled as such, e.g. "Letter analysis: base letters only, diacritics and spaces removed. This is not the Quranic text as written." It sits in its own panel, styled differently from scripture (no Amiri Quran display face, no verse framing), and the vowelled verse remains on screen above it, untouched.
+4. "Reading in either direction" moves a light over letter tiles that never change order. Where the sequence read the other way is listed, it is listed as letter names (kāf, lām, fāʾ, alif maqṣūra, fāʾ, lām, kāf), never as a reversed Arabic string presented as text.
+5. Every Arabic element carries `lang="ar" dir="rtl" translate="no"`. No Arabic in `src/`.
+
+**Visual direction**
+- The scene: the Sun as a living star (animated granulation, limb darkening, a faint corona that the bloom carries), the Moon lit by it with the correct phase, and the Earth with its terminator, each moving on its own course from JPL ephemerides (positions and periods real; sizes and distances compressed and labelled "not to scale"). The modern heliocentric picture is shown as science; the verse is not mapped onto it.
+- An instrument-of-light motif drawn from the astrolabes and armillary spheres of the Islamic astronomical tradition: orbits as fine engraved rings of warm light, graduated like an astrolabe's limb, with deep parallax as the camera drifts. Restrained, never ornamental clutter. (A user-supplied orrery image is mood reference only, not to be copied.)
+- When the discovery opens, the scene dims gently and its motion slows, but it never stops: the orbits continue behind the letters, so the symmetry is felt inside the cosmos rather than on a page.
+
+**Discovery sequence** (visitor-led; nothing auto-starts)
+1. Invitation: after the verse card has finished and its three panel layers are available, the scholarly layer offers "Explore the letters of this phrase". A quiet button, never a pop-up and never timed to the verse.
+2. The phrase: the vowelled verse stays in its card; the three words are marked in place with a soft underline of light (the text itself is not altered or moved).
+3. Letters on an orbit: the analysis panel shows the seven base letters as tiles along a gentle arc, a *falak* of their own, with the mirror axis through the central letter drawn as a thin vertical line of light.
+4. Mirrored pairs: the outer pair (kāf, kāf), then lām and lām, then fāʾ and fāʾ, glide along the arc toward the centre like two bodies on one orbit approaching from either side, meeting the central letter with a soft ring of light (eased over at least 0.6 s, low intensity, never a flash), then return. Behind them, the Sun and Moon keep their courses.
+5. Either way: two controls, "Read right to left" and "Read left to right", send a travelling light across the tiles, naming each letter as it passes. Both readings produce the same list, shown side by side as letter names, with one sentence: "Read the seven base letters from either end: the sequence is the same."
+6. Context: one line each for 36:40's conjunction, the "central three words, not the whole verse" point, and the rasm-not-pronunciation point; then the classical note (Ibn ʿĀshūr, al-Sakkākī) and a closing line that this is a literary beauty of the text, offered for reflection.
+7. Close: the panel fades; the scene returns to full brightness and speed; focus returns to the button that opened it.
+
+**Interaction and accessibility**
+- Opens inline in the panel on desktop and as a full-height sheet on mobile (touch targets at least 44 px; swipe on the tiles moves the reading light).
+- Keyboard: Tab reaches every control; Left and Right arrows move the reading light one letter; Home and End jump to either end; Enter or Space plays a reading; P replays the mirrored pairs; Esc closes and restores focus. Visible focus on every tile and control.
+- Screen readers: tiles are real DOM text, each named "kāf, letter 1 of 7, pairs with letter 7"; the pairing and both readings are announced in an `aria-live="polite"` region; the meaning never depends on colour alone (pairs also carry numbers).
+- Reduced motion: no gliding or travelling light; pairs and the current letter are shown with crossfaded highlights; readings advance only when the visitor steps them; the scene's orbits slow to near-still.
+- Text stays DOM, never baked into the canvas. Tiles may be anchored to 3D positions (projected once per frame and written as compositor-only CSS transforms) for depth, while remaining real text.
+- English and Arabic UI via the locale files; letter names and all explanatory strings are ICU messages.
+
+**Performance**
+- The discovery layer is DOM and CSS (transform and opacity only, no layout per frame) plus at most three extra draw calls in the scene (the mirror axis, the pair arcs, one soft glow), all running on WebGPU and WebGL2 with no compute.
+- Budget: opening it adds at most 0.5 ms GPU and 1 ms CPU per frame on High; the chapter keeps the M3 targets (60 fps median, 1% low at least 45 on an M1-class laptop at High; 30 fps on a Pixel 7 or iPhone 13 at Low). Measured with `?profile=1` and the Playwright perf spec.
+- Every effect must earn its place: if an effect does not help the visitor see the symmetry or feel the orbit, it is cut.
+
+**Tests and review**
+- Unit tests for the extraction (both verses, the conjunction, standalone pause-mark tokens, the alif maqṣūra) and a validator rule for the generated asset.
+- Playwright: open and close by keyboard, read both directions, axe with the panel open, reduced motion, mobile width, and a check that the verse text in the card is byte-identical to `data/quran.json` while the discovery runs.
+- The scholar reviewer signs off on the wording of the analysis labels, the classical attribution, and the conjunction note (section 9).
+
 ### Chapter 8: The earth spread out
 Text:
 - 41:9 to 12: Earth in two days (41:9); its provisions “in four days” (41:10); heavens in two days (41:12). State the classical explanation that the four days include the first two, so the total is six, matching 7:54.
@@ -223,6 +274,6 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 
 - M1, vertical slice: core engine, timeline, panel, data pipeline and validation, Chapters 0 to 2 including the CMB. Deployed and meeting every criterion above.
 - M2: Chapters 3 to 6, SDSS data, GPU particle systems.
-- M3: Chapters 7 to 10, JPL data.
+- M3: Chapters 7 to 10, JPL data, and the Chapter 7 "Each in an orbit" letter discovery (section 3, Chapter 7).
 - M4: recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded.
 - Each milestone ships a README (how to run, how to add a chapter), sources.json, the generated Sources page, and a LICENSES file covering fonts, texts, and data.

@@ -12,6 +12,7 @@ import type { LaunchParams } from './params';
 import { createPerfMonitor, type PerfMonitor } from './perf';
 import { createExposureControl, createPostPipeline, type EngineExposure, type PostPipeline } from './post';
 import { chooseInitialTier, createQualityGovernor, type QualityGovernor } from './quality';
+import { createResolutionGovernor, type ResolutionGovernor } from './resolution';
 import { createRenderer, RENDERER_UNAVAILABLE_MESSAGE, type BackendName, type RendererHandle } from './renderer';
 import { createRouter, type Router } from './router';
 import { Timeline } from './timeline';
@@ -45,6 +46,7 @@ interface Graphics {
   handle: RendererHandle;
   post: PostPipeline;
   governor: QualityGovernor;
+  resolution: ResolutionGovernor;
 }
 
 interface NavOptions {
@@ -145,6 +147,10 @@ class Engine implements KunFayakunApp {
       onChapterEnd: (id) => {
         this.onChapterEnd(id);
       },
+      continuesAfter: (id) => {
+        const next = this.sequence ? this.neighbour(id, 1) : null;
+        return next !== null && this.chapters.find((c) => c.id === next)?.continuesFrom === id;
+      },
     });
     this.loader = createChapterLoader({
       makeContext: (assets) => this.makeContext(assets),
@@ -226,7 +232,7 @@ class Engine implements KunFayakunApp {
   }
 
   private async initGraphics(): Promise<Graphics> {
-    const handle = await createRenderer(this.canvas, { forceWebGL: this.params.forceWebGL });
+    const handle = await createRenderer(this.canvas, { forceWebGL: this.params.forceWebGL, trackTimestamp: this.params.profile });
     this.backendName = handle.backend;
     const { profile, reason } = chooseInitialTier({ backend: handle.backend, gpu: handle.gpu, override: this.params.tier });
     this.profile = profile;
@@ -242,8 +248,10 @@ class Engine implements KunFayakunApp {
     const post = createPostPipeline(handle.renderer, this.scene, this.camera, { bloom: profile.bloom });
     const governor = createQualityGovernor(profile, { enabled: this.params.tier === null });
     governor.suspend();
+    // A fixed tier (tests, benchmarks) or profiling also holds the render scale at 1.
+    const resolution = createResolutionGovernor({ enabled: this.params.tier === null && !this.params.profile });
     this.assets.attachRenderer(handle.renderer);
-    const gfx: Graphics = { handle, post, governor };
+    const gfx: Graphics = { handle, post, governor, resolution };
     this.gfx = gfx;
 
     setHook('data-backend', handle.backend);
@@ -299,6 +307,8 @@ class Engine implements KunFayakunApp {
     try {
       if (raw > 0) {
         this.perf.record(raw * 1000);
+        const scale = gfx.resolution.sample(raw);
+        if (scale !== null) gfx.handle.setResolutionScale(scale);
         const lower = gfx.governor.sample(raw);
         if (lower) this.applyQuality(lower, 'governor');
       }
@@ -306,7 +316,10 @@ class Engine implements KunFayakunApp {
       this.timeline.update(dt);
       this.exposure.update(dt);
       gfx.handle.renderer.toneMappingExposure = this.exposure.current;
+      // Grain moves only while the film plays (WCAG 2.2.2) and never with reduced motion.
+      if (dt > 0 && !this.timeline.paused && !this.reduced) gfx.post.advanceGrain();
       gfx.post.render();
+      this.measure(gfx);
     } catch (err) {
       this.logOnce('[frame]', err);
       return;
@@ -322,6 +335,19 @@ class Engine implements KunFayakunApp {
       this.afterChapterReady(pending);
     }
   };
+
+  /** Renderer facts for frameStats(); with ?profile=1 also the frame's GPU time. */
+  private measure(gfx: Graphics): void {
+    const renderer = gfx.handle.renderer;
+    this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls });
+    if (!this.params.profile) return;
+    renderer
+      .resolveTimestampsAsync('render')
+      .then((ms) => {
+        if (typeof ms === 'number') this.perf.recordGpu(ms);
+      })
+      .catch(() => undefined);
+  }
 
   private readonly onVisibility = (): void => {
     // The first frame after the tab returns would otherwise carry the hidden time.
@@ -377,13 +403,16 @@ class Engine implements KunFayakunApp {
     this.chapterReadyPending = null;
     setHook('data-chapter-ready', null);
     gfx.governor.suspend();
-    this.timeline.beginLoading(id);
+    // In sequence, a chapter that continues the one on screen takes over without a fade.
+    const previous = this.timeline.chapter;
+    const continuous = options.sequence && previous !== null && meta.continuesFrom === previous;
+    this.timeline.beginLoading(id, continuous);
     try {
       const [loaded] = await Promise.all([
         this.loader.load(id, (progress) => {
           if (token === this.navToken) this.events.emit('loading', { chapter: id, progress });
         }),
-        this.timeline.whenDark(),
+        continuous ? Promise.resolve() : this.timeline.whenDark(),
         // The panel reads data on the 'chapter' event; a data failure is reported separately.
         this.data.ready.catch(() => undefined),
       ]);
@@ -394,6 +423,7 @@ class Engine implements KunFayakunApp {
       if (token !== this.navToken) return;
       this.chapterReadyPending = id;
       gfx.governor.holdOff();
+      gfx.resolution.holdOff();
     } catch (err) {
       if (token !== this.navToken) return;
       console.error(`[app] Loading ${id} failed`, err);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuilds public/assets/cmb/{cmb-4096.ktx2,cmb-2048.ktx2,cmb.json} from the Planck
+# Rebuilds public/assets/cmb/{cmb-temperature-2048.ktx2,cmb.json} from the Planck
 # PR3 SMICA HEALPix map. Usage: npm run preprocess:cmb
 #
 # Needs: .cache/planck/COM_CMB_IQU-smica_2048_R3.00_full.fits (2.0 GB, see the URL in
@@ -36,7 +36,7 @@ bash "$ROOT/scripts/cmb/fetch-ktx.sh"
 step "Planck 2018 reference figure (optional, for verification only)"
 bash "$ROOT/scripts/cmb/fetch-reference.sh" || echo "skipped: the figure comparison will be recorded as null"
 
-for name in verify-source grid images encode preview manifest; do
+for name in verify-source grid images encode preview temperature manifest; do
   step "$name"
   "$VENV/bin/python" "$BUILD" "$name"
 done

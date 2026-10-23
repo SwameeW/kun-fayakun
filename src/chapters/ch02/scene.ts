@@ -2,9 +2,10 @@ import { ACESFilmicToneMapping, Group, MathUtils, type PerspectiveCamera } from 
 import type { ChapterContent, ChapterContext, ChapterModule, QualityProfile } from '../../core/types';
 import contentJson from './content.json';
 import { CMB_RADIUS, checkManifest, createCmbSphere, type CmbManifest, type CmbSphere } from './cmb-sphere';
-import { createNoiseVolume } from './noise-volume';
-import { createPlasma, type Plasma } from './plasma';
-import { readEventTimes, stateAt } from './timing';
+import { createNoiseVolume } from '../shared/noise-volume';
+import { createMediumState, createPlasmaMedium, type PlasmaMedium } from '../shared/plasma-medium';
+import { createPhotons, type Photons } from './photons';
+import { photonLight, readEventTimes, stateAt } from './timing';
 
 /**
  * Chapter 2, "The first light": the camera starts inside the glowing, opaque
@@ -42,7 +43,8 @@ function fitToWidth(camera: PerspectiveCamera): number {
 }
 
 interface Parts {
-  plasma: Plasma;
+  plasma: PlasmaMedium;
+  photons: Photons;
   sphere: CmbSphere;
   dispose(): void;
 }
@@ -50,22 +52,25 @@ interface Parts {
 async function buildParts(ctx: ChapterContext, root: Group): Promise<Parts> {
   const manifest = await ctx.assets.json<CmbManifest>('assets/cmb/cmb.json');
   checkManifest(manifest);
-  const file = manifest.files[String(ctx.quality.cmbWidth)] ?? manifest.files[String(manifest.width)];
-  if (!file) throw new Error('ch02: cmb.json lists no texture file');
+  const file = manifest.temperature?.file;
+  if (!file) throw new Error('ch02: cmb.json lists no temperature texture');
   const [map, noise] = await Promise.all([ctx.assets.ktx2(`assets/cmb/${file}`), createNoiseVolume(NOISE_SIZE, NOISE_SEED)]);
 
-  const plasma = createPlasma(noise);
+  const plasma = createPlasmaMedium(noise, ctx.quality.tier);
+  const photons = createPhotons(ctx.quality.tier);
   const sphere = createCmbSphere(map, manifest, {
     maxAnisotropy: ctx.renderer.getMaxAnisotropy(),
     acesToneMapping: ctx.renderer.toneMapping === ACESFilmicToneMapping,
   });
-  root.add(sphere.mesh, plasma.mesh);
+  root.add(sphere.object, plasma.mesh, photons.field.mesh);
   return {
     plasma,
+    photons,
     sphere,
     dispose() {
-      root.remove(sphere.mesh, plasma.mesh);
+      root.remove(sphere.object, plasma.mesh, photons.field.mesh);
       plasma.dispose();
+      photons.dispose();
       sphere.dispose();
       noise.dispose();
     },
@@ -83,6 +88,7 @@ export default function create(): ChapterModule {
   let idleFlow = 0;
   let lastT: number | null = null;
   let firstFrame = true;
+  const medium = createMediumState();
 
   return {
     id: 'ch02',
@@ -119,10 +125,24 @@ export default function create(): ChapterModule {
       lastT = t;
 
       const camera = ctx.camera.position;
-      const state = stateAt(t, times, camera.length(), reduced);
+      const state = stateAt(t, times, reduced);
       const flow = (t + idleFlow) * (reduced ? REDUCED_FLOW_RATE : 1);
-      parts.plasma.update({ clear: state.clear, flow, warmUp: firstFrame }, camera);
-      parts.sphere.update(state.reveal, state.spin, fitToWidth(ctx.camera));
+      medium.clear = state.clear;
+      medium.flow = flow;
+      // Space keeps stretching after recombination: the clearing pattern grows a little as it fades.
+      medium.scale = 1 + 0.35 * state.clear;
+      medium.warmUp = firstFrame;
+      parts.plasma.update(medium, camera);
+      const light = photonLight(t, times, reduced);
+      parts.photons.update({
+        time: t,
+        release: times.recombination,
+        brightness: light.brightness,
+        density: 1 - state.clear,
+        redshift: light.redshift,
+        reducedMotion: reduced,
+      });
+      parts.sphere.update(state.reveal, state.spin, fitToWidth(ctx.camera), camera, firstFrame);
       firstFrame = false;
     },
 
@@ -131,11 +151,10 @@ export default function create(): ChapterModule {
       // crossing an event needs no extra state; seeking stays deterministic.
     },
 
-    setQuality(_profile: QualityProfile) {
-      // No particle system here, so the particle budget does not apply. The plasma
-      // costs a fixed 12 texture reads per pixel on every tier (the tier's DPR cap
-      // scales the pixel count), and the map texture chosen at load (cmbWidth)
-      // costs bandwidth rather than frame time, so nothing changes mid-scene.
+    setQuality(profile: QualityProfile) {
+      // Fewer plasma samples and photons on lower tiers (the map texture is the same on every tier).
+      parts?.plasma.setTier(profile.tier);
+      parts?.photons.setTier(profile.tier);
     },
 
     exit() {

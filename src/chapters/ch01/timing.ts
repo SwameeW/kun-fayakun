@@ -9,8 +9,13 @@ import type { Cue } from '../../core/types';
  * and a slowly fading rate, never a burst), the light diffuses into a uniform
  * glow and the comoving dust resolves out of it; the glow's temperature falls
  * as 1/a, so its colour runs from blue-white through yellow and orange to deep
- * red; at `cool` the glow dims. Nothing is tied to the verse: after `cool`
- * there is only the same slow, continuous stretching.
+ * gold; at `cool` the glow dims. Around the viewer the hot plasma of the early
+ * universe takes shape as a translucent haze whose faint structure (the seeds
+ * of all later structure, exaggerated) is fixed in comoving space, so it grows
+ * as space stretches. Over the last seconds the haze thickens into the opaque
+ * plasma Chapter 2 opens inside: the same medium, pattern, colour and camera, so
+ * the two chapters join without a cut. Nothing is tied to the verse: after
+ * `cool` there is only the same slow, continuous stretching.
  */
 
 /** Scene events of this chapter, in order (docs/CONTRACTS.md). */
@@ -36,7 +41,7 @@ export function readEventTimes(cues: readonly Cue[]): EventTimes {
 export interface FrameState {
   /** Cosmic scale factor; 1 until `expand`. Every point sits at its comoving position × a. */
   a: number;
-  /** Glow temperature in kelvin; falls as 1/a. */
+  /** Glow temperature in kelvin; falls as a power of a (see TEMPERATURE_EXPONENT). */
   temperature: number;
   /** Width (world units) of the glow's Gaussian; grows from a point until it surrounds the camera. */
   glowSigma: number;
@@ -53,18 +58,46 @@ export interface FrameState {
   dustReach: number;
   /** Target for the engine's exposure control. */
   exposure: number;
+  /** The plasma medium (src/chapters/shared/plasma-medium.ts). */
+  mediumEmission: number;
+  mediumDensity: number;
+  mediumContrast: number;
+  /** 0..1 of the plasma condensed (it gathers as islands of light that spread). */
+  mediumCoverage: number;
+  /** Comoving pattern scale: a(t) / a(end), so the pattern matches Chapter 2's at the end. */
+  mediumScale: number;
 }
 
 export function createFrameState(): FrameState {
-  return { a: 1, temperature: 0, glowSigma: 0, glowPeak: 0, halo: 0, dust: 0, dustReach: 1, exposure: 1 };
+  return {
+    a: 1,
+    temperature: 0,
+    glowSigma: 0,
+    glowPeak: 0,
+    halo: 0,
+    dust: 0,
+    dustReach: 1,
+    exposure: 1,
+    mediumEmission: 0,
+    mediumDensity: 0,
+    mediumContrast: 0,
+    mediumCoverage: 0,
+    mediumScale: 1,
+  };
 }
 
 /* Light ------------------------------------------------------------- */
 
 /** Temperature of the light before space stretches: blue-white. */
 const HOT_KELVIN = 12_000;
-/** Scale factor reached at `cool`: 12000 K / 11 ≈ 1100 K, a deep red. */
+/** Scale factor reached at `cool`. */
 const A_AT_COOL = 11;
+/**
+ * The light's colour cools as a^-0.37 (not as the physical 1/a: the stretching shown is a
+ * visual scale, not the real factor of ~10^26), from blue-white to a warm gold of about
+ * 4,500 K at the chapter's end, where it becomes the 3,000-4,000 K plasma of Chapter 2.
+ */
+const TEMPERATURE_EXPONENT = 0.37;
 /** Exposure target while the screen is still in darkness; `ignite` raises it to 1 through the engine's limiter. */
 const DARK_EXPOSURE = 0.05;
 /** The point's own brightening after `ignite` (on top of the exposure ramp). */
@@ -103,13 +136,31 @@ const DUST_IN_START = 5.5;
 const DUST_IN_END = 9;
 const DUST_COOL_DIM = 0.6;
 /** Peak dust brightness; individual points carry a share of it by distance and chance. */
-const DUST_LEVEL = 3.5;
+const DUST_LEVEL = 2.4;
+/**
+ * As the plasma condenses the dust yields to it: millions of faint points sum to a grey veil
+ * that would wash the plasma's colour out, so only the brighter glints stay.
+ */
+const DUST_UNDER_PLASMA = 0.3;
 /**
  * Resolved reach at a = 1. It grows as a^0.7, slower than space, so fewer and fewer points stay
  * close by: the dust visibly thins out as it stretches (a few thousand resolved points at first).
  */
 const REACH_BASE = 3.2;
 const REACH_GROWTH = 0.7;
+
+/* Plasma medium ----------------------------------------------------- */
+
+/** Seconds after `expand` over which the plasma gathers, as the swelling light reaches the viewer. */
+const MEDIUM_IN = { start: 6, end: 13 } as const;
+/**
+ * While space stretches the plasma is luminous structure with dark gaps: bright cores,
+ * deep-red edges and near-black voids where the dust glints (an even haze reads as smoke).
+ * Its colours are exactly Chapter 2's (the same incandescent ramp), so the join is seamless.
+ */
+const HAZE = { emission: 1.0, density: 0.5, contrast: 1.0 } as const;
+/** Seconds before the end over which the haze thickens into opaque plasma (Chapter 2's opening state). */
+const THICKEN_SECONDS = 16;
 
 /** Reduced motion: slower crossfades (the expansion itself is unchanged; see createTimingModel). */
 const REDUCED_FADE = 1.4;
@@ -145,7 +196,7 @@ export interface TimingModel {
   sample(t: number, out: FrameState): FrameState;
 }
 
-export function createTimingModel(times: EventTimes, reducedMotion: boolean): TimingModel {
+export function createTimingModel(times: EventTimes, reducedMotion: boolean, duration: number): TimingModel {
   /*
    * Reduced motion keeps the same expansion and slows only the fades, so the dust appears later,
    * when space is stretching more slowly. Stretching the expansion itself over a longer time would
@@ -160,6 +211,7 @@ export function createTimingModel(times: EventTimes, reducedMotion: boolean): Ti
   const gain = Math.max(0, (Math.log(A_AT_COOL) - tail(toCool)) / pulse(toCool, tau));
 
   const scaleFactor = (u: number): number => (u <= 0 ? 1 : Math.exp(gain * pulse(u, tau) + tail(u)));
+  const finalA = scaleFactor(duration - times.expand);
 
   return {
     sample(t, out) {
@@ -171,17 +223,34 @@ export function createTimingModel(times: EventTimes, reducedMotion: boolean): Ti
       const dim = smootherstep(0, DIM_SECONDS * fade, sinceCool);
       const uniform = UNIFORM_LEVEL * a ** -UNIFORM_FALLOFF * (1 + (COOL_DIM - 1) * dim);
 
+      // The haze thickens into the opaque plasma over the last THICKEN_SECONDS (the handoff).
+      const thicken = smootherstep(duration - THICKEN_SECONDS, duration - 1, t);
+      const gathered = smootherstep(MEDIUM_IN.start * fade, MEDIUM_IN.end * fade, sinceExpand);
+
       out.a = a;
-      out.temperature = HOT_KELVIN / a;
+      out.temperature = HOT_KELVIN * a ** -TEMPERATURE_EXPONENT;
       out.glowSigma = logLerp(POINT_SIGMA, WIDE_SIGMA_PER_A * a, diffused);
-      out.glowPeak = ignition * logLerp(POINT_PEAK, 2 * uniform, smootherstep(0, PEAK_FALL_SECONDS * fade, sinceExpand));
+      // As the plasma gathers it takes over from the uniform glow (the two together read as murk).
+      out.glowPeak =
+        ignition *
+        logLerp(POINT_PEAK, 2 * uniform, smootherstep(0, PEAK_FALL_SECONDS * fade, sinceExpand)) *
+        (1 - 0.75 * gathered) *
+        (1 - thicken);
       out.halo = ignition * HALO * (1 - diffused) ** 2;
       out.dust =
         DUST_LEVEL *
         smootherstep(DUST_IN_START * fade, DUST_IN_END * fade, sinceExpand) *
-        (1 + (DUST_COOL_DIM - 1) * dim);
+        (1 + (DUST_COOL_DIM - 1) * dim) *
+        (1 + (DUST_UNDER_PLASMA - 1) * gathered) *
+        (1 - thicken);
       out.dustReach = REACH_BASE * a ** REACH_GROWTH;
       out.exposure = t < times.ignite ? DARK_EXPOSURE : 1;
+      // How much exists grows with `gathered`; the shader cools thin, partly condensed plasma.
+      out.mediumEmission = HAZE.emission + (1 - HAZE.emission) * thicken;
+      out.mediumDensity = HAZE.density + (1 - HAZE.density) * thicken;
+      out.mediumCoverage = gathered;
+      out.mediumContrast = HAZE.contrast + (1 - HAZE.contrast) * thicken;
+      out.mediumScale = a / finalA;
       return out;
     },
   };

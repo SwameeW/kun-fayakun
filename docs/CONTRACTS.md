@@ -65,7 +65,7 @@ Everything is fetched relative to `document.baseURI` via `assets.url(path)` (Vit
 - `assets/basis/basis_transcoder.{js,wasm}` (copied by vite.config.ts)
 - `fonts/AmiriQuran.woff2` → CSS family `"Amiri Quran"` (ui declares the @font-face; `font-display: swap`)
 - `assets/calligraphy/kun.png` + `assets/calligraphy/kun.json`
-- `assets/cmb/cmb-4096.ktx2`, `assets/cmb/cmb-2048.ktx2`, `assets/cmb/cmb.json`
+- `assets/cmb/cmb-temperature-2048.ktx2`, `assets/cmb/cmb.json`
 
 ### `assets/calligraphy/<id>.json`
 ```json
@@ -100,11 +100,26 @@ Names are fixed; times live in content.json.
 | Chapter | Scale | Events (in order) | Notes |
 |---|---|---|---|
 | ch00 | calligraphy quad ~4 units wide at origin; camera on +z, ~6–9 units away | `kun-reveal`, `kun-hold`, `kun-fade` | Opens in total darkness and silence for several seconds. Reveal is a slow ≥ 4 s fade of light. |
-| ch01 | point at origin; expansion out to radius ~60 | `ignite`, `expand`, `cool` | Point of light grows softly (no flash); comoving lattice/dust shows space stretching. |
-| ch02 | camera starts at origin inside plasma; CMB sphere radius 10 at origin seen from outside at ~25–35 units | `plasma`, `recombination`, `cmb-reveal`, `cmb-hold` | Plasma clears to transparent space; then the real Planck map. Fog is never captioned "smoke". |
+| ch01 | point at origin; endless comoving dust around the camera | `ignite`, `expand`, `cool` | Point of light grows softly (no flash); as it envelops the viewer the shared plasma medium condenses (deep-orange embers that warm to gold), its pattern fixed in comoving space so it grows as space stretches; it thickens into Chapter 2's opening state, and the final camera key equals Chapter 2's first. |
+| ch02 | camera starts at (0, 0, 0.6) inside the same plasma; CMB sphere radius 10 at origin | `plasma`, `recombination`, `cmb-reveal`, `cmb-hold` | Photons random-walk in the plasma and stream free at recombination (nearest first), then redden and fade; the real Planck sky appears around the viewer (inside view, as seen from Earth) and the camera draws back out through the shell to see it whole (outside view, mirrored as a celestial globe is). Fog is never captioned "smoke". |
 
 The `cmb-legend` overlay cue (`{type:'overlay', id:'cmb-legend', visible}`) shows the DOM colour
 scale + credit while the map is visible. The `bbn-abundances` figure lives in the ch02 science layer.
+
+**Continuity.** A registry entry may declare `continuesFrom` (src/chapters/index.ts): when it follows
+that chapter in sequence play, the engine swaps chapters without fading to black (the previous one
+stays lit, frozen at its last moment, until the next starts in the same frame). The previous chapter
+must end exactly in the next one's opening state. ch02 continues ch01.
+
+**Shared visual modules** (src/chapters/shared): `plasma-medium.ts` (the volumetric plasma: comoving
+scale, coverage, heat; dimmer always means redder, never a plain dimmer), `streaks.ts` (instanced
+screen-space light streaks, one draw call, vertex-stage motion on both backends), `noise-volume.ts`,
+and the MSDF calligraphy (`msdf-*`; the glow field's alpha carries precomputed light rays).
+
+**CMB texture.** `assets/cmb/cmb-temperature-2048.ktx2` holds the temperature itself (R8, lossless
+zstd, mip chain, rows bottom-up, ±300 µK → 0..255); the scene colours it through a half-float lookup
+table built from cmb.json's stops (ACES-compensated). Texture coordinates come from the direction per
+pixel with seam-safe gradients (no seam line, no pole pinch).
 
 ## Constant ids the UI relies on (content builder must create them)
 
@@ -134,7 +149,13 @@ scale + credit while the map is visible. The `bbn-abundances` figure lives in th
 
 - Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`.
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
-  (skip the intro overlay and start playing), `?fps=1` (show a small fps readout).
+  (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
+  (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
+  holds the render scale at 1).
+- Dynamic resolution: unless `?tier` or `?profile` is set, the engine lowers the render scale in small
+  steps (down to 0.6× the tier's DPR cap) when frames run slow, before the tier governor drops a tier,
+  and probes back up after long comfortable stretches. A software-only WebGPU adapter (e.g. SwiftShader
+  on GPU-less CI) is treated as unavailable: WebGL2 is used instead.
 
 ## Test hooks (engine sets these on `<html>`)
 

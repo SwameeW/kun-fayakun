@@ -27,8 +27,19 @@ const SCENE_EVENTS: readonly string[] = ['kun-reveal', 'kun-hold', 'kun-fade'];
 const ATLAS_HEIGHT = 2.7;
 /** Atlas pixels kept around the ink for the halo (about 3 widest sigmas, so it fades out inside the quad). */
 const GLOW_MARGIN_PX = 280;
-/** Glow field: one texel per 4 atlas pixels; three Gaussian widths (sigmas in atlas pixels). */
-const GLOW_FIELD = { downsample: 4, nearSigmaPx: 12, farSigmaPx: 40, widestSigmaPx: 96 } as const;
+/**
+ * Glow field: one texel per 4 atlas pixels; three Gaussian widths (sigmas in atlas pixels),
+ * and light rays streaming outward from the strokes, as light through still air.
+ */
+const GLOW_FIELD = {
+  downsample: 4,
+  nearSigmaPx: 12,
+  farSigmaPx: 40,
+  widestSigmaPx: 96,
+  rays: { samples: 48, reach: 0.55, decay: 0.95 },
+} as const;
+/** How strongly the rays show in the halo (they share the word's breathing and fades). */
+const RAYS_WEIGHT = 0.22;
 /** The almost imperceptible push-in, as a fraction of the word's size over its whole presence. */
 const DRIFT_SCALE = 0.03;
 /**
@@ -139,6 +150,7 @@ export default function create(): ChapterModule {
         coreColor: CORE_COLOR,
         glowColor: GLOW_COLOR,
         glowField,
+        raysWeight: RAYS_WEIGHT,
         maxLuminance: MAX_LUMINANCE,
       });
       const mesh = new Mesh(quad.geometry, light.material);

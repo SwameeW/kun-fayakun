@@ -25,6 +25,8 @@ export interface TimelineHost {
   readonly exposure: EngineExposure;
   /** Called once when a chapter's outro has finished. */
   onChapterEnd(chapter: ChapterId): void;
+  /** True when the film will continue straight into a chapter that opens where this one ends. */
+  continuesAfter(chapter: ChapterId): boolean;
 }
 
 export interface TimelineChapter {
@@ -54,6 +56,8 @@ export class Timeline {
   private active: Active | null = null;
   /** The active scene is fading out and will be exited once dark. */
   private retiring = false;
+  /** Chapter time the retiring chapter keeps showing (it must not jump back to 0 while it stays lit). */
+  private retiringT = 0;
   private t = 0;
   private pausedValue = false;
   private introLeft = 0;
@@ -87,9 +91,13 @@ export class Timeline {
     return this.active && !this.retiring ? this.active.module : null;
   }
 
-  /** Leaves the current chapter for another: its cues end and it fades to black. */
-  beginLoading(id: ChapterId): void {
-    this.retire();
+  /**
+   * Leaves the current chapter for another: its cues end and it fades to black, unless
+   * the next chapter continues it (`keepLit`): then it stays on screen, frozen at its
+   * last moment, until the next one starts on top of it in the same frame.
+   */
+  beginLoading(id: ChapterId, keepLit = false): void {
+    this.retire(keepLit);
     this.chapterValue = id;
     this.t = 0;
     this.setState('loading');
@@ -186,7 +194,7 @@ export class Timeline {
     const motionDt = this.pausedValue ? 0 : dt;
 
     if (this.retiring) {
-      a.module.update(this.t, motionDt);
+      a.module.update(this.retiringT, motionDt);
       if (this.host.exposure.dark) this.exitActive();
       return;
     }
@@ -205,7 +213,12 @@ export class Timeline {
     this.host.camera.update(this.t, dt);
     a.module.update(this.t, motionDt);
 
-    if (this.stateValue === 'playing' && this.t >= a.content.duration) {
+    if (this.stateValue === 'playing' && this.t >= a.content.duration && this.host.continuesAfter(a.id)) {
+      // The next chapter opens exactly where this one ends: hand over at once, with no fade.
+      this.outroLeft = Infinity;
+      this.setState('outro');
+      this.host.onChapterEnd(a.id);
+    } else if (this.stateValue === 'playing' && this.t >= a.content.duration) {
       this.outroLeft = OUTRO_SECONDS;
       this.host.exposure.setFade(0);
       this.setState('outro');
@@ -233,13 +246,14 @@ export class Timeline {
     }
   }
 
-  /** Ends the active chapter's cues and starts fading it out. */
-  private retire(): void {
+  /** Ends the active chapter's cues and starts fading it out (or, with keepLit, holds it on screen). */
+  private retire(keepLit = false): void {
     const a = this.active;
     if (!a || this.retiring) return;
     this.apply(a, a.cues.clear());
     if (this.host.camera.exploring) this.host.camera.leaveExplore();
-    this.host.exposure.setFade(0);
+    if (!keepLit) this.host.exposure.setFade(0);
+    this.retiringT = this.t;
     this.retiring = true;
   }
 

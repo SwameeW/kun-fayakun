@@ -71,6 +71,14 @@ def step_preview() -> None:
     print(json.dumps(report, indent=2))
 
 
+def step_temperature() -> None:
+    import temperature
+
+    report = temperature.build_temperature()
+    write_json(config.WORK / "temperature-report.json", report)
+    print(json.dumps(report, indent=2))
+
+
 def step_manifest() -> None:
     import manifest
 
@@ -85,6 +93,7 @@ STEPS = {
     "images": step_images,
     "encode": step_encode,
     "preview": step_preview,
+    "temperature": step_temperature,
     "manifest": step_manifest,
 }
 

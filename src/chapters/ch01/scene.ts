@@ -5,6 +5,8 @@ import { blackbodyRgb, type Rgb } from './blackbody';
 import { createDust, type Dust } from './dust';
 import { createGlow, HALO_WIDTH, type Glow } from './glow';
 import { createLuminanceGuard } from './luminance-guard';
+import { createNoiseVolume } from '../shared/noise-volume';
+import { createMediumState, createPlasmaMedium, type PlasmaMedium } from '../shared/plasma-medium';
 import { createFrameState, createTimingModel, isSceneEvent, readEventTimes, type TimingModel } from './timing';
 
 /**
@@ -17,6 +19,11 @@ import { createFrameState, createTimingModel, isSceneEvent, readEventTimes, type
 
 const content = contentJson as unknown as ChapterContent;
 
+/**
+ * As the plasma condenses out of the light, light and dust warm toward the plasma's gold
+ * (white light mixed with gold plasma reads as grey-brown, not as one glow).
+ */
+const PLASMA_GOLD: Rgb = [1.0, 0.6, 0.24];
 /** The dust is matter within the light: the glow's colour, lifted toward a warm white. */
 const DUST_WHITE: Rgb = [1, 0.92, 0.82];
 const DUST_TINT = 0.6;
@@ -26,6 +33,21 @@ const DUST_MEAN = 0.0006;
 const FRESH_EXPOSURE = 0.02;
 /** Longest frame step the guard accepts, matching the engine's clamp. */
 const MAX_FRAME_SECONDS = 0.1;
+/** Noise volume shared with Chapter 2 (same size and seed), so the plasma at the join is identical. */
+const NOISE_SIZE = 64;
+const NOISE_SEED = 20_180_717;
+/**
+ * Approximate mean scene luminance of the plasma medium at emission 1 and full density, for
+ * the luminance guard (Chapter 2's opaque plasma measures about this).
+ */
+const MEDIUM_MEAN = 0.32;
+/**
+ * The guard dims the plasma by cooling it (about 0.3 of heat per stop) rather than by scaling
+ * its emission: a dimmer incandescent glow is a redder one, never a brown one.
+ */
+const HEAT_PER_STOP = 0.3;
+/** Plasma drift runs at this fraction of real time with reduced motion (as in Chapter 2). */
+const REDUCED_FLOW_RATE = 0.5;
 /**
  * Angular radius (radians, about 5°) of the region around the light that the guard also watches,
  * roughly the 10° field WCAG uses for flashes. The swelling orb fills it while the screen's mean
@@ -52,6 +74,8 @@ function erfcBehind(y: number): number {
 interface Parts {
   glow: Glow;
   dust: Dust;
+  medium: PlasmaMedium;
+  dispose(): void;
 }
 
 export default function create(): ChapterModule {
@@ -63,6 +87,7 @@ export default function create(): ChapterModule {
   const hue: Rgb = [1, 1, 1];
   const glowColor = new Color();
   const dustColor = new Color();
+  const medium = createMediumState();
 
   let ctx: ChapterContext | null = null;
   let parts: Parts | null = null;
@@ -70,10 +95,11 @@ export default function create(): ChapterModule {
   let modelIsReduced = false;
   let entered = false;
   let lastFrameMs: number | null = null;
+  let mediumCompiled = false;
 
   const timingModel = (reduced: boolean): TimingModel => {
     if (!model || modelIsReduced !== reduced) {
-      model = createTimingModel(times, reduced);
+      model = createTimingModel(times, reduced, content.duration);
       modelIsReduced = reduced;
     }
     return model;
@@ -92,14 +118,30 @@ export default function create(): ChapterModule {
     content,
     cues: content.cues,
 
-    load(c) {
+    async load(c) {
       ctx = c;
       if (!parts) {
-        parts = { glow: createGlow(), dust: createDust() };
-        root.add(parts.glow.mesh, parts.dust.object);
+        const noise = await createNoiseVolume(NOISE_SIZE, NOISE_SEED);
+        const glow = createGlow();
+        const dust = createDust();
+        const plasma = createPlasmaMedium(noise, c.quality.tier);
+        // Drawn after the light and the dust and composited over them: the plasma hides what lies behind it.
+        plasma.mesh.renderOrder = 10;
+        root.add(glow.mesh, dust.object, plasma.mesh);
+        parts = {
+          glow,
+          dust,
+          medium: plasma,
+          dispose() {
+            root.remove(glow.mesh, dust.object, plasma.mesh);
+            glow.dispose();
+            dust.dispose();
+            plasma.dispose();
+            noise.dispose();
+          },
+        };
       }
       parts.dust.setBudget(c.quality.particles);
-      return Promise.resolve();
     },
 
     enter(c) {
@@ -119,6 +161,10 @@ export default function create(): ChapterModule {
       timingModel(reduced).sample(t, state);
 
       blackbodyRgb(state.temperature, hue);
+      // Normalised to the blackbody's luminance so the warmer colour keeps the light's brightness.
+      const warm = state.mediumCoverage;
+      const goldScale = luminance(hue) / luminance(PLASMA_GOLD);
+      for (let i = 0; i < 3; i += 1) hue[i] = (hue[i] ?? 0) + ((PLASMA_GOLD[i] ?? 0) * goldScale - (hue[i] ?? 0)) * warm;
       glowColor.setRGB(hue[0], hue[1], hue[2]);
       dustColor.setRGB(
         DUST_WHITE[0] + (hue[0] - DUST_WHITE[0]) * DUST_TINT,
@@ -132,7 +178,13 @@ export default function create(): ChapterModule {
       const sigma = Math.max(state.glowSigma, 1e-4);
       const cover = 1 - Math.exp(-((sigma / distance) ** 2));
       const dustMean = DUST_MEAN * state.dust;
-      const mean = 0.5 * state.glowPeak * cover * lum + dustMean;
+      // Added heat brightens the ramp roughly threefold per unit at these levels.
+      const mediumMean =
+        MEDIUM_MEAN *
+        state.mediumEmission *
+        state.mediumCoverage *
+        (1 - Math.exp(-3 * state.mediumDensity));
+      const mean = 0.5 * state.glowPeak * cover * lum + dustMean + mediumMean;
       // Mean brightness of the field around the light (where the orb is brightest), as if looking at it.
       const spread = (sigma / (distance * LOCAL_FIELD)) ** 2;
       const fill = spread * (1 - Math.exp(-1 / spread));
@@ -141,6 +193,18 @@ export default function create(): ChapterModule {
 
       parts.glow.update({ sigma: state.glowSigma, peak: state.glowPeak * gain, halo: state.halo * gain, color: glowColor });
       parts.dust.update({ a: state.a, reach: state.dustReach, intensity: state.dust * gain, color: dustColor });
+
+      // The plasma ends exactly in Chapter 2's opening state (flow 0 and scale 1 at the end).
+      medium.heatBoost = HEAT_PER_STOP * Math.log2(Math.max(gain, 1 / 64));
+      medium.emission = state.mediumEmission;
+      medium.density = state.mediumDensity;
+      medium.contrast = state.mediumContrast;
+      medium.coverage = state.mediumCoverage;
+      medium.scale = state.mediumScale;
+      medium.flow = (t - content.duration) * (reduced ? REDUCED_FLOW_RATE : 1);
+      medium.warmUp = !mediumCompiled;
+      mediumCompiled = true;
+      parts.medium.update(medium, ctx.camera.position);
       if (entered) ctx.exposure.setTarget(state.exposure);
     },
 
@@ -151,6 +215,7 @@ export default function create(): ChapterModule {
 
     setQuality(profile) {
       parts?.dust.setBudget(profile.particles);
+      parts?.medium.setTier(profile.tier);
     },
 
     exit() {
@@ -160,12 +225,9 @@ export default function create(): ChapterModule {
 
     dispose() {
       root.removeFromParent();
-      if (parts) {
-        root.remove(parts.glow.mesh, parts.dust.object);
-        parts.glow.dispose();
-        parts.dust.dispose();
-        parts = null;
-      }
+      parts?.dispose();
+      parts = null;
+      mediumCompiled = false;
       entered = false;
       ctx = null;
     },

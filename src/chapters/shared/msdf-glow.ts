@@ -34,6 +34,11 @@ export interface GlowFieldOptions {
   readonly nearSigmaPx: number;
   readonly farSigmaPx: number;
   readonly widestSigmaPx: number;
+  /**
+   * Light rays (alpha channel): radial light scattering from the ink outward, as light
+   * through still air. Off when absent (alpha = 1, unused).
+   */
+  readonly rays?: { readonly samples: number; readonly reach: number; readonly decay: number };
 }
 
 type Drawable = HTMLImageElement | ImageBitmap | HTMLCanvasElement | OffscreenCanvas;
@@ -145,6 +150,67 @@ function blur(src: Float32Array, w: number, h: number, sigma: number): Float32Ar
   return out;
 }
 
+/** Ink-weighted centroid of the grid (texel units), the point the rays stream away from. */
+function centroid(grid: Float32Array, w: number, h: number): [number, number] {
+  let sum = 0;
+  let sx = 0;
+  let sy = 0;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const v = grid[y * w + x] ?? 0;
+      sum += v;
+      sx += v * x;
+      sy += v * y;
+    }
+  }
+  return sum > 0 ? [sx / sum, sy / sum] : [w / 2, h / 2];
+}
+
+function bilinear(grid: Float32Array, w: number, h: number, x: number, y: number): number {
+  if (x < 0 || y < 0 || x > w - 1 || y > h - 1) return 0;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(w - 1, x0 + 1);
+  const y1 = Math.min(h - 1, y0 + 1);
+  const fx = x - x0;
+  const fy = y - y0;
+  const a = (grid[y0 * w + x0] ?? 0) * (1 - fx) + (grid[y0 * w + x1] ?? 0) * fx;
+  const b = (grid[y1 * w + x0] ?? 0) * (1 - fx) + (grid[y1 * w + x1] ?? 0) * fx;
+  return a * (1 - fy) + b * fy;
+}
+
+/**
+ * Radial light scattering (the screen-space "god rays" integral, done once here): each
+ * texel gathers the light of the ink lying between it and the centroid, weighted down with
+ * distance, so beams stream outward along the strokes' own shapes. Normalised to a peak of 1.
+ */
+function rayField(source: Float32Array, w: number, h: number, rays: NonNullable<GlowFieldOptions['rays']>): Float32Array {
+  const [cx, cy] = centroid(source, w, h);
+  const out = new Float32Array(w * h);
+  const n = Math.max(4, Math.round(rays.samples));
+  let peak = 0;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const dx = cx - x;
+      const dy = cy - y;
+      let sum = 0;
+      let weight = 1;
+      let norm = 0;
+      for (let k = 0; k < n; k += 1) {
+        const s = (k / n) * rays.reach;
+        sum += weight * bilinear(source, w, h, x + dx * s, y + dy * s);
+        norm += weight;
+        weight *= rays.decay;
+      }
+      const v = sum / norm;
+      out[y * w + x] = v;
+      peak = Math.max(peak, v);
+    }
+  }
+  if (peak > 0) for (let i = 0; i < out.length; i += 1) out[i] = (out[i] ?? 0) / peak;
+  return out;
+}
+
 /**
  * Builds the glow texture for `region` (the quad's extent in atlas pixels).
  * Texel (0, 0) is the region's bottom-left, matching the quad's 0..1 UVs.
@@ -160,6 +226,8 @@ export function createMsdfGlowField(atlas: Texture, meta: MsdfAtlasMeta, region:
   const near = blur(grid, gw, gh, options.nearSigmaPx / d);
   const far = blur(grid, gw, gh, options.farSigmaPx / d);
   const widest = blur(grid, gw, gh, options.widestSigmaPx / d);
+  // Rays scatter from the crisp ink, so fine beams follow the strokes.
+  const rays = options.rays ? rayField(grid, gw, gh, options.rays) : null;
 
   const data = new Uint16Array(gw * gh * 4);
   const one = DataUtils.toHalfFloat(1);
@@ -167,7 +235,7 @@ export function createMsdfGlowField(atlas: Texture, meta: MsdfAtlasMeta, region:
     data[i * 4] = DataUtils.toHalfFloat(near[i] ?? 0);
     data[i * 4 + 1] = DataUtils.toHalfFloat(far[i] ?? 0);
     data[i * 4 + 2] = DataUtils.toHalfFloat(widest[i] ?? 0);
-    data[i * 4 + 3] = one;
+    data[i * 4 + 3] = rays ? DataUtils.toHalfFloat(rays[i] ?? 0) : one;
   }
   const texture = new DataTexture(data, gw, gh, RGBAFormat, HalfFloatType);
   texture.minFilter = LinearFilter;

@@ -12,6 +12,8 @@ export interface LaunchParams {
   autoplay: boolean;
   /** ?fps=1: show a small fps readout. */
   showFps: boolean;
+  /** ?profile=1: measure GPU time with timestamp queries (where supported) and hold the render scale at 1. */
+  profile: boolean;
 }
 
 const TIERS: readonly QualityTier[] = ['high', 'mid', 'low'];
@@ -37,5 +39,6 @@ export function readLaunchParams(search: string = window.location.search): Launc
     reducedMotion: flag(q.get('reducedMotion')),
     autoplay: flag(q.get('autoplay')) ?? false,
     showFps: flag(q.get('fps')) ?? false,
+    profile: flag(q.get('profile')) ?? false,
   };
 }

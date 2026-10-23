@@ -33,8 +33,10 @@ export interface MsdfLightOptions {
   glowColor: Color;
   coreIntensity?: number;
   glowIntensity?: number;
-  /** Glow field from createMsdfGlowField (R near, G far, B widest), addressed by the quad's 'uv1'. */
+  /** Glow field from createMsdfGlowField (R near, G far, B widest, A rays), addressed by the quad's 'uv1'. */
   glowField?: Texture;
+  /** Weight of the light rays in the glow field's alpha (0 or absent: none). */
+  raysWeight?: number;
   /** Highest luminance any pixel may reach (soft knee from 65% of it). Omit for no limit. */
   maxLuminance?: number;
 }
@@ -139,7 +141,9 @@ export function createMsdfTextMaterial(atlas: Texture, meta: MsdfAtlasMeta, opti
       .mul(smoothstep(0, EDGE_FADE, float(1).sub(quadUv.x)))
       .mul(smoothstep(0, EDGE_FADE, quadUv.y))
       .mul(smoothstep(0, EDGE_FADE, float(1).sub(quadUv.y)));
-    halo = g.r.mul(NEAR_WEIGHT).add(g.g.mul(FAR_WEIGHT)).add(g.b.mul(WIDEST_WEIGHT)).mul(edge);
+    // Rays (alpha) only when the field carries them (options.raysWeight > 0).
+    const rays = g.a.mul(options.raysWeight ?? 0);
+    halo = g.r.mul(NEAR_WEIGHT).add(g.g.mul(FAR_WEIGHT)).add(g.b.mul(WIDEST_WEIGHT)).add(rays).mul(edge);
   } else {
     halo = blurredField(HALO_NEAR_LEVEL).mul(NEAR_WEIGHT).add(blurredField(HALO_FAR_LEVEL).mul(FAR_WEIGHT));
   }

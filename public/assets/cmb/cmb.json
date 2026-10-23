@@ -3,8 +3,7 @@
   "width": 4096,
   "height": 2048,
   "files": {
-    "4096": "cmb-4096.ktx2",
-    "2048": "cmb-2048.ktx2"
+    "temperature": "cmb-temperature-2048.ktx2"
   },
   "projection": "equirectangular",
   "frame": "galactic",
@@ -155,6 +154,23 @@
   "resampling": "bilinear HEALPix interpolation (healpy.get_interp_val) at every texel centre",
   "mipmaps": "13 levels, 4096x2048 down to 1x1, made offline with a 2x2 box filter in linear light; cmb-2048 holds levels 1 to the end of the same chain",
   "colorSpace": "srgb",
+  "temperature": {
+    "file": "cmb-temperature-2048.ktx2",
+    "width": 2048,
+    "height": 1024,
+    "bytes": 2404754,
+    "sha256": "ca47f9bd329e2559311b7c3498b8fd56f80f6ba4bd982516b87c7aa871b208ec",
+    "format": "R8_UNORM, linear, zstd level 19 supercompression (lossless), box-filtered mip chain",
+    "rows": "bottom-up (v = 0 is the south galactic pole)",
+    "encoding": "value = (T - (-300)) / 600 in uK, clamped to 0..1, stored as round(255 * value)",
+    "range": [
+      -300,
+      300
+    ],
+    "quantisationMaxErrorUk": 1.176,
+    "fractionClamped": 0.00346,
+    "tool": "ktx create --format R8_UNORM --assign-tf linear --assign-texcoord-origin bottom-left --generate-mipmap --mipmap-filter box --zstd 19 (KTX-Software, unpacked by fetch-ktx.sh)"
+  },
   "encoding": {
     "codec": "ETC1S (BasisLZ)",
     "tool": {

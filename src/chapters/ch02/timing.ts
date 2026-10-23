@@ -41,12 +41,6 @@ const CLEAR_SECONDS = { normal: 10, reduced: 10.5 } as const;
  * 5 s keeps every region of the screen under 0.1 per 1/3 s.
  */
 const REVEAL_SECONDS = { normal: 5, reduced: 5.5 } as const;
-/**
- * The sphere (radius 10) only shows once the camera is outside it, so it is never
- * seen from too close or flown through: hidden within NEAR, fully shown beyond FAR
- * (the explore limits keep the camera beyond FAR).
- */
-const REVEAL_DISTANCE = { near: 10.5, far: 14 } as const;
 /** Slow spin of the map during cmb-hold: one turn in about eight minutes. */
 const SPIN_RADIANS_PER_SECOND = (2 * Math.PI) / 480;
 /** The spin eases in over this long instead of starting abruptly. */
@@ -86,12 +80,13 @@ export interface Ch02State {
  * Everything the scene shows is derived from absolute chapter time t, so seeking
  * to any time gives the same picture as playing up to it.
  */
-export function stateAt(t: number, times: EventTimes, cameraDistance: number, reducedMotion: boolean): Ch02State {
+export function stateAt(t: number, times: EventTimes, reducedMotion: boolean): Ch02State {
   const pace = reducedMotion ? 'reduced' : 'normal';
   const clear = smoothstep(0, 1, (t - times.recombination) / CLEAR_SECONDS[pace]);
-  const revealByTime = smootherstep((t - times['cmb-reveal']) / REVEAL_SECONDS[pace]);
-  const revealByDistance = smoothstep(REVEAL_DISTANCE.near, REVEAL_DISTANCE.far, cameraDistance);
-  return { clear, reveal: revealByTime * revealByDistance, spin: reducedMotion ? 0 : spinAt(t - times['cmb-hold']) };
+  // The map first appears around the viewer as the sky (camera inside the sphere), then the
+  // camera draws back out through it to see the whole shell, so the reveal depends on time only.
+  const reveal = smootherstep((t - times['cmb-reveal']) / REVEAL_SECONDS[pace]);
+  return { clear, reveal, spin: reducedMotion ? 0 : spinAt(t - times['cmb-hold']) };
 }
 
 /** Angle after `s` seconds of a spin whose speed ramps linearly up to full over SPIN_RAMP_SECONDS. */
@@ -100,4 +95,28 @@ function spinAt(s: number): number {
   const ramp = SPIN_RAMP_SECONDS;
   const seconds = s < ramp ? (s * s) / (2 * ramp) : s - ramp / 2;
   return seconds * SPIN_RADIANS_PER_SECOND;
+}
+
+/* ------------------------------------------------------------------ */
+/* Photons                                                             */
+/* ------------------------------------------------------------------ */
+
+/** Seconds for the photons to brighten in as the chapter opens (they are part of the plasma's light). */
+const PHOTONS_IN_SECONDS = 2.5;
+/** After release the freed light reddens and fades; it is gone before the map appears. */
+const REDDEN_START_SECONDS = 3;
+
+export interface PhotonLight {
+  brightness: number;
+  /** 0 = fresh light, 1 = stretched into the red and faded. */
+  redshift: number;
+}
+
+export function photonLight(t: number, times: EventTimes, reducedMotion: boolean): PhotonLight {
+  const pace = reducedMotion ? 1.15 : 1;
+  const brightness = smootherstep(t / (PHOTONS_IN_SECONDS * pace));
+  const reddenFrom = times.recombination + REDDEN_START_SECONDS;
+  const reddenTo = Math.max(reddenFrom + 1, times['cmb-reveal'] - 0.5);
+  const redshift = smoothstep(reddenFrom, reddenTo, t);
+  return { brightness, redshift };
 }

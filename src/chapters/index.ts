@@ -8,6 +8,7 @@ const meta = (
   epoch: ChapterMeta['epoch'],
   milestone: ChapterMeta['milestone'],
   load?: ChapterMeta['load'],
+  continuesFrom?: ChapterId,
 ): ChapterMeta => ({
   id,
   number: Number(id.slice(2)),
@@ -17,6 +18,7 @@ const meta = (
   epoch,
   milestone,
   ...(load ? { load } : {}),
+  ...(continuesFrom ? { continuesFrom } : {}),
 });
 
 /**
@@ -26,7 +28,8 @@ const meta = (
 export const CHAPTERS: readonly ChapterMeta[] = [
   meta('ch00', 'before', 'M1', () => import('./ch00/scene')),
   meta('ch01', 1e-36, 'M1', () => import('./ch01/scene')),
-  meta('ch02', 380_000 * YEAR, 'M1', () => import('./ch02/scene')),
+  // Chapter 1 ends inside the very plasma Chapter 2 opens in, so in sequence they join without a cut.
+  meta('ch02', 380_000 * YEAR, 'M1', () => import('./ch02/scene'), 'ch01'),
   meta('ch03', 1.5e8 * YEAR, 'M2'),
   meta('ch04', 1e9 * YEAR, 'M2'),
   meta('ch05', 3e9 * YEAR, 'M2'),
