@@ -98,7 +98,7 @@ projects:
 | `tests/keyboard.spec.ts` | Keyboard-only run-through with visible focus. |
 | `tests/reduced-motion.spec.ts` | `prefers-reduced-motion` is detected and verses only cross-fade. |
 | `tests/perf/*.spec.ts` (`@perf`) | 60 s auto-play frame stats and first contentful paint on slow 4G. |
-| `tests/explore/planet-textures.spec.ts` | Every planet texture in `planets.json` decodes through the app's KTX2 loader with its size, mips and colour space; the raw maps put Tokyo, the Pacific and the B ring where the manifest says; every planet credit shows on the Sources page. (`tests/unit/planets.spec.ts` checks the manifest and the KTX2 headers without a browser.) |
+| `tests/explore/planet-textures.spec.ts` | Every planet texture in `planets.json` decodes through the app's KTX2 loader with its size, mips and colour space; the raw maps put Tokyo, the Pacific and the B ring where the manifest says, and the ring strip keeps straight alpha; the compressed maps, decoded by the app's Basis transcoder, put the Sahara, the Himalaya, Tycho, the Great Red Spot and Saturn's bluer south where it says; every planet credit shows on the Sources page. (`tests/unit/planets.spec.ts` checks the manifest, the KTX2 headers and the coordinate helpers without a browser.) |
 
 Useful variables: `KF_SKIP_BUILD=1` serves the existing `dist/` without rebuilding.
 `PERF=1 npx playwright test --workers=1` runs only the `@perf` specs, which are left out
@@ -186,8 +186,9 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
   Planets; Planetary Physical Parameters; Horizons).
 - Planet textures (exploration): NASA Earth Observatory (Blue Marble NG, Black Marble, Blue
   Marble clouds), NOAA ETOPO 2022 (CC0), Natural Earth, NASA SVS CGI Moon Kit (LRO), Hubble OPAL
-  (STScI) and Cassini (PDS, NASA/JPL/Space Science Institute); public domain or CC0, with each
-  credit line in `data/sources.json` and section 12 of `LICENSES`.
+  (CC BY 4.0, credited "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team", with the changes
+  listed) and Cassini (PDS, NASA/JPL/Space Science Institute); public domain, CC0 or CC BY 4.0,
+  with each credit line in `data/sources.json` and section 12 of `LICENSES`.
 - Created by Samee and Muhaimin.
 - Later milestones: live
   recitation from the Quran Foundation API (credited, never cached beyond its terms).

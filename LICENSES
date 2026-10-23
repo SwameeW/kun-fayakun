@@ -15,7 +15,7 @@ Contents
   9. three.js (MIT)
  10. Basis Universal transcoder (Apache License 2.0)
  11. intl-messageformat (BSD-3-Clause) and @formatjs dependencies (MIT)
- 12. Planetary imagery and relief (NASA, NOAA, Natural Earth, STScI, PDS)
+ 12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
 
 ==============================================================================
 1. This project's own code and content
@@ -581,15 +581,16 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-12. Planetary imagery and relief (NASA, NOAA, Natural Earth, STScI, PDS)
+12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
 ==============================================================================
 
 The textures in public/assets/planets/ are this project's own conversions
 (resampled, mip-mapped, encoded as KTX2; gaps filled as planets.json records)
-of the sources below, all public domain or CC0. None carries an agency logo,
-and none implies endorsement by NASA, NOAA, ESA or STScI. Pinned URLs, byte
-counts and sha256: scripts/planets/config.py. Credit lines: data/sources.json
-and planets.json. Terms read 2026-10-23.
+of the sources below. They are public domain or CC0, except the Hubble OPAL
+maps of Jupiter and Saturn, which are licensed under CC BY 4.0. None carries an
+agency logo, and none implies endorsement by NASA, NOAA, ESA or STScI. Pinned
+URLs, byte counts and sha256: scripts/planets/config.py. Credit lines:
+data/sources.json and planets.json. Terms read 2026-10-23.
 
 Earth day colour, night lights and clouds (NASA Earth Observatory)
           Blue Marble: Next Generation, July 2004 (world.200407.3x21600x10800.jpg)
@@ -604,8 +605,13 @@ Terms:    U.S. Government works, public domain. NASA Earth Observatory's image
 Credits:  Blue Marble: Next Generation, Reto Stöckli, NASA Earth Observatory
           (NASA Goddard Space Flight Center) | NASA Earth Observatory images by
           Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA
-          GSFC | NASA Earth Observatory / NASA GSFC, clouds by Reto Stöckli
-          (Blue Marble, MODIS data)
+          GSFC | NASA Goddard Space Flight Center Image by Reto Stöckli (land
+          surface, shallow water, clouds). Enhancements by Robert Simmon (ocean
+          color, compositing, 3D globes, animation). Data and technical
+          support: MODIS Land Group; MODIS Science Data Support Team; MODIS
+          Atmosphere Group; MODIS Ocean Group
+          (the clouds' credit is Visible Earth record 57747's, verbatim up to
+          its "Additional data" clause, which names the other layers' sources)
 
 Earth relief (NOAA NCEI)
           ETOPO 2022 Global Relief Model, 60 arc-second surface elevation
@@ -639,15 +645,26 @@ Credit:   NASA's Scientific Visualization Studio (Ernie Wright, USRA; scientist
 
 Jupiter and Saturn (Hubble OPAL, archived by STScI/MAST)
           OPAL global colour maps, Jupiter 2025a and Saturn 2025a (F395N, F502N,
-          F631N), doi:10.17909/T9G593
-Terms:    STScI Content Use Policy (https://www.stsci.edu/copyright): no claim
-          to copyright is asserted, and the material may be freely used as in
-          the public domain in accordance with NASA's contract; NASA and STScI
-          ask for appropriate acknowledgement. The OPAL HLSP page
-          (https://archive.stsci.edu/hlsp/opal) asks publications to include
-          the acknowledgement recorded in data/sources.json
-          (hst-opal-jupiter-2025a, notes).
+          F631N), HLSP author Amy Simon, doi:10.17909/T9G593
+Licence:  Creative Commons Attribution 4.0 International (CC BY 4.0)
+          https://creativecommons.org/licenses/by/4.0/
+          The OPAL HLSP page (https://archive.stsci.edu/hlsp/opal): "These HLSP
+          data products are licensed for use under CC BY 4.0". It also asks
+          publications to cite its papers (Simon et al. 2015, Wong et al. 2020)
+          and the DOI, and to include the acknowledgement recorded in
+          data/sources.json (hst-opal-jupiter-2025a, notes).
+Changes:  resampled (Jupiter from 3600 x 1800 to 1024, 2048 and 4096 wide,
+          Saturn from 1800 x 900 to 1024 and 2048) and mip-mapped; the polar
+          caps the maps leave black, and on Saturn the equatorial band the
+          rings hide, filled from the adjacent observed latitudes; moons and
+          moon shadows that crossed Saturn replaced by their row's running
+          median; encoded as KTX2 (ETC1S and UASTC, lossy).
 Credit:   NASA, ESA, A. Simon (NASA GSFC) and the OPAL team
+
+How this project meets the terms: the Sources page (generated from
+data/sources.json) shows this credit, links the licence and each map, and lists
+the changes in the entries' notes; planets.json repeats the credit for every
+Jupiter and Saturn texture.
 
 Saturn's rings (Cassini)
           Optical depth: Cassini RSS ring occultation profile

@@ -73,14 +73,33 @@ def channels(spec: config.MapSpec) -> dict[str, str]:
     return spec.channels
 
 
-def file_entry(spec: config.MapSpec, tier: str, rel: str, info: dict[str, Any], site_prefix: str) -> dict[str, Any]:
+PUBLIC_PREFIX = f"public/{config.SITE_PREFIX}/"
+
+
+def manifest_path(rel: str, published: bool) -> str:
+    """Where a manifest points for a file encode.json lists by its repository path.
+
+    planets.json gives site paths (assets/planets/...), which assets.url resolves at runtime, and
+    may only list published files. planets-ultra.json gives repository paths, so the High files
+    Ultra reuses keep their public/ path and only the files built into .cache/planets/ultra point
+    there. Either way the file must exist.
+    """
+    if not (config.ROOT / rel).is_file():
+        raise SystemExit(f"{rel} is listed in {config.REPORTS.name}/encode.json but missing: run encode.py again")
+    if not published:
+        return rel
+    if not rel.startswith(PUBLIC_PREFIX):
+        raise SystemExit(f"{rel} is not under {PUBLIC_PREFIX}, so planets.json cannot list it")
+    return f"{config.SITE_PREFIX}/{rel.removeprefix(PUBLIC_PREFIX)}"
+
+
+def file_entry(spec: config.MapSpec, tier: str, path: str, info: dict[str, Any]) -> dict[str, Any]:
     body = config.BODIES[spec.body]
-    path = rel.split("/", 3)[-1] if rel.startswith("public/") else rel
     entry: dict[str, Any] = {
         "body": spec.body,
         "map": spec.map,
         "tier": tier,
-        "path": f"{site_prefix}/{path.split('assets/planets/', 1)[-1]}" if rel.startswith("public/") else path,
+        "path": path,
         "width": info["width"],
         "height": info["height"],
         "levels": info["levels"],
@@ -119,6 +138,8 @@ def facts() -> dict[str, Any]:
         "u": "u = (r - radiusKm[0]) / (radiusKm[1] - radiusKm[0]); texel i covers that span's i-th 1/8192",
         "saturatedFraction": rings["saturatedFraction"],
         "colourRegistration": rings["colourRegistration"],
+        "colourModel": rings["colourModel"],
+        "opacityNoise": rings["opacityNoise"],
         "observation": {
             "opacity": "Cassini RSS X-band occultation, Rev 7 egress, 2005-05-03, ring opening -23.57 degrees",
             "colour": "Cassini ISS PIA11142, 2008-11-26, lit face from 10 degrees below, 28 degrees phase",
@@ -129,7 +150,7 @@ def facts() -> dict[str, Any]:
     return out
 
 
-def build_manifest(tiers: tuple[str, ...], site_prefix: str) -> dict[str, Any]:
+def build_manifest(tiers: tuple[str, ...], published: bool) -> dict[str, Any]:
     report = read_json(config.REPORTS / "encode.json")
     files = report["files"]
     entries = []
@@ -137,11 +158,17 @@ def build_manifest(tiers: tuple[str, ...], site_prefix: str) -> dict[str, Any]:
         key = f"{spec.body}/{spec.map}"
         for tier in tiers:
             rel = report["tiers"][key][tier]
-            entries.append(file_entry(spec, tier, rel, files[rel], site_prefix))
+            entries.append(file_entry(spec, tier, manifest_path(rel, published), files[rel]))
     bodies: dict[str, Any] = {}
     for name, conv in config.BODIES.items():
         maps = {
-            spec.map: {"kind": spec.kind, "description": spec.description, "channels": channels(spec), "sourceId": spec.source_id}
+            spec.map: {
+                "kind": spec.kind,
+                "description": spec.description,
+                "channels": channels(spec),
+                **({"alpha": spec.alpha} if spec.alpha else {}),
+                "sourceId": spec.source_id,
+            }
             for spec in config.MAPS
             if spec.body == name
         }
@@ -208,9 +235,13 @@ def main() -> None:
     args = parser.parse_args()
     if args.sources:
         update_sources()
-    write(config.MANIFEST, build_manifest(config.PUBLISHED_TIERS, config.SITE_PREFIX))
-    ultra = build_manifest(("ultra",), ".cache/planets/ultra")
-    ultra["$comment"] = "Ultra (8192) set, built locally and not published. Paths are relative to the repository root."
+    write(config.MANIFEST, build_manifest(config.PUBLISHED_TIERS, published=True))
+    ultra = build_manifest(("ultra",), published=False)
+    ultra["$comment"] = (
+        "Ultra (8192) set, built locally and not published. Paths are relative to the repository root: files built for "
+        "Ultra are in .cache/planets/ultra, and maps whose source is narrower than 8192 reuse their published High file "
+        "in public/assets/planets."
+    )
     write(config.ULTRA_MANIFEST, ultra)
 
 

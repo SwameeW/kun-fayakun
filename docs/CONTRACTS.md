@@ -73,7 +73,7 @@ Everything is fetched relative to `document.baseURI` via `assets.url(path)` (Vit
 ### `assets/planets/planets.json`
 Written by `scripts/planets/manifest.py`; validator rule j checks it against the files. One entry in
 `files` per map and published tier (`low` 1024, `medium` 2048, `high` 4096 wide; a map whose source is
-narrower, or whose budget is tighter, reuses its widest file for the higher tiers):
+narrower reuses its widest file for the higher tiers):
 ```json
 { "body": "earth", "map": "day", "tier": "low", "path": "assets/planets/earth/day-1024-etc1s.ktx2",
   "width": 1024, "height": 512, "levels": 11, "codec": "etc1s|uastc|r8|rgba8", "colorSpace": "srgb|linear",
@@ -87,9 +87,14 @@ stored bottom-up (`KTXorientation` "ru"), so use the textures as loaded; wrap S,
 files load as DataTexture with nearest filtering: set linear mip filtering yourself. Normal maps are UASTC
 normal mode (`n.xy = texel.ga * 2 - 1`, x east, y north, z out) with relief exaggerated by
 `reliefExaggeration`. Jupiter and Saturn use planetographic latitude (sample with the latitude of the
-ellipsoid's normal); `bodies` and `facts` (the Great Red Spot's position on 2025-12-11, the ring strip's
-radius span and colour registration) say the rest. The `ultra` tier (8192) is built into
-`.cache/planets/ultra` and not published until the owner decides where to host it.
+ellipsoid's normal). The ring strip (saturn `rings`, 8192 x 1 RGBA8, `u` from `radiusKm[0]` to
+`radiusKm[1]`) has straight alpha (`bodies.saturn.maps.rings.alpha`): rgb is the ring material's own
+colour, not multiplied by a, and a its normal opacity, so blend
+`mix(background, rgb * light, 1 - (1 - a)^(1/mu))`. `bodies` and `facts` (the Great Red Spot's position
+on 2025-12-11; the ring strip's radius span, colour registration, colour model and opacity noise floor)
+say the rest. The `ultra` tier (8192) is built into `.cache/planets/ultra` and described there by
+`planets-ultra.json` (repository paths; maps narrower than 8192 point at their published High file); it
+is not published until the owner decides where to host it.
 
 ### `assets/calligraphy/<id>.json`
 ```json

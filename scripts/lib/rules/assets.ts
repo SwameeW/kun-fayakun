@@ -284,6 +284,23 @@ const PLANET_TIER_BUDGET: Record<PlanetTier, number> = { low: 4_000_000, medium:
 const PLANET_COMMITTED_BUDGET = 45_000_000;
 /** WebGPU's default maxTextureDimension2D: the renderer requests no larger limit. */
 const PLANET_MAX_SIZE = 8192;
+/**
+ * Every body/map the pipeline builds (MAPS in scripts/planets/config.py; keep the two in step), so
+ * a map dropped from planets.json together with its files cannot pass unnoticed.
+ */
+const PLANET_MAPS = [
+  'earth/day',
+  'earth/night',
+  'earth/clouds',
+  'earth/water',
+  'earth/normal',
+  'moon/colour',
+  'moon/normal',
+  'jupiter/colour',
+  'saturn/colour',
+  'saturn/rings',
+] as const;
+const PLANET_COLOR_SPACES = ['srgb', 'linear'];
 
 /** What each planets.json codec must look like in the KTX2 header. */
 const PLANET_CODECS: Record<string, (h: Ktx2Header) => boolean> = {
@@ -324,8 +341,12 @@ function planetFileProblems(entry: Record<string, unknown>, label: string, credi
   const codecOk = PLANET_CODECS[String(entry.codec)];
   if (!codecOk) problems.push(`${label}: unknown codec "${String(entry.codec)}"`);
   else if (!codecOk(header)) problems.push(`${label}: the file is not ${String(entry.codec)} (vkFormat ${header.vkFormat}, model ${header.colorModel}, supercompression ${header.supercompressionScheme})`);
-  const transfer = entry.colorSpace === 'srgb' ? TRANSFER.srgb : TRANSFER.linear;
-  if (header.transferFunction !== transfer) problems.push(`${label}: colorSpace ${String(entry.colorSpace)} but the file's transfer function is ${header.transferFunction}`);
+  if (!PLANET_COLOR_SPACES.includes(String(entry.colorSpace))) {
+    problems.push(`${label}: colorSpace must be ${PLANET_COLOR_SPACES.join(' or ')}, not "${String(entry.colorSpace)}"`);
+  } else {
+    const transfer = entry.colorSpace === 'srgb' ? TRANSFER.srgb : TRANSFER.linear;
+    if (header.transferFunction !== transfer) problems.push(`${label}: colorSpace ${String(entry.colorSpace)} but the file's transfer function is ${header.transferFunction}`);
+  }
   if (entry.rowsBottomUp !== true || header.orientation !== 'ru') {
     problems.push(`${label}: rows must be stored bottom-up and declared (KTXorientation "ru"); the file says ${String(header.orientation)}`);
   }
@@ -341,8 +362,9 @@ function planetFileProblems(entry: Record<string, unknown>, label: string, credi
 
 /**
  * The planet textures (scripts/planets): every file matches planets.json (bytes, sha256, size,
- * levels, codec, colour space, row order), credits match data/sources.json, every map has every
- * published tier, and the transfer budgets hold.
+ * levels, codec, colour space, row order), credits match data/sources.json, every map the
+ * pipeline builds is there with every published tier, the ring strip declares the alpha it is
+ * built with, and the transfer budgets hold.
  */
 function checkPlanets(ctx: ValidationContext, log: RuleLog): void {
   const loaded = loadJson<unknown>(rootPath('public', 'assets', 'planets', 'planets.json'));
@@ -393,6 +415,16 @@ function checkPlanets(ctx: ValidationContext, log: RuleLog): void {
     const repeated = tiers.filter((t, i) => tiers.indexOf(t) !== i);
     if (missing.length > 0 || repeated.length > 0) problems.push(`${path}: ${key} must list each of ${PLANET_TIERS.join(', ')} once (missing ${missing.join(', ') || 'none'}, repeated ${repeated.join(', ') || 'none'})`);
   }
+  const missingMaps = PLANET_MAPS.filter((key) => !tiersOf.has(key));
+  const unknownMaps = [...tiersOf.keys()].filter((key) => !(PLANET_MAPS as readonly string[]).includes(key));
+  if (missingMaps.length > 0) problems.push(`${path}: no files for ${missingMaps.join(', ')} (every map the pipeline builds must be published)`);
+  if (unknownMaps.length > 0) problems.push(`${path}: unexpected maps ${unknownMaps.join(', ')}; add them to PLANET_MAPS with scripts/planets/config.py`);
+  // The ring strip's colour is the material's own (scripts/planets/encode.py checks the decoded file):
+  // a consumer told otherwise would make the gaps glow or darken the thin rings twice.
+  const bodies = isRecord(manifest.bodies) ? manifest.bodies : {};
+  const saturnMaps = isRecord(bodies.saturn) && isRecord(bodies.saturn.maps) ? bodies.saturn.maps : {};
+  const ringsAlpha = isRecord(saturnMaps.rings) ? saturnMaps.rings.alpha : undefined;
+  if (ringsAlpha !== 'straight') problems.push(`${path}: bodies.saturn.maps.rings.alpha must be "straight" (the strip is built with straight alpha), not ${JSON.stringify(ringsAlpha)}`);
   const unique = new Map<string, number>();
   for (const [tier, files] of tierBytes) {
     const total = [...files.values()].reduce((a, b) => a + b, 0);
@@ -410,8 +442,8 @@ function checkPlanets(ctx: ValidationContext, log: RuleLog): void {
   if (problems.length > 0) for (const p of problems) log.fail(`${p} (owner: ${PLANETS_OWNER})`);
   else {
     log.pass(
-      `${path}: ${tiersOf.size} maps x ${PLANET_TIERS.length} tiers, ${unique.size} files (${committed} bytes) match their sha256, size, levels, codec, ` +
-        'colour space and bottom-up rows; credits match data/sources.json; budgets hold',
+      `${path}: all ${tiersOf.size} maps x ${PLANET_TIERS.length} tiers, ${unique.size} files (${committed} bytes) match their sha256, size, levels, codec, ` +
+        'colour space and bottom-up rows; the ring strip declares straight alpha; credits match data/sources.json; budgets hold',
     );
   }
 }

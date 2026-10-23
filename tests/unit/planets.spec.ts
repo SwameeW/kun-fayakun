@@ -1,8 +1,9 @@
 /**
  * The planet textures (scripts/planets) as a runtime will see them: planets.json lists every map
  * at every published tier, each file's KTX2 header agrees with its entry (size, mip chain, colour
- * space, rows stored bottom-up), and src/explore/assets/planets.ts maps places to the texels the
- * pipeline put them on.
+ * space, rows stored bottom-up), and src/explore/assets/planets.ts turns places into the texture
+ * coordinates the manifest documents. Whether those coordinates hold the right texels is checked
+ * on decoded files by tests/explore/planet-textures.spec.ts.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -12,6 +13,7 @@ import { findPlanetTexture, planetCredits, planetUv, ringU, type PlanetMap, type
 const PUBLIC = new URL('../../public/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('assets/planets/planets.json', PUBLIC), 'utf8')) as PlanetsManifest & {
   facts: { jupiter: { greatRedSpot: { westLongitudeSystemIII: number; latitudePlanetographic: number } } };
+  bodies: { saturn: { maps: { rings: { alpha?: string; channels: Record<string, string> } } } };
 };
 const TIERS = ['low', 'medium', 'high'] as const;
 const MAPS: Record<string, PlanetMap[]> = {
@@ -47,6 +49,17 @@ test('tiers never shrink and stay within the WebGPU default limit', () => {
   expect(texture('earth', 'day', 'low').width).toBe(1024);
   expect(texture('earth', 'day', 'medium').width).toBe(2048);
   expect(texture('earth', 'day', 'high').width).toBe(4096);
+  // Every map whose source reaches 4096 ships it at High, the Moon's relief included.
+  for (const [body, map] of [['earth', 'normal'], ['moon', 'colour'], ['moon', 'normal'], ['jupiter', 'colour']] as const) {
+    expect(texture(body, map, 'high').width, `${body}/${map}`).toBe(4096);
+  }
+});
+
+test('the ring strip declares straight alpha, as it is built', () => {
+  const rings = manifest.bodies.saturn.maps.rings;
+  expect(rings.alpha).toBe('straight');
+  expect(rings.channels.rgb).toMatch(/^straight alpha \(not premultiplied\)/);
+  expect(rings.channels.rgb).not.toMatch(/treat as premultiplied/);
 });
 
 test('each file header matches its entry: size, full mip chain, colour space, bottom-up rows', () => {
@@ -68,7 +81,7 @@ test('each file header matches its entry: size, full mip chain, colour space, bo
   }
 });
 
-test('places land on the texels the pipeline put them on', () => {
+test('planetUv and ringU apply the manifest longitude, latitude and radius conventions', () => {
   const day = texture('earth', 'day', 'low');
   // Greenwich and the equator are the middle of an Earth map; 180 E is its edge.
   expect(planetUv(day, 0, 0)).toEqual([0.5, 0.5]);

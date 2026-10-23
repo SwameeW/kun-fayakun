@@ -166,9 +166,23 @@ def check_decoded(spec: config.MapSpec, decoded: NDArray[np.uint8], label: str) 
     if key == "saturn/rings":
         c = landmarks.Checks(label, "saturn")
         alpha = decoded[0, :, 3].astype(np.float64) / 255.0
+        luma = landmarks.luma(decoded[0, :, :3])
         km = config.RINGS_INNER_KM + (np.arange(alpha.size) + 0.5) * (config.RINGS_OUTER_KM - config.RINGS_INNER_KM) / alpha.size
-        c.expect("B ring core opacity", float(alpha[(km > 105_000) & (km < 110_000)].mean()), ">", 0.9)
-        c.expect("Cassini Division opacity", float(alpha[(km > 118_500) & (km < 119_500)].mean()), "<", 0.4)
+
+        def span(lo: float, hi: float) -> NDArray[np.bool_]:
+            return (km > lo) & (km < hi)
+
+        c.expect("B ring core opacity", float(alpha[span(105_000, 110_000)].mean()), ">", 0.9)
+        c.expect("Cassini Division opacity", float(alpha[span(118_500, 119_500)].mean()), "<", 0.4)
+        # Straight alpha (planets.json): clear texels keep the colour of the ring material beside
+        # them. Premultiplied data would be black there, and a consumer told the wrong convention
+        # would make the gaps glow or darken the thin rings twice.
+        a_ring = float(luma[span(133_000, 133_400) | span(133_800, 134_200)].mean())
+        c.expect("Encke Gap opacity", float(alpha[span(133_480, 133_700)].mean()), "<", 0.15)
+        c.expect("Encke Gap luma / A ring luma (straight alpha)", float(luma[span(133_480, 133_700)].mean()) / max(a_ring, 1.0), ">", 0.8)
+        outer_a = float(luma[span(136_000, 136_400)].mean())
+        c.expect("beyond the A ring, opacity", float(alpha[span(137_500, 144_900)].max()), "<", 0.02)
+        c.expect("beyond the A ring, luma / outer A ring luma (straight alpha)", float(luma[span(136_800, 144_900)].mean()) / max(outer_a, 1.0), ">", 0.8)
         return c.report()
     raise SystemExit(f"no landmark check for {key}")
 

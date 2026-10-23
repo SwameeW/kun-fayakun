@@ -618,6 +618,95 @@ def ring_colour(width: int, opacity: NDArray[np.float64]) -> tuple[NDArray[np.fl
     return colour, info
 
 
+def saturn_sun_elevation_deg(jd_tdb: float) -> float:
+    """The Sun's elevation above Saturn's ring plane in degrees (negative: south of it) at a TDB date.
+
+    Saturn's heliocentric position comes from the Standish and Williams elements and its pole from
+    the IAU rotation model, as the JPL builder wrote them (public/assets/jpl/planets.json and
+    physical.json: the ecliptic and the ICRF of J2000). Light time and aberration are left out;
+    they move the answer by far less than the ring colour model could notice.
+    """
+    planets = json.loads((config.JPL_PUBLIC / "planets.json").read_text(encoding="utf-8"))
+    physical = json.loads((config.JPL_PUBLIC / "physical.json").read_text(encoding="utf-8"))
+    row = next(b for b in planets["bodies"] if b["name"] == "Saturn")
+    t = (jd_tdb - float(planets["epochJd"])) / 36525.0
+    el = {k: float(v) + float(row["ratesPerCentury"][k]) * t for k, v in row["elements"].items()}
+
+    def rz(a: float) -> NDArray[np.float64]:
+        c, s = np.cos(a), np.sin(a)
+        return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+    def rx(a: float) -> NDArray[np.float64]:
+        c, s = np.cos(a), np.sin(a)
+        return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+    e = el["e"]
+    mean_anomaly = float(np.radians((el["L"] - el["varpi"]) % 360.0))
+    ecc = mean_anomaly + e * np.sin(mean_anomaly)
+    for _ in range(8):  # Newton's method on Kepler's equation
+        ecc -= (ecc - e * np.sin(ecc) - mean_anomaly) / (1.0 - e * np.cos(ecc))
+    in_orbit = np.array([el["a"] * (np.cos(ecc) - e), el["a"] * np.sqrt(1.0 - e * e) * np.sin(ecc), 0.0])
+    node, inc, perihelion = (float(np.radians(el[k])) for k in ("Omega", "I", "varpi"))
+    saturn = rz(node) @ rx(inc) @ rz(perihelion - node) @ in_orbit
+    body = physical["bodies"]["Saturn"]
+    ra, dec = (float(np.radians(sum(c * t**i for i, c in enumerate(body[k])))) for k in ("poleRa", "poleDec"))
+    obliquity = float(np.radians(float(physical["obliquityJ2000Arcsec"]) / 3600.0))
+    pole = rx(-obliquity) @ np.array([np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec)])
+    sun = -saturn / np.linalg.norm(saturn)
+    return float(np.degrees(np.arcsin(np.clip(sun @ pole, -1.0, 1.0))))
+
+
+def ring_material_colour(
+    radius: NDArray[np.float64], tau: NDArray[np.float64], codes: NDArray[np.float64]
+) -> tuple[NDArray[np.float64], dict[str, Any]]:
+    """The ring material's own colour along the strip (linear light), for straight alpha.
+
+    Thin rings look darker than their material in the mosaic, and the explorer darkens them again
+    by their opacity, so the mosaic colour is divided by the share of a thick ring's light a texel
+    returned there. In single scattering (the classical layer) a ring of normal optical depth tau
+    seen at elevation B and lit at elevation B' returns 1 - exp(-tau (1/sin B + 1/sin B')) of it.
+    PIA11142 looked from 10 degrees under a Sun about 4 degrees up, a long path through the ring,
+    so even the C ring returned most of that light and the correction is mild. Texels whose share
+    is below RING_MIN_SHARE, that the mosaic shows black, or that lie within
+    RING_EDGE_MARGIN_TEXELS of a black one take the nearest trusted material's colour.
+    """
+    width = codes.shape[0]
+    sun_deg = saturn_sun_elevation_deg(config.RING_MOSAIC_JD_TDB)
+    path = 1.0 / np.sin(np.radians(config.RING_MOSAIC_VIEW_ELEVATION_DEG)) + 1.0 / np.sin(np.radians(abs(sun_deg)))
+    share = 1.0 - texel_average(radius, np.exp(-path * tau), width)
+    seen = rs.srgb_to_linear(rs.to_unorm8((codes / 255.0).astype(np.float32))).astype(np.float64)
+    black = codes.mean(axis=1) / 255.0 <= 0.06
+    near_black = black.copy()
+    for step in range(1, config.RING_EDGE_MARGIN_TEXELS + 1):
+        near_black[:-step] |= black[step:]
+        near_black[step:] |= black[:-step]
+    material = (share >= config.RING_MIN_SHARE) & ~near_black
+    own = np.clip(seen / np.maximum(share, config.RING_MIN_SHARE)[:, None], 0.0, 1.0)
+    idx = np.arange(width)
+    colour = np.stack([np.interp(idx, idx[material], own[material, c]) for c in range(3)], axis=-1)
+    gain = 1.0 / share[material]
+    model = {
+        "alpha": "straight",
+        "method": (
+            "single scattering: a ring of normal optical depth tau returns 1 - exp(-tau * pathFactor) of a thick ring's "
+            "light, pathFactor = 1/sin(viewElevation) + 1/sin(|sunElevation|) for the mosaic; its colour is divided by "
+            "that share where the share is at least minShare and the mosaic is not black within edgeMarginTexels, and "
+            "every other texel takes the nearest such texel's colour"
+        ),
+        "mosaicDate": "2008-11-26",
+        "viewElevationDeg": config.RING_MOSAIC_VIEW_ELEVATION_DEG,
+        "sunElevationDeg": round(sun_deg, 2),
+        "sunElevationFrom": "Saturn's position from public/assets/jpl/planets.json, its pole from physical.json",
+        "pathFactor": round(float(path), 2),
+        "minShare": config.RING_MIN_SHARE,
+        "edgeMarginTexels": config.RING_EDGE_MARGIN_TEXELS,
+        "materialTexels": int(material.sum()),
+        "gainMedian": round(float(np.median(gain)), 3),
+        "gainMax": round(float(gain.max()), 3),
+    }
+    return colour, model
+
+
 def build_rings() -> dict[str, Any]:
     width = next(m.max_width for m in config.MAPS if m.map == "rings")
     print("saturn/rings: Cassini RSS optical depth and PIA11142 colour")
@@ -643,18 +732,44 @@ def build_rings() -> dict[str, Any]:
 
     codes_along_radius, registration = ring_colour(width, opacity)
     print(f"  colour registered: {registration['kmPerPixel']} km per pixel between features; Keeler Gap check {registration['keelerGap']}")
-    # Colour where the mosaic shows empty space (gaps, beyond the edges) is taken from the nearest
-    # ring material, so filtering never pulls black into the rings (alpha is straight, not premultiplied).
-    srgb = codes_along_radius / 255.0
-    lum = srgb.mean(axis=1)
-    material = (lum > 0.06) & (opacity > 0.02)
-    idx = np.arange(width)
-    filled = np.stack([np.interp(idx, idx[material], srgb[material, c]) for c in range(3)], axis=-1)
-    colour_linear = rs.srgb_to_linear(rs.to_unorm8(filled.astype(np.float32)))
 
-    strip = np.concatenate([colour_linear, opacity[:, None].astype(np.float32)], axis=-1)[None, :, :]  # (1, W, 4)
+    # Texels the profile cannot tell from empty space are made empty. Clipping negative depths at
+    # zero leaves the noise's positive half as a faint haze (a few codes of opacity) over the gaps
+    # and the space inside the C ring and beyond the A ring, and 1 - (1 - a)^(1/mu) makes it grow
+    # towards edge-on views. The floor is RINGS_NOISE_SIGMAS times the scatter of the texel depth
+    # over RINGS_FREE_SPACE_KM, with negative depths kept so the noise averages out within a texel.
+    tau_texel = -np.log(texel_average(radius, np.exp(-np.minimum(tau, threshold)), width))
+    centres = config.RINGS_INNER_KM + (np.arange(width) + 0.5) * (config.RINGS_OUTER_KM - config.RINGS_INNER_KM) / width
+    free = (centres >= config.RINGS_FREE_SPACE_KM[0]) & (centres <= config.RINGS_FREE_SPACE_KM[1])
+    noise_floor = config.RINGS_NOISE_SIGMAS * float(tau_texel[free].std())
+    undetected = tau_texel < noise_floor
+    opacity = np.where(undetected, 0.0, opacity)
+    noise = {
+        "freeSpaceKm": list(config.RINGS_FREE_SPACE_KM),
+        "sigmas": config.RINGS_NOISE_SIGMAS,
+        "noiseFloorTau": round(noise_floor, 5),
+        "clearedTexels": int(undetected.sum()),
+    }
+    print(f"  noise floor: optical depth {noise_floor:.4f} ({config.RINGS_NOISE_SIGMAS:g} sigma of free space); {noise['clearedTexels']} texels made clear")
+    clear = landmarks.Checks("ring strip", "saturn")
+    clear.expect("free space opacity, mean", float(opacity[free].mean()), "<", 0.0005)
+    clear.expect("B ring core opacity (105,000-110,000 km)", float(opacity[(centres >= 105_000) & (centres <= 110_000)].mean()), ">", 0.9)
+    clear.expect("C ring opacity (80,000-88,000 km)", float(opacity[(centres >= 80_000) & (centres <= 88_000)].mean()), ">", 0.1)
+    lm += clear.report()
+
+    # Straight alpha throughout: rgb is the material's colour, never multiplied by the opacity, and
+    # empty texels carry their neighbours' colour so filtering never pulls black into the rings.
+    colour_linear, colour_model = ring_material_colour(radius, tau_clamped, codes_along_radius)
+    print(
+        f"  material colour: Sun {colour_model['sunElevationDeg']} deg, path factor {colour_model['pathFactor']}, "
+        f"gain median {colour_model['gainMedian']} (max {colour_model['gainMax']}) over {colour_model['materialTexels']} texels"
+    )
+
+    strip = np.concatenate([colour_linear, opacity[:, None]], axis=-1).astype(np.float32)[None, :, :]  # (1, W, 4)
     levels = [strip]
     while levels[-1].shape[1] > 1:
+        # Straight-alpha reduction: colour averaged with the opacities as weights (so clear texels do
+        # not dilute it), opacity averaged plainly (the mean transmission over the wider texel).
         top = levels[-1]
         pairs = top.reshape(1, top.shape[1] // 2, 2, 4)
         alpha = pairs[..., 3]
@@ -670,6 +785,8 @@ def build_rings() -> dict[str, Any]:
                 "landmarks": lm,
                 "saturatedFraction": round(saturated, 4),
                 "colourRegistration": registration,
+                "colourModel": colour_model,
+                "opacityNoise": noise,
                 "radiusKm": [config.RINGS_INNER_KM, config.RINGS_OUTER_KM],
             }
         },

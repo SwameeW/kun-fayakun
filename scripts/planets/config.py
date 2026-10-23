@@ -28,6 +28,8 @@ ULTRA_MANIFEST = ULTRA / "planets-ultra.json"
 SOURCES_JSON = ROOT / "data" / "sources.json"
 # The JPL builder already downloads and pins the Cassini RSS ring profile (scripts/jpl/build.py).
 JPL_CACHE = ROOT / ".cache" / "jpl"
+# Its published elements and pole give Saturn's geometry when the ring mosaic was taken.
+JPL_PUBLIC = ROOT / "public" / "assets" / "jpl"
 KTX_PREFIX = ROOT / ".cache" / "ktx-software" / "prefix"
 USER_AGENT = "kun-fayakun/0.1 (educational; github.com/SwameeW/kun-fayakun)"
 
@@ -174,12 +176,27 @@ OPAL_ACKNOWLEDGEMENT = (
     "Universities for Research in Astronomy, Inc., under NASA contract NAS 5-26555. All maps are available at "
     "http://dx.doi.org/10.17909/T9G593."
 )
-STSCI_TERMS = (
-    "Public domain: STScI asserts no copyright and its material may be freely used as in the public domain in "
-    "accordance with NASA's contract; NASA and STScI ask for appropriate acknowledgement (STScI Content Use Policy). "
-    "The OPAL HLSP page asks publications to include the OPAL acknowledgement quoted in the notes."
+# The OPAL HLSP page licenses its maps under CC BY 4.0 (not the STScI Content Use Policy that covers
+# STScI's own web material), so each use needs the credit, a link to the licence and the changes made.
+OPAL_TERMS = (
+    "CC BY 4.0. The OPAL HLSP page (https://archive.stsci.edu/hlsp/opal, HLSP author and PI Amy Simon): \"These HLSP "
+    "data products are licensed for use under CC BY 4.0\". Attribution: the credit line, the link to the map and "
+    "doi:10.17909/T9G593; the changes this project made are listed in the notes. The page also asks publications to "
+    "cite its papers (Simon et al. 2015, Wong et al. 2020) and the DOI, and to include the OPAL acknowledgement quoted "
+    "in the notes."
 )
+OPAL_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
+# The form of NASA/ESA OPAL image releases; the HLSP page names Amy Simon as the maps' author. Unconfirmed
+# by the owner (M. H. Wong, co-author of the OPAL papers, is not named).
 OPAL_CREDIT = "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team"
+# Visible Earth record 57747's credit line, verbatim up to its "Additional data" clause (topography,
+# Antarctica and city lights), which is about the other Blue Marble 2002 layers, not the clouds.
+CLOUDS_CREDIT = (
+    "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by "
+    "Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; "
+    "MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group"
+)
+CLOUDS_RECORD = "https://web.archive.org/web/20250109030918/https://visibleearth.nasa.gov/images/57747/blue-marble-clouds"
 
 SOURCES: list[SourceEntry] = [
     SourceEntry(
@@ -222,11 +239,12 @@ SOURCES: list[SourceEntry] = [
         version="Blue Marble 2002 cloud composite, 8192 x 4096",
         license=EO_TERMS,
         license_url=EO_POLICY,
-        credit="NASA Earth Observatory / NASA GSFC, clouds by Reto Stöckli (Blue Marble, MODIS data)",
+        credit=CLOUDS_CREDIT,
         notes=(
             "The cloud layer of the exploration Earth (public/assets/planets/earth/clouds-*.ktx2): two days of visible "
             "imagery plus thermal infrared over the poles, from 2001 (so Antarctica reads as cloud-bright). "
-            f"Fallback copy: {FILES['clouds'].fallback}."
+            f"Credit as printed on the archived Visible Earth record 57747 ({CLOUDS_RECORD}), up to its \"Additional "
+            f"data\" clause, which names the topography, Antarctica and city-light layers. Fallback copy: {FILES['clouds'].fallback}."
         ),
     ),
     SourceEntry(
@@ -292,15 +310,16 @@ SOURCES: list[SourceEntry] = [
         author="Amy Simon (NASA GSFC) and the OPAL team; Hubble Space Telescope; archived by STScI (MAST)",
         url=FILES["jupiter"].url,
         version="HST Cycle 32, rotation 2025a (2025-12-11), HLSP v1, 3600 x 1800",
-        license=STSCI_TERMS,
-        license_url="https://www.stsci.edu/copyright",
+        license=OPAL_TERMS,
+        license_url=OPAL_LICENSE_URL,
         credit=OPAL_CREDIT,
         notes=(
             "Jupiter's colour in exploration (public/assets/planets/jupiter/colour-*.ktx2). Planetographic latitude, "
-            "System III longitude (the map's left edge is 0 degrees west, decreasing to the right). The polar caps the "
-            f"map leaves black are filled with the mean colour of the last observed latitudes. OPAL acknowledgement: "
-            f"\"{OPAL_ACKNOWLEDGEMENT}\" HLSP page: https://archive.stsci.edu/hlsp/opal (doi:10.17909/T9G593). The short "
-            "credit follows the form of NASA/ESA OPAL image releases."
+            "System III longitude (the map's left edge is 0 degrees west, decreasing to the right). Changes made by this "
+            "project (CC BY 4.0): resampled from 3600 x 1800 to 1024, 2048 and 4096 wide and mip-mapped; the polar caps "
+            "the map leaves black filled with the mean colour of the last observed latitudes; encoded as KTX2 (ETC1S and "
+            f"UASTC, lossy). OPAL acknowledgement: \"{OPAL_ACKNOWLEDGEMENT}\" HLSP page: https://archive.stsci.edu/hlsp/opal "
+            "(doi:10.17909/T9G593). The short credit follows the form of NASA/ESA OPAL image releases."
         ),
     ),
     SourceEntry(
@@ -309,14 +328,17 @@ SOURCES: list[SourceEntry] = [
         author="Amy Simon (NASA GSFC) and the OPAL team; Hubble Space Telescope; archived by STScI (MAST)",
         url=FILES["saturn"].url,
         version="HST Cycle 32, rotation 2025a (2025-08-29), HLSP v1, 1800 x 900",
-        license=STSCI_TERMS,
-        license_url="https://www.stsci.edu/copyright",
+        license=OPAL_TERMS,
+        license_url=OPAL_LICENSE_URL,
         credit=OPAL_CREDIT,
         notes=(
-            "Saturn's globe colour in exploration (public/assets/planets/saturn/colour-*.ktx2). Observed near the ring-"
-            "plane crossing: the thin equatorial band the rings hide and the polar caps are filled from the adjacent "
-            "observed latitudes. Planetographic latitude, System III longitude (left edge 360 degrees west, decreasing "
-            f"to the right). OPAL acknowledgement: \"{OPAL_ACKNOWLEDGEMENT}\""
+            "Saturn's globe colour in exploration (public/assets/planets/saturn/colour-*.ktx2). Planetographic latitude, "
+            "System III longitude (left edge 360 degrees west, decreasing to the right). Changes made by this project "
+            "(CC BY 4.0): observed near the ring-plane crossing, so the thin equatorial band the rings hide and the polar "
+            "caps are filled from the adjacent observed latitudes; moons and moon shadows that crossed the planet are "
+            "replaced by their row's running median; resampled from 1800 x 900 to 1024 and 2048 wide and mip-mapped; "
+            "encoded as KTX2 (ETC1S and UASTC, lossy). OPAL acknowledgement: "
+            f"\"{OPAL_ACKNOWLEDGEMENT}\" HLSP page: https://archive.stsci.edu/hlsp/opal (doi:10.17909/T9G593)."
         ),
     ),
     SourceEntry(
@@ -329,9 +351,12 @@ SOURCES: list[SourceEntry] = [
         license_url=NASA_MEDIA,
         credit="NASA/JPL/Space Science Institute",
         notes=(
-            "The colour of Saturn's rings in exploration (the RGB channels of public/assets/planets/saturn/rings-8192.ktx2): "
-            "the lit face seen from 10 degrees below it at 28 degrees phase, averaged across the arcs near the mosaic's "
-            "apex and placed on ring radius by matching its gaps to the Cassini RSS optical-depth profile."
+            "The colour of Saturn's rings in exploration (the RGB channels of public/assets/planets/saturn/"
+            "rings-8192-rgba8.ktx2): the lit face seen from 10 degrees below it at 28 degrees phase, averaged across the "
+            "arcs near the mosaic's apex and placed on ring radius by matching its gaps to the Cassini RSS optical-depth "
+            "profile. Where the rings are thin the mosaic's brightness is divided by the share of a thick ring's light "
+            "they return in its geometry (single scattering), so the strip holds the ring material's own colour; gaps "
+            "and empty space take the nearest ring material's colour (straight alpha)."
         ),
     ),
 ]
@@ -381,6 +406,8 @@ class MapSpec:
     description: str = ""
     encoding: str = ""
     channels: dict[str, str] = field(default_factory=dict)
+    # For maps with an alpha channel: "straight" (rgb is not multiplied by a) or "premultiplied".
+    alpha: str | None = None
 
 
 MAPS: list[MapSpec] = [
@@ -414,11 +441,12 @@ MAPS: list[MapSpec] = [
         description="Natural-colour albedo (LROC WAC, Hapke-normalised: no shading baked in).",
         encoding="sRGB colour.",
     ),
-    # Crater-saturated relief barely compresses: the 4096 level is 9.1 MB, so the published tiers stop
-    # at 2048 (High reuses Medium's file) and the 4096 level goes to the local Ultra set.
+    # Crater-saturated relief barely compresses: the 4096 level is 9.1 MB, the largest published file.
+    # It still fits the committed budget (about 44.5 of 45 MB in all), so High gets it as it does
+    # every other map; Ultra reuses it.
     MapSpec(
-        "moon", "normal", "normal", "nasa-svs-cgi-moon-kit", max_width=4096, published_max_width=2048,
-        description="LOLA relief as tangent-space normals (source 16 pixels per degree, so 4096 is the widest level; published up to 2048).",
+        "moon", "normal", "normal", "nasa-svs-cgi-moon-kit", max_width=4096,
+        description="LOLA relief as tangent-space normals (source 16 pixels per degree, so 4096 is the widest level).",
         encoding="UASTC normal mode: X in RGB, Y in A, Z = sqrt(1 - X^2 - Y^2).",
     ),
     MapSpec(
@@ -437,13 +465,18 @@ MAPS: list[MapSpec] = [
             "Saturn's main rings along their radius: opacity from the Cassini RSS normal optical depth (2005), colour "
             "of the lit face from the Cassini PIA11142 mosaic (2008). One 8192 x 1 strip for every tier."
         ),
-        encoding="RGBA8 sRGB, lossless zstd.",
+        encoding="RGBA8 sRGB, lossless zstd, straight alpha.",
         channels={
-            "a": "normal opacity 1 - exp(-tau), tau the RSS normal optical depth averaged as transmission over the texel; "
-            "for a ray at angle mu = |cos| to the ring normal use 1 - (1 - a)^(1/mu)",
-            "rgb": "colour of the lit face as Cassini saw it (already darker where the rings are thin): treat as "
-            "premultiplied by a",
+            "a": "normal opacity 1 - exp(-tau), tau the RSS normal optical depth averaged as transmission over the texel, "
+            "and 0 where tau is below the profile's noise floor (facts.saturnRings.opacityNoise); for a ray at angle "
+            "mu = |cos| to the ring normal use 1 - (1 - a)^(1/mu)",
+            "rgb": "straight alpha (not premultiplied): the colour of the ring material's lit face, the PIA11142 colour "
+            "divided by the share of a thick ring's light the ring returned in that mosaic's geometry (facts.saturnRings."
+            "colourModel), so thin rings are not darkened twice. Gaps and the empty space inside the C ring and beyond "
+            "the A ring carry the nearest ring material's colour, so filtering never pulls black into the rings. Blend "
+            "as mix(background, rgb * light, a_view) with a_view = 1 - (1 - a)^(1/mu)",
         },
+        alpha="straight",
     ),
 ]
 
@@ -492,3 +525,24 @@ BODIES = {
 # Ring strip: radius at u = 0 and u = 1 (the RSS profile's span, km from Saturn's centre).
 RINGS_INNER_KM = 72_770.0
 RINGS_OUTER_KM = 144_987.5
+# Empty space at the profile's outer end, past anything the profile resolves. Its scatter sets the
+# noise floor below which a texel's optical depth cannot be told from zero: the RSS label asks for
+# the lowest detectable depth to be judged from free-space fluctuations at the scale of interest.
+RINGS_FREE_SPACE_KM = (141_000.0, RINGS_OUTER_KM)
+RINGS_NOISE_SIGMAS = 3.0
+
+# PIA11142's geometry, which sets how much darker thin ring material looks in it than thick: the
+# Photojournal page says it was "taken from 10 degrees below the illuminated side of the rings" on
+# 2008-11-26, over about four hours. The Sun's elevation that day is computed (build.py) from the JPL
+# builder's elements and pole, not typed in.
+RING_MOSAIC_JD_TDB = 2_454_797.0  # 2008-11-26 12:00
+RING_MOSAIC_VIEW_ELEVATION_DEG = 10.0
+# Texels whose share of a thick ring's light was below this in the mosaic (gaps, the empty space inside
+# the C ring and beyond the A ring) take the nearest ring material's colour rather than their own:
+# dividing a near-black pixel by a small share would only amplify noise.
+RING_MIN_SHARE = 0.5
+# The mosaic's ring edges land up to about two texels from the profile's (it blurs them, the
+# registration places them to about a texel, and ring edges are not exact circles), so texels this
+# close to one the mosaic shows black also take the nearest material's colour. Without this the A
+# ring's opaque outer edge would carry the black of the space beyond it.
+RING_EDGE_MARGIN_TEXELS = 2

@@ -133,7 +133,13 @@ def render(body: str, files: dict[str, str], look: tuple[float, float], sun_dir:
 
 
 def add_rings(globe: F, rings_rel: str, cam: View, sun: F) -> F:
-    """The ring strip in the equatorial plane, in front of or hidden by the globe, with the globe's shadow."""
+    """The ring strip in the equatorial plane, in front of or hidden by the globe, with the globe's shadow.
+
+    The strip has straight alpha (planets.json): colour is the material's, blended by the opacity
+    seen along the ray. Each pixel averages the strip over the span of radius it covers, opacity
+    plainly and colour weighted by opacity (what a mip-mapped sampler does), so 8192 texels do not
+    alias into moire at the preview's size.
+    """
     strip = load(rings_rel)[0].astype(np.float64)  # (W, 4): sRGB colour and opacity
     colour = rs.srgb_to_linear(strip[:, :3].astype(np.uint8)).astype(np.float64)
     alpha = strip[:, 3] / 255.0
@@ -142,14 +148,28 @@ def add_rings(globe: F, rings_rel: str, cam: View, sun: F) -> F:
     hit = origin - t[..., None] * cam.fwd
     s = (np.hypot(hit[..., 0], hit[..., 1]) * SATURN_RADIUS_KM - config.RINGS_INNER_KM) / (config.RINGS_OUTER_KM - config.RINGS_INNER_KM)
     inside = (s >= 0) & (s < 1)
-    idx = np.clip((s * strip.shape[0]).astype(int), 0, strip.shape[0] - 1)
+    n = strip.shape[0]
+    x = s * n
+    footprint = np.maximum(np.abs(np.gradient(x, axis=0)), np.abs(np.gradient(x, axis=1)))
+    half = np.clip(footprint, 1.0, n) / 2.0
+    lo, hi = np.clip(x - half, 0.0, n), np.clip(x + half, 0.0, n)
+    knots = np.arange(n + 1, dtype=np.float64)
+
+    def span_sum(values: F) -> F:
+        cumulative = np.concatenate([[0.0], np.cumsum(values)])
+        return np.interp(hi, knots, cumulative) - np.interp(lo, knots, cumulative)
+
+    width = np.maximum(hi - lo, 1e-9)
+    coverage = span_sum(alpha)
+    mean_alpha = coverage / width
+    mean_colour = np.stack([span_sum(colour[:, ch] * alpha) for ch in range(3)], axis=-1) / np.maximum(coverage, 1e-9)[..., None]
     mu = max(abs(cam.fwd[2]), 0.02)
-    a = np.where(inside, 1.0 - (1.0 - alpha[idx]) ** (1.0 / mu), 0.0)
+    a = np.where(inside, 1.0 - (1.0 - mean_alpha) ** (1.0 / mu), 0.0)
     b = (hit * sun).sum(-1)
     c = (hit * hit).sum(-1) - 1.0
     shadow = (b < 0) & (b * b > c)
     lit_side = np.sign(sun[2]) == np.sign(cam.fwd[2])
-    rgb = colour[idx] * np.where(shadow, 0.03, 1.0 if lit_side else 0.35)[..., None]
+    rgb = mean_colour * np.where(shadow, 0.03, 1.0 if lit_side else 0.35)[..., None]
     in_front = ~cam.disc | ((hit * cam.fwd).sum(-1) > cam.depth)
     mix = np.where(in_front, a, 0.0)[..., None]
     return globe * (1 - mix) + rgb * mix

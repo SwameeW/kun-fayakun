@@ -12,31 +12,31 @@
   "tiers": {
     "low": {
       "width": 1024,
-      "bytes": 1933203,
+      "bytes": 1932953,
       "budgetBytes": 4000000,
       "published": true
     },
     "medium": {
       "width": 2048,
-      "bytes": 6826053,
+      "bytes": 6825803,
       "budgetBytes": 12000000,
       "published": true
     },
     "high": {
       "width": 4096,
-      "bytes": 29030405,
+      "bytes": 35830728,
       "budgetBytes": 60000000,
       "published": true
     },
     "ultra": {
       "width": 8192,
-      "bytes": 96088734,
+      "bytes": 96088484,
       "budgetBytes": 160000000,
       "published": false,
       "note": "Built into .cache/planets/ultra by scripts/preprocess-planets.sh and described by planets-ultra.json there; not published until the owner decides where to host it. Maps whose source is narrower than 8192 reuse their High file."
     }
   },
-  "committedBytes": 35372522,
+  "committedBytes": 44500406,
   "bodies": {
     "earth": {
       "longitude": "east longitude (Greenwich at u = 0.5), as in the source maps (-180 to 180 from the left edge)",
@@ -107,7 +107,7 @@
         },
         "normal": {
           "kind": "normal",
-          "description": "LOLA relief as tangent-space normals (source 16 pixels per degree, so 4096 is the widest level; published up to 2048).",
+          "description": "LOLA relief as tangent-space normals (source 16 pixels per degree, so 4096 is the widest level).",
           "channels": {
             "x": "east slope component, in r (and g, b): UASTC normal mode stores X in RGB and Y in alpha",
             "y": "north slope component, in a",
@@ -154,9 +154,10 @@
           "kind": "strip",
           "description": "Saturn's main rings along their radius: opacity from the Cassini RSS normal optical depth (2005), colour of the lit face from the Cassini PIA11142 mosaic (2008). One 8192 x 1 strip for every tier.",
           "channels": {
-            "a": "normal opacity 1 - exp(-tau), tau the RSS normal optical depth averaged as transmission over the texel; for a ray at angle mu = |cos| to the ring normal use 1 - (1 - a)^(1/mu)",
-            "rgb": "colour of the lit face as Cassini saw it (already darker where the rings are thin): treat as premultiplied by a"
+            "a": "normal opacity 1 - exp(-tau), tau the RSS normal optical depth averaged as transmission over the texel, and 0 where tau is below the profile's noise floor (facts.saturnRings.opacityNoise); for a ray at angle mu = |cos| to the ring normal use 1 - (1 - a)^(1/mu)",
+            "rgb": "straight alpha (not premultiplied): the colour of the ring material's lit face, the PIA11142 colour divided by the share of a thick ring's light the ring returned in that mosaic's geometry (facts.saturnRings.colourModel), so thin rings are not darkened twice. Gaps and the empty space inside the C ring and beyond the A ring carry the nearest ring material's colour, so filtering never pulls black into the rings. Blend as mix(background, rgb * light, a_view) with a_view = 1 - (1 - a)^(1/mu)"
           },
+          "alpha": "straight",
           "sourceId": "cassini-rss-rings"
         }
       }
@@ -317,7 +318,7 @@
       "bytes": 581711,
       "sha256": "ed1e79474b3520a1c02eb2db2aa89ad1176575ba6ff8fe1d0855363bcaaf8069",
       "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Earth Observatory / NASA GSFC, clouds by Reto Stöckli (Blue Marble, MODIS data)",
+      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
@@ -339,7 +340,7 @@
       "bytes": 2193888,
       "sha256": "c8c9cd3a74a96da9e73bea4162d52218686f3519b2a71828c9515eea0d5adabb",
       "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Earth Observatory / NASA GSFC, clouds by Reto Stöckli (Blue Marble, MODIS data)",
+      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
@@ -361,7 +362,7 @@
       "bytes": 8231922,
       "sha256": "a39e29ea7ecc9e0850047e80d539a12f1ab64cb62d4476505b82e230c4000cd5",
       "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Earth Observatory / NASA GSFC, clouds by Reto Stöckli (Blue Marble, MODIS data)",
+      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
@@ -663,14 +664,14 @@
       "body": "moon",
       "map": "normal",
       "tier": "high",
-      "path": "assets/planets/moon/normal-2048-uastc.ktx2",
-      "width": 2048,
-      "height": 1024,
-      "levels": 12,
+      "path": "assets/planets/moon/normal-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
       "codec": "uastc",
       "colorSpace": "linear",
-      "bytes": 2327561,
-      "sha256": "52719a3ee12d139fa1ec53aad6982b5f68925a9adbd37547ad95db3f0216bcfc",
+      "bytes": 9128134,
+      "sha256": "4b709fe810b474aca52e3bbcd92ec767817b6c8025ff2b47c249855427d595a4",
       "sourceId": "nasa-svs-cgi-moon-kit",
       "credit": "NASA's Scientific Visualization Studio (Ernie Wright, USRA; scientist Noah Petro, NASA/GSFC), from LRO LROC WAC (Arizona State University) and LOLA data",
       "uAtLon0": 0.5,
@@ -679,10 +680,10 @@
       "rowsBottomUp": true,
       "reliefExaggeration": 2.5,
       "quality": {
-        "psnrX": 36.93,
-        "psnrY": 37.71,
-        "meanAngleErrorDeg": 1.763,
-        "p99AngleErrorDeg": 6.518
+        "psnrX": 36.94,
+        "psnrY": 37.55,
+        "meanAngleErrorDeg": 1.769,
+        "p99AngleErrorDeg": 6.998
       }
     },
     {
@@ -845,8 +846,8 @@
       "levels": 14,
       "codec": "rgba8",
       "colorSpace": "srgb",
-      "bytes": 44789,
-      "sha256": "28177811d0e1468c3e862cb3206d2660d5a0d3d13b393659f46f624b75f88345",
+      "bytes": 44539,
+      "sha256": "1f65bf1405836b87a737aeeaa6b7e67ecc99f16402a9ad7c972ec3d802001819",
       "sourceId": "cassini-rss-rings",
       "credit": "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018",
       "uAtLon0": null,
@@ -878,8 +879,8 @@
       "levels": 14,
       "codec": "rgba8",
       "colorSpace": "srgb",
-      "bytes": 44789,
-      "sha256": "28177811d0e1468c3e862cb3206d2660d5a0d3d13b393659f46f624b75f88345",
+      "bytes": 44539,
+      "sha256": "1f65bf1405836b87a737aeeaa6b7e67ecc99f16402a9ad7c972ec3d802001819",
       "sourceId": "cassini-rss-rings",
       "credit": "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018",
       "uAtLon0": null,
@@ -911,8 +912,8 @@
       "levels": 14,
       "codec": "rgba8",
       "colorSpace": "srgb",
-      "bytes": 44789,
-      "sha256": "28177811d0e1468c3e862cb3206d2660d5a0d3d13b393659f46f624b75f88345",
+      "bytes": 44539,
+      "sha256": "1f65bf1405836b87a737aeeaa6b7e67ecc99f16402a9ad7c972ec3d802001819",
       "sourceId": "cassini-rss-rings",
       "credit": "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018",
       "uAtLon0": null,
@@ -1066,6 +1067,29 @@
           "foundKm": 136494.7
         },
         "method": "17 rows averaged along the arcs' apex; column to radius piecewise linear through ring edges and gaps found in both the image and the RSS opacity; the Keeler Gap checks it"
+      },
+      "colourModel": {
+        "alpha": "straight",
+        "method": "single scattering: a ring of normal optical depth tau returns 1 - exp(-tau * pathFactor) of a thick ring's light, pathFactor = 1/sin(viewElevation) + 1/sin(|sunElevation|) for the mosaic; its colour is divided by that share where the share is at least minShare and the mosaic is not black within edgeMarginTexels, and every other texel takes the nearest such texel's colour",
+        "mosaicDate": "2008-11-26",
+        "viewElevationDeg": 10.0,
+        "sunElevationDeg": -4.04,
+        "sunElevationFrom": "Saturn's position from public/assets/jpl/planets.json, its pole from physical.json",
+        "pathFactor": 19.97,
+        "minShare": 0.5,
+        "edgeMarginTexels": 2,
+        "materialTexels": 6762,
+        "gainMedian": 1.0,
+        "gainMax": 1.997
+      },
+      "opacityNoise": {
+        "freeSpaceKm": [
+          141000.0,
+          144987.5
+        ],
+        "sigmas": 3.0,
+        "noiseFloorTau": 0.01074,
+        "clearedTexels": 1239
       },
       "observation": {
         "opacity": "Cassini RSS X-band occultation, Rev 7 egress, 2005-05-03, ring opening -23.57 degrees",
