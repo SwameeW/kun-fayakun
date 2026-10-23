@@ -1,0 +1,165 @@
+/* The solar-system explorer's interface: a quiet bar of bodies, a way back, and a readout. */
+.kf-universe {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.kf-universe-hint {
+  position: absolute;
+  inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
+  inset-inline: var(--kf-gutter);
+  max-inline-size: 36rem;
+  margin: 0 auto;
+  padding-block: var(--kf-space-2);
+  padding-inline: var(--kf-space-4);
+  border: 1px solid var(--kf-line);
+  border-radius: 999px;
+  background: var(--kf-scrim);
+  font-size: 0.8125rem;
+  text-align: center;
+  color: var(--kf-text);
+}
+
+.kf-universe-loading {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline: 0;
+  margin: 0;
+  text-align: center;
+  font-family: var(--kf-font-display);
+  font-size: 1.125rem;
+  letter-spacing: 0.08em;
+  color: var(--kf-text-muted);
+}
+
+/* Bottom-left, where the chapters' scale bar sits: true distances instead of a bar. */
+.kf-universe-readout {
+  position: absolute;
+  inset-inline-start: var(--kf-gutter);
+  inset-block-end: calc(var(--kf-universe-nav-h, 4.5rem) + var(--kf-space-4));
+  max-inline-size: min(22rem, calc(100vw - 2 * var(--kf-gutter)));
+  padding-block: var(--kf-space-2);
+  padding-inline: var(--kf-space-3) var(--kf-space-4);
+  border-inline-start: 1px solid var(--kf-gold-soft);
+  background: linear-gradient(to right, rgb(5 6 10 / 0.72), rgb(5 6 10 / 0.5));
+  color: var(--kf-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 600ms var(--kf-ease);
+}
+
+.kf-universe.is-ready .kf-universe-readout {
+  opacity: 1;
+}
+
+.kf-universe-title {
+  margin: 0 0 var(--kf-space-1);
+  font-family: var(--kf-font-display);
+  font-size: 1.25rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kf-gold-strong);
+}
+
+.kf-universe-line {
+  margin: 0;
+}
+
+.kf-universe-scale {
+  color: var(--kf-gold);
+}
+
+.kf-universe-faint {
+  color: var(--kf-text-muted);
+}
+
+.kf-universe-nav {
+  position: absolute;
+  inset-block-end: var(--kf-space-4);
+  inset-inline: var(--kf-gutter);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kf-space-3);
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: calc(100vw - 2 * var(--kf-gutter));
+  padding: var(--kf-space-2);
+  border: 1px solid var(--kf-line);
+  border-radius: calc(var(--kf-radius) * 2.4);
+  background: var(--kf-scrim);
+}
+
+.kf-universe-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kf-space-2);
+}
+
+.kf-universe-bodies-label {
+  padding-inline: var(--kf-space-2);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-universe-bodies {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--kf-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kf-universe-body[aria-pressed="true"] {
+  border-color: var(--kf-gold);
+  color: var(--kf-gold-strong);
+  background: rgb(214 178 106 / 0.12);
+}
+
+.kf-universe-back {
+  border-color: transparent;
+  background: transparent;
+  color: var(--kf-text-muted);
+}
+
+@media (max-width: 767.98px) {
+  .kf-universe-nav {
+    inset-inline: var(--kf-space-2);
+    max-inline-size: calc(100vw - 2 * var(--kf-space-2));
+    gap: var(--kf-space-1);
+  }
+
+  .kf-universe-bodies-label {
+    display: none;
+  }
+
+  .kf-universe-body {
+    padding-inline: var(--kf-space-3);
+  }
+
+  .kf-universe-readout {
+    inset-block-end: calc(var(--kf-universe-nav-h, 7.5rem) + var(--kf-space-3));
+    font-size: 0.75rem;
+  }
+
+  .kf-universe-hint {
+    display: none;
+  }
+}
+
+@media (max-height: 500px) {
+  .kf-universe-hint {
+    display: none;
+  }
+}

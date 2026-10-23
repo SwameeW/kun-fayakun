@@ -1,6 +1,7 @@
 import { isPlayable } from '../chapters/index';
-import type { App, Route } from '../core/types';
+import type { App, ChapterId, Route } from '../core/types';
 import { createAnnouncer } from './announcer';
+import type { UniverseUi } from './explore/index';
 import { createCueText } from './cue-text';
 import { h } from './dom';
 import { ARABIC_FONT_PATH, declareArabicFont, loadArabicFont } from './fonts';
@@ -74,6 +75,9 @@ export function mountUI(app: App, root: HTMLElement): void {
       intro.setVisible(false);
       timeline.focusStops();
     },
+    exploreUniverse() {
+      app.openUniverse();
+    },
   });
 
   function step(direction: 1 | -1): void {
@@ -91,7 +95,8 @@ export function mountUI(app: App, root: HTMLElement): void {
   const inChapter = (): boolean => view === 'chapter' && app.chapter !== null;
   const shortcuts = createShortcuts(i18n, {
     togglePlay() {
-      if (view === 'sources') return;
+      // The explorer has no film to play (and Space must not start Chapter 0 behind it).
+      if (view === 'sources' || view === 'universe') return;
       if (app.chapter === null) begin();
       else app.togglePause();
     },
@@ -113,6 +118,11 @@ export function mountUI(app: App, root: HTMLElement): void {
       if (inChapter()) app.setMode('explore');
     },
     leaveExplore() {
+      if (view === 'universe') {
+        // Esc in the explorer: back to the film where the visitor came from.
+        app.closeUniverse();
+        return;
+      }
       if (app.mode !== 'explore') return;
       app.setMode('cinematic');
       timeline.focusStops();
@@ -182,15 +192,52 @@ export function mountUI(app: App, root: HTMLElement): void {
     return meta ? chapterHash(meta.number) : '#/';
   }
 
+  /* The solar-system explorer's interface: its own chunk, loaded the first time its route shows. */
+  let universe: Promise<UniverseUi> | null = null;
+  /** The chapter the explorer was opened from (its "back" returns there), or null for the start. */
+  let universeOrigin: ChapterId | null = null;
+
+  function showUniverse(visible: boolean): void {
+    if (!visible) {
+      // An interface that never loaded has nothing to hide; its failure is reported where it was asked for.
+      universe
+        ?.then((ui) => {
+          ui.setVisible(false);
+        })
+        .catch(() => undefined);
+      return;
+    }
+    universe ??= import('./explore/index').then(({ mountUniverse }) => {
+      const ui = mountUniverse(app, (text) => {
+        announcer.announce(text);
+      });
+      main.append(ui.element);
+      return ui;
+    });
+    universe
+      .then((ui) => {
+        if (view !== 'universe') return;
+        ui.setOrigin(universeOrigin);
+        ui.setVisible(true);
+      })
+      .catch((err: unknown) => {
+        console.error('[ui] The explorer interface could not be loaded', err);
+        universe = null;
+      });
+  }
+
   function applyRoute(route: Route): void {
     if (route.name !== 'home') introDismissed = false;
+    // Entering the explorer from the film (not coming back to it from the Sources page): remember the chapter.
+    if (route.name === 'universe' && view !== 'universe' && view !== 'sources') universeOrigin = app.chapter;
     view = route.name;
     root.dataset.view = route.name;
     if (route.name === 'sources') sources.show(backHref());
     else sources.hide();
     intro.setVisible(route.name === 'home' && !introDismissed && !autoplay);
-    timeline.element.hidden = route.name === 'sources';
+    timeline.element.hidden = route.name === 'sources' || route.name === 'universe';
     panel.setAvailable(route.name === 'chapter');
+    showUniverse(route.name === 'universe');
   }
 
   app.events.on('route', ({ route }) => {

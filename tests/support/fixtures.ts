@@ -4,7 +4,7 @@
  * test hooks (docs/CONTRACTS.md, "Test hooks" and "UI test ids").
  */
 import { test as base, expect, type Page } from '@playwright/test';
-import type { App, ChapterId } from '../../src/core/types';
+import type { App, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
 
 export interface KfOptions {
   /** Add ?forceWebGL=1 to every navigation (the "webgl2" project). */
@@ -17,6 +17,9 @@ export interface FrameStats {
   medianFps: number;
   onePercentLowFps: number;
   p99FrameMs: number;
+  /** GPU resources alive (renderer.info.memory). */
+  memory: { geometries: number; textures: number };
+  experience: 'film' | 'universe';
 }
 
 /**
@@ -24,7 +27,13 @@ export interface FrameStats {
  * global declaration here can clash with one in src/.
  */
 export interface KfHook {
-  __kf: { app: App; frameStats(): FrameStats; resetFrameStats(): void; step(frames?: number, dt?: number): void };
+  __kf: {
+    app: App;
+    frameStats(): FrameStats;
+    resetFrameStats(): void;
+    step(frames?: number, dt?: number): void;
+    universe: { state(): UniverseView | null; place(pose: UniversePose): void };
+  };
 }
 
 export interface OpenOptions {

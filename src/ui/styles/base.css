@@ -95,7 +95,7 @@ body {
   z-index: 1;
 }
 
-.kf-root :is(header, nav, aside, dialog, .kf-intro, .kf-sources, .kf-outro, .kf-error, .kf-skip) {
+.kf-root :is(header, nav, aside, dialog, .kf-intro, .kf-sources, .kf-outro, .kf-error, .kf-skip, .kf-universe-entry) {
   pointer-events: auto;
 }
 

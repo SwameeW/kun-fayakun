@@ -65,6 +65,16 @@
   margin-block: var(--kf-space-2);
 }
 
+/* The quiet third way in, under the two main ones. */
+.kf-intro-universe {
+  margin: calc(-1 * var(--kf-space-4)) 0 0;
+}
+
+.kf-intro-universe .kf-btn {
+  color: var(--kf-gold);
+  letter-spacing: 0.02em;
+}
+
 .kf-disclaimer {
   margin: 0;
   padding-block: var(--kf-space-4);

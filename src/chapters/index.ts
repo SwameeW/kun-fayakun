@@ -9,6 +9,7 @@ const meta = (
   milestone: ChapterMeta['milestone'],
   load?: ChapterMeta['load'],
   continuesFrom?: ChapterId,
+  opensUniverse?: boolean,
 ): ChapterMeta => ({
   id,
   number: Number(id.slice(2)),
@@ -19,6 +20,7 @@ const meta = (
   milestone,
   ...(load ? { load } : {}),
   ...(continuesFrom ? { continuesFrom } : {}),
+  ...(opensUniverse ? { opensUniverse } : {}),
 });
 
 /**
@@ -34,10 +36,11 @@ export const CHAPTERS: readonly ChapterMeta[] = [
   meta('ch04', 1e9 * YEAR, 'M2', () => import('./ch04/scene')),
   meta('ch05', 3e9 * YEAR, 'M2', () => import('./ch05/scene')),
   meta('ch06', 6e9 * YEAR, 'M2', () => import('./ch06/scene')),
-  meta('ch07', (13.787 - 4.567) * 1e9 * YEAR, 'M3', () => import('./ch07/scene')),
-  meta('ch08', (13.787 - 4.54) * 1e9 * YEAR, 'M3', () => import('./ch08/scene')),
-  meta('ch09', (13.787 - 3.7) * 1e9 * YEAR, 'M3', () => import('./ch09/scene')),
-  meta('ch10', 'end', 'M3', () => import('./ch10/scene')),
+  // From the Sun's birth on, the solar system exists, so these chapters offer the explorer.
+  meta('ch07', (13.787 - 4.567) * 1e9 * YEAR, 'M3', () => import('./ch07/scene'), undefined, true),
+  meta('ch08', (13.787 - 4.54) * 1e9 * YEAR, 'M3', () => import('./ch08/scene'), undefined, true),
+  meta('ch09', (13.787 - 3.7) * 1e9 * YEAR, 'M3', () => import('./ch09/scene'), undefined, true),
+  meta('ch10', 'end', 'M3', () => import('./ch10/scene'), undefined, true),
 ];
 
 /** "Now" marker on the timeline: the present age of the universe (Planck 2018 central value). */

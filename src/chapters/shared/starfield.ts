@@ -12,7 +12,17 @@ import { blackbodyRgb } from './blackbody';
 export interface Starfield {
   readonly object: Sprite;
   setLight(light: number): void;
+  /** Moves the sphere of stars (only with options.dynamicRadius; otherwise a no-op). */
+  setRadius(radius: number): void;
   dispose(): void;
+}
+
+/** Optional extras for views other than the chapters' (left out, the stars are the chapters' exactly). */
+export interface StarfieldOptions {
+  /** Test against the depth buffer, so planets hide the stars behind them. Default false (drawn over everything). */
+  depthTest?: boolean;
+  /** The sphere's radius is a uniform that setRadius() moves (a view whose far plane changes every frame). */
+  dynamicRadius?: boolean;
 }
 
 function prng(seed: number): () => number {
@@ -26,7 +36,7 @@ function prng(seed: number): () => number {
   };
 }
 
-export function createStarfield(count = 7000, radius = 400, seed = 7_101): Starfield {
+export function createStarfield(count = 7000, radius = 400, seed = 7_101, options?: StarfieldOptions): Starfield {
   const random = prng(seed);
   const directions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
@@ -44,15 +54,16 @@ export function createStarfield(count = 7000, radius = 400, seed = 7_101): Starf
   const direction = instancedBufferAttribute(new InstancedBufferAttribute(directions, 3)) as unknown as Node<'vec3'>;
   const color = instancedBufferAttribute(new InstancedBufferAttribute(colors, 3)) as unknown as Node<'vec3'>;
   const uLight = uniform(1);
+  const uRadius = options?.dynamicRadius ? uniform(radius) : null;
   const material = new PointsNodeMaterial({
     transparent: true,
     blending: AdditiveBlending,
     depthWrite: false,
-    depthTest: false,
+    depthTest: options?.depthTest ?? false,
     sizeAttenuation: false,
     fog: false,
   });
-  material.positionNode = cameraPosition.add(direction.mul(radius));
+  material.positionNode = cameraPosition.add(direction.mul(uRadius ?? radius));
   material.sizeNode = float(2.2);
   const c = uv().sub(0.5).mul(2);
   const r2 = dot(c, c);
@@ -73,6 +84,9 @@ export function createStarfield(count = 7000, radius = 400, seed = 7_101): Starf
     setLight(light) {
       uLight.value = light;
       sprite.visible = light > 1e-3;
+    },
+    setRadius(next) {
+      if (uRadius) uRadius.value = next;
     },
     dispose() {
       geometry.dispose();

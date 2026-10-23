@@ -11,6 +11,10 @@
  *   image it names) and assets/cmb/cmb.json (the UI's CMB legend fetches it at startup)
  * Exits 1 above the budget, when the shell grows more than 10 KB past its committed
  * baseline, or when anything it must count is missing.
+ *
+ * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
+ * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
+ * the shell) must stay within 150 KB gzipped, and none of it may be in the shell.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -30,7 +34,7 @@ interface ManifestChunk {
 }
 type Manifest = Record<string, ManifestChunk>;
 
-type Group = 'shell' | 'ch00' | 'data';
+type Group = 'shell' | 'ch00' | 'data' | 'explore';
 
 interface Row {
   group: Group;
@@ -41,14 +45,19 @@ interface Row {
 
 const BUDGET_BYTES = 1_500_000;
 /**
- * The shell group (index.html, entry chunk and its CSS), gzipped, as of Stage 0. Everything
- * else loads lazily, so this is what every visit pays before anything else. Raise it
- * deliberately, in the commit that grows the shell on purpose.
+ * The shell group (index.html, entry chunk and its CSS), gzipped. Everything else loads lazily,
+ * so this is what every visit pays before anything else. Raise it deliberately, in the commit
+ * that grows the shell on purpose. Stage 0: 320,198. Stages 3 and 4 (the explorer's host, route,
+ * entry points and interface strings; the explorer itself is lazy): 327,629.
  */
-const SHELL_BASELINE_BYTES = 320_198;
+const SHELL_BASELINE_BYTES = 327_629;
 /** Shell growth beyond the baseline that fails the check (an accidental eager import). */
 const SHELL_GROWTH_LIMIT_BYTES = 10_000;
 const CH00_SOURCE = 'src/chapters/ch00/scene.ts';
+/** The solar-system explorer's lazy entry points: its engine module and its interface. */
+const EXPLORE_SOURCES = ['src/explore/index.ts', 'src/ui/explore/index.ts'] as const;
+/** What the explorer's code may add beyond the shell, gzipped. */
+const EXPLORE_BUDGET_BYTES = 150_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -109,6 +118,21 @@ function budgetFiles(manifest: Manifest): Map<string, Group> {
   return files;
 }
 
+/**
+ * The explorer's chunks and their static imports that the shell does not already load (chunks
+ * shared with chapters count: a visitor opening the explorer first pays for them).
+ */
+function exploreFiles(manifest: Manifest, shell: ReadonlySet<string>): Map<string, Group> {
+  const files = new Map<string, Group>([...shell].map((file) => [file, 'shell'] as const));
+  for (const source of EXPLORE_SOURCES) {
+    const key = Object.keys(manifest).find((k) => k === source || manifest[k]?.src === source);
+    if (!key) throw new Error(`manifest has no chunk for ${source}`);
+    if (shell.has(manifest[key]?.file ?? '')) throw new Error(`${source} is in the shell: it must load lazily`);
+    collectChunk(manifest, key, 'explore', files);
+  }
+  return new Map([...files].filter(([, group]) => group === 'explore'));
+}
+
 function measure(files: Map<string, Group>): Row[] {
   return [...files].map(([file, group]) => {
     const path = join(DIST, file);
@@ -163,7 +187,20 @@ function main(): void {
 
   const totalOk = total <= BUDGET_BYTES;
   console.log(`${totalOk ? 'PASS' : 'FAIL'}: shell + Chapter 0 = ${formatBytes(total)} bytes gzipped (budget ${formatBytes(BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk) process.exitCode = 1;
+
+  // The explorer, outside the first-visit total: what opening it adds.
+  const shellFiles = new Set(shellRows.map((row) => row.file));
+  const exploreRows = measure(exploreFiles(manifest, shellFiles));
+  console.log('');
+  for (const row of [...exploreRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`explore  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const explore = exploreRows.reduce((sum, row) => sum + row.gzip, 0);
+  const exploreOk = explore <= EXPLORE_BUDGET_BYTES;
+  console.log(
+    `${exploreOk ? 'PASS' : 'FAIL'}: solar-system explorer (lazy, ${exploreRows.length} files) = ${formatBytes(explore)} bytes gzipped (budget ${formatBytes(EXPLORE_BUDGET_BYTES)})`,
+  );
+  if (!totalOk || !shellOk || !exploreOk) process.exitCode = 1;
 }
 
 try {

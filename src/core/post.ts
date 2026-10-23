@@ -162,7 +162,11 @@ const SMOOTHING_SECONDS = 0.35;
  * a chapter should emit), so the log scale can stop there.
  */
 const FLOOR_STOPS = -8;
-const MAX_EXPOSURE = 16;
+/**
+ * Seven stops above neutral: room for the solar-system explorer's adaptation to sunlight (Saturn gets
+ * about 1.1% of the Earth's), which it asks for gradually like any target. Chapters ask for 1 or less.
+ */
+const MAX_EXPOSURE = 128;
 /** Dark enough to swap chapters unseen. */
 const DARK_STOPS = -6;
 const SNAP_STOPS = 0.005;

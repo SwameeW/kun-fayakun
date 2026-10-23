@@ -5,6 +5,8 @@ import './styles/intro.css';
 export interface IntroActions {
   begin(): void;
   exploreTimeline(): void;
+  /** Opens the solar-system explorer. */
+  exploreUniverse(): void;
 }
 
 export interface Intro {
@@ -20,11 +22,16 @@ export interface Intro {
 export function createIntro(i18n: I18n, actions: IntroActions): Intro {
   const begin = h('button', { type: 'button', class: 'kf-btn kf-btn--primary kf-btn--large', 'data-testid': 'begin' }, i18n.t('ui.intro.begin'));
   const explore = h('button', { type: 'button', class: 'kf-btn kf-btn--large' }, i18n.t('ui.intro.explore'));
+  // A quieter third way in: the solar system as it is today, at true scale.
+  const universe = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet', 'data-testid': 'open-universe' }, i18n.t('ui.universe.enter'));
   begin.addEventListener('click', () => {
     actions.begin();
   });
   explore.addEventListener('click', () => {
     actions.exploreTimeline();
+  });
+  universe.addEventListener('click', () => {
+    actions.exploreUniverse();
   });
 
   const element = h(
@@ -37,6 +44,7 @@ export function createIntro(i18n: I18n, actions: IntroActions): Intro {
       h('p', { class: 'kf-intro-title', 'aria-hidden': 'true' }, i18n.t('ui.app.title')),
       h('p', { class: 'kf-intro-tagline' }, i18n.t('ui.app.tagline')),
       h('div', { class: 'kf-intro-actions' }, begin, explore),
+      h('p', { class: 'kf-intro-universe' }, universe),
       h('p', { class: 'kf-disclaimer', 'data-testid': 'disclaimer' }, i18n.t('ui.disclaimer')),
       h(
         'p',

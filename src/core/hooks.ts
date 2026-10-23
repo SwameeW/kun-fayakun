@@ -1,5 +1,5 @@
 import type { FrameStats } from './perf';
-import type { App } from './types';
+import type { App, UniversePose, UniverseView } from './types';
 
 /** <html> attributes that tests wait on (docs/CONTRACTS.md, "Test hooks"). */
 export type HookAttribute =
@@ -9,7 +9,11 @@ export type HookAttribute =
   | 'data-chapter'
   | 'data-ready'
   | 'data-chapter-ready'
-  | 'data-reduced-motion';
+  | 'data-reduced-motion'
+  /** "film" or "universe": which experience owns the screen (set as soon as a switch starts). */
+  | 'data-experience'
+  /** "true" once the explorer has rendered a frame after loading; removed while it is not on screen. */
+  | 'data-universe-ready';
 
 export function setHook(name: HookAttribute, value: string | null): void {
   const root = document.documentElement;
@@ -28,6 +32,12 @@ export interface KfTestHandle {
    * moves only through step(), and the tier and render scale stop adapting.
    */
   step(frames?: number, dt?: number): void;
+  /** The solar-system explorer: its state (null when it is not on screen) and an instant camera placement. */
+  universe: {
+    state(): UniverseView | null;
+    /** Throws when the explorer is not on screen. */
+    place(pose: UniversePose): void;
+  };
 }
 
 declare global {

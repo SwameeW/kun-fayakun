@@ -97,6 +97,7 @@ export function createStageCards(app: App): StageCards {
     }
     actions.append(replay, explore);
     outro.replaceChildren(actions);
+    if (app.chapters[index]?.opensUniverse) outro.append(universeButton('kf-btn kf-btn--quiet kf-universe-entry'));
     if (next && !isPlayable(next)) outro.prepend(h('p', { class: 'kf-outro-note' }, i18n.t('ui.outro.later')));
     // After the last chapter, the end credits roll above the actions.
     if (!next && index >= 0) outro.prepend(credits());
@@ -120,8 +121,19 @@ export function createStageCards(app: App): StageCards {
     return h('section', { class: 'kf-credits', 'aria-label': i18n.t('ui.credits.title'), 'data-testid': 'credits' }, roll);
   }
 
-  /* Explore hint. */
-  const exploreHint = h('p', { class: 'kf-explore-hint' }, i18n.t('ui.explore.hint'));
+  /** "Explore the solar system": from the eras that have one (Chapters 7 to 10), a quiet way into the explorer. */
+  function universeButton(className: string): HTMLButtonElement {
+    const button = h('button', { type: 'button', class: className, 'data-testid': 'open-universe' }, i18n.t('ui.universe.enter'));
+    button.addEventListener('click', () => {
+      app.openUniverse();
+    });
+    return button;
+  }
+
+  /* Explore hint, with the way into the explorer in the chapters that offer it. */
+  const hintUniverse = universeButton('kf-btn kf-btn--quiet kf-universe-entry');
+  hintUniverse.hidden = true;
+  const exploreHint = h('p', { class: 'kf-explore-hint' }, i18n.t('ui.explore.hint'), ' ', hintUniverse);
   const showExploreHint = fader(exploreHint, 400);
 
   /* CMB legend overlay, driven by 'overlay' cues. */
@@ -152,6 +164,7 @@ export function createStageCards(app: App): StageCards {
       titleSlot.want(null);
     }
     showOutro(active && state === 'outro');
+    hintUniverse.hidden = !app.chapters.find((m) => m.id === chapter)?.opensUniverse;
     showExploreHint(active && app.mode === 'explore');
     showCmb(active && overlays.get('cmb-legend') === true);
     for (const [id, figure] of overlayFigures) figure.show(active && overlays.get(id) === true);

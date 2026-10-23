@@ -17,7 +17,7 @@ export interface LaunchParams {
   /**
    * ?jd=<Julian date>: pins "now" for the sky, so tests and screenshots of astronomy
    * views do not depend on the day they run. Null (the default) follows the real clock.
-   * Parsed and validated here; no view reads it yet (the solar-system view will).
+   * The solar-system explorer reads it (as UTC) unless its own route pins a date.
    */
   jd: number | null;
 }
@@ -30,7 +30,8 @@ const TIERS: readonly QualityTier[] = ['high', 'mid', 'low'];
  */
 const JD_RANGE = { min: 1_721_423.5, max: 5_373_484.5 } as const;
 
-function julianDate(value: string | null): number | null {
+/** A plain-decimal Julian date from 1 CE to 9999 CE, or null (also used by the universe route's ?jd=). */
+export function parseJulianDate(value: string | null): number | null {
   const v = value?.trim() ?? '';
   // Number('') is 0 and Number('0x10') is 16: accept plain decimals only.
   if (!/^\d+(?:\.\d+)?$/.test(v)) return null;
@@ -60,6 +61,6 @@ export function readLaunchParams(search: string = window.location.search): Launc
     autoplay: flag(q.get('autoplay')) ?? false,
     showFps: flag(q.get('fps')) ?? false,
     profile: flag(q.get('profile')) ?? false,
-    jd: julianDate(q.get('jd')),
+    jd: parseJulianDate(q.get('jd')),
   };
 }

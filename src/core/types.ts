@@ -411,10 +411,97 @@ export interface HudState {
 
 export type TimelineState = 'idle' | 'loading' | 'intro' | 'playing' | 'explore' | 'outro';
 
+/* ------------------------------------------------------------------ */
+/* Experiences: the film, and the solar-system explorer ("universe")    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the engine is showing. The film is the timeline of chapters; the universe is the
+ * true-scale solar-system explorer, a separate experience loaded on demand. (The chapters'
+ * own free-look stays the TimelineState 'explore' and the E key; it is not the universe.)
+ */
+export type ExperienceId = 'film' | 'universe';
+
+/** Bodies the explorer can focus, in the order its body list shows them. */
+export type BodyId = 'sun' | 'earth' | 'moon' | 'jupiter' | 'saturn';
+
+export const BODY_IDS: readonly BodyId[] = ['sun', 'earth', 'moon', 'jupiter', 'saturn'];
+
+/**
+ * A non-chapter experience: the chapter lifecycle minus content and cues (no film clock).
+ * Lifecycle: load → enter → update* → exit → (enter again …) → dispose.
+ */
+export interface ExperienceModule {
+  readonly id: Exclude<ExperienceId, 'film'>;
+  /** Fetch assets and build GPU resources. Must not add anything to the scene. */
+  load(ctx: ChapterContext): Promise<void>;
+  /** Add the root object to ctx.scene and reset state. */
+  enter(ctx: ChapterContext): void;
+  /** dt = real seconds since the last frame (0 while the page is on a manual test clock between steps). */
+  update(dt: number): void;
+  /** Quality tier dropped by the governor while this experience is active. */
+  setQuality?(profile: QualityProfile): void;
+  /** World-anchored HUD tags, as for chapters. */
+  labels?(): readonly SceneLabel[];
+  /** True physical scale for the HUD scale bar; null when a single bar would mislead. */
+  scale?(): SceneScale | null;
+  /** Remove from the scene; keep GPU resources for a possible re-enter. */
+  exit(): void;
+  /** Free all GPU resources. */
+  dispose(): void;
+}
+
+/** Where the explorer's camera is and what it is doing, for its UI and the tests. */
+export interface UniverseView {
+  /** The body the camera orbits (during a flight: the body it is flying to). */
+  focus: BodyId;
+  /** True while the camera flies from one body to another. */
+  travelling: boolean;
+  /** Distance from the camera to the focus's centre and to its surface (cloud tops, photosphere), km. */
+  distanceKm: number;
+  altitudeKm: number;
+  /** Sunlight at the camera as a share of the Sun's light at 1 au (1 at the Earth). */
+  sunlight: number;
+  /** The Sun is large in view and shown as photographed through a solar filter (gold, dimmed). */
+  solarFilter: boolean;
+  /** The date shown: TDB Julian date, and the same instant as a Unix time (ms) for display. */
+  jdTdb: number;
+  unixMs: number;
+}
+
+/** The explorer as the engine hosts it: the experience plus what its UI and route need. */
+export interface UniverseModule extends ExperienceModule {
+  readonly id: 'universe';
+  /** Applies a route: a body to show (null: the explorer's default) and a pinned UTC Julian date (null: now). */
+  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean }): void;
+  /** Flies to a body: an eased flight in log distance, never a jump (a dimmed cut with reduced motion). */
+  focus(body: BodyId): void;
+  view(): UniverseView;
+  /** Test and capture hook: puts the camera at a pose at once, with no flight. */
+  place(pose: UniversePose): void;
+}
+
+/** A camera pose around a body, for tests and frame captures. */
+export interface UniversePose {
+  body: BodyId;
+  /** From the body's centre, km. */
+  distanceKm: number;
+  /** Degrees around and above the direction the camera is placed in (see `from`). */
+  azimuthDeg?: number;
+  elevationDeg?: number;
+  /**
+   * 'sun' (default): start from the body-to-Sun direction, so azimuth 0 looks at the lit face.
+   * A body id: start from the far side of the focus from that body, so it shows behind the focus.
+   */
+  from?: 'sun' | BodyId;
+}
+
 export type Route =
   | { name: 'home' }
   | { name: 'chapter'; chapter: ChapterId; t: number | null }
-  | { name: 'sources' };
+  | { name: 'sources' }
+  /** The solar-system explorer, optionally on a body and at a pinned UTC Julian date. */
+  | { name: 'universe'; body: BodyId | null; jd: number | null };
 
 export interface AppEvents {
   route: { route: Route };
@@ -434,6 +521,10 @@ export interface AppEvents {
   quality: { profile: QualityProfile; reason: 'initial' | 'governor' | 'override' };
   renderer: { backend: 'webgpu' | 'webgl2' };
   loading: { chapter: ChapterId; progress: number };
+  /** The engine switched between the film and the universe (emitted when the switch starts). */
+  experience: { experience: ExperienceId };
+  /** The universe finished loading and is on screen (true), or it left the screen (false). */
+  universe: { ready: boolean };
   /** Non-scripture error text only. */
   error: { message: string };
 }
@@ -457,6 +548,15 @@ export interface AppCommands {
    * the chapter: leaving it drops them. The returned function releases this hold (idempotent).
    */
   holdFilm(reason: string): () => void;
+  /**
+   * Opens the solar-system explorer (true scale), optionally on a body. From a chapter, the
+   * explorer remembers where the film was, so closeUniverse() returns there.
+   */
+  openUniverse(body?: BodyId | null): void;
+  /** Leaves the explorer for the film where the visitor came from (the home screen after a deep link). */
+  closeUniverse(): void;
+  /** In the explorer: flies to a body. */
+  focusBody(body: BodyId): void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -498,6 +598,11 @@ export interface ChapterMeta {
    * fading to black: that chapter ends exactly in this one's opening state.
    */
   continuesFrom?: ChapterId;
+  /**
+   * The chapter's era has the solar system in it, so its outro and free-look offer the
+   * solar-system explorer (Chapters 7 to 10; earlier eras came before the Sun formed).
+   */
+  opensUniverse?: boolean;
   /** Lazy loader; absent for chapters not yet built. */
   load?: () => Promise<{ default: ChapterFactory }>;
 }
@@ -516,10 +621,14 @@ export interface App extends AppCommands {
   /** True while any holdFilm() hold is in place. */
   readonly held: boolean;
   readonly mode: 'cinematic' | 'explore';
+  /** The film, or the universe (from the moment it is asked for until it has handed back). */
+  readonly experience: ExperienceId;
   readonly quality: QualityProfile;
   readonly backend: 'webgpu' | 'webgl2';
   readonly reducedMotion: boolean;
   readonly assets: AssetLoader;
-  /** HUD tags and scale for this frame (cheap; the UI polls it once per animation frame). */
+  /** HUD tags and scale for this frame from the active experience (cheap; the UI polls it once per animation frame). */
   hud(): HudState;
+  /** The explorer's camera and focus while it is on screen, else null (cheap; polled per frame by its UI). */
+  universe(): UniverseView | null;
 }

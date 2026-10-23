@@ -16,13 +16,16 @@ import { createResolutionGovernor, type ResolutionGovernor } from './resolution'
 import { createRenderer, RENDERER_UNAVAILABLE_MESSAGE, type BackendName, type RendererHandle } from './renderer';
 import { createRouter, type Router } from './router';
 import { Timeline } from './timeline';
+import { UniverseHost } from './universe-host';
 import type {
   App,
   AppEvents,
   AssetLoader,
+  BodyId,
   ChapterContent,
   ChapterContext,
   ChapterId,
+  ExperienceId,
   ExposureControl,
   I18n,
   QualityProfile,
@@ -30,6 +33,7 @@ import type {
   TimelineState,
   HudState,
   ScreenLabel,
+  UniverseView,
 } from './types';
 
 export interface AppOptions {
@@ -57,6 +61,16 @@ interface NavOptions {
   /** After the outro, continue with the next playable chapter (else return to the timeline). */
   sequence: boolean;
   history: 'push' | 'replace' | 'none';
+  /** Start paused (returning from the explorer to a film the reader had paused). */
+  paused?: boolean;
+}
+
+/** Where the film was when the visitor opened the explorer from it, so closing it goes back there. */
+interface FilmOrigin {
+  chapter: ChapterId;
+  t: number;
+  paused: boolean;
+  sequence: boolean;
 }
 
 /** Frame steps longer than this are clamped so a hitch never skips content. */
@@ -77,6 +91,7 @@ const ERRORS = {
   chapter: ['ui.error.chapter', 'This chapter could not be loaded. Please try again.'],
   data: ['ui.error.data', 'Some reference data could not be loaded, so parts of the panel may be missing.'],
   deviceLost: ['ui.error.deviceLost', 'The graphics device was lost. Please reload the page to continue.'],
+  universe: ['ui.error.universe', 'The solar system explorer could not be loaded. Please try again.'],
 } as const;
 
 class Engine implements KunFayakunApp {
@@ -96,9 +111,13 @@ class Engine implements KunFayakunApp {
   private readonly chapterExposure: ExposureControl;
   private readonly perf: PerfMonitor;
   private readonly explore: ExploreController;
+  private readonly director: CameraDirector;
   private readonly timeline: Timeline;
   private readonly loader: ChapterLoader;
   private readonly router: Router;
+  private readonly universeHost: UniverseHost;
+  /** Set when the explorer was opened from a chapter; closing the explorer returns there. */
+  private origin: FilmOrigin | null = null;
 
   private reduced: boolean;
   private backendName: BackendName;
@@ -148,6 +167,7 @@ class Engine implements KunFayakunApp {
     this.perf = createPerfMonitor();
     this.explore = createExploreController(this.camera, this.canvas, { gentle: () => this.reduced });
     const director = new CameraDirector(this.camera, this.explore, () => this.reduced);
+    this.director = director;
     this.timeline = new Timeline({
       events: this.events,
       camera: director,
@@ -169,12 +189,43 @@ class Engine implements KunFayakunApp {
     this.router = createRouter(this.events, (route) => {
       this.onRoute(route);
     });
+    this.universeHost = new UniverseHost({
+      events: this.events,
+      exposure: this.exposure,
+      resetLens: () => {
+        this.director.resetLens();
+      },
+      makeContext: () => this.makeContext(this.assets),
+      stopFilm: () => {
+        this.timeline.stop();
+        return this.timeline.whenDark();
+      },
+      graphics: () => this.graphicsReady,
+      warmUp: async () => {
+        if (this.gfx) await this.warmUp(this.gfx);
+      },
+      nextToken: () => ++this.navToken,
+      isCurrent: (token) => token === this.navToken,
+      onError: (err) => {
+        console.error('[app] Loading the solar system explorer failed', err);
+        this.emitError('universe');
+        // Back to where the visitor came from, replacing the explorer's address (as a failed chapter does).
+        const origin = this.origin;
+        if (origin) {
+          this.returnToOrigin(origin, 'replace');
+        } else {
+          this.router.navigate({ name: 'home' }, { replace: true });
+          this.leaveChapter();
+        }
+      },
+    });
 
     this.events.on('state', ({ state, chapter }) => {
       setHook('data-state', state);
       setHook('data-chapter', chapter);
     });
     setHook('data-state', 'idle');
+    setHook('data-experience', 'film');
     setHook('data-reduced-motion', String(this.reduced));
     this.motionQuery.addEventListener('change', this.onMotionPreference);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -190,6 +241,14 @@ class Engine implements KunFayakunApp {
       },
       step: (frames = 1, dt = 1 / 60) => {
         this.step(frames, dt);
+      },
+      universe: {
+        state: () => this.universe(),
+        place: (pose) => {
+          const module = this.universeHost.active;
+          if (!module) throw new Error('__kf.universe.place: the explorer is not on screen');
+          module.place(pose);
+        },
       },
     });
   }
@@ -218,6 +277,9 @@ class Engine implements KunFayakunApp {
   }
   get mode(): 'cinematic' | 'explore' {
     return this.timeline.mode;
+  }
+  get experience(): ExperienceId {
+    return this.universeHost.requested ? 'universe' : 'film';
   }
   get quality(): QualityProfile {
     return this.profile;
@@ -341,6 +403,7 @@ class Engine implements KunFayakunApp {
       this.firstFrameRendered = true;
       setHook('data-ready', 'true');
     }
+    this.universeHost.afterFrame();
     const pending = this.chapterReadyPending;
     if (pending !== null && this.timeline.chapter === pending && this.timeline.content) {
       this.chapterReadyPending = null;
@@ -349,13 +412,18 @@ class Engine implements KunFayakunApp {
     }
   };
 
-  /** Moves the film clock, the exposure and the grain on by dt seconds. */
+  /** Moves the active experience (the film clock, or the explorer), the exposure and the grain on by dt seconds. */
   private advance(gfx: Graphics, dt: number): void {
-    this.timeline.update(dt);
+    // The explorer takes the frame only once the film has faded out and been removed, and gives
+    // it back only after its own fade, so exactly one experience moves the scene at a time.
+    const universe = this.universeHost.owns;
+    if (universe) this.universeHost.update(dt);
+    else this.timeline.update(dt);
     this.exposure.update(dt);
     gfx.handle.renderer.toneMappingExposure = this.exposure.current;
-    // Grain moves only while the film plays (WCAG 2.2.2) and never with reduced motion.
-    if (dt > 0 && !this.timeline.paused && !this.reduced) gfx.post.advanceGrain();
+    // Grain moves only while the film plays (WCAG 2.2.2) and never with reduced motion. The
+    // explorer has no film clock to pause: the visitor moves it, so its grain lives.
+    if (dt > 0 && (universe || !this.timeline.paused) && !this.reduced) gfx.post.advanceGrain();
   }
 
   /**
@@ -379,7 +447,8 @@ class Engine implements KunFayakunApp {
   /** Renderer facts for frameStats(); with ?profile=1 also the frame's GPU time. */
   private measure(gfx: Graphics): void {
     const renderer = gfx.handle.renderer;
-    this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls });
+    const { geometries, textures } = renderer.info.memory;
+    this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls, geometries, textures, experience: this.experience });
     if (!this.params.profile) return;
     renderer
       .resolveTimestampsAsync('render')
@@ -411,7 +480,9 @@ class Engine implements KunFayakunApp {
     }
     setHook('data-tier', profile.tier);
     this.events.emit('quality', { profile, reason });
-    if (reason === 'governor') this.timeline.module?.setQuality?.(profile);
+    if (reason !== 'governor') return;
+    this.timeline.module?.setQuality?.(profile);
+    this.universeHost.setQuality(profile);
   }
 
   /* ---------------------------------------------------------------- */
@@ -432,6 +503,12 @@ class Engine implements KunFayakunApp {
     }
     const gfx = await this.graphicsReady;
     if (!gfx || token !== this.navToken) return;
+    if (this.universeHost.requested) {
+      // The explorer fades out and hands the screen back before the chapter loads.
+      await this.universeHost.leave();
+      if (token !== this.navToken) return;
+    }
+    this.origin = null;
 
     if (this.timeline.chapter === id && this.timeline.content) {
       // Already showing this chapter: jump within it.
@@ -461,6 +538,7 @@ class Engine implements KunFayakunApp {
       if (token !== this.navToken) return;
       if (loaded.tier !== this.profile.tier) loaded.module.setQuality?.(this.profile);
       this.timeline.start(loaded, { t: options.t, skipIntro: options.skipIntro });
+      if (options.paused) this.timeline.setPaused(true);
       await this.warmUp(gfx);
       if (token !== this.navToken) return;
       this.chapterReadyPending = id;
@@ -512,7 +590,11 @@ class Engine implements KunFayakunApp {
   /** User navigation: typed URL, back/forward, links. Deep links skip the intro card. */
   private onRoute(route: Route): void {
     if (route.name === 'home') {
-      if (this.timeline.state !== 'idle') this.leaveChapter();
+      if (this.timeline.state !== 'idle' || this.universeHost.requested) this.leaveChapter();
+      return;
+    }
+    if (route.name === 'universe') {
+      this.enterUniverse(route.body, route.jd);
       return;
     }
     if (route.name === 'sources') {
@@ -534,6 +616,12 @@ class Engine implements KunFayakunApp {
       this.pausedForSources = false;
       return;
     }
+    const origin = this.origin;
+    if (this.universeHost.requested && origin?.chapter === route.chapter && route.t === null) {
+      // Back from the explorer to the chapter it was opened from: resume where the film was.
+      this.returnToOrigin(origin, 'none');
+      return;
+    }
     void this.navigate(route.chapter, {
       t: route.t ?? undefined,
       skipIntro: true,
@@ -548,10 +636,42 @@ class Engine implements KunFayakunApp {
     this.navToken += 1;
     this.sequence = false;
     this.pausedForSources = false;
+    this.origin = null;
     window.clearTimeout(this.prefetchTimer);
     this.chapterReadyPending = null;
     setHook('data-chapter-ready', null);
     this.timeline.stop();
+    void this.universeHost.leave();
+  }
+
+  /**
+   * Opens the explorer for a route (or applies the route to it when it is already open). The
+   * film's position is remembered the first time, so closing the explorer can return to it.
+   */
+  private enterUniverse(body: BodyId | null, jd: number | null): void {
+    if (!this.universeHost.requested) {
+      const chapter = this.timeline.chapter;
+      this.origin =
+        chapter !== null && this.timeline.content
+          ? { chapter, t: this.timeline.time, paused: this.timeline.paused, sequence: this.sequence }
+          : null;
+    }
+    this.sequence = false;
+    this.pausedForSources = false;
+    window.clearTimeout(this.prefetchTimer);
+    this.chapterReadyPending = null;
+    setHook('data-chapter-ready', null);
+    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced });
+  }
+
+  private returnToOrigin(origin: FilmOrigin, history: NavOptions['history']): void {
+    void this.navigate(origin.chapter, {
+      t: origin.t,
+      skipIntro: true,
+      sequence: origin.sequence,
+      history,
+      paused: origin.paused,
+    });
   }
 
   /** The playable chapter `step` stops away (1 = next, -1 = previous), or null. */
@@ -631,8 +751,33 @@ class Engine implements KunFayakunApp {
     return this.timeline.hold(reason);
   }
 
+  openUniverse(body: BodyId | null = null): void {
+    this.router.navigate({ name: 'universe', body, jd: null });
+    this.enterUniverse(body, null);
+  }
+
+  closeUniverse(): void {
+    if (!this.universeHost.requested) return;
+    const origin = this.origin;
+    if (origin) this.returnToOrigin(origin, 'push');
+    else this.home();
+  }
+
+  focusBody(body: BodyId): void {
+    const module = this.universeHost.active;
+    if (!module) return;
+    module.focus(body);
+    // The address follows the focus without filling the history with every hop.
+    const current = this.router.current;
+    this.router.navigate({ name: 'universe', body, jd: current.name === 'universe' ? current.jd : null }, { replace: true });
+  }
+
+  universe(): UniverseView | null {
+    return this.universeHost.active?.view() ?? null;
+  }
+
   hud(): HudState {
-    const module = this.timeline.module;
+    const module = this.universeHost.hudSource ?? this.timeline.module;
     if (!module || (!module.labels && !module.scale)) return EMPTY_HUD;
     const rect = this.canvas.getBoundingClientRect();
     const labels: ScreenLabel[] = [];
@@ -682,6 +827,7 @@ class Engine implements KunFayakunApp {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.router.dispose();
     this.timeline.stop();
+    this.universeHost.dispose();
     this.loader.disposeAll();
     this.explore.dispose();
     this.audio.dispose();

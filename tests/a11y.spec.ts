@@ -48,3 +48,10 @@ test('sources page has no accessibility violations', async ({ page, kf }, testIn
   await expect(page.getByTestId('sources-page')).toBeVisible();
   await expectNoViolations(page, testInfo, 'sources');
 });
+
+test('the solar-system explorer has no accessibility violations', async ({ page, kf }, testInfo) => {
+  await kf.open('/universe/saturn', { query: { jd: '2461336.75' } });
+  await expect(page.locator('html')).toHaveAttribute('data-universe-ready', 'true', { timeout: 90_000 });
+  await expect(page.getByTestId('universe-readout')).toBeVisible();
+  await expectNoViolations(page, testInfo, 'universe');
+});

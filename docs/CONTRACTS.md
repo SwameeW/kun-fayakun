@@ -35,6 +35,7 @@ interfaces every builder shares so parallel work fits together. Types live in
 | scene chNN | `src/chapters/chNN/scene.ts`, `src/chapters/chNN/*.ts`, `src/chapters/shared/**` (ch00 builder owns shared/msdf*), and in that chapter's `content.json` only `camera`, `explore` and `scene` cues |
 | tests | `playwright.config.ts`, `tests/**`, `scripts/check-bundle.ts`, `.github/workflows/ci.yml`, `README.md` |
 | integrator (lead) | `src/core/types.ts`, `src/core/events.ts`, `src/chapters/index.ts`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `index.html`, `package.json`, `data/citations.json` |
+| explorer | `src/explore/**` (the lazy solar-system explorer), `src/ui/explore/**`, `src/ui/styles/explore.css`, `tests/explore/**`; with the engine builder, `src/core/universe-host.ts` |
 
 ## Hard rules (validator-enforced where possible)
 
@@ -184,12 +185,15 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 
 ## URL parameters and routes
 
-- Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`.
+- Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`,
+  `#/universe[/<body>][?jd=<Julian date>]` the solar-system explorer (`body` one of sun, earth,
+  moon, jupiter, saturn; an unknown body opens the default view; `jd` is UTC and wins over the
+  `?jd=` query parameter). One parser (`src/core/router.ts`) serves the engine and the UI.
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
   (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
   (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
   holds the render scale at 1), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
-  from 1 CE to 9999 CE, anything else is ignored; parsed but not read by any view yet).
+  from 1 CE to 9999 CE, anything else is ignored; the explorer reads it as UTC).
 - Dynamic resolution: unless `?tier` or `?profile` is set, the engine lowers the render scale in small
   steps (down to 0.6× the tier's DPR cap) when frames run slow, before the tier governor drops a tier,
   and probes back up after long comfortable stretches. Frames over 0.25 s (stalls) are ignored, a tier
@@ -202,8 +206,13 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 
 - `data-backend="webgpu|webgl2"`, `data-tier`, `data-state` (TimelineState), `data-chapter`,
   `data-ready="true"` after the first rendered frame, `data-chapter-ready="chNN"` after a
-  chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`.
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs }, resetFrameStats(), step(frames = 1, dt = 1/60) }`.
+  chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`,
+  `data-experience="film|universe"` (set as soon as a switch starts), `data-universe-ready="true"`
+  once the explorer has rendered a frame after loading (removed while it is not on screen).
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
+  `universe.state()` is the explorer's `UniverseView` (focus, travelling, distance and altitude in km,
+  sunlight, date) or null; `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })`
+  puts its camera at once (tests and frame captures).
   `step` advances `frames` frames of `dt` seconds (0 < dt ≤ 0.1) and renders. Its first call switches the
   page to a manual clock for good: frames keep rendering, but the film, fades and exposure move only
   through `step`, and the tier and render scale stop adapting (navigation that waits for a fade needs steps too).
@@ -213,7 +222,51 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 `intro`, `begin`, `disclaimer`, `panel`, `panel-toggle`, `layer-text`, `layer-scholarly`,
 `layer-science`, `timeline`, `stop-chNN`, `play-pause`, `mode-toggle`, `verse-overlay`,
 `sources-page`, `cmb-legend`, `loading`, `error`, `discovery` (the Chapter 7 letter analysis),
-`film-held` (the transport's status line while `app.holdFilm` holds the film).
+`film-held` (the transport's status line while `app.holdFilm` holds the film), `open-universe`
+(the ways into the explorer: the welcome screen, and Chapters 7 to 10's outro and free-look hint),
+`universe` (the explorer's interface), `universe-bodies`, `universe-back`, `universe-readout`.
+
+## Solar-system explorer (Stages 3 and 4)
+
+A second experience beside the film, loaded on demand (`src/explore/**` and `src/ui/explore/**`
+are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and out of the shell).
+
+- **Host.** `ExperienceModule` (types.ts) is the chapter lifecycle without content or cues;
+  `UniverseModule` adds `configure`, `focus`, `view` and `place`. `src/core/universe-host.ts` runs
+  the navigation sequence for it (shared navigation token, governor suspended, the film stopped
+  and faded to black, dynamic import, `compileAsync` warm-up, governors held off, fade up) and the
+  reverse on leaving, then restores the chapters' lens. `Engine.frame` updates either the
+  explorer or the timeline, never both; `app.hud()` reads whichever is on screen. The explorer is
+  kept after its first visit. `app.openUniverse(body?)`, `app.closeUniverse()` (back to the
+  chapter and time it was opened from, paused if it was; home after a deep link) and
+  `app.focusBody(body)`; Esc in the explorer is `closeUniverse`. An explorer that cannot load
+  shows `ui.error.universe` and returns the visitor the same way, replacing its address in the
+  history (as a chapter that fails to load does). Chapters 7 to 10 (registry
+  `opensUniverse`) offer it; earlier eras came before the Sun.
+- **Space.** State is float64 km from the barycentre in the render frame (ecliptic J2000 turned
+  so ecliptic north is +y; the Sun's offset from the barycentre is not modelled yet). Each frame
+  the camera sits at the origin and every object at `body - camera` (`space/origin.ts`); near is
+  0.4 x the altitude above the nearest surface (1 m to 1e5 km) and far 2e4 x near
+  (`space/lens.ts`, standard 24-bit depth, no renderer flags); bodies beyond half the far plane
+  are drawn nearer and smaller by one factor between 0.5 and 0.95 of it, exactly at their angular
+  size (`space/scaled-space.ts`); the starfield sits at 0.98 x far with depth testing.
+- **Truth and honesty.** Positions, radii, flattening, poles and spin come from
+  `public/assets/jpl` through `src/astro`; the date is now (or `?jd=`), clamped to the Moon
+  table's span. Surfaces are procedural until mission maps arrive, and the interface says so
+  ("Surfaces are illustrative"), along with "True scale: real sizes and distances". The film's
+  metres-per-pixel bar is replaced by a readout of true distances.
+- **Light.** Sunlight on a body falls as 1/r^2; the exposure adapts to the body in view as
+  r^1.8 (so the outer planets stay a little dimmer), through `ctx.exposure` like every change
+  (slew-limited: flash-safe). Guides (orbit lines, points of light for bodies under about 2 px,
+  the Sun's glare) keep their brightness on screen; the Sun's disc stays under a ceiling, and
+  when it fills the view it is shown as through a solar filter (gold, a little dimmer), which
+  the readout says. The engine's exposure cap is 128 (chapters ask for 1 or less).
+- **Shared modules, optional parameters only** (left out, the chapters' graphs are unchanged):
+  `createEarth(noise, radius, { segments, atmosphereScale, lava })`, `createSimpleBody(..., {
+  segments, flattening, tilt, lighting: 'wrap'|'lunar'|'giant', surface, ringProfile,
+  ringShadows })`, `createLivingStar(noise, radius, seed, { fine, filter })`, `createStarfield(count,
+  radius, seed, { depthTest, dynamicRadius })` with `setRadius`, `createStreakField({ ...,
+  profile: 'trail'|'line' })`.
 
 ## Browsers and local testing (measured on this machine)
 

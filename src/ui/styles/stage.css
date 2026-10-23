@@ -93,6 +93,17 @@
   color: var(--kf-text-muted);
 }
 
+/* The way into the solar-system explorer (Chapters 7 to 10): quiet, in gold. */
+.kf-universe-entry {
+  color: var(--kf-gold);
+}
+
+.kf-explore-hint .kf-universe-entry {
+  margin-inline-start: var(--kf-space-2);
+  padding-inline: var(--kf-space-3);
+  font-size: 0.8125rem;
+}
+
 .kf-outro-actions {
   display: flex;
   flex-wrap: wrap;

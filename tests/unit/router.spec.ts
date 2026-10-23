@@ -50,6 +50,29 @@ test('t is a non-negative number of seconds; anything else means "from the start
   expect(t('#/ch/3?x=1')).toBeNull();
 });
 
+test('the solar-system explorer: #/universe, an optional body and an optional ?jd=', () => {
+  expect(parseHash('#/universe')).toEqual({ name: 'universe', body: null, jd: null });
+  expect(parseHash('#/universe/')).toEqual({ name: 'universe', body: null, jd: null });
+  expect(parseHash('#/universe/earth')).toEqual({ name: 'universe', body: 'earth', jd: null });
+  expect(parseHash('#/universe/Saturn/')).toEqual({ name: 'universe', body: 'saturn', jd: null });
+  expect(parseHash('#/universe/moon?jd=2461100.5')).toEqual({ name: 'universe', body: 'moon', jd: 2461100.5 });
+  expect(parseHash('#/universe?jd=2461100.5')).toEqual({ name: 'universe', body: null, jd: 2461100.5 });
+  // A body the explorer does not have yet still opens it, on its default view; a bad date is ignored.
+  expect(parseHash('#/universe/pluto')).toEqual({ name: 'universe', body: null, jd: null });
+  expect(parseHash('#/universe/sun?jd=abc')).toEqual({ name: 'universe', body: 'sun', jd: null });
+  expect(parseHash('#/universe/sun?jd=-5')).toEqual({ name: 'universe', body: 'sun', jd: null });
+  expect(parseHash('#/universex')).toEqual({ name: 'home' });
+  expect(parseHash('#/universe/earth/moon')).toEqual({ name: 'home' });
+});
+
+test('every explorer route round-trips through formatRoute', () => {
+  for (const body of [null, 'sun', 'earth', 'moon', 'jupiter', 'saturn'] as const) {
+    for (const jd of [null, 2461336.75]) {
+      expect(parseHash(formatRoute({ name: 'universe', body, jd }))).toEqual({ name: 'universe', body, jd });
+    }
+  }
+});
+
 test('every chapter round-trips through formatRoute and chapterHash', () => {
   for (const meta of CHAPTERS) {
     expect(parseHash(formatRoute({ name: 'chapter', chapter: meta.id, t: null }))).toEqual({ name: 'chapter', chapter: meta.id, t: null });

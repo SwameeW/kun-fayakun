@@ -12,13 +12,25 @@ export interface FrameStats {
   pixelRatio: number;
   /** Draw calls in the most recent frame. */
   drawCalls: number;
+  /** GPU resources alive now (renderer.info.memory): round trips between experiences must not grow them. */
+  memory: { geometries: number; textures: number };
+  /** The experience on screen when the stats were read. */
+  experience: 'film' | 'universe';
+}
+
+export interface RendererFacts {
+  pixelRatio: number;
+  drawCalls: number;
+  geometries: number;
+  textures: number;
+  experience: 'film' | 'universe';
 }
 
 export interface PerfMonitor {
   record(frameMs: number): void;
   recordGpu(gpuMs: number): void;
   /** Latest renderer facts, reported with the stats. */
-  note(facts: { pixelRatio: number; drawCalls: number }): void;
+  note(facts: RendererFacts): void;
   /** The next frame's duration includes time the tab was hidden; leave it out. */
   skipNext(): void;
   stats(): FrameStats;
@@ -45,8 +57,7 @@ export function createPerfMonitor(): PerfMonitor {
   const samples = new Float64Array(CAPACITY);
   const gpu = new Float64Array(CAPACITY);
   let gpuCount = 0;
-  let pixelRatio = 1;
-  let drawCalls = 0;
+  let facts: RendererFacts = { pixelRatio: 1, drawCalls: 0, geometries: 0, textures: 0, experience: 'film' };
   let count = 0;
   let total = 0;
   let skip = false;
@@ -72,9 +83,8 @@ export function createPerfMonitor(): PerfMonitor {
       gpu[gpuCount % CAPACITY] = gpuMs;
       gpuCount += 1;
     },
-    note(facts) {
-      pixelRatio = facts.pixelRatio;
-      drawCalls = facts.drawCalls;
+    note(next) {
+      facts = next;
     },
     skipNext() {
       skip = true;
@@ -94,8 +104,10 @@ export function createPerfMonitor(): PerfMonitor {
         p99FrameMs: round(percentile(sorted, 0.99)),
         gpuMedianMs: round(percentile(gpuSorted, 0.5), 3),
         gpuP95Ms: round(percentile(gpuSorted, 0.95), 3),
-        pixelRatio: round(pixelRatio, 3),
-        drawCalls,
+        pixelRatio: round(facts.pixelRatio, 3),
+        drawCalls: facts.drawCalls,
+        memory: { geometries: facts.geometries, textures: facts.textures },
+        experience: facts.experience,
       };
     },
     reset() {
