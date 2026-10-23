@@ -98,6 +98,7 @@ projects:
 | `tests/keyboard.spec.ts` | Keyboard-only run-through with visible focus. |
 | `tests/reduced-motion.spec.ts` | `prefers-reduced-motion` is detected and verses only cross-fade. |
 | `tests/perf/*.spec.ts` (`@perf`) | 60 s auto-play frame stats and first contentful paint on slow 4G. |
+| `tests/explore/planet-textures.spec.ts` | Every planet texture in `planets.json` decodes through the app's KTX2 loader with its size, mips and colour space; the raw maps put Tokyo, the Pacific and the B ring where the manifest says, and the ring strip keeps straight alpha; the compressed maps, decoded by the app's Basis transcoder, put the Sahara, the Himalaya, Tycho, the Great Red Spot and Saturn's bluer south where it says; every planet credit shows on the Sources page. (`tests/unit/planets.spec.ts` checks the manifest, the KTX2 headers and the coordinate helpers without a browser.) |
 
 Useful variables: `KF_SKIP_BUILD=1` serves the existing `dist/` without rebuilding.
 `PERF=1 npx playwright test --workers=1` runs only the `@perf` specs, which are left out
@@ -121,6 +122,7 @@ sources. Nothing is typed from memory or generated.
 | JPL solar system | `npm run preprocess:jpl` | `public/assets/jpl/`: planet elements (Standish and Williams, Table 1) with JPL radii, and the Moon's daily geocentric positions for 2026 to 2035 from Horizons; `physical.json`: IAU rotation models and radii (NAIF pck00011), EMRAT and the au (DE440 header), leap seconds (NAIF naif0012) and the Saturn ring span (Cassini RSS), each with its source URL and sha256 |
 | Letter analysis | `npm run preprocess:analysis` | `public/assets/analysis/kullun-fi-falak.json`: the base letters of kullun fi falakin derived from data/quran.json (21:33 and 36:40), checked to read the same both ways |
 | SDSS galaxies | `npm run preprocess:sdss` | `public/assets/sdss/`: 420,000 DR20 galaxies (every one below z = 0.1, a one-in-nine sample beyond) at their comoving positions, `galaxies.bin` plus `galaxies.json`, and the SDSS acknowledgements in `data/sources.json` |
+| Planet textures | `bash scripts/preprocess-planets.sh` | `public/assets/planets/`: KTX2 maps of the Earth (Blue Marble NG day colour, Black Marble night lights, Blue Marble clouds, Natural Earth water mask, ETOPO 2022 relief normals), the Moon (SVS CGI Moon Kit colour, LOLA relief normals), Jupiter and Saturn (Hubble OPAL 2025a) and Saturn's rings (Cassini RSS opacity, PIA11142 colour) at the Low (1024), Medium (2048) and High (4096) detail tiers, plus `planets.json` (size, codec, sha256, credit, longitude convention and row order of every file) and the sources in `data/sources.json`. Each source is pinned by sha256; landmark checks (Sahara and Pacific, Tycho and Mare Imbrium, the Great Red Spot's latitude, the Cassini Division) run on the sources and again on every decoded file. Ultra (8192) is built into `.cache/planets/ultra` and not published |
 
 ## Adding a chapter
 
@@ -182,6 +184,11 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
   acknowledgements on the Sources page (per SDSS policy).
 - Planet orbits and the Moon: NASA/JPL-Caltech Solar System Dynamics (Approximate Positions of the
   Planets; Planetary Physical Parameters; Horizons).
+- Planet textures (exploration): NASA Earth Observatory (Blue Marble NG, Black Marble, Blue
+  Marble clouds), NOAA ETOPO 2022 (CC0), Natural Earth, NASA SVS CGI Moon Kit (LRO), Hubble OPAL
+  (CC BY 4.0, credited "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team", with the changes
+  listed) and Cassini (PDS, NASA/JPL/Space Science Institute); public domain, CC0 or CC BY 4.0,
+  with each credit line in `data/sources.json` and section 12 of `LICENSES`.
 - Created by Samee and Muhaimin.
 - Later milestones: live
   recitation from the Quran Foundation API (credited, never cached beyond its terms).

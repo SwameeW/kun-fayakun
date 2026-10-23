@@ -15,6 +15,7 @@ Contents
   9. three.js (MIT)
  10. Basis Universal transcoder (Apache License 2.0)
  11. intl-messageformat (BSD-3-Clause) and @formatjs dependencies (MIT)
+ 12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
 
 ==============================================================================
 1. This project's own code and content
@@ -578,3 +579,99 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+==============================================================================
+12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
+==============================================================================
+
+The textures in public/assets/planets/ are this project's own conversions
+(resampled, mip-mapped, encoded as KTX2; gaps filled as planets.json records)
+of the sources below. They are public domain or CC0, except the Hubble OPAL
+maps of Jupiter and Saturn, which are licensed under CC BY 4.0. None carries an
+agency logo, and none implies endorsement by NASA, NOAA, ESA or STScI. Pinned
+URLs, byte counts and sha256: scripts/planets/config.py. Credit lines:
+data/sources.json and planets.json. Terms read 2026-10-23.
+
+Earth day colour, night lights and clouds (NASA Earth Observatory)
+          Blue Marble: Next Generation, July 2004 (world.200407.3x21600x10800.jpg)
+          Black Marble 2016, greyscale 3 km (BlackMarble_2016_3km_gray.jpg)
+          Blue Marble 2002 clouds (cloud_combined_8192.tif)
+Terms:    U.S. Government works, public domain. NASA Earth Observatory's image
+          use policy (archived: web.archive.org/web/20250101064811/
+          https://earthobservatory.nasa.gov/image-use-policy): its materials
+          may be re-published or re-used, commercially too, except where a
+          copyright is indicated; it asks to be credited, and NASA is the only
+          mandatory credit.
+Credits:  Blue Marble: Next Generation, Reto Stöckli, NASA Earth Observatory
+          (NASA Goddard Space Flight Center) | NASA Earth Observatory images by
+          Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA
+          GSFC | NASA Goddard Space Flight Center Image by Reto Stöckli (land
+          surface, shallow water, clouds). Enhancements by Robert Simmon (ocean
+          color, compositing, 3D globes, animation). Data and technical
+          support: MODIS Land Group; MODIS Science Data Support Team; MODIS
+          Atmosphere Group; MODIS Ocean Group
+          (the clouds' credit is Visible Earth record 57747's, verbatim up to
+          its "Additional data" clause, which names the other layers' sources)
+
+Earth relief (NOAA NCEI)
+          ETOPO 2022 Global Relief Model, 60 arc-second surface elevation
+          (ETOPO_2022_v1_60s_N90W180_surface.tif)
+Terms:    CC0-1.0. The dataset's ISO metadata: produced by NOAA and not subject
+          to copyright protection in the United States; NOAA waives any
+          potential copyright and related rights worldwide through the Creative
+          Commons Zero 1.0 Universal Public Domain Dedication
+          (https://creativecommons.org/publicdomain/zero/1.0/). Not to be used
+          for navigation.
+Credit:   NOAA National Centers for Environmental Information. 2022: ETOPO 2022
+          15 Arc-Second Global Relief Model. https://doi.org/10.25921/fd45-gt74
+
+Earth water mask (Natural Earth)
+          Natural Earth 1:10m land and lakes, version 5.1.2
+Terms:    Public domain (https://www.naturalearthdata.com/about/terms-of-use/):
+          no permission is needed, and crediting the authors is unnecessary.
+Credit:   Made with Natural Earth
+
+Moon colour and relief (NASA Scientific Visualization Studio)
+          CGI Moon Kit, SVS 4720: lroc_color_poles_8k.tif (2019) and
+          ldem_16_uint.tif, from LRO LROC WAC and LOLA data
+Terms:    Public domain unless otherwise noted (https://svs.gsfc.nasa.gov/help/).
+          NASA's media usage guidelines apply
+          (https://www.nasa.gov/nasa-brand-center/images-and-media/): texture
+          maps are generally not subject to copyright in the United States;
+          acknowledge NASA as the source; imply no endorsement.
+Credit:   NASA's Scientific Visualization Studio (Ernie Wright, USRA; scientist
+          Noah Petro, NASA/GSFC), from LRO LROC WAC (Arizona State University)
+          and LOLA data
+
+Jupiter and Saturn (Hubble OPAL, archived by STScI/MAST)
+          OPAL global colour maps, Jupiter 2025a and Saturn 2025a (F395N, F502N,
+          F631N), HLSP author Amy Simon, doi:10.17909/T9G593
+Licence:  Creative Commons Attribution 4.0 International (CC BY 4.0)
+          https://creativecommons.org/licenses/by/4.0/
+          The OPAL HLSP page (https://archive.stsci.edu/hlsp/opal): "These HLSP
+          data products are licensed for use under CC BY 4.0". It also asks
+          publications to cite its papers (Simon et al. 2015, Wong et al. 2020)
+          and the DOI, and to include the acknowledgement recorded in
+          data/sources.json (hst-opal-jupiter-2025a, notes).
+Changes:  resampled (Jupiter from 3600 x 1800 to 1024, 2048 and 4096 wide,
+          Saturn from 1800 x 900 to 1024 and 2048) and mip-mapped; the polar
+          caps the maps leave black, and on Saturn the equatorial band the
+          rings hide, filled from the adjacent observed latitudes; moons and
+          moon shadows that crossed Saturn replaced by their row's running
+          median; encoded as KTX2 (ETC1S and UASTC, lossy).
+Credit:   NASA, ESA, A. Simon (NASA GSFC) and the OPAL team
+
+How this project meets the terms: the Sources page (generated from
+data/sources.json) shows this credit, links the licence and each map, and lists
+the changes in the entries' notes; planets.json repeats the credit for every
+Jupiter and Saturn texture.
+
+Saturn's rings (Cassini)
+          Optical depth: Cassini RSS ring occultation profile
+          RSS_2005_123_X43_E_TAU_10KM.TAB (NASA Planetary Data System)
+          Colour: PIA11142, "A Full Sweep of Saturn's Rings" (NASA/JPL Photojournal)
+Terms:    Public domain: NASA Planetary Data System archive data, and NASA/JPL
+          imagery under NASA's media usage guidelines (above).
+Credits:  Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0,
+          CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018 |
+          NASA/JPL/Space Science Institute

@@ -571,6 +571,159 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "nasa-bmng-2004",
+      "kind": "dataset",
+      "title": "Blue Marble: Next Generation, base map without relief shading, July 2004 (world.200407.3x21600x10800.jpg)",
+      "author": "Reto Stöckli, NASA Earth Observatory (NASA Goddard Space Flight Center)",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/july/world.200407.3x21600x10800.jpg",
+      "version": "July 2004 monthly composite, 21600 x 10800 (about 2 km per pixel), retrieved 2026-10-23",
+      "license": "Public domain (U.S. Government work). NASA Earth Observatory's image use policy: its materials may be re-published or re-used, commercially too, except where a copyright is indicated; it asks to be credited, and the only mandatory credit is NASA. Use must not imply NASA endorsement; no NASA insignia or logotype is used.",
+      "licenseUrl": "https://web.archive.org/web/20250101064811/https://earthobservatory.nasa.gov/image-use-policy",
+      "credit": "Blue Marble: Next Generation, Reto Stöckli, NASA Earth Observatory (NASA Goddard Space Flight Center)",
+      "notes": "The Earth's daytime colour in exploration (public/assets/planets/earth/day-*.ktx2). The base map has no topographic or bathymetric shading baked in, so relief comes only from the ETOPO 2022 normal map. Collection page: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/. The exploration Earth is a composite of several epochs (land and sea ice July 2004, clouds 2001, night lights 2016) and is captioned as such.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "nasa-black-marble-2016",
+      "kind": "dataset",
+      "title": "Earth at Night: Black Marble 2016, greyscale, 3 km (BlackMarble_2016_3km_gray.jpg)",
+      "author": "Joshua Stevens, NASA Earth Observatory; Suomi NPP VIIRS data from Miguel Román, NASA GSFC",
+      "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144897/BlackMarble_2016_3km_gray.jpg",
+      "version": "2016 composite, 13500 x 6750 (about 3 km per pixel), retrieved 2026-10-23",
+      "license": "Public domain (U.S. Government work). NASA Earth Observatory's image use policy: its materials may be re-published or re-used, commercially too, except where a copyright is indicated; it asks to be credited, and the only mandatory credit is NASA. Use must not imply NASA endorsement; no NASA insignia or logotype is used.",
+      "licenseUrl": "https://web.archive.org/web/20250101064811/https://earthobservatory.nasa.gov/image-use-policy",
+      "credit": "NASA Earth Observatory images by Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA GSFC",
+      "notes": "City lights on the night side of the present-day exploration Earth only (public/assets/planets/earth/night-*.ktx2); never shown on the film's earlier epochs. The faint grey floor over land is subtracted before encoding (scripts/planets/build.py). Credit as printed on the archived Visible Earth record 144898.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "nasa-blue-marble-clouds-2002",
+      "kind": "dataset",
+      "title": "Blue Marble: clouds (cloud_combined_8192.tif), 2002",
+      "author": "Reto Stöckli, NASA Goddard Space Flight Center (Blue Marble 2002, MODIS data)",
+      "url": "https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif",
+      "version": "Blue Marble 2002 cloud composite, 8192 x 4096, retrieved 2026-10-23",
+      "license": "Public domain (U.S. Government work). NASA Earth Observatory's image use policy: its materials may be re-published or re-used, commercially too, except where a copyright is indicated; it asks to be credited, and the only mandatory credit is NASA. Use must not imply NASA endorsement; no NASA insignia or logotype is used.",
+      "licenseUrl": "https://web.archive.org/web/20250101064811/https://earthobservatory.nasa.gov/image-use-policy",
+      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
+      "notes": "The cloud layer of the exploration Earth (public/assets/planets/earth/clouds-*.ktx2): two days of visible imagery plus thermal infrared over the poles, from 2001 (so Antarctica reads as cloud-bright). Credit as printed on the archived Visible Earth record 57747 (https://web.archive.org/web/20250109030918/https://visibleearth.nasa.gov/images/57747/blue-marble-clouds), up to its \"Additional data\" clause, which names the topography, Antarctica and city-light layers. Fallback copy: http://web.archive.org/web/20260318202426/https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "noaa-etopo-2022",
+      "kind": "dataset",
+      "title": "ETOPO 2022 Global Relief Model, 60 arc-second surface elevation (ETOPO_2022_v1_60s_N90W180_surface.tif)",
+      "author": "NOAA National Centers for Environmental Information",
+      "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/ETOPO_2022_v1_60s_N90W180_surface.tif",
+      "version": "ETOPO 2022 v1, 60 arc-second, ice-surface elevation, WGS 84 with EGM2008 heights, retrieved 2026-10-23",
+      "license": "CC0-1.0: produced by NOAA and not subject to copyright protection in the United States; NOAA waives any potential copyright and related rights worldwide through the Creative Commons Zero 1.0 Universal Public Domain Dedication (dataset ISO metadata). Not to be used for navigation.",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "credit": "NOAA National Centers for Environmental Information. 2022: ETOPO 2022 15 Arc-Second Global Relief Model. https://doi.org/10.25921/fd45-gt74",
+      "notes": "Land relief of the exploration Earth: tangent-space normal maps derived from the elevations (public/assets/planets/earth/normal-*.ktx2), with relief exaggerated for visibility (factor in planets.json) and water surfaces flat. The 60 arc-second file is a product of the ETOPO 2022 model cited above.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "natural-earth-5.1.2",
+      "kind": "dataset",
+      "title": "Natural Earth 1:10m physical vectors: land and lakes (ne_10m_land, ne_10m_lakes), version 5.1.2",
+      "author": "Natural Earth (Tom Patterson, Nathaniel Vaughn Kelso and contributors)",
+      "url": "https://github.com/nvkelso/natural-earth-vector/tree/v5.1.2/geojson",
+      "version": "5.1.2 (git tag v5.1.2), retrieved 2026-10-23",
+      "license": "Public domain: no permission is needed to use Natural Earth and crediting the authors is unnecessary (Natural Earth terms of use).",
+      "licenseUrl": "https://www.naturalearthdata.com/about/terms-of-use/",
+      "credit": "Made with Natural Earth",
+      "notes": "The Earth's water mask (oceans, seas and lakes; public/assets/planets/earth/water-*.ktx2), rasterised with 4 x 4 supersampling, and the flat water surfaces of the normal maps. Elevation below 0 m is not used as water, so dry depressions such as Death Valley and the Qattara Depression stay land.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "nasa-svs-cgi-moon-kit",
+      "kind": "dataset",
+      "title": "CGI Moon Kit (SVS 4720): LROC colour map lroc_color_poles (2019) and LOLA displacement map ldem_16_uint",
+      "author": "Ernie Wright (USRA), NASA's Scientific Visualization Studio; scientist Noah Petro (NASA/GSFC)",
+      "url": "https://svs.gsfc.nasa.gov/4720",
+      "version": "2019 colour map (lroc_color_poles_8k.tif, 8192 x 4096) and ldem_16_uint.tif (5760 x 2880, 16 pixels per degree), retrieved 2026-10-23",
+      "license": "Public domain unless otherwise noted (NASA SVS: free to download, use and redistribute); NASA's media usage guidelines apply (credit NASA, imply no endorsement).",
+      "licenseUrl": "https://svs.gsfc.nasa.gov/help/",
+      "credit": "NASA's Scientific Visualization Studio (Ernie Wright, USRA; scientist Noah Petro, NASA/GSFC), from LRO LROC WAC (Arizona State University) and LOLA data",
+      "notes": "The Moon's colour (public/assets/planets/moon/colour-*.ktx2) and its LOLA relief as normal maps (moon/normal-*.ktx2). SVS describes the colour map as made for rendering rather than science: a natural-colour rendition of the Hapke-normalised LROC WAC mosaic (643, 566 and 415 nm), with latitudes beyond 70 degrees filled from LOLA albedo. Heights are half-metres above a 1,727,400 m radius (reference sphere 1,737,400 m).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hst-opal-jupiter-2025a",
+      "kind": "dataset",
+      "title": "Outer Planet Atmospheres Legacy (OPAL): Jupiter 2025a global colour map (F395N, F502N, F631N), HST WFC3/UVIS",
+      "author": "Amy Simon (NASA GSFC) and the OPAL team; Hubble Space Telescope; archived by STScI (MAST)",
+      "url": "https://archive.stsci.edu/missions/hlsp/opal/cycle32/jupiter/hlsp_opal_hst_wfc3-uvis_jupiter-2025a_f395n-f502n-f631n_v1_globalmap.tif",
+      "version": "HST Cycle 32, rotation 2025a (2025-12-11), HLSP v1, 3600 x 1800, retrieved 2026-10-23",
+      "license": "CC BY 4.0. The OPAL HLSP page (https://archive.stsci.edu/hlsp/opal, HLSP author and PI Amy Simon): \"These HLSP data products are licensed for use under CC BY 4.0\". Attribution: the credit line, the link to the map and doi:10.17909/T9G593; the changes this project made are listed in the notes. The page also asks publications to cite its papers (Simon et al. 2015, Wong et al. 2020) and the DOI, and to include the OPAL acknowledgement quoted in the notes.",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "credit": "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team",
+      "notes": "Jupiter's colour in exploration (public/assets/planets/jupiter/colour-*.ktx2). Planetographic latitude, System III longitude (the map's left edge is 0 degrees west, decreasing to the right). Changes made by this project (CC BY 4.0): resampled from 3600 x 1800 to 1024, 2048 and 4096 wide and mip-mapped; the polar caps the map leaves black filled with the mean colour of the last observed latitudes; encoded as KTX2 (ETC1S and UASTC, lossy). OPAL acknowledgement: \"This work used data acquired from the NASA/ESA HST Space Telescope, associated with OPAL program (PI: Simon, GO13937), and archived by the Space Telescope Science Institute, which is operated by the Association of Universities for Research in Astronomy, Inc., under NASA contract NAS 5-26555. All maps are available at http://dx.doi.org/10.17909/T9G593.\" HLSP page: https://archive.stsci.edu/hlsp/opal (doi:10.17909/T9G593). The short credit follows the form of NASA/ESA OPAL image releases.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hst-opal-saturn-2025a",
+      "kind": "dataset",
+      "title": "Outer Planet Atmospheres Legacy (OPAL): Saturn 2025a global colour map (F395N, F502N, F631N), HST WFC3/UVIS",
+      "author": "Amy Simon (NASA GSFC) and the OPAL team; Hubble Space Telescope; archived by STScI (MAST)",
+      "url": "https://archive.stsci.edu/missions/hlsp/opal/cycle32/saturn/hlsp_opal_hst_wfc3-uvis_saturn-2025a_f395n-f502n-f631n_v1_globalmap.tif",
+      "version": "HST Cycle 32, rotation 2025a (2025-08-29), HLSP v1, 1800 x 900, retrieved 2026-10-23",
+      "license": "CC BY 4.0. The OPAL HLSP page (https://archive.stsci.edu/hlsp/opal, HLSP author and PI Amy Simon): \"These HLSP data products are licensed for use under CC BY 4.0\". Attribution: the credit line, the link to the map and doi:10.17909/T9G593; the changes this project made are listed in the notes. The page also asks publications to cite its papers (Simon et al. 2015, Wong et al. 2020) and the DOI, and to include the OPAL acknowledgement quoted in the notes.",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "credit": "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team",
+      "notes": "Saturn's globe colour in exploration (public/assets/planets/saturn/colour-*.ktx2). Planetographic latitude, System III longitude (left edge 360 degrees west, decreasing to the right). Changes made by this project (CC BY 4.0): observed near the ring-plane crossing, so the thin equatorial band the rings hide and the polar caps are filled from the adjacent observed latitudes; moons and moon shadows that crossed the planet are replaced by their row's running median; resampled from 1800 x 900 to 1024 and 2048 wide and mip-mapped; encoded as KTX2 (ETC1S and UASTC, lossy). OPAL acknowledgement: \"This work used data acquired from the NASA/ESA HST Space Telescope, associated with OPAL program (PI: Simon, GO13937), and archived by the Space Telescope Science Institute, which is operated by the Association of Universities for Research in Astronomy, Inc., under NASA contract NAS 5-26555. All maps are available at http://dx.doi.org/10.17909/T9G593.\" HLSP page: https://archive.stsci.edu/hlsp/opal (doi:10.17909/T9G593).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "cassini-pia11142",
+      "kind": "dataset",
+      "title": "A Full Sweep of Saturn's Rings (PIA11142), Cassini narrow-angle camera natural-colour mosaic, 2008-11-26",
+      "author": "NASA/JPL/Space Science Institute",
+      "url": "https://science.nasa.gov/photojournal/a-full-sweep-of-saturns-rings/",
+      "version": "PIA11142.tif, 12126 x 1439, about 7 km per pixel radially, retrieved 2026-10-23",
+      "license": "Public domain (NASA/JPL Photojournal; NASA's media usage guidelines apply: credit NASA, imply no endorsement).",
+      "licenseUrl": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+      "credit": "NASA/JPL/Space Science Institute",
+      "notes": "The colour of Saturn's rings in exploration (the RGB channels of public/assets/planets/saturn/rings-8192-rgba8.ktx2): the lit face seen from 10 degrees below it at 28 degrees phase, averaged across the arcs near the mosaic's apex and placed on ring radius by matching its gaps to the Cassini RSS optical-depth profile. Where the rings are thin the mosaic's brightness is divided by the share of a thick ring's light they return in its geometry (single scattering), so the strip holds the ring material's own colour; gaps and empty space take the nearest ring material's colour (straight alpha).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []

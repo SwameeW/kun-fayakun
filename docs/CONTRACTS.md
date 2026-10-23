@@ -28,6 +28,7 @@ interfaces every builder shares so parallel work fits together. Types live in
 |---|---|
 | data | `scripts/fetch-quran.ts`, `scripts/validate.ts`, `scripts/lib/**`, `data/quran.json`, `data/tanzil/**` (pinned raw files), `data/sources.json`, `LICENSES`, `REVIEW.md` |
 | cmb | `scripts/preprocess-cmb.sh`, `scripts/cmb/**`, `public/assets/cmb/**` |
+| planets | `scripts/preprocess-planets.sh`, `scripts/planets/**`, `public/assets/planets/**`, the planet imagery entries of `data/sources.json` and section 12 of `LICENSES` |
 | calligraphy | `scripts/fetch-font.ts`, `scripts/build-calligraphy.ts`, `public/fonts/**`, `public/assets/calligraphy/**` |
 | content | `src/chapters/ch0{0,1,2}/content.json` (panel, intro, verse/hadith/caption/panel/overlay cues, duration), `src/i18n/en.chapters.json`, `data/constants.json`, `data/hadith.json` |
 | engine | `src/core/**` except `types.ts` and `events.ts`, `src/main.ts` |
@@ -67,6 +68,34 @@ Everything is fetched relative to `document.baseURI` via `assets.url(path)` (Vit
 - `fonts/AmiriQuran.woff2` → CSS family `"Amiri Quran"` (ui declares the @font-face; `font-display: swap`)
 - `assets/calligraphy/kun.png` + `assets/calligraphy/kun.json`
 - `assets/cmb/cmb-temperature-2048.ktx2`, `assets/cmb/cmb.json`
+- `assets/planets/planets.json` and the textures it lists, `assets/planets/<body>/<map>-<width>-<codec>.ktx2`
+  (exploration only; nothing in the film loads them)
+
+### `assets/planets/planets.json`
+Written by `scripts/planets/manifest.py`; validator rule j checks it against the files. One entry in
+`files` per map and published tier (`low` 1024, `medium` 2048, `high` 4096 wide; a map whose source is
+narrower reuses its widest file for the higher tiers):
+```json
+{ "body": "earth", "map": "day", "tier": "low", "path": "assets/planets/earth/day-1024-etc1s.ktx2",
+  "width": 1024, "height": 512, "levels": 11, "codec": "etc1s|uastc|r8|rgba8", "colorSpace": "srgb|linear",
+  "bytes": 90480, "sha256": "…", "sourceId": "nasa-bmng-2004", "credit": "<data/sources.json credit>",
+  "uAtLon0": 0.5, "lonIncreases": "right", "latitude": "…", "rowsBottomUp": true }
+```
+Maps: earth `day` `night` `clouds` `water` `normal`, moon `colour` `normal`, jupiter `colour`, saturn
+`colour` `rings`. `path` goes straight to `assets.ktx2()`. Every equirectangular file is 2:1 with a full
+mip chain, `u = (uAtLon0 + east longitude / 360) mod 1`, `v = 0.5 + latitude / 180` (v = 0 south), rows
+stored bottom-up (`KTXorientation` "ru"), so use the textures as loaded; wrap S, clamp T. Raw `r8`/`rgba8`
+files load as DataTexture with nearest filtering: set linear mip filtering yourself. Normal maps are UASTC
+normal mode (`n.xy = texel.ga * 2 - 1`, x east, y north, z out) with relief exaggerated by
+`reliefExaggeration`. Jupiter and Saturn use planetographic latitude (sample with the latitude of the
+ellipsoid's normal). The ring strip (saturn `rings`, 8192 x 1 RGBA8, `u` from `radiusKm[0]` to
+`radiusKm[1]`) has straight alpha (`bodies.saturn.maps.rings.alpha`): rgb is the ring material's own
+colour, not multiplied by a, and a its normal opacity, so blend
+`mix(background, rgb * light, 1 - (1 - a)^(1/mu))`. `bodies` and `facts` (the Great Red Spot's position
+on 2025-12-11; the ring strip's radius span, colour registration, colour model and opacity noise floor)
+say the rest. The `ultra` tier (8192) is built into `.cache/planets/ultra` and described there by
+`planets-ultra.json` (repository paths; maps narrower than 8192 point at their published High file); it
+is not published until the owner decides where to host it.
 
 ### `assets/calligraphy/<id>.json`
 ```json
