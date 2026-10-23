@@ -45,12 +45,10 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   });
   const mode = h('p', { class: 'kf-universe-line kf-universe-mode' }, modeText, orbit);
   // In full on a wide screen; on a phone the short form, so the line never wraps (only one is ever shown).
-  const scale = h(
-    'p',
-    { class: 'kf-universe-line kf-universe-scale kf-universe-part' },
-    h('span', { class: 'kf-universe-long' }, i18n.t('ui.universe.trueScale')),
-    h('span', { class: 'kf-universe-short' }, i18n.t('ui.universe.trueScaleShort')),
-  );
+  // While the film's compressed view stretches out (the way in from Chapter 7) the line says so instead.
+  const scaleLong = h('span', { class: 'kf-universe-long' }, i18n.t('ui.universe.trueScale'));
+  const scaleShort = h('span', { class: 'kf-universe-short' }, i18n.t('ui.universe.trueScaleShort'));
+  const scale = h('p', { class: 'kf-universe-line kf-universe-scale kf-universe-part', 'data-testid': 'universe-scale' }, scaleLong, scaleShort);
   const sunlight = h('p', { class: 'kf-universe-line kf-universe-extra' });
   const filter = h('p', { class: 'kf-universe-line kf-universe-extra kf-universe-filter', hidden: true }, i18n.t('ui.universe.filter'));
   const date = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-extra' });
@@ -199,6 +197,10 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
       write(modeText, modeLine);
       orbit.hidden = !flying;
       if (flying) write(orbit, i18n.t('ui.universe.orbitButton', { body: f.name(view.focus) }));
+      const stretching = view.trueScale < 1;
+      write(scaleLong, i18n.t(stretching ? 'ui.universe.stretching' : 'ui.universe.trueScale'));
+      write(scaleShort, i18n.t(stretching ? 'ui.universe.stretchingShort' : 'ui.universe.trueScaleShort'));
+      scale.classList.toggle('is-stretching', stretching);
       write(sunlight, formatSunlight(view.sunlight));
       filter.hidden = !view.solarFilter;
       readout.classList.toggle('is-filtered', view.solarFilter);

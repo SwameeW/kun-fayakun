@@ -65,6 +65,79 @@ test('a deep link to a body opens on it, at the date it pins', async ({ page, kf
   expect(pageErrors).toEqual([]);
 });
 
+test('a chapter that offers the explorer fetches its code ahead of a visit, and only its code', async ({ page, kf, pageErrors }) => {
+  await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
+  await expect(page.locator('html')).toHaveAttribute('data-universe-prefetched', 'true', { timeout: 30_000 });
+  // Nothing of the explorer is built or fetched beyond its code: no planet maps while the film plays.
+  const maps = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/assets/planets/')).length);
+  expect(maps).toBe(0);
+  expect(await page.locator('html').getAttribute('data-experience')).not.toBe('universe');
+  expect(pageErrors).toEqual([]);
+});
+
+test('from Chapter 7 the film’s compressed system stretches out to true scale, then flies on to the Earth', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000);
+  await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.openUniverse();
+  });
+  await waitForUniverse(page);
+  // It opens on the film's view: the whole system around the Sun, not to scale, and says so.
+  const first = await view(page);
+  expect(first?.focus).toBe('sun');
+  expect(first?.trueScale ?? 1).toBeLessThan(1);
+  await expect(page.getByTestId('universe-scale')).toContainText(/not to scale/i);
+  // Sampled as it stretches: the Earth drawn smaller and nearer the Sun each time, the camera never inside a body.
+  const samples: Array<{ scale: number; earthPx: number; earthKm: number; altitudeKm: number }> = [];
+  await expect
+    .poll(
+      async () => {
+        const v = await view(page);
+        const earth = v?.bodies.find((b) => b.id === 'earth');
+        if (v && earth) samples.push({ scale: v.trueScale, earthPx: earth.screen.radiusPx, earthKm: Math.hypot(earth.ecliptic.x, earth.ecliptic.y, earth.ecliptic.z), altitudeKm: v.altitudeKm });
+        return v?.trueScale;
+      },
+      { timeout: 60_000, intervals: [250] },
+    )
+    .toBe(1);
+  expect(samples.length).toBeGreaterThan(4);
+  for (const [i, s] of samples.entries()) {
+    expect(s.altitudeKm, `sample ${i}: outside the Sun`).toBeGreaterThan(0);
+    const prev = samples[i - 1];
+    if (!prev) continue;
+    expect(s.scale).toBeGreaterThanOrEqual(prev.scale);
+    expect(s.earthPx).toBeLessThanOrEqual(prev.earthPx + 1e-6);
+  }
+  const [start] = samples;
+  const end = samples[samples.length - 1];
+  // The film's Earth is a disc several pixels across; at true scale it is under one.
+  expect(start?.earthPx ?? 0).toBeGreaterThan(2);
+  expect(end?.earthPx ?? 1).toBeLessThan(1);
+  // At true scale the Earth is 1 au from the Sun (the film had it about three times further out).
+  expect((end?.earthKm ?? 0) / 1.496e8).toBeCloseTo(1, 1);
+  await expect(page.getByTestId('universe-scale')).toContainText(/True scale/);
+  // Then it flies on to the Earth.
+  await expect.poll(async () => (await view(page))?.focus, { timeout: 30_000 }).toBe('earth');
+  await expect(html(page)).toHaveAttribute('data-travel', 'arrived', { timeout: 60_000 });
+  expect(pageErrors).toEqual([]);
+});
+
+test.describe('with reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' });
+
+  test('from Chapter 7 the explorer opens at true scale at once (no stretch)', async ({ page, kf, pageErrors }) => {
+    await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.app.openUniverse();
+    });
+    await waitForUniverse(page);
+    const v = await view(page);
+    expect(v?.trueScale).toBe(1);
+    expect(v?.focus).toBe('earth');
+    expect(pageErrors).toEqual([]);
+  });
+});
+
 test('five round trips ch07 -> universe -> ch07 resume the film where it was and keep GPU memory stable', async ({ page, kf, pageErrors }) => {
   test.setTimeout(600_000);
   await kf.openChapter('ch07', { t: 150, query: { jd: JD } });

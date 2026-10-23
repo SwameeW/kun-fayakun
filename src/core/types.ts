@@ -497,6 +497,8 @@ export interface UniverseView {
   auKm: number;
   /** The speed of light, km/s (data/constants.json; 0 if it did not load), for light-times and speeds. */
   lightKmS: number;
+  /** 1 at true scale; below 1 while the film's compressed view stretches out to it (the way in from Chapter 7). */
+  trueScale: number;
 }
 
 /** One body as the explorer's camera sees it (live from the ephemeris). */
@@ -603,7 +605,7 @@ export interface UniverseModule extends ExperienceModule {
   load(ctx: UniverseContext): Promise<void>;
   enter(ctx: UniverseContext): void;
   /** Applies a route: a body to show (null: the explorer's default) and a pinned UTC Julian date (null: now). */
-  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean }): void;
+  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean; stretch?: boolean }): void;
   /** Flies to a body: an eased flight in log distance, never a jump (a dimmed cut with reduced motion). */
   focus(body: BodyId): void;
   view(): UniverseView;

@@ -190,6 +190,11 @@
   color: var(--kf-gold);
 }
 
+/* Not yet true scale (the film's view stretching out): plain text, the gold kept for the real thing. */
+.kf-universe-scale.is-stretching {
+  color: var(--kf-text-muted);
+}
+
 .kf-universe-short {
   display: none;
 }

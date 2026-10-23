@@ -84,6 +84,8 @@ export interface UniverseOpenOptions {
   /** A pinned UTC Julian date, or null for now. */
   jdUtc: number | null;
   reducedMotion: boolean;
+  /** Open on the film's compressed solar system and stretch it out to true scale (from Chapter 7; ignored under reduced motion). */
+  stretch?: boolean;
 }
 
 type HostState = 'idle' | 'loading' | 'active' | 'leaving';
@@ -111,6 +113,8 @@ export class UniverseHost {
   private veilGoal: { from: number; to: number; seconds: number; t: number } | null = null;
   /** The visitor's detail choice, kept for the explorer until (and after) it loads. */
   private detailChoice: 'auto' | ExploreTier | null = null;
+  /** The explorer's code, fetched ahead of a visit (prefetch). */
+  private prefetched: Promise<void> | null = null;
 
   constructor(private readonly deps: UniverseHostDeps) {}
 
@@ -321,6 +325,24 @@ export class UniverseHost {
       setVeil,
       jump,
     };
+  }
+
+  /**
+   * Fetches the explorer's code ahead of a visit (from the chapters that offer one), so the way in
+   * waits on nothing but its warm-up. Only the code: nothing is built and no texture is fetched,
+   * so the film keeps its frame budget.
+   */
+  prefetch(): void {
+    if (this.loaded || this.loading || this.prefetched) return;
+    this.prefetched = import('../explore/index').then(
+      () => {
+        setHook('data-universe-prefetched', 'true');
+      },
+      () => {
+        // A failed fetch is retried by the visit itself.
+        this.prefetched = null;
+      },
+    );
   }
 
   private load(): Promise<Loaded> {

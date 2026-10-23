@@ -165,6 +165,8 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   let settleBy = 0;
   /** How many of the log's entries have had their toast. */
   let toasted = 0;
+  /** The film's compressed view was stretching out last frame (the way in from Chapter 7). */
+  let wasStretching = false;
 
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
@@ -179,6 +181,12 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
       for (const id of view.witnessed.slice(toasted)) toast.show(i18n.t(`ui.universe.seen.${id}`), i18n.t('ui.universe.seenToast'));
       toasted = view.witnessed.length;
     }
+    // The stretch from the film's scale has reached true scale: said once, and shown in a quiet toast.
+    if (wasStretching && view.trueScale >= 1) {
+      announce(i18n.t('ui.universe.announce.trueScale'));
+      toast.show(i18n.t('ui.universe.trueScaleToast'), i18n.t('ui.universe.trueScaleToastLine'));
+    }
+    wasStretching = view.trueScale < 1;
     const slow = now - lastSlow >= SLOW_MS;
     if (slow) lastSlow = now;
     navigator.update(view, slow || shownFocus !== view.focus);

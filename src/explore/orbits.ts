@@ -217,6 +217,8 @@ export interface OrbitFrame {
   light: number;
   /** Strength of each path (in the order given to createOrbits), 0 to 1. */
   weights: readonly number[];
+  /** Moves a point of a path in place before it is drawn (the stretch from the film's scale: ./stretch). */
+  warp?: (point: Km, path: OrbitPath) => void;
 }
 
 export interface Orbits {
@@ -287,6 +289,7 @@ export function createOrbits(paths: readonly OrbitPath[]): Orbits {
           const v = -1 + (2 * i) / SEGMENTS;
           const u = centre + 0.5 * Math.sign(v) * Math.abs(v) ** CROWD;
           path.point(u, point);
+          frame.warp?.(point, path);
           rel.x = point.x - frame.camera.x;
           rel.y = point.y - frame.camera.y;
           rel.z = point.z - frame.camera.z;

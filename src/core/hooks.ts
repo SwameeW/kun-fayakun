@@ -17,7 +17,9 @@ export type HookAttribute =
   /** The explorer's trips: "flying" while one is under way, then "arrived" (or "stopped" by Esc); removed when it leaves. */
   | 'data-travel'
   /** The explorer's detail tier running (ultra, high, medium, low); removed when it leaves. */
-  | 'data-detail';
+  | 'data-detail'
+  /** "true" once the explorer's code has been fetched ahead of a visit (from a chapter that offers it). */
+  | 'data-universe-prefetched';
 
 export function setHook(name: HookAttribute, value: string | null): void {
   const root = document.documentElement;

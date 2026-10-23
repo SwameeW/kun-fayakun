@@ -241,8 +241,10 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`,
   `data-experience="film|universe"` (set as soon as a switch starts), `data-universe-ready="true"`
   once the explorer has rendered a frame after loading (removed while it is not on screen),
-  `data-travel="flying|arrived|stopped"` (the explorer's trips; removed when it leaves) and
-  `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves).
+  `data-travel="flying|arrived|stopped"` (the explorer's trips; removed when it leaves),
+  `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
+  and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
+  that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
 - `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
@@ -288,6 +290,16 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   in the clear part of the view. An explorer that cannot load shows `ui.error.universe` and returns
   the visitor the same way, replacing its address in the history (as a chapter that fails to load
   does). Chapters 7 to 10 (registry `opensUniverse`) offer it; earlier eras came before the Sun.
+  They fetch its code 1.5 s after they are ready (`universeHost.prefetch()`: the code only, nothing
+  built or fetched besides), so the way in waits only on its warm-up. From Chapter 7, with no body or
+  date asked for (`UniverseOpenOptions.stretch`), the explorer opens on the film's compressed system
+  (Chapter 7's square-root distances and enlarged sizes, every world lit alike, seen from 2.35 x
+  Saturn's orbit, 32 degrees above the ecliptic) and stretches it out to true distances, sizes and
+  sunlight over 6.5 s after a 2.6 s hold (`src/explore/stretch.ts`, log-space blends, eased), then
+  flies on to the Earth unless the visitor has steered; a trip asked for meanwhile finishes it in
+  0.9 s. The readout says it is not to scale until it is (`UniverseView.trueScale` < 1), then
+  announces true scale; notes wait until then; the enlarged Sun keeps the filtered brightness
+  without glare until it shrinks. Under reduced motion it opens at true scale at once.
   Keyboard focus moves into the explorer's region when it opens and back to the transport (or the
   welcome screen's way in) when it closes.
 - **Space.** State is float64 km from the barycentre in the render frame (ecliptic J2000 turned

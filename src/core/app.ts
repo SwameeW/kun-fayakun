@@ -652,13 +652,19 @@ class Engine implements KunFayakunApp {
     }
   }
 
-  /** After a chapter has rendered: keep it and the next one, dispose the rest, prefetch the next. */
+  /**
+   * After a chapter has rendered: keep it and the next one, dispose the rest, prefetch the next (and
+   * the explorer's code, from a chapter that offers the explorer, so the way in has nothing to fetch).
+   */
   private afterChapterReady(id: ChapterId): void {
     const next = this.neighbour(id, 1);
     this.loader.retain(next ? [id, next] : [id]);
-    if (!next) return;
+    const opensUniverse = this.chapters.find((c) => c.id === id)?.opensUniverse === true;
+    if (!next && !opensUniverse) return;
     this.prefetchTimer = window.setTimeout(() => {
-      if (this.timeline.chapter === id) this.loader.prefetch(next);
+      if (this.timeline.chapter !== id) return;
+      if (next) this.loader.prefetch(next);
+      if (opensUniverse) this.universeHost.prefetch();
     }, PREFETCH_DELAY_MS);
   }
 
@@ -736,7 +742,8 @@ class Engine implements KunFayakunApp {
    * film's position is remembered the first time, so closing the explorer can return to it.
    */
   private enterUniverse(body: BodyId | null, jd: number | null): void {
-    if (!this.universeHost.requested) {
+    const fresh = !this.universeHost.requested;
+    if (fresh) {
       const chapter = this.timeline.chapter;
       this.origin =
         chapter !== null && this.timeline.content
@@ -748,7 +755,10 @@ class Engine implements KunFayakunApp {
     window.clearTimeout(this.prefetchTimer);
     this.chapterReadyPending = null;
     setHook('data-chapter-ready', null);
-    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced });
+    // From Chapter 7's compressed solar system, with no body or date asked for, the explorer opens on
+    // that view and stretches it out to true scale.
+    const stretch = fresh && this.origin?.chapter === 'ch07' && body === null && jd === null;
+    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced, stretch });
   }
 
   private returnToOrigin(origin: FilmOrigin, history: NavOptions['history']): void {

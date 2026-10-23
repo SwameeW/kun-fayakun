@@ -67,6 +67,7 @@ import { availableTiers, createDetailGovernor, initialTier, type DetailChoice, t
 import { lensFor, LENS, nearestAltitude, type Lens, type Sphere } from './space/lens';
 import { FloatingOrigin, km, renderToEcliptic, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
+import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretchedDistance, stretchedLight } from './stretch';
 import { createSolarSystem, type SolarSystem } from './system';
 
 const DEFAULT_BODY: BodyId = 'earth';
@@ -294,6 +295,19 @@ export default function create(): UniverseModule {
   let wantBody: BodyId | null = null;
   let pinnedUtc: number | null = null;
   let entered = false;
+  /**
+   * The stretch from the film's scale (./stretch), asked for by the route on the way in from Chapter 7:
+   * its clock (s), how far it has got (0 the film's scale, 1 true), whether a trip hurries it, whether
+   * the visitor has taken the controls (then where to go next is theirs), and the body flown to after.
+   */
+  let wantStretch = false;
+  const stretch = { active: false, t: 0, amount: 1, rush: false, steered: false, then: DEFAULT_BODY };
+  /** Each body's drawn size over its true one this frame, and its true distance from the Sun (for its light). */
+  const grow = Object.fromEntries(BODY_IDS.map((id) => [id, 1])) as Record<BodyId, number>;
+  const trueSunKm = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
+  const earthTrue = km();
+  /** The film's scene unit, km (set on the way in). */
+  let filmUnit = 0;
   /** The date shown: TDB Julian date, and UTC for display. */
   let jdTdb = 0;
   let jdUtc = 0;
@@ -451,6 +465,7 @@ export default function create(): UniverseModule {
     detail: detailView,
     auKm: 1,
     lightKmS: 0,
+    trueScale: 1,
   };
 
   const refreshView = (): void => {
@@ -487,6 +502,7 @@ export default function create(): UniverseModule {
     v.witnessed = discoveries?.witnessed ?? v.witnessed;
     syncDetailView();
     v.auKm = auKm;
+    v.trueScale = stretch.amount;
     v.illustrative = illustrations();
     v.lightKmS = lightKmS;
   };
@@ -570,6 +586,81 @@ export default function create(): UniverseModule {
     return best;
   };
 
+  /** The stretch's clock: it holds the film's view, eases to true scale, rests, then flies on (unless the visitor has steered). */
+  const advanceStretch = (dt: number): void => {
+    if (!stretch.active) return;
+    // A trip asked for meanwhile finishes it quickly, from wherever it has got to.
+    if (nav.travelling && !stretch.rush) {
+      stretch.rush = true;
+      stretch.steered = true;
+      stretch.t = Math.max(stretch.t, STRETCH.hold);
+    }
+    stretch.t += stretch.rush ? dt * (STRETCH.seconds / STRETCH.rush) : dt;
+    stretch.amount = stretchEase((stretch.t - STRETCH.hold) / STRETCH.seconds);
+    if (stretch.t >= STRETCH.hold + STRETCH.seconds + STRETCH.settle) {
+      stretch.active = false;
+      stretch.amount = 1;
+      if (!stretch.steered && world) nav.flyTo(world, stretch.then);
+    }
+  };
+
+  /** The worlds where the film's scale, part way to true, puts them: moved in place after the system's update. */
+  const warpSystem = (sys: SolarSystem): void => {
+    const s = stretch.amount;
+    const sun = sys.bodies.sun.position;
+    const earth = sys.bodies.earth.position;
+    earthTrue.x = earth.x;
+    earthTrue.y = earth.y;
+    earthTrue.z = earth.z;
+    for (const id of BODY_IDS) {
+      const p = sys.bodies[id].position;
+      trueSunKm[id] = Math.hypot(p.x - sun.x, p.y - sun.y, p.z - sun.z);
+      grow[id] = s < 1 ? sizeFactor(id, sys.specs[id].radiusKm, s, filmUnit) : 1;
+    }
+    if (s >= 1) return;
+    for (const id of ['earth', 'jupiter', 'saturn'] as const) {
+      const p = sys.bodies[id].position;
+      const r = trueSunKm[id];
+      if (r <= 0) continue;
+      const f = stretchedDistance(r, s, filmUnit, sys.auKm) / r;
+      p.x = sun.x + (p.x - sun.x) * f;
+      p.y = sun.y + (p.y - sun.y) * f;
+      p.z = sun.z + (p.z - sun.z) * f;
+    }
+    // The Moon keeps its side of the Earth, at the film's distance from it part way to the true one.
+    const m = sys.bodies.moon.position;
+    const ox = m.x - earthTrue.x;
+    const oy = m.y - earthTrue.y;
+    const oz = m.z - earthTrue.z;
+    const mf = moonOffsetFactor(Math.hypot(ox, oy, oz), s, filmUnit);
+    m.x = earth.x + ox * mf;
+    m.y = earth.y + oy * mf;
+    m.z = earth.z + oz * mf;
+  };
+
+  /** The orbit lines follow the worlds through the stretch (the Moon's is drawn around the Earth already moved). */
+  const warpOrbitPoint = (point: Km, path: OrbitPath): void => {
+    if (!system) return;
+    const s = stretch.amount;
+    if (path.body === 'moon') {
+      const ox = point.x - path.centre.x;
+      const oy = point.y - path.centre.y;
+      const oz = point.z - path.centre.z;
+      const mf = moonOffsetFactor(Math.hypot(ox, oy, oz), s, filmUnit);
+      point.x = path.centre.x + ox * mf;
+      point.y = path.centre.y + oy * mf;
+      point.z = path.centre.z + oz * mf;
+      return;
+    }
+    const sun = system.bodies.sun.position;
+    const r = Math.hypot(point.x - sun.x, point.y - sun.y, point.z - sun.z);
+    if (r <= 0) return;
+    const f = stretchedDistance(r, s, filmUnit, system.auKm) / r;
+    point.x = sun.x + (point.x - sun.x) * f;
+    point.y = sun.y + (point.y - sun.y) * f;
+    point.z = sun.z + (point.z - sun.z) * f;
+  };
+
   const frame = (dt: number): void => {
     const c = ctx;
     if (!c || !system || !bodies || !stars || !orbits || !dots || !glare || !world) return;
@@ -580,6 +671,8 @@ export default function create(): UniverseModule {
     jdTdb = Math.min(range.endJd, jdTdb + dt / SECONDS_PER_DAY);
     jdUtc += dt / SECONDS_PER_DAY;
     sys.update(jdTdb);
+    advanceStretch(dt);
+    warpSystem(sys);
     for (const path of orbitPaths) path.setDate(jdTdb);
 
     // The view the bodies are framed in: the camera's resting lens and what the interface covers.
@@ -609,7 +702,7 @@ export default function create(): UniverseModule {
       const sphere = spheres[i];
       if (sphere) {
         sphere.centre = p.rel;
-        sphere.radius = sys.specs[id].radiusKm;
+        sphere.radius = sys.specs[id].radiusKm * grow[id];
       }
     });
     // Saturn's rings, in its equator: beside them they are the nearest surface.
@@ -669,10 +762,11 @@ export default function create(): UniverseModule {
       const spec = sys.specs[id];
       const p = placed[id];
       p.k = placeScaled(p.rel, spec.boundKm, lens.far, p.drawn);
-      p.radiusPx = pxPerTan * Math.tan(Math.asin(Math.min(1, spec.radiusKm / Math.max(p.distance, spec.radiusKm))));
+      const radiusKm = spec.radiusKm * grow[id];
+      p.radiusPx = pxPerTan * Math.tan(Math.asin(Math.min(1, radiusKm / Math.max(p.distance, radiusKm))));
       const object = bodies.objects[id];
       object.position.set(p.drawn.x, p.drawn.y, p.drawn.z);
-      object.scale.setScalar(spec.radiusKm * p.k);
+      object.scale.setScalar(radiusKm * p.k);
       const b = sys.bodies[id].basis;
       basis.set(b[0] ?? 1, b[3] ?? 0, b[6] ?? 0, 0, b[1] ?? 0, b[4] ?? 1, b[7] ?? 0, 0, b[2] ?? 0, b[5] ?? 0, b[8] ?? 1, 0, 0, 0, 0, 1);
       object.quaternion.setFromRotationMatrix(basis);
@@ -684,6 +778,7 @@ export default function create(): UniverseModule {
       p.screenY = ((1 - projected.y) / 2) * viewportPx;
     }
     const lightAt = (id: BodyId): number => {
+      if (stretch.amount < 1) return stretchedLight((sys.auKm / Math.max(trueSunKm[id], 1)) ** 2, stretch.amount);
       const q = sys.bodies[id].position;
       return (sys.auKm / Math.max(Math.hypot(q.x - sun.x, q.y - sun.y, q.z - sun.z), 1)) ** 2;
     };
@@ -694,7 +789,10 @@ export default function create(): UniverseModule {
     filterColor[0] = 1 + (fr - 1) * filterAmount;
     filterColor[1] = 1 + (fg - 1) * filterAmount;
     filterColor[2] = 1 + (fb - 1) * filterAmount;
-    const sunDisplay = Math.exp(Math.log(SUN_FILTER.white) + (Math.log(SUN_FILTER.filtered) - Math.log(SUN_FILTER.white)) * filterAmount);
+    // The film's enlarged Sun is a drawn disc, not a blinding point: through the stretch it keeps the
+    // filtered brightness without glare or spikes (in its own colour), brightening only as it shrinks to true size.
+    const subdued = Math.max(filterAmount, 1 - stretch.amount);
+    const sunDisplay = Math.exp(Math.log(SUN_FILTER.white) + (Math.log(SUN_FILTER.filtered) - Math.log(SUN_FILTER.white)) * subdued);
     // The Earth's air table is baked once, on the first frame (it needs the renderer).
     if (airTable && !airTable.baked) airTable.bake(c.renderer);
     camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -792,6 +890,7 @@ export default function create(): UniverseModule {
       focusDistance: focus.distance,
       compensation: adapted,
       light: 1 + TRIP_ORBIT_GLOW * tripGlow,
+      ...(stretch.amount < 1 ? { warp: warpOrbitPoint } : {}),
     });
 
     // Labels first: the ring markers of small bodies come and go with their tags.
@@ -803,7 +902,7 @@ export default function create(): UniverseModule {
       const dot = dotList[i];
       if (!dot) return;
       const spec = sys.specs[id];
-      const drawnRadius = spec.radiusKm * p.k;
+      const drawnRadius = spec.radiusKm * grow[id] * p.k;
       // In front of the body's own sphere, by at least 1% of the distance: far out, one step of the
       // depth buffer spans hundreds of thousands of km, more than the planet itself.
       const toward = Math.max(0, Math.min(0.99, 1 - (1.03 * drawnRadius) / Math.max(Math.hypot(p.drawn.x, p.drawn.y, p.drawn.z), 1e-9)));
@@ -835,12 +934,12 @@ export default function create(): UniverseModule {
     sunThroughEarth(sunTint);
     glare.update({
       position: sunPlaced.drawn,
-      drawnRadius: sys.specs.sun.radiusKm * sunPlaced.k,
+      drawnRadius: sys.specs.sun.radiusKm * grow.sun * sunPlaced.k,
       radiusPx: sunPlaced.radiusPx,
       viewportPx,
       visible: sunVisible(),
       compensation: adapted,
-      filtered: filterAmount,
+      filtered: subdued,
       tint: sunTint,
     });
 
@@ -995,7 +1094,8 @@ export default function create(): UniverseModule {
     renderToEcliptic(forward, scratch);
     cameraEcliptic.heading = Math.atan2(scratch.y, scratch.x);
 
-    if (!discoveries) return;
+    // No notes while the film's scale stretches: its places and sizes are not the real ones yet.
+    if (!discoveries || stretch.amount < 1) return;
     const earth = sys.bodies.earth.position;
     const moon = sys.bodies.moon.position;
     // The Moon from the Earth: lit share, and waxing while it is east of the Sun (counterclockwise seen from ecliptic north).
@@ -1079,7 +1179,7 @@ export default function create(): UniverseModule {
       state.tagLabel.textKey = spec.nameKey;
       state.edgeLabel.textKey = spec.nameKey;
       // At the limb of a visible disc; at the centre of a point, beside its ring marker.
-      const drawnRadius = spec.radiusKm * p.k * 1.08 * smoothstep(LABEL.markerPx, LABEL.markerPx * 3, p.radiusPx);
+      const drawnRadius = spec.radiusKm * grow[id] * p.k * 1.08 * smoothstep(LABEL.markerPx, LABEL.markerPx * 3, p.radiusPx);
       const anchor = projected.set(p.drawn.x, p.drawn.y, p.drawn.z).addScaledVector(right, drawnRadius);
       const ax = anchor.x;
       const ay = anchor.y;
@@ -1349,18 +1449,23 @@ export default function create(): UniverseModule {
       const w = world;
       input = createInput(c.renderer.domElement, {
         drag: (dx, dy) => {
+          stretch.steered = true;
           nav.drag(w, dx, dy);
         },
         pan: (dx, dy) => {
+          stretch.steered = true;
           nav.pan(w, dx, dy);
         },
         zoom: (dLn) => {
+          stretch.steered = true;
           nav.zoom(w, dLn);
         },
         orbitKeys: (azimuth, elevation, zoom) => {
+          if (azimuth !== 0 || elevation !== 0 || zoom !== 0) stretch.steered = true;
           nav.setOrbitKeys(azimuth, elevation, zoom);
         },
         flightKeys: (move, roll, boost) => {
+          if (move.x !== 0 || move.y !== 0 || move.z !== 0 || roll !== 0) stretch.steered = true;
           nav.setFlightKeys(w, move, roll, boost);
         },
         stop: () => steer('stop'),
@@ -1382,6 +1487,7 @@ export default function create(): UniverseModule {
       nav.reducedMotion = options.reducedMotion;
       if (entered && options.body && world) nav.flyTo(world, options.body);
       else wantBody = options.body;
+      if (!entered) wantStretch = options.stretch === true;
     },
 
     enter(c) {
@@ -1407,8 +1513,25 @@ export default function create(): UniverseModule {
         },
         DEFAULT_FOV,
       );
-      nav.begin(world, wantBody ?? DEFAULT_BODY, true);
+      // From Chapter 7 the film's compressed system first stretches out to true scale (./stretch), seen
+      // from above with the Sun in the middle; otherwise the explorer opens on the body at true scale.
+      for (const path of orbitPaths) path.setDate(jdTdb);
+      const saturnOrbitKm = orbitPaths.find((path) => path.body === 'saturn')?.sizeKm ?? 0;
+      const then = wantBody ?? DEFAULT_BODY;
+      Object.assign(stretch, { active: false, t: 0, amount: 1, rush: false, steered: false, then });
+      if (wantStretch && !c.reducedMotion && saturnOrbitKm > 0) {
+        filmUnit = filmUnitKm(saturnOrbitKm, system.auKm);
+        Object.assign(stretch, { active: true, amount: 0 });
+        const e = system.bodies.earth.position;
+        const azimuth = Math.atan2(e.x, e.z) + MathUtils.degToRad(STRETCH.azimuthDeg);
+        const elevation = MathUtils.degToRad(STRETCH.elevationDeg);
+        const cosE = Math.cos(elevation);
+        nav.place('sun', km(cosE * Math.sin(azimuth), Math.sin(elevation), cosE * Math.cos(azimuth)), STRETCH.framing * saturnOrbitKm, world);
+      } else {
+        nav.begin(world, then, true);
+      }
       wantBody = null;
+      wantStretch = false;
       // A fresh mirror of the limiter, already adapted, so guides are steady from the first frame.
       adaptation = createExposureControl({ reducedMotion: c.reducedMotion });
       adaptation.setFade(1);
@@ -1490,6 +1613,8 @@ export default function create(): UniverseModule {
 
     place(pose: UniversePose) {
       if (!world || !system) return;
+      // A placed camera is at true scale.
+      Object.assign(stretch, { active: false, amount: 1 });
       const body = system.bodies[pose.body].position;
       const from = pose.from ?? 'sun';
       const other = from === 'sun' ? (pose.body === 'sun' ? system.bodies.earth.position : system.bodies.sun.position) : system.bodies[from].position;
@@ -1524,6 +1649,7 @@ export default function create(): UniverseModule {
       // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
       bodies?.suspend();
       entered = false;
+      Object.assign(stretch, { active: false, amount: 1 });
       labels.length = 0;
       ctx?.exposure.setVeil(1);
     },
