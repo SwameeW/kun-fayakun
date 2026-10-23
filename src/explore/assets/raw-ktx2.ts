@@ -77,7 +77,7 @@ export function createRawDecoder(): RawDecoder {
       const format = decoded.vkFormat === VK.r8 ? RedFormat : decoded.vkFormat === VK.rgba8 || decoded.vkFormat === VK.rgba8Srgb ? RGBAFormat : null;
       if (format === null) throw new Error(`${path}: unsupported vkFormat ${decoded.vkFormat}`);
       const texture = new DataTexture(first.data, decoded.width, decoded.height, format, UnsignedByteType);
-      texture.mipmaps = decoded.levels as unknown as typeof texture.mipmaps;
+      texture.mipmaps = decoded.levels;
       texture.colorSpace = decoded.primaries === PRIMARIES_BT709 ? (decoded.transfer === TRANSFER_SRGB ? SRGBColorSpace : LinearSRGBColorSpace) : NoColorSpace;
       texture.generateMipmaps = false;
       texture.needsUpdate = true;

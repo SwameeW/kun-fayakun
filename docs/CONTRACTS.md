@@ -326,8 +326,10 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   materials (compiled ahead) and which maps stream; `setQuality` maps the film tier onto it (high ->
   High, mid -> Medium, low -> Low). Maps stream through `src/explore/assets/streaming.ts`: one-texel
   means first, every body's Low files on entry, the focus (or a flight's destination) raised to
-  `textureTier(detail)`, at most one upload a frame, each arrival sharpening in from its predecessor's
-  blur, upgrades dropped after their hold and on leaving, within the tier's memory budget. Shading
+  `textureTier(detail)`, uploads budgeted by bytes (at most `UPLOAD_BYTES_PER_FRAME` a frame, a large
+  texture in row bands over several frames) and each texture bound only on a frame after its upload
+  finished, each arrival sharpening in from its predecessor's blur, upgrades kept while the tier's
+  memory budget has room (the longest-unwanted go first) and dropped on leaving, within that budget. Shading
   edges (terminators, ring and shadow edges, crescents) are softened over one pixel and fine detail
   fades before it is smaller than one; MSAA (the scene pass inherits the renderer's 4 samples) handles
   outlines.

@@ -643,12 +643,14 @@ export default function create(): ExplorerModule {
     }
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(frameTarget ?? compileTarget);
-    let pending: Array<Promise<void>> = [];
-    try {
-      pending = objects.map((o) => renderer.compileAsync(o, c.camera, c.scene));
-    } finally {
-      renderer.setRenderTarget(previous);
-    }
+    const compiling = (): Array<Promise<void>> => {
+      try {
+        return objects.map((o) => renderer.compileAsync(o, c.camera, c.scene));
+      } finally {
+        renderer.setRenderTarget(previous);
+      }
+    };
+    const pending = compiling();
     try {
       await Promise.all(pending);
     } catch (err) {
