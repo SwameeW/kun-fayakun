@@ -4,10 +4,13 @@
  * film while it is open (no cue scrolls it away, the chapter cannot end under it), owns its
  * keys, fits desktop and both phone orientations, glides its pairs (or, with reduced motion,
  * steps them), dims the scene gently, underlines the three words without touching the verse
- * text, and passes axe inline and as a layer.
+ * text, keeps a whole vowelled verse on screen above it, never opens late (after the visitor
+ * moved on from a slow asset load), and passes axe inline and as a layer.
  */
+import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
+import type { VerseKey } from '../src/core/types';
 import { canvasStats } from './support/canvas';
 import { chapterContent, normalizeSpace, quranByKey } from './support/data';
 import { expect, test, type Kf, type KfHook } from './support/fixtures';
@@ -15,6 +18,83 @@ import { expect, test, type Kf, type KfHook } from './support/fixtures';
 const NAMES = ['kāf', 'lām', 'fāʾ', 'alif maqṣūra', 'fāʾ', 'lām', 'kāf'];
 const OPEN_NAME = 'Explore the letters of this phrase';
 const HELD_TEXT = 'Film held while the letter analysis is open';
+const ASSET_ROUTE = '**/assets/analysis/*.json';
+
+interface AnalysisAsset {
+  verses: Array<{ key: VerseKey; tokens: number[] }>;
+}
+const ASSET = JSON.parse(readFileSync(new URL('../public/assets/analysis/kullun-fi-falak.json', import.meta.url), 'utf8')) as AnalysisAsset;
+
+/**
+ * The cited words of a verse as stored, at the asset's word positions: whitespace tokens that
+ * keep a base letter once combining marks, tatweel and the Quranic signs are set aside
+ * (scripts/lib/analysis.ts counts the same way). Code points only: no Arabic in source.
+ */
+function citedWords(arabic: string, tokens: readonly number[]): string[] {
+  const setAside = (ch: string): boolean => {
+    const cp = ch.codePointAt(0) ?? 0;
+    return /\p{Mn}/u.test(ch) || cp === 0x0640 || (cp >= 0x06d6 && cp <= 0x06ed);
+  };
+  const words = arabic.split(/\s+/u).filter((token) => Array.from(token).some((ch) => !setAside(ch)));
+  return tokens.map((position) => words[position - 1] ?? `(no word ${position})`);
+}
+
+interface Mark {
+  /** The verse (data-verse), and which of its Arabic elements on the page. */
+  key: string;
+  element: number;
+  text: string;
+  /** Painted where the visitor can see it: in the viewport, inside every clipping ancestor, and on top there. */
+  seen: boolean;
+}
+
+/** Every range of the kf-falak highlight, where it sits, and whether it can be seen. */
+const marks = (page: Page): Promise<Mark[]> =>
+  page.evaluate(() => {
+    const highlight = CSS.highlights.get('kf-falak');
+    const elements = [...document.querySelectorAll('[data-verse] [lang="ar"]')];
+    const seen = (el: Element, rect: DOMRect): boolean => {
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+      if (getComputedStyle(el).visibility !== 'visible') return false;
+      // Hit testing skips hidden and clipped boxes (a scrolled-away card, a panel that stepped aside), but not transparent ones.
+      for (let node: Element | null = el; node; node = node.parentElement) {
+        if (Number(getComputedStyle(node).opacity) === 0) return false;
+      }
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && (hit === el || el.contains(hit));
+    };
+    return [...(highlight ?? [])].flatMap((range) => {
+      if (!(range instanceof Range)) return [];
+      const el = range.startContainer.parentElement;
+      if (!el) return [];
+      const key = el.closest('[data-verse]')?.getAttribute('data-verse') ?? '';
+      const same = elements.filter((e) => e.closest('[data-verse]')?.getAttribute('data-verse') === key);
+      return [{ key, element: same.indexOf(el), text: range.toString(), seen: seen(el, range.getBoundingClientRect()) }];
+    });
+  });
+
+/** Holds every request for the analysis asset until release() (a slow network), and counts them. */
+async function delayAsset(page: Page): Promise<{ release: () => void; count: () => number }> {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requests = 0;
+  await page.route(ASSET_ROUTE, async (route) => {
+    requests += 1;
+    await gate;
+    await route.continue();
+  });
+  return {
+    release: () => {
+      release();
+    },
+    count: () => requests,
+  };
+}
 
 interface Snapshot {
   time: number;
@@ -172,6 +252,95 @@ test('an explicit seek or collapsing the panel closes the analysis and releases 
   expect((await snapshot(page)).held).toBe(false);
 });
 
+test('the cues a seek replays do not scroll the panel before the analysis closes', async ({ page, kf }) => {
+  test.setTimeout(180_000);
+  const region = await openAnalysis(page, kf, 150);
+  // Neither recent reader activity nor focus in the panel may be what keeps it still: only the open analysis.
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await page.waitForTimeout(8500);
+  const scroll = await page.evaluate(async () => {
+    const body = document.querySelector('[data-testid="panel"] .kf-panel-body');
+    const before = body?.scrollTop ?? -1;
+    // Past the science panel cue at 162 s: the seek replays it before its 'seek' event closes the analysis.
+    (window as unknown as KfHook).__kf.app.seek(165);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const open = document.querySelector('[data-testid="discovery"]')?.classList.contains('is-open') ?? false;
+    return { before, after: body?.scrollTop ?? -1, open };
+  });
+  expect(scroll.open).toBe(false);
+  expect(scroll.after).toBe(scroll.before);
+  await expect(region).toBeHidden();
+});
+
+test('an opening still waiting for the asset never opens after the visitor moved on', async ({ page, kf }) => {
+  test.setTimeout(180_000);
+  const opener = page.getByRole('button', { name: OPEN_NAME });
+
+  // (1) The next chapter loads while the asset is still on its way.
+  await kf.openChapter('ch07', { autoplay: true, t: 150 });
+  await kf.ensurePanelOpen();
+  let asset = await delayAsset(page);
+  await opener.scrollIntoViewIfNeeded();
+  await opener.click();
+  await expect.poll(asset.count).toBe(1);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.next();
+  });
+  await kf.waitForChapterReady('ch08');
+  asset.release();
+  await page.waitForTimeout(1000);
+  let now = await snapshot(page);
+  expect(now.chapter).toBe('ch08');
+  expect(now.held).toBe(false);
+  await expect(page.getByTestId('film-held')).toHaveText('');
+  await expect(page.locator('.kf-discovery.is-open')).toHaveCount(0);
+  await expect(page.locator('html')).not.toHaveClass(/kf-discovery-layer-open/);
+  await expect.poll(async () => (await snapshot(page)).time, { message: 'the next chapter runs on', timeout: 20_000 }).toBeGreaterThan(0.5);
+
+  // (2) The panel is collapsed while the asset is on its way.
+  await page.unroute(ASSET_ROUTE);
+  await kf.openChapter('ch07', { autoplay: true, t: 150 });
+  await kf.ensurePanelOpen();
+  asset = await delayAsset(page);
+  await opener.scrollIntoViewIfNeeded();
+  await opener.click();
+  await expect.poll(asset.count).toBe(1);
+  await page.getByTestId('panel-toggle').click();
+  asset.release();
+  await page.waitForTimeout(1000);
+  now = await snapshot(page);
+  expect(now.held).toBe(false);
+  const region = page.getByTestId('discovery');
+  await expect(region).toBeHidden();
+  await expect(region).not.toHaveClass(/is-open/);
+  await expect(page.getByTestId('film-held')).toHaveText('');
+  // (The collapsed panel is inert, so the button is out of the accessibility tree: found by its class.)
+  await expect(page.locator('.kf-discovery-open')).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('a double click while the asset loads fetches it once and builds the tiles once', async ({ page, kf }) => {
+  await kf.openChapter('ch07', { autoplay: true, t: 150 });
+  await kf.ensurePanelOpen();
+  const asset = await delayAsset(page);
+  const opener = page.getByRole('button', { name: OPEN_NAME });
+  await opener.scrollIntoViewIfNeeded();
+  await opener.dblclick();
+  await page.waitForTimeout(300);
+  asset.release();
+  const region = page.getByTestId('discovery');
+  await expect(region).toHaveClass(/is-open/);
+  const tiles = region.locator('.kf-discovery-tile');
+  await expect(tiles).toHaveCount(7);
+  // Not rebuilt under the open analysis: the first tile keeps focus and the light.
+  await page.waitForTimeout(500);
+  await expect(tiles.nth(0)).toBeFocused();
+  await expect(region.locator('.kf-discovery-tile.is-lit')).toHaveCount(1);
+  expect(asset.count()).toBe(1);
+  expect((await snapshot(page)).held).toBe(true);
+});
+
 test('keys pressed inside the analysis never reach the film shortcuts', async ({ page, kf }) => {
   const region = await openAnalysis(page, kf, 150);
   const before = await snapshot(page);
@@ -252,24 +421,31 @@ test('opening the analysis dims the scene gently, never in a step', async ({ pag
   expect(settled?.ms ?? 0, `time to 90% of the dim: ${JSON.stringify(samples)}`).toBeGreaterThanOrEqual(500);
 });
 
-test('the three words are underlined in place and the verse text stays byte-identical', async ({ page, kf }) => {
+test('the three words are underlined in place, in view, and the verse text stays byte-identical', async ({ page, kf }) => {
   const region = await openAnalysis(page, kf, 150);
   const ayat = quranByKey();
-  const marked = await page.evaluate(() => {
-    const highlight = CSS.highlights.get('kf-falak');
-    return highlight ? [...highlight].map((range) => (range instanceof Range ? range.toString() : '')) : [];
-  });
-  // Three words in each of the two verses, in the panel (and on a stage card, if one shows).
-  expect(marked.length).toBeGreaterThanOrEqual(6);
-  for (const word of marked) expect(word).toMatch(/^\S+$/u);
-  for (const key of ['21:33', '36:40'] as const) {
+  // The whole verse sits above the analysis and is brought into view with it, underline and all.
+  await expect(region.locator('[data-verse="21:33"] [lang="ar"]')).toBeVisible();
+  await expect
+    .poll(async () => (await marks(page)).filter((m) => m.key === '21:33' && m.seen).length, { message: 'the underline can be seen' })
+    .toBe(3);
+
+  const marked = await marks(page);
+  expect(marked.every((m) => ASSET.verses.some((v) => v.key === m.key) && m.element >= 0)).toBe(true);
+  // For each verse element on the page (the text layer card, the card above the analysis, a stage
+  // card if one shows): exactly the words at the asset's positions, in order, and nothing else.
+  for (const { key, tokens } of ASSET.verses) {
     const entry = ayat.get(key);
     if (!entry) throw new Error(`no ${key} in data/quran.json`);
+    const expected = citedWords(entry.arabic, tokens);
+    for (const word of expected) expect(word).toMatch(/^\S+$/u);
     const texts = await page.locator(`[data-verse="${key}"] [lang="ar"]`).evaluateAll((els) => els.map((el) => el.textContent));
     expect(texts.length).toBeGreaterThan(0);
     for (const text of texts) expect(text).toBe(entry.arabic);
-    const words = entry.arabic.split(/\s+/u);
-    expect(marked.filter((w) => words.includes(w)).length).toBeGreaterThanOrEqual(3);
+    texts.forEach((_, element) => {
+      const words = marked.filter((m) => m.key === key && m.element === element).map((m) => m.text);
+      expect(words, `${key}, Arabic element ${element + 1}`).toEqual(expected);
+    });
   }
   await region.getByRole('button', { name: 'Close' }).click();
   await expect(region).toBeHidden();
@@ -306,6 +482,24 @@ for (const viewport of [
           timeline: timeline?.top ?? 0,
         };
       });
+      // A whole vowelled verse stays on screen above the analysis, its three words underlined where they can be seen.
+      const verse = region.locator('[data-verse="21:33"] [lang="ar"]');
+      await expect(verse).toBeVisible();
+      await expect
+        .poll(async () => (await marks(page)).filter((m) => m.key === '21:33' && m.seen).length, { message: 'the underline can be seen' })
+        .toBe(3);
+      const verseBox = await verse.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, left: box.left, right: box.right, visibility: getComputedStyle(el).visibility };
+      });
+      expect(verseBox.visibility).toBe('visible');
+      expect(verseBox.top).toBeGreaterThanOrEqual(layout.header - 1);
+      expect(verseBox.bottom).toBeLessThanOrEqual(Math.min(layout.timeline, viewport.height) + 1);
+      expect(verseBox.left).toBeGreaterThanOrEqual(-0.5);
+      expect(verseBox.right).toBeLessThanOrEqual(viewport.width + 0.5);
+      // Above the letters (on a phone held sideways the letters sit beside it instead).
+      if (viewport.height > 500) expect(verseBox.bottom).toBeLessThanOrEqual(Math.min(...layout.tiles.map((t) => t.top)));
+
       expect(layout.region.scroll).toBeLessThanOrEqual(layout.region.client);
       expect(layout.orbit.scroll).toBeLessThanOrEqual(layout.orbit.client);
       expect(layout.body.scroll).toBeLessThanOrEqual(layout.body.client);

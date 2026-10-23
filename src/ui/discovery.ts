@@ -1,6 +1,7 @@
-import type { App } from '../core/types';
+import type { App, VerseKey } from '../core/types';
 import { commitStyles, h, svg, uniqueId } from './dom';
 import { markPhrase, type PhraseWords } from './phrase-mark';
+import { verseArticle } from './scripture';
 import './styles/discovery.css';
 
 /**
@@ -11,7 +12,9 @@ import './styles/discovery.css';
  * pairs glide to meet the centre. Everything is derived from the generated asset (built from
  * the verified Tanzil text); no Arabic is held here, letters come from their code points.
  * The verses themselves stay untouched; their three words are only underlined in place. The
- * region is labelled as an analysis and styled apart from scripture.
+ * first cited verse is shown whole (from the data) at the top of the region, so the vowelled
+ * verse stays on screen above the analysis wherever it opens (SPEC, Quranic text rule 3). The
+ * analysis below it is labelled as such and styled apart from scripture.
  *
  * While it is open the film is held (no cue fires, the chapter cannot end) and the scene dims
  * and slows. Anything that moves the film on (a seek, another chapter, collapsing or
@@ -50,11 +53,14 @@ const FINE_POINTER_QUERY = '(hover: hover) and (pointer: fine)';
 
 const letterKey = (cp: string): string => `ui.letter.${cp.replace('U+', 'u').toLowerCase()}`;
 const fromCode = (cp: string): string => String.fromCodePoint(Number.parseInt(cp.slice(2), 16));
+const isVerseKey = (key: string): key is VerseKey => /^\d+:\d+$/u.test(key);
 
 type Mode = 'idle' | 'step' | 'read' | 'pairs';
 
 export function discoveryBlock(app: App, id: string): DiscoveryBlock {
   const { i18n } = app;
+  /** The chapter this block was rendered for: a load that finishes after it has gone must not open. */
+  const chapter = app.chapter;
   const titleId = uniqueId('discovery-title');
   const opener = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-open', 'aria-expanded': 'false' }, i18n.t('ui.discovery.open'));
   // The region owns its keys (keyboard.ts): its arrows, P and Escape never reach the film's shortcuts.
@@ -77,6 +83,14 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
   let unmark: () => void = () => undefined;
   let unsubscribe: Array<() => void> = [];
   let hideTimer: number | null = null;
+  /** The one fetch of the asset, shared by every click made while it runs. */
+  let loading: Promise<void> | null = null;
+  /**
+   * Bumped by every close(): an opening that waits for the asset proceeds only if nothing closed
+   * it meanwhile (a seek, another chapter, collapsing or re-rendering the panel). A second click
+   * while it loads joins the same request.
+   */
+  let openRequest = 0;
 
   const later = (ms: number, fn: () => void): void => {
     const timer = window.setTimeout(() => {
@@ -242,6 +256,10 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
   const build = (data: AnalysisAsset): void => {
     asset = data;
     const n = data.letters.length;
+    // The verse, whole and as stored, above the analysis (the three words get the same underline as in the panel).
+    const cited = data.verses[0];
+    const verse = cited && isVerseKey(cited.key) ? verseArticle(cited.key, app.data, i18n) : null;
+    verse?.classList.add('kf-discovery-verse');
     tiles = data.letters.map((cp, i) => {
       const pair = n - 1 - i;
       const label =
@@ -282,52 +300,58 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
     const names = (order: number[]): string => order.map(nameOf).join(', ');
     const forward = Array.from({ length: n }, (_, i) => i);
     region.replaceChildren(
+      ...(verse ? [verse] : []),
+      // The analysis in a box of its own beneath the verse (the layer lays its parts out directly).
       h(
         'div',
-        { class: 'kf-discovery-head' },
-        h('h4', { id: titleId, class: 'kf-discovery-title' }, i18n.t('ui.discovery.title')),
-        h('p', { class: 'kf-discovery-label' }, i18n.t('ui.discovery.label')),
-      ),
-      h(
-        'div',
-        { class: 'kf-discovery-stage' },
-        orbit,
+        { class: 'kf-discovery-body' },
         h(
           'div',
-          { class: 'kf-discovery-controls' },
-          button('ui.discovery.readRtl', () => {
-            read('rtl');
-          }),
-          button('ui.discovery.readLtr', () => {
-            read('ltr');
-          }),
-          button('ui.discovery.pairs', showPairs),
-          button('ui.discovery.close', () => {
-            close({ restoreFocus: true });
-          }),
+          { class: 'kf-discovery-head' },
+          h('h4', { id: titleId, class: 'kf-discovery-title' }, i18n.t('ui.discovery.title')),
+          h('p', { class: 'kf-discovery-label' }, i18n.t('ui.discovery.label')),
         ),
-        live,
+        h(
+          'div',
+          { class: 'kf-discovery-stage' },
+          orbit,
+          h(
+            'div',
+            { class: 'kf-discovery-controls' },
+            button('ui.discovery.readRtl', () => {
+              read('rtl');
+            }),
+            button('ui.discovery.readLtr', () => {
+              read('ltr');
+            }),
+            button('ui.discovery.pairs', showPairs),
+            button('ui.discovery.close', () => {
+              close({ restoreFocus: true });
+            }),
+          ),
+          live,
+        ),
+        notes,
       ),
-      notes,
     );
     notes.replaceChildren(
-        h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.verses')),
-        h(
-          'dl',
-          { class: 'kf-discovery-readings' },
-          h('dt', {}, i18n.t('ui.discovery.readRtl')),
-          h('dd', {}, names(forward)),
-          h('dt', {}, i18n.t('ui.discovery.readLtr')),
-          h('dd', {}, names([...forward].reverse())),
-        ),
-        h('p', { class: 'kf-discovery-same' }, i18n.t('ui.discovery.same')),
-        h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.conjunction')),
-        h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.scope')),
-        h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.rasm')),
-        h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.classical')),
-        h('p', { class: 'kf-discovery-closing' }, i18n.t('ui.discovery.closing')),
-        h('p', { class: 'kf-discovery-keys' }, i18n.t('ui.discovery.keys')),
-        h('p', { class: 'kf-discovery-touch' }, i18n.t('ui.discovery.hintTouch')),
+      h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.verses')),
+      h(
+        'dl',
+        { class: 'kf-discovery-readings' },
+        h('dt', {}, i18n.t('ui.discovery.readRtl')),
+        h('dd', {}, names(forward)),
+        h('dt', {}, i18n.t('ui.discovery.readLtr')),
+        h('dd', {}, names([...forward].reverse())),
+      ),
+      h('p', { class: 'kf-discovery-same' }, i18n.t('ui.discovery.same')),
+      h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.conjunction')),
+      h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.scope')),
+      h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.rasm')),
+      h('p', { class: 'kf-discovery-note' }, i18n.t('ui.discovery.classical')),
+      h('p', { class: 'kf-discovery-closing' }, i18n.t('ui.discovery.closing')),
+      h('p', { class: 'kf-discovery-keys' }, i18n.t('ui.discovery.keys')),
+      h('p', { class: 'kf-discovery-touch' }, i18n.t('ui.discovery.hintTouch')),
     );
   };
 
@@ -435,10 +459,32 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
     // The light rests on the first letter, and focus goes there once, at the visitor's request; nothing after this moves focus on its own.
     setMode('idle');
     moveTo(0, false, false);
-    tiles[0]?.focus({ preventScroll: region.classList.contains('is-layer') });
+    tiles[0]?.focus({ preventScroll: true });
+    // Inline, the panel brings the top of the region (the verse, then the letters) into view, rather
+    // than letting focus scroll the tiles to the bottom edge and the verse out of sight.
+    if (!region.classList.contains('is-layer')) region.scrollIntoView({ block: 'start', behavior: app.reducedMotion ? 'auto' : 'smooth' });
+  };
+
+  /** Still the block on screen, in an open panel, in the chapter it was built for. */
+  const canOpen = (): boolean => wrapper.isConnected && app.chapter === chapter && wrapper.closest('[inert], [hidden]') === null;
+
+  const load = (): Promise<void> => {
+    loading ??= app.assets.json<AnalysisAsset>(`assets/analysis/${id}.json`).then(
+      (data) => {
+        // Built once: rebuilding would replace the tiles (and drop focus) under an open analysis.
+        if (!asset) build(data);
+      },
+      (error: unknown) => {
+        loading = null;
+        throw error;
+      },
+    );
+    return loading;
   };
 
   function close(options: { restoreFocus?: boolean } = {}): void {
+    // Also cancels an opening still waiting for the asset.
+    openRequest += 1;
     if (!open) return;
     open = false;
     const hadFocus = region.contains(document.activeElement);
@@ -478,15 +524,15 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
       show();
       return;
     }
-    app.assets
-      .json<AnalysisAsset>(`assets/analysis/${id}.json`)
-      .then((data) => {
-        build(data);
-        show();
-      })
-      .catch((error: unknown) => {
+    const request = openRequest;
+    load().then(
+      () => {
+        if (request === openRequest && canOpen()) show();
+      },
+      (error: unknown) => {
         console.error('ui: could not load the letter analysis', error);
-      });
+      },
+    );
   });
 
   return { element: wrapper, close };

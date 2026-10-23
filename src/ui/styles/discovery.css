@@ -1,5 +1,6 @@
 /*
- * The letter analysis (Chapter 7): styled apart from scripture, never in the Quran display face.
+ * The letter analysis (Chapter 7): the cited verse in its own scripture card on top, and the
+ * analysis beneath it in a box of its own, styled apart from scripture, never in the Quran display face.
  * Motion is transform and opacity only (compositor work, no layout per frame); the one
  * travelling light and the gliding pairs are CSS transitions between tile positions.
  */
@@ -13,10 +14,6 @@
   display: grid;
   gap: var(--kf-space-3);
   margin-block-start: var(--kf-space-3);
-  padding: var(--kf-space-4);
-  border-inline-start: 2px solid var(--kf-gold-soft);
-  border-radius: var(--kf-radius);
-  background: var(--kf-surface-2);
   font: 400 0.9rem/1.5 var(--kf-font-ui);
   color: var(--kf-text);
   opacity: 0;
@@ -29,9 +26,53 @@
   translate: none;
 }
 
+.kf-discovery-body {
+  display: grid;
+  gap: var(--kf-space-3);
+  padding: var(--kf-space-4);
+  border-inline-start: 2px solid var(--kf-gold-soft);
+  border-radius: var(--kf-radius);
+  background: var(--kf-surface-2);
+}
+
 .kf-discovery-head > *,
 .kf-discovery-notes > * {
   margin: 0;
+}
+
+/*
+ * The cited verse, whole and as stored, above the analysis: scripture keeps its own card
+ * styles (the Quran display face, the translation's rule). Only its size is eased down so
+ * the letters still fit beneath it; the transliteration is left to the full card in the text layer.
+ */
+.kf-discovery-verse {
+  margin: 0;
+}
+
+.kf-discovery-verse .kf-ref {
+  margin-block-end: 0;
+  font-size: 0.95rem;
+}
+
+.kf-discovery-verse .kf-arabic {
+  margin-block: var(--kf-space-1) var(--kf-space-2);
+  font-size: 1.4rem;
+  line-height: 1.95;
+}
+
+.kf-discovery-verse .kf-translit {
+  display: none;
+}
+
+.kf-discovery-verse .kf-translation {
+  margin-block-end: var(--kf-space-2);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.kf-discovery-verse .kf-attrib {
+  margin-block-end: 0;
+  font-size: 0.75rem;
 }
 
 .kf-discovery-title {
@@ -299,17 +340,37 @@
   inset-block: var(--kf-header-h) var(--kf-timeline-h);
   inset-inline: 0;
   z-index: 2;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   margin: 0;
   padding-block: var(--kf-space-3);
   padding-inline: max(var(--kf-space-4), env(safe-area-inset-left)) max(var(--kf-space-4), env(safe-area-inset-right));
-  border: 0;
   border-block-start: 1px solid var(--kf-line);
-  border-radius: 0;
   background: rgb(5 6 10 / 0.55);
   text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
   visibility: visible;
   overflow: hidden;
+}
+
+/* In the layer the analysis box gives way: its parts take their places in the layer's own grid. */
+.kf-discovery.is-layer .kf-discovery-body {
+  display: contents;
+}
+
+/* The verse keeps its place at the top, whole; the translation is left to the text layer to save room. */
+.kf-discovery.is-layer .kf-discovery-verse {
+  padding-block-end: var(--kf-space-2);
+  border-block-end: 1px solid var(--kf-line);
+}
+
+.kf-discovery.is-layer .kf-discovery-verse .kf-translation {
+  display: none;
+}
+
+.kf-discovery.is-layer .kf-discovery-verse .kf-arabic {
+  /* (The gap below keeps the lowest marks clear of the attribution line.) */
+  margin-block: 0 var(--kf-space-2);
+  font-size: 1.25rem;
+  line-height: 1.85;
 }
 
 .kf-discovery.is-layer .kf-discovery-notes {
@@ -326,17 +387,28 @@
   justify-self: center;
 }
 
-/* Short screens (a phone held sideways): the arc and controls on one side, the words on the other. */
+/* Short screens (a phone held sideways): the arc and controls on one side; the verse, then the words, on the other. */
 @media (max-height: 500px) {
   .kf-discovery.is-layer {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas:
+      "stage verse"
       "stage head"
       "stage notes";
     column-gap: var(--kf-space-4);
     row-gap: var(--kf-space-2);
     padding-block: var(--kf-space-2);
+  }
+
+  .kf-discovery.is-layer .kf-discovery-verse {
+    grid-area: verse;
+    padding-block-end: var(--kf-space-1);
+  }
+
+  .kf-discovery.is-layer .kf-discovery-verse .kf-arabic {
+    font-size: 1.15rem;
+    line-height: 1.75;
   }
 
   .kf-discovery.is-layer .kf-discovery-head {
@@ -364,7 +436,7 @@
   }
 }
 
-/* While the layer is open the panel steps aside (only the analysis inside it shows), the stage
+/* While the layer is open the panel steps aside (only the analysis, with its verse, shows), the stage
    text and HUD fade out whole, the scene fills the window, and the timeline keeps only its transport row. */
 .kf-discovery-layer-open .kf-panel {
   visibility: hidden;
