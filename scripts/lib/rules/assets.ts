@@ -120,6 +120,137 @@ function checkSdss(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: ${String(meta.count)} galaxies; binary size and sha256 match; sdss.sample.count agrees`);
 }
 
+const JPL_OWNER = 'JPL builder, npm run preprocess:jpl';
+const JPL_BODIES = ['Sun', 'Earth', 'Moon', 'Jupiter', 'Saturn'] as const;
+/** physical.json "sources" key -> the data/sources.json entry that credits that file. */
+const JPL_SOURCE_IDS: Record<string, string> = {
+  pck: 'naif-pck00011',
+  de440: 'jpl-de440',
+  lsk: 'naif-lsk-naif0012',
+  moon: 'jpl-horizons',
+  rings: 'cassini-rss-rings',
+  ringsLabel: 'cassini-rss-rings',
+};
+const SHA256 = /^[0-9a-f]{64}$/u;
+
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isNumberList = (v: unknown, length?: number): v is number[] =>
+  Array.isArray(v) && (length === undefined || v.length === length) && (v as unknown[]).every(isFiniteNumber);
+
+function loadJpl(name: string, problems: string[]): { path: string; value: unknown; bytes: Uint8Array } | null {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'jpl', name));
+  if (loaded.status !== 'ok') {
+    problems.push(`${relPath(loaded.path)} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`}`);
+    return null;
+  }
+  return { path: relPath(loaded.path), value: loaded.value, bytes: readBytes(loaded.path) };
+}
+
+function planetsProblems(path: string, planets: unknown): string[] {
+  const problems = checkFields(planets, { epochJd: 'number', bodies: 'array', source: 'nonempty' }, path);
+  const bodies: unknown[] = isRecord(planets) && Array.isArray(planets.bodies) ? planets.bodies : [];
+  if (bodies.length !== 8) problems.push(`${path}: ${bodies.length} bodies, expected the 8 planets`);
+  bodies.forEach((body, i) => {
+    problems.push(
+      ...checkFields(
+        body,
+        {
+          name: 'nonempty', meanRadiusKm: 'number',
+          'elements.a': 'number', 'elements.e': 'number', 'elements.I': 'number', 'elements.L': 'number', 'elements.varpi': 'number', 'elements.Omega': 'number',
+          'ratesPerCentury.a': 'number', 'ratesPerCentury.e': 'number', 'ratesPerCentury.I': 'number', 'ratesPerCentury.L': 'number', 'ratesPerCentury.varpi': 'number', 'ratesPerCentury.Omega': 'number',
+        },
+        `${path} bodies[${i}]`,
+      ),
+    );
+  });
+  if (!bodies.some((b) => isRecord(b) && b.name === 'Earth')) problems.push(`${path}: no Earth (Earth-Moon barycentre) row`);
+  return problems;
+}
+
+function moonProblems(path: string, moon: unknown): string[] {
+  const problems = checkFields(moon, { startJdTdb: 'number', stepDays: 'number', count: 'number', positionsKm: 'array', timeScale: 'nonempty', rawSha256: 'nonempty' }, path);
+  if (!isRecord(moon) || problems.length > 0) return problems;
+  const rows: unknown[] = Array.isArray(moon.positionsKm) ? moon.positionsKm : [];
+  if (rows.length !== moon.count) problems.push(`${path}: ${rows.length} rows, but count is ${String(moon.count)}`);
+  const bad = rows.findIndex((r) => !isNumberList(r, 3));
+  if (bad >= 0) problems.push(`${path}: positionsKm[${bad}] is not three finite numbers`);
+  if (moon.timeScale !== 'TDB') problems.push(`${path}: timeScale must be TDB`);
+  if (moon.stepDays !== 1) problems.push(`${path}: stepDays must be 1 (src/astro interpolates daily rows)`);
+  return problems;
+}
+
+function physicalProblems(ctx: ValidationContext, path: string, physical: unknown, assets: Record<string, Uint8Array>): string[] {
+  const problems = checkFields(
+    physical,
+    { auKm: 'number', emrat: 'number', obliquityJ2000Arcsec: 'number', bodies: 'object', saturnRings: 'object', time: 'object', sources: 'object', assets: 'object' },
+    path,
+  );
+  if (!isRecord(physical) || problems.length > 0) return problems;
+  for (const name of JPL_BODIES) {
+    const body = isRecord(physical.bodies) ? physical.bodies[name] : undefined;
+    if (!isRecord(body)) {
+      problems.push(`${path}: bodies.${name} is missing`);
+      continue;
+    }
+    for (const key of ['radiiKm', 'poleRa', 'poleDec', 'pm']) {
+      if (!isNumberList(body[key], 3)) problems.push(`${path}: bodies.${name}.${key} must be three finite numbers`);
+    }
+    const np = body.nutPrec;
+    if (np !== null) {
+      const angles: unknown[] = isRecord(np) && Array.isArray(np.angles) ? np.angles : [];
+      const termsOk = isRecord(np) && ['ra', 'dec', 'pm'].every((k) => isNumberList(np[k]) && np[k].length <= angles.length);
+      if (!termsOk || angles.length === 0 || !angles.every((a) => isNumberList(a, 2))) {
+        problems.push(`${path}: bodies.${name}.nutPrec must be null or ra/dec/pm terms with no more entries than its [degrees, rate] angles`);
+      }
+    }
+  }
+  const rings = physical.saturnRings;
+  if (!isRecord(rings) || !isFiniteNumber(rings.innerKm) || !isFiniteNumber(rings.outerKm) || !(rings.innerKm > 0 && rings.innerKm < rings.outerKm)) {
+    problems.push(`${path}: saturnRings needs 0 < innerKm < outerKm`);
+  }
+  const time = physical.time;
+  const leaps: unknown[] = isRecord(time) && Array.isArray(time.leapSeconds) ? time.leapSeconds : [];
+  problems.push(...checkFields(time, { deltaTA: 'number', k: 'number', eb: 'number', m0: 'number', m1: 'number' }, `${path} time`));
+  const ordered = leaps.every((l, i) => {
+    const prev = leaps[i - 1];
+    return isRecord(l) && isFiniteNumber(l.jdUtc) && isFiniteNumber(l.taiMinusUtc) && (!isRecord(prev) || (l.jdUtc > Number(prev.jdUtc) && l.taiMinusUtc === Number(prev.taiMinusUtc) + 1));
+  });
+  if (leaps.length === 0 || !ordered) problems.push(`${path}: time.leapSeconds must be one-second steps in date order`);
+
+  const sourceIds = new Set(ctx.sources.status === 'ok' ? ctx.sources.value.sources.map((s) => s.id) : []);
+  for (const [key, id] of Object.entries(JPL_SOURCE_IDS)) {
+    const source = isRecord(physical.sources) ? physical.sources[key] : undefined;
+    if (!isRecord(source) || typeof source.url !== 'string' || !source.url.startsWith('https://') || typeof source.sha256 !== 'string' || !SHA256.test(source.sha256)) {
+      problems.push(`${path}: sources.${key} needs an https url and a sha256`);
+    }
+    if (ctx.sources.status === 'ok' && !sourceIds.has(id)) problems.push(`data/sources.json: no "${id}" entry for physical.json sources.${key}`);
+  }
+  for (const [name, bytes] of Object.entries(assets)) {
+    const recorded = isRecord(physical.assets) ? physical.assets[name] : undefined;
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    if (recorded !== hash) problems.push(`public/assets/jpl/${name}: sha256 ${hash} does not match ${path} assets (${String(recorded)}); rebuild rather than edit by hand`);
+  }
+  return problems;
+}
+
+/** The JPL data behind Chapter 7 and src/astro: the shape of each file, the Moon's row count and the recorded hashes. */
+function checkJpl(ctx: ValidationContext, log: RuleLog): void {
+  const problems: string[] = [];
+  const planets = loadJpl('planets.json', problems);
+  const moon = loadJpl('moon.json', problems);
+  const physical = loadJpl('physical.json', problems);
+  if (planets) problems.push(...planetsProblems(planets.path, planets.value));
+  if (moon) problems.push(...moonProblems(moon.path, moon.value));
+  if (physical && planets && moon) {
+    problems.push(...physicalProblems(ctx, physical.path, physical.value, { 'planets.json': planets.bytes, 'moon.json': moon.bytes }));
+  }
+  if (problems.length > 0) for (const p of problems) log.fail(`${p} (owner: ${JPL_OWNER})`);
+  else {
+    const count = isRecord(moon?.value) ? String(moon.value.count) : '?';
+    log.pass(`public/assets/jpl: 8 planets, ${count} Moon rows matching count, ${JPL_BODIES.length} rotation models; planets.json and moon.json match the sha256 in physical.json`);
+  }
+}
+
 /** Letter analyses: each asset must equal what scripts/build-analysis.ts derives from the verified text now. */
 function checkAnalyses(ctx: ValidationContext, log: RuleLog): void {
   const citations = loadJson<{ analysis?: Record<string, AnalysisSpec | string> }>(rootPath('data', 'citations.json'));
@@ -148,5 +279,6 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkFont(log);
   checkCmb(log);
   checkSdss(ctx, log);
+  checkJpl(ctx, log);
   checkAnalyses(ctx, log);
 }

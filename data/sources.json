@@ -503,6 +503,74 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "jpl-de440",
+      "kind": "dataset",
+      "title": "JPL Planetary and Lunar Ephemeris DE440/LE440: header constants (header.440)",
+      "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics",
+      "url": "https://ssd.jpl.nasa.gov/ftp/eph/planets/ascii/de440/header.440",
+      "version": "DE440, retrieved 2026-10-23",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Earth/Moon mass ratio and astronomical unit: NASA/JPL-Caltech DE440 planetary ephemeris",
+      "notes": "EMRAT places the Earth's centre relative to the Earth-Moon barycentre (Earth = barycentre - Moon / (1 + EMRAT)). public/assets/jpl/physical.json records the file's sha256.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "naif-pck00011",
+      "kind": "dataset",
+      "title": "NAIF generic planetary constants kernel pck00011.tpc: IAU rotation models and radii",
+      "author": "N. Bachman, NASA/JPL Navigation and Ancillary Information Facility, from Archinal et al., Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015, Celestial Mechanics and Dynamical Astronomy 130, 22 (2018)",
+      "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc",
+      "version": "pck00011, retrieved 2026-10-23",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Rotation and size of the Sun, Earth, Moon, Jupiter and Saturn: IAU WGCCRE (Archinal et al. 2018), via NASA/JPL NAIF",
+      "notes": "Pole, prime meridian and radii for src/astro/rotation.ts. The kernel carries the 2009 IAU values for the Earth and the Moon, because the 2015 report gives none for them. public/assets/jpl/physical.json records the file's sha256.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "naif-lsk-naif0012",
+      "kind": "dataset",
+      "title": "NAIF leapseconds kernel naif0012.tls: TAI - UTC and the TDB - TAI terms",
+      "author": "NASA/JPL Navigation and Ancillary Information Facility",
+      "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
+      "version": "naif0012, retrieved 2026-10-23",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Leap seconds: NASA/JPL NAIF naif0012.tls",
+      "notes": "Converts the visitor's clock (UTC) to TT and TDB, the time scales of the JPL data (src/astro/time.ts). The last leap second it lists took effect on 2017-01-01.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "cassini-rss-rings",
+      "kind": "dataset",
+      "title": "Cassini Orbiter Saturn RSS ring radio occultations 2.0: optical depth profile RSS_2005_123_X43_E_TAU_10KM.TAB",
+      "author": "E. Marouf, NASA Planetary Data System",
+      "url": "https://pds-rings.seti.org/holdings/volumes/CORSS_8xxx/CORSS_8001/data/Rev007/Rev007E/Rev007E_RSS_2005_123_X43_E/RSS_2005_123_X43_E_TAU_10KM.TAB",
+      "version": "CO-SR-RSS-4/5-OCC-V2.0, retrieved 2026-10-23",
+      "license": "Public domain (NASA Planetary Data System archive)",
+      "licenseUrl": null,
+      "credit": "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018",
+      "notes": "public/assets/jpl/physical.json records the profile's radial span (72,770.0 to 144,987.5 km) and the sha256 of the table and its label.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []

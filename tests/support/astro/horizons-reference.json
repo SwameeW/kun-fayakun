@@ -1,0 +1,261 @@
+{
+  "$comment": "Written by scripts/jpl/build.py reference. Geometric Horizons vectors that tests/unit/ephemeris.spec.ts checks src/astro/ephemeris.ts against.",
+  "retrieved": "2026-10-23",
+  "horizonsVersion": "1.2",
+  "frame": "ecliptic and mean equinox of J2000 (REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF)",
+  "timeScale": "TDB",
+  "units": "km",
+  "epochsJdTdb": [
+    2461041.5,
+    2461042.0,
+    2461115.0,
+    2462322.0,
+    2463922.0,
+    2464693.0,
+    2464693.5
+  ],
+  "queries": {
+    "moonGeo": {
+      "target": "301",
+      "center": "500@399",
+      "what": "the Moon relative to the Earth's centre",
+      "ephemeris": "DE441",
+      "params": {
+        "format": "json",
+        "COMMAND": "'301'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@399'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27301%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40399%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "earthFromEmb": {
+      "target": "399",
+      "center": "500@3",
+      "what": "the Earth's centre relative to the Earth-Moon barycentre",
+      "ephemeris": "DE441",
+      "params": {
+        "format": "json",
+        "COMMAND": "'399'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@3'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27399%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%403%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "embHelio": {
+      "target": "3",
+      "center": "500@10",
+      "what": "the Earth-Moon barycentre relative to the Sun's centre",
+      "ephemeris": "DE441",
+      "params": {
+        "format": "json",
+        "COMMAND": "'3'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%273%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "earthHelio": {
+      "target": "399",
+      "center": "500@10",
+      "what": "the Earth's centre relative to the Sun's centre",
+      "ephemeris": "DE441",
+      "params": {
+        "format": "json",
+        "COMMAND": "'399'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27399%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    }
+  },
+  "vectors": {
+    "moonGeo": [
+      [
+        144325.7274919273,
+        329395.8308956202,
+        31752.97634320188
+      ],
+      [
+        99888.55189365048,
+        344913.882064488,
+        31738.20225348521
+      ],
+      [
+        253322.3773774403,
+        -296271.4131591645,
+        -16879.57577146788
+      ],
+      [
+        376973.5172721854,
+        141671.3706457854,
+        35691.06329174571
+      ],
+      [
+        -306195.3672675599,
+        -263094.5821509235,
+        17989.95305376775
+      ],
+      [
+        200398.6844489748,
+        -353087.5713300754,
+        16545.11770094262
+      ],
+      [
+        235488.7493652997,
+        -330404.0725643911,
+        13097.40226806169
+      ]
+    ],
+    "earthFromEmb": [
+      [
+        -1753.641932380108,
+        -4002.351842931514,
+        -385.8172188768422
+      ],
+      [
+        -1213.704279960964,
+        -4190.905233317638,
+        -385.6377050528683
+      ],
+      [
+        -3078.01492567668,
+        3599.870809662008,
+        205.0967099770137
+      ],
+      [
+        -4580.448536608263,
+        -1721.389945504413,
+        -433.6672767032377
+      ],
+      [
+        3720.452651596403,
+        3196.752924510213,
+        -218.5884428568103
+      ],
+      [
+        -2434.961128210411,
+        4290.220334564442,
+        -201.0328489642309
+      ],
+      [
+        -2861.325923431342,
+        4014.602568419306,
+        -159.141091624208
+      ]
+    ],
+    "embHelio": [
+      [
+        -26070384.80622956,
+        144778676.1728626,
+        -8507.044686876237
+      ],
+      [
+        -27356763.01541175,
+        144540149.4529881,
+        -8486.04030752927
+      ],
+      [
+        -148098528.3133455,
+        14138893.15584798,
+        -25.7830487722531
+      ],
+      [
+        32633473.94780012,
+        -148554070.7831443,
+        9841.542787760496
+      ],
+      [
+        78319427.31473763,
+        125362980.9453016,
+        -10287.44574460387
+      ],
+      [
+        -23319053.35437254,
+        145246593.5865807,
+        -11977.34350057691
+      ],
+      [
+        -24609663.90769644,
+        145032101.3492793,
+        -11950.74145566672
+      ]
+    ],
+    "earthHelio": [
+      [
+        -26072138.44816194,
+        144774673.8210197,
+        -8892.861905746162
+      ],
+      [
+        -27357976.7196917,
+        144535958.5477548,
+        -8871.67801258713
+      ],
+      [
+        -148101606.3282712,
+        14142493.02665764,
+        179.313661204651
+      ],
+      [
+        32628893.49926351,
+        -148555792.1730898,
+        9407.875511065125
+      ],
+      [
+        78323147.76738922,
+        125366177.6982261,
+        -10506.03418746591
+      ],
+      [
+        -23321488.31550075,
+        145250883.8069152,
+        -12178.37634953856
+      ],
+      [
+        -24612525.23361987,
+        145036115.9518477,
+        -12109.88254728913
+      ]
+    ]
+  }
+}

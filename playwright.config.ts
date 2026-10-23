@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 import { env, flag, platform } from './tests/support/env';
 import type { KfOptions } from './tests/support/fixtures';
 
-const PORT = 4173;
+/** KF_PORT gives a run its own preview server, so parallel checkouts never test each other's build. */
+const PORT = Number(env('KF_PORT') ?? 4173);
 const BASE_URL = `http://127.0.0.1:${PORT}/`;
 const CI = Boolean(env('CI'));
 
