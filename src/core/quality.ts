@@ -1,3 +1,4 @@
+import { createFrameCadence } from './cadence';
 import type { BackendName, GpuInfo } from './renderer';
 import { QUALITY_PROFILES, type QualityProfile, type QualityTier } from './types';
 
@@ -36,8 +37,11 @@ export function chooseInitialTier(input: TierInput): { profile: QualityProfile; 
 /* Governor                                                            */
 /* ------------------------------------------------------------------ */
 
-/** Mean frame time above this (seconds) counts as slow. */
-const SLOW_FRAME = 0.02;
+/**
+ * Mean frame time above this multiple of the display's cadence counts as slow: 20 ms at
+ * 60 Hz, 40 ms when rAF is capped at 30 Hz (where 33 ms frames are as fast as it goes).
+ */
+const SLOW_FRAME = 1.2;
 /** Frame times are averaged over buckets this long, so one hitch cannot decide anything. */
 const BUCKET = 0.5;
 /** Consecutive slow buckets before dropping a tier: frames stayed slow for 2 s. */
@@ -58,7 +62,7 @@ export interface QualityGovernor {
   suspend(): void;
 }
 
-/** Drops one tier when frame time stays above 20 ms for 2 s; never upgrades mid-session. */
+/** Drops one tier when frame time stays above 20 ms (at 60 Hz) for 2 s; never upgrades mid-session. */
 export function createQualityGovernor(initial: QualityProfile, options: { enabled: boolean }): QualityGovernor {
   let tier = initial.tier;
   let grace = GRACE;
@@ -66,6 +70,7 @@ export function createQualityGovernor(initial: QualityProfile, options: { enable
   let bucketTime = 0;
   let bucketFrames = 0;
   let slowBuckets = 0;
+  const cadence = createFrameCadence();
 
   const restart = (): void => {
     grace = GRACE;
@@ -76,7 +81,10 @@ export function createQualityGovernor(initial: QualityProfile, options: { enable
 
   return {
     sample(dt) {
-      if (!options.enabled || suspended || dt <= 0 || dt > STALL) return null;
+      if (!options.enabled) return null;
+      // Learned even while suspended: loading frames are light and show the display's real rate.
+      cadence.sample(dt);
+      if (suspended || dt <= 0 || dt > STALL) return null;
       if (grace > 0) {
         grace -= dt;
         return null;
@@ -84,7 +92,7 @@ export function createQualityGovernor(initial: QualityProfile, options: { enable
       bucketTime += dt;
       bucketFrames += 1;
       if (bucketTime < BUCKET) return null;
-      slowBuckets = bucketTime / bucketFrames > SLOW_FRAME ? slowBuckets + 1 : 0;
+      slowBuckets = bucketTime / bucketFrames > SLOW_FRAME * cadence.interval ? slowBuckets + 1 : 0;
       bucketTime = 0;
       bucketFrames = 0;
       if (slowBuckets < SLOW_BUCKETS) return null;

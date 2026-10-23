@@ -21,6 +21,13 @@ export interface KfTestHandle {
   app: App;
   frameStats(): FrameStats;
   resetFrameStats(): void;
+  /**
+   * Deterministic stepping: advances `frames` frames (default 1) of `dt` seconds (default
+   * 1/60, at most 0.1) and renders. The first call switches the app to a manual clock for
+   * the rest of the page's life: frames keep rendering, but time (film, fades, exposure)
+   * moves only through step(), and the tier and render scale stop adapting.
+   */
+  step(frames?: number, dt?: number): void;
 }
 
 declare global {

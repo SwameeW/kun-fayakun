@@ -24,7 +24,7 @@ export interface FrameStats {
  * global declaration here can clash with one in src/.
  */
 export interface KfHook {
-  __kf: { app: App; frameStats(): FrameStats; resetFrameStats(): void };
+  __kf: { app: App; frameStats(): FrameStats; resetFrameStats(): void; step(frames?: number, dt?: number): void };
 }
 
 export interface OpenOptions {

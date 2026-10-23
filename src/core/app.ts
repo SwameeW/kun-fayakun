@@ -61,6 +61,8 @@ interface NavOptions {
 
 /** Frame steps longer than this are clamped so a hitch never skips content. */
 const MAX_FRAME_DT = 0.1;
+/** Upper bound for one __kf.step call (an hour of film at 60 fps), so a typo cannot hang the page. */
+const MAX_STEP_FRAMES = 216_000;
 const EMPTY_HUD: HudState = { labels: [], metresPerPixel: null };
 const projected = new Vector3();
 
@@ -116,6 +118,8 @@ class Engine implements KunFayakunApp {
   private prefetchTimer = 0;
   /** True while a newly entered chapter compiles its pipelines; frames neither render nor advance the clock. */
   private warming = false;
+  /** Set by the __kf.step test hook: frames still render, but only step() advances time. */
+  private manualClock = false;
   private readonly loggedErrors = new Set<string>();
 
   constructor(options: AppOptions) {
@@ -183,6 +187,9 @@ class Engine implements KunFayakunApp {
       frameStats: () => this.perf.stats(),
       resetFrameStats: () => {
         this.perf.reset();
+      },
+      step: (frames = 1, dt = 1 / 60) => {
+        this.step(frames, dt);
       },
     });
   }
@@ -312,17 +319,15 @@ class Engine implements KunFayakunApp {
     try {
       if (raw > 0) {
         this.perf.record(raw * 1000);
-        const scale = gfx.resolution.sample(raw);
-        if (scale !== null) gfx.handle.setResolutionScale(scale);
-        const lower = gfx.governor.sample(raw);
-        if (lower) this.applyQuality(lower, 'governor');
+        // Under a manual clock the tier and render scale stay fixed, so stepped frames are reproducible.
+        if (!this.manualClock) {
+          const scale = gfx.resolution.sample(raw);
+          if (scale !== null) gfx.handle.setResolutionScale(scale);
+          const lower = gfx.governor.sample(raw);
+          if (lower) this.applyQuality(lower, 'governor');
+        }
       }
-      const dt = Math.min(raw, MAX_FRAME_DT);
-      this.timeline.update(dt);
-      this.exposure.update(dt);
-      gfx.handle.renderer.toneMappingExposure = this.exposure.current;
-      // Grain moves only while the film plays (WCAG 2.2.2) and never with reduced motion.
-      if (dt > 0 && !this.timeline.paused && !this.reduced) gfx.post.advanceGrain();
+      this.advance(gfx, this.manualClock ? 0 : Math.min(raw, MAX_FRAME_DT));
       gfx.post.render();
       this.measure(gfx);
     } catch (err) {
@@ -340,6 +345,33 @@ class Engine implements KunFayakunApp {
       this.afterChapterReady(pending);
     }
   };
+
+  /** Moves the film clock, the exposure and the grain on by dt seconds. */
+  private advance(gfx: Graphics, dt: number): void {
+    this.timeline.update(dt);
+    this.exposure.update(dt);
+    gfx.handle.renderer.toneMappingExposure = this.exposure.current;
+    // Grain moves only while the film plays (WCAG 2.2.2) and never with reduced motion.
+    if (dt > 0 && !this.timeline.paused && !this.reduced) gfx.post.advanceGrain();
+  }
+
+  /**
+   * Test hook (__kf.step): switches to a manual clock, then advances `frames` frames of
+   * `dt` seconds each and renders the result. From then on the frame loop keeps drawing
+   * but only step() moves time, so a test sees the same picture however fast it runs.
+   */
+  private step(frames: number, dt: number): void {
+    const gfx = this.gfx;
+    if (!gfx) throw new Error('__kf.step: the renderer is not ready');
+    if (!Number.isInteger(frames) || frames < 0 || frames > MAX_STEP_FRAMES) {
+      throw new RangeError(`__kf.step: frames must be an integer from 0 to ${MAX_STEP_FRAMES}`);
+    }
+    if (!(dt > 0 && dt <= MAX_FRAME_DT)) throw new RangeError(`__kf.step: dt must be in (0, ${MAX_FRAME_DT}] seconds`);
+    this.manualClock = true;
+    for (let i = 0; i < frames; i++) this.advance(gfx, dt);
+    // While a chapter compiles, the frame loop skips rendering too; the next frame draws it.
+    if (!this.warming) gfx.post.render();
+  }
 
   /** Renderer facts for frameStats(); with ?profile=1 also the frame's GPU time. */
   private measure(gfx: Graphics): void {
@@ -371,6 +403,8 @@ class Engine implements KunFayakunApp {
     if (this.gfx) {
       this.gfx.handle.setDprCap(profile.dprCap);
       this.gfx.post.setBloom(profile.bloom);
+      // The new tier resizes targets and rebuilds the bloom pass; those frames are not a reason to drop resolution.
+      this.gfx.resolution.holdOff();
     }
     setHook('data-tier', profile.tier);
     this.events.emit('quality', { profile, reason });

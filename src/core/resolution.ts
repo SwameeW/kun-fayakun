@@ -8,7 +8,12 @@
  * undone at once and not retried for a while, so the scale never oscillates.
  * It reacts faster than the tier governor (0.75 s against 2 s), so a brief dip
  * costs resolution rather than particles or bloom.
+ *
+ * Slow and comfortable are judged against the display's cadence (cadence.ts), so
+ * a 30 Hz-capped rAF is not mistaken for load, and stalls are skipped entirely:
+ * one long frame is a hitch, not a reason to render softer for seconds.
  */
+import { createFrameCadence, STALL_SECONDS } from './cadence';
 
 export interface ResolutionGovernor {
   /** Feed one frame's duration in seconds; returns a new scale when it changes, else null. */
@@ -18,11 +23,12 @@ export interface ResolutionGovernor {
   readonly scale: number;
 }
 
-const MIN_SCALE = 0.6;
-/** Frames slower than this (seconds, ~50 fps) count as slow. */
-const SLOW = 1 / 50;
-/** Frames faster than this (~58 fps) count as comfortable. */
-const COMFORTABLE = 1 / 58;
+/** Lowest render scale; the renderer clamps to the same floor. */
+export const MIN_RESOLUTION_SCALE = 0.6;
+/** Average frame time above this multiple of the cadence counts as slow (50 fps at 60 Hz). */
+const SLOW = 60 / 50;
+/** Average frame time below this multiple of the cadence counts as comfortable (58 fps at 60 Hz). */
+const COMFORTABLE = 60 / 58;
 /** Smoothing of the frame-time average (seconds). */
 const AVERAGE_SECONDS = 0.25;
 const DOWN = { after: 0.75, factor: 0.88, cooldown: 1.5 } as const;
@@ -43,9 +49,10 @@ export function createResolutionGovernor(options: { enabled: boolean }): Resolut
   /** Scale before the current probe upward, while it is being judged. */
   let probeFrom: number | null = null;
   let probeLeft = 0;
+  const cadence = createFrameCadence();
 
   const set = (next: number): number => {
-    scale = Math.min(1, Math.max(MIN_SCALE, next));
+    scale = Math.min(1, Math.max(MIN_RESOLUTION_SCALE, next));
     slowFor = 0;
     comfortableFor = 0;
     return scale;
@@ -61,8 +68,11 @@ export function createResolutionGovernor(options: { enabled: boolean }): Resolut
       comfortableFor = 0;
     },
     sample(frameSeconds) {
-      if (!options.enabled || !(frameSeconds > 0)) return null;
-      const dt = Math.min(frameSeconds, 0.25);
+      // A stall is left out of the average altogether: clamped and averaged in, a single
+      // 400 ms hitch kept the average above SLOW for about a second and cost a step.
+      if (!options.enabled || !(frameSeconds > 0) || frameSeconds > STALL_SECONDS) return null;
+      const dt = frameSeconds;
+      cadence.sample(dt);
       average += (dt - average) * (1 - Math.exp(-dt / AVERAGE_SECONDS));
       if (holdOff > 0) {
         holdOff -= dt;
@@ -70,8 +80,8 @@ export function createResolutionGovernor(options: { enabled: boolean }): Resolut
       }
       cooldown = Math.max(0, cooldown - dt);
       lockedFor = Math.max(0, lockedFor - dt);
-      slowFor = average > SLOW ? slowFor + dt : 0;
-      comfortableFor = average < COMFORTABLE ? comfortableFor + dt : 0;
+      slowFor = average > SLOW * cadence.interval ? slowFor + dt : 0;
+      comfortableFor = average < COMFORTABLE * cadence.interval ? comfortableFor + dt : 0;
 
       if (probeFrom !== null) {
         probeLeft -= dt;
@@ -87,7 +97,7 @@ export function createResolutionGovernor(options: { enabled: boolean }): Resolut
       }
 
       if (cooldown > 0) return null;
-      if (slowFor >= DOWN.after && scale > MIN_SCALE) {
+      if (slowFor >= DOWN.after && scale > MIN_RESOLUTION_SCALE) {
         cooldown = DOWN.cooldown;
         probeFrom = null;
         return set(scale * DOWN.factor);

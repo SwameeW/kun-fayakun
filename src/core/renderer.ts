@@ -1,4 +1,5 @@
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGPURenderer } from 'three/webgpu';
+import { MIN_RESOLUTION_SCALE } from './resolution';
 
 export type BackendName = 'webgpu' | 'webgl2';
 
@@ -163,7 +164,8 @@ export async function createRenderer(
       resize();
     },
     setResolutionScale(scale) {
-      const next = Math.min(1, Math.max(0.5, scale));
+      // Same floor as the governor, so the documented 0.6..1 range holds for any caller.
+      const next = Math.min(1, Math.max(MIN_RESOLUTION_SCALE, scale));
       if (Math.abs(next - resolutionScale) < 1e-3) return;
       resolutionScale = next;
       resize();

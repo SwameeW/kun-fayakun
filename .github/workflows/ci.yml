@@ -27,8 +27,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The browser download is keyed on the exact Playwright version, so a
+      # version bump fetches the matching build. System packages are not cached: apt
+      # installs them on every run, hit or miss.
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       # Every displayed verse matches the pinned Tanzil text byte for byte (NFC),
       # every hadith has collection, number and grading, no Arabic in src/.
@@ -45,7 +64,7 @@ jobs:
       - name: Build
         run: npx vite build
 
-      - name: Check loading budget (shell + Chapter 0 under 1.5 MB gzipped)
+      - name: Check loading budget (shell + Chapter 0 under 1.5 MB gzipped; shell within 10 KB of its baseline)
         run: npx tsx scripts/check-bundle.ts
 
       - name: Playwright tests (WebGPU and forced WebGL2)

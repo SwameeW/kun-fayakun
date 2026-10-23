@@ -188,10 +188,14 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
   (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
   (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
-  holds the render scale at 1).
+  holds the render scale at 1), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
+  from 1 CE to 9999 CE, anything else is ignored; parsed but not read by any view yet).
 - Dynamic resolution: unless `?tier` or `?profile` is set, the engine lowers the render scale in small
   steps (down to 0.6× the tier's DPR cap) when frames run slow, before the tier governor drops a tier,
-  and probes back up after long comfortable stretches. A software-only WebGPU adapter (e.g. SwiftShader
+  and probes back up after long comfortable stretches. Frames over 0.25 s (stalls) are ignored, a tier
+  change holds the render scale for 3 s, and both governors judge frames against the display's cadence:
+  a rAF that has never run faster than 30 Hz (Low Power Mode, battery savers) targets 30 fps, anything
+  else 60 fps. A software-only WebGPU adapter (e.g. SwiftShader
   on GPU-less CI) is treated as unavailable: WebGL2 is used instead.
 
 ## Test hooks (engine sets these on `<html>`)
@@ -199,7 +203,10 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - `data-backend="webgpu|webgl2"`, `data-tier`, `data-state` (TimelineState), `data-chapter`,
   `data-ready="true"` after the first rendered frame, `data-chapter-ready="chNN"` after a
   chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`.
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs }, resetFrameStats() }`.
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs }, resetFrameStats(), step(frames = 1, dt = 1/60) }`.
+  `step` advances `frames` frames of `dt` seconds (0 < dt ≤ 0.1) and renders. Its first call switches the
+  page to a manual clock for good: frames keep rendering, but the film, fades and exposure move only
+  through `step`, and the tier and render scale stop adapting (navigation that waits for a fade needs steps too).
 
 ## UI test ids (ui builder)
 
