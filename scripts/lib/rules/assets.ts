@@ -208,6 +208,13 @@ function physicalProblems(ctx: ValidationContext, path: string, physical: unknow
   if (!isRecord(rings) || !isFiniteNumber(rings.innerKm) || !isFiniteNumber(rings.outerKm) || !(rings.innerKm > 0 && rings.innerKm < rings.outerKm)) {
     problems.push(`${path}: saturnRings needs 0 < innerKm < outerKm`);
   }
+  // The explorer draws the rings from this profile as a mipmapped strip: a power of two of bins, all present.
+  const profile = isRecord(rings) ? rings.profile : undefined;
+  const bins = isRecord(profile) && isFiniteNumber(profile.bins) ? profile.bins : 0;
+  const bytes = isRecord(profile) && typeof profile.transmission === 'string' ? Buffer.from(profile.transmission, 'base64').length : -1;
+  if (!(bins >= 256 && (bins & (bins - 1)) === 0) || bytes !== bins) {
+    problems.push(`${path}: saturnRings.profile needs a power-of-two number of bins (at least 256) and one base64 byte of transmission per bin`);
+  }
   const time = physical.time;
   const leaps: unknown[] = isRecord(time) && Array.isArray(time.leapSeconds) ? time.leapSeconds : [];
   problems.push(...checkFields(time, { deltaTA: 'number', k: 'number', eb: 'number', m0: 'number', m1: 'number' }, `${path} time`));

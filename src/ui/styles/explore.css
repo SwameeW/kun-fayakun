@@ -6,6 +6,11 @@
   z-index: 2;
 }
 
+/* Focus lands on the explorer itself when it opens (a programmatic target, not a control). */
+.kf-universe:focus {
+  outline: none;
+}
+
 .kf-universe-hint {
   position: absolute;
   inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
@@ -20,6 +25,18 @@
   font-size: 0.8125rem;
   text-align: center;
   color: var(--kf-text);
+  transition:
+    opacity 900ms var(--kf-ease),
+    visibility 0s linear 0s;
+}
+
+/* Gone once the visitor has moved the view, or after a few seconds. */
+.kf-universe.is-hinted .kf-universe-hint {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 900ms var(--kf-ease),
+    visibility 0s linear 900ms;
 }
 
 .kf-universe-loading {
@@ -133,24 +150,81 @@
   color: var(--kf-text-muted);
 }
 
+/*
+ * The bodies' name tags in the explorer: one style for all of them, a hairline tick and the name
+ * with a soft shadow, no panel, so a tag over the Sun's glare looks like one over black sky.
+ */
+.kf-universe-open .kf-hud-tag {
+  background: transparent;
+  text-shadow:
+    0 0 3px rgb(0 0 0 / 0.95),
+    0 0 9px rgb(0 0 0 / 0.75);
+}
+
+/* A phone: a compact bar of bodies and a two-line readout, so the view keeps most of the screen. */
 @media (max-width: 767.98px) {
   .kf-universe-nav {
+    inset-block-end: var(--kf-space-2);
     inset-inline: var(--kf-space-2);
     max-inline-size: calc(100vw - 2 * var(--kf-space-2));
     gap: var(--kf-space-1);
+    padding: var(--kf-space-1);
   }
 
   .kf-universe-bodies-label {
     display: none;
   }
 
-  .kf-universe-body {
+  .kf-universe-bodies {
+    gap: var(--kf-space-1);
+  }
+
+  .kf-universe-nav .kf-btn {
+    min-block-size: 2.5rem;
     padding-inline: var(--kf-space-3);
+    font-size: 0.875rem;
   }
 
   .kf-universe-readout {
-    inset-block-end: calc(var(--kf-universe-nav-h, 7.5rem) + var(--kf-space-3));
+    inset-inline: var(--kf-space-2);
+    inset-block-end: calc(var(--kf-universe-nav-h, 6rem) + var(--kf-space-3));
+    max-inline-size: none;
+    padding-block: var(--kf-space-1);
+    padding-inline: var(--kf-space-3);
     font-size: 0.75rem;
+    line-height: 1.35;
+    background: linear-gradient(to right, rgb(5 6 10 / 0.7), rgb(5 6 10 / 0.25));
+  }
+
+  /* Line one: the body and the distance. Line two: what the view is (true scale, illustrative surfaces). */
+  .kf-universe-title {
+    display: inline;
+    margin: 0 var(--kf-space-2) 0 0;
+    font-size: 0.9375rem;
+    letter-spacing: 0.1em;
+  }
+
+  .kf-universe-altitude {
+    display: inline;
+  }
+
+  .kf-universe-extra:not(.kf-universe-filter) {
+    display: none;
+  }
+
+  .kf-universe-scale,
+  .kf-universe-illustrative {
+    display: inline;
+    font-size: 0.6875rem;
+  }
+
+  .kf-universe-scale::before {
+    content: "";
+    display: block;
+  }
+
+  .kf-universe-illustrative::before {
+    content: " · ";
   }
 
   .kf-universe-hint {

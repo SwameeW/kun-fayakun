@@ -27,6 +27,12 @@ export interface PostPipeline {
   render(): void;
   setBloom(enabled: boolean): void;
   /**
+   * The exposure the bloom threshold is judged at (default 1: the threshold applies to the scene's
+   * own values, as the chapters have it). The solar-system explorer's exposure spans seven stops,
+   * so it passes its exposure here and only what is bright on screen blooms, wherever the camera is.
+   */
+  setBloomExposure(exposure: number): void;
+  /**
    * Film grain changes each frame only while the film plays; paused or with reduced
    * motion it holds still (WCAG 2.2.2: nothing moves on its own while paused).
    */
@@ -93,10 +99,12 @@ export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camer
   const color = scenePass.getTextureNode('output');
   const seed = uniform(0);
   let bloomNode: ReturnType<typeof bloom> | null = null;
+  let bloomExposure = 1;
+  const threshold = (): number => BLOOM.threshold / bloomExposure;
 
   const build = (withBloom: boolean): void => {
     bloomNode?.dispose();
-    bloomNode = withBloom ? bloom(color, BLOOM.strength, BLOOM.radius, BLOOM.threshold) : null;
+    bloomNode = withBloom ? bloom(color, BLOOM.strength, BLOOM.radius, threshold()) : null;
     const hdr = bloomNode ? color.rgb.add(bloomNode.rgb) : color.rgb;
     const display = renderOutput(vec4(vignette(hdr), 1));
     pipeline.outputNode = vec4(grain(display.rgb, seed), 1);
@@ -110,6 +118,12 @@ export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camer
     },
     setBloom(enabled) {
       if (enabled !== (bloomNode !== null)) build(enabled);
+    },
+    setBloomExposure(exposure) {
+      const next = Number.isFinite(exposure) && exposure > 1e-6 ? exposure : 1;
+      if (next === bloomExposure) return;
+      bloomExposure = next;
+      if (bloomNode) bloomNode.threshold.value = threshold();
     },
     advanceGrain() {
       // Wraps long before float precision matters; the pattern has no visible period.
@@ -133,6 +147,12 @@ export interface EngineExposure extends ExposureControl {
   /** Resets the chapter's target to neutral before a chapter enters. */
   resetTarget(): void;
   setReducedMotion(on: boolean): void;
+  /**
+   * Moves the exposure straight to its goal (target times fade), with no slew. Only for a picture
+   * nobody can see change: the solar-system explorer calls it (through its host) while its own veil
+   * holds the screen dark, at the moment its camera cuts to another body.
+   */
+  jump(): void;
   /** True once the applied exposure is effectively black. */
   readonly dark: boolean;
   update(dt: number): void;
@@ -199,6 +219,13 @@ export function createExposureControl(options: { reducedMotion: boolean }): Engi
     },
     setReducedMotion(on) {
       reduced = on;
+    },
+    jump() {
+      u = Math.max(FLOOR_STOPS, Math.log2(Math.max(target * fade, Number.MIN_VALUE)));
+      current = u <= FLOOR_STOPS ? 0 : 2 ** u;
+      // A fresh start: no change to hold still after.
+      lastDirection = 0;
+      still = Infinity;
     },
     update(dt) {
       if (dt <= 0) return;

@@ -12,8 +12,20 @@ import type { TimeConstants } from './time';
 export interface PhysicalFile extends EphemerisConstants {
   obliquityJ2000Arcsec: number;
   bodies: Record<RotatingBody, RotationModel>;
-  saturnRings: { innerKm: number; outerKm: number };
+  saturnRings: {
+    innerKm: number;
+    outerKm: number;
+    /** The Cassini profile's mean normal transmission in `bins` equal bins from innerKm out: base64, one byte (0..255) each. */
+    profile: { bins: number; transmission: string };
+  };
   time: TimeConstants;
+}
+
+/** Decodes the rings' transmission profile to values from 0 (opaque) to 1 (empty). */
+export function ringTransmission(rings: PhysicalFile['saturnRings']): number[] {
+  const bytes = atob(rings.profile.transmission);
+  if (bytes.length !== rings.profile.bins) throw new Error(`physical.json: the ring profile has ${bytes.length} bins, expected ${rings.profile.bins}`);
+  return Array.from(bytes, (c) => c.charCodeAt(0) / 255);
 }
 
 export const PHYSICAL_URL = 'assets/jpl/physical.json';

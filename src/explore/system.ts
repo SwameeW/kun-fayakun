@@ -13,6 +13,7 @@ import { createEphemeris, type Ephemeris, type MoonFile, type PlanetsFile } from
 import { obliquityRad, type PhysicalFile } from '../astro/physical';
 import { bodyToEcliptic, orientationAt, type Orientation, type RotatingBody } from '../astro/rotation';
 import type { BodyId } from '../core/types';
+import type { ViewPreference } from './navigation';
 import { eclipticToRender, km, type Km } from './space/origin';
 
 export interface BodySpec {
@@ -26,8 +27,10 @@ export interface BodySpec {
   readonly boundKm: number;
   /** The camera never goes lower than this above the equatorial surface, km. */
   readonly minAltitudeKm: number;
-  /** Default viewing distance from the centre, in bounding radii (the body fills about half the view's height). */
-  readonly framing: number;
+  /** Share of the narrower clear side of the view its bounding sphere spans when framed. */
+  readonly fill: number;
+  /** How it is first seen (see ViewPreference in ./navigation). */
+  readonly view: ViewPreference;
 }
 
 const ROTATING: Readonly<Record<BodyId, RotatingBody>> = {
@@ -54,8 +57,22 @@ export const EARTH_AIR_SCALE = 1.02;
 const MIN_ALTITUDE_SHARE = 0.02;
 const EARTH_MIN_ALTITUDE_KM = 150;
 
+/**
+ * How each body is framed and first seen. Visual choices, not measurements: the sunlit face turned
+ * about 50 degrees away so the terminator shows; the Earth and the Moon from a little above, Jupiter
+ * from near its equator (its belts run straight across), Saturn from 17 degrees off its ring plane on
+ * the side the Sun lights; the Sun from the Earth's side. Saturn's bounding sphere is its rings.
+ */
+const FRAMING: Readonly<Record<BodyId, { fill: number; view: ViewPreference }>> = {
+  sun: { fill: 0.5, view: { azimuth: 0.35, latitude: 0.16, litFace: false } },
+  earth: { fill: 0.6, view: { azimuth: 0.9, latitude: 0.2, litFace: false } },
+  moon: { fill: 0.6, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
+  jupiter: { fill: 0.62, view: { azimuth: 0.78, latitude: 0.06, litFace: false } },
+  saturn: { fill: 0.78, view: { azimuth: 0.7, latitude: 0.3, litFace: true } },
+};
+
 export function bodySpecs(physical: PhysicalFile): Readonly<Record<BodyId, BodySpec>> {
-  const spec = (id: BodyId, framing: number, boundKm?: number): BodySpec => {
+  const spec = (id: BodyId, boundKm?: number): BodySpec => {
     const [a, , c] = physical.bodies[ROTATING[id]].radiiKm;
     return {
       id,
@@ -64,15 +81,15 @@ export function bodySpecs(physical: PhysicalFile): Readonly<Record<BodyId, BodyS
       polarKm: c,
       boundKm: boundKm ?? a,
       minAltitudeKm: id === 'earth' ? EARTH_MIN_ALTITUDE_KM : MIN_ALTITUDE_SHARE * a,
-      framing,
+      ...FRAMING[id],
     };
   };
   return {
-    sun: spec('sun', 4.2),
-    earth: spec('earth', 4),
-    moon: spec('moon', 4),
-    jupiter: spec('jupiter', 4),
-    saturn: spec('saturn', 3.1, physical.saturnRings.outerKm),
+    sun: spec('sun'),
+    earth: spec('earth'),
+    moon: spec('moon'),
+    jupiter: spec('jupiter'),
+    saturn: spec('saturn', physical.saturnRings.outerKm),
   };
 }
 

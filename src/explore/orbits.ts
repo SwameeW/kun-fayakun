@@ -6,9 +6,11 @@
  * Every point is computed on the CPU in doubles, relative to the camera, then put through the
  * same scaled-space remap as the bodies, so a line passing a few thousand km from the camera is
  * as steady as one 30 au away. Points crowd toward the part of each orbit nearest the camera,
- * where perspective makes segments longest on screen. Lines fade out near the body in focus (an
- * orbit through a planet seen up close would slice it), and their brightness is held in display
- * terms: they are a guide, not lit matter, so they do not brighten as the exposure adapts.
+ * where perspective makes segments longest on screen, and each line is cut exactly at the near
+ * plane (never left to end where a segment happens to). Brightness changes smoothly along a line:
+ * it fades near the body in focus (an orbit through a planet seen up close would slice it) and
+ * where it passes close beside the camera. It is held in display terms: a guide, not lit matter,
+ * so it does not brighten as the exposure adapts.
  */
 
 import { InstancedBufferAttribute, type Mesh, type Node } from 'three/webgpu';
@@ -34,6 +36,8 @@ export interface OrbitPath {
   readonly centre: Km;
   /** Linear colour of the line at full strength (display terms). */
   readonly color: readonly [number, number, number];
+  /** The orbit's size (its semi-major axis, or the Moon's distance on the date), km. */
+  readonly sizeKm: number;
   /** Recomputes the path for a date (TDB Julian date); cheap enough to call every frame. */
   setDate(jd: number): void;
   /** The point at parameter u (periodic, period 1), render frame, km. */
@@ -59,6 +63,9 @@ export function planetOrbit(body: BodyId, planet: PlanetBody, sun: Km, auKm: num
     body,
     centre: sun,
     color,
+    get sizeKm() {
+      return a;
+    },
     setDate(jd) {
       elementsAt(planet, jd, el);
       const I = el.I * DEG;
@@ -150,10 +157,14 @@ export function moonOrbit(moon: MoonFile, earth: Km, color: readonly [number, nu
     return out;
   };
 
+  let size = 384_400;
   return {
     body: 'moon',
     centre: earth,
     color,
+    get sizeKm() {
+      return size;
+    },
     setDate(jd) {
       // The sweep is measured again only when the date has moved by an hour or more.
       if (Math.abs(jd - jd0) < 1 / 24 && jd0 !== 0) {
@@ -161,6 +172,8 @@ export function moonOrbit(moon: MoonFile, earth: Km, color: readonly [number, nu
         return;
       }
       jd0 = jd;
+      const now = moonHermiteKm(moon, jd0, km());
+      size = Math.hypot(now.x, now.y, now.z);
       back = halfTurn(-1);
       ahead = halfTurn(1);
       const first = raw(0, km());
@@ -190,6 +203,9 @@ export function moonOrbit(moon: MoonFile, earth: Km, color: readonly [number, nu
 
 export interface OrbitFrame {
   camera: Km;
+  /** The view's forward direction (unit, render frame) and near plane (km): lines are cut there. */
+  forward: Km;
+  near: number;
   far: number;
   /** The body in focus and the distance from the camera to it (km): lines fade within about that of it. */
   focus: Km;
@@ -214,18 +230,23 @@ const smoothstep = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
+/** Points closer than this share beyond the near plane are cut (the depth buffer's own clip is not relied on). */
+const NEAR_MARGIN = 1.02;
+
 export function createOrbits(paths: readonly OrbitPath[]): Orbits {
   const count = paths.length * SEGMENTS;
   const tails = new InstancedBufferAttribute(new Float32Array(count * 3), 3);
   const heads = new InstancedBufferAttribute(new Float32Array(count * 3), 3);
-  const colors = new InstancedBufferAttribute(new Float32Array(count * 3), 3);
+  const tailColors = new InstancedBufferAttribute(new Float32Array(count * 3), 3);
+  const headColors = new InstancedBufferAttribute(new Float32Array(count * 3), 3);
   const uCompensation = uniform(1);
   const field: StreakField = createStreakField({
     name: 'explore-orbits',
     maxCount: count,
     tail: instancedDynamicBufferAttribute(tails) as unknown as Node<'vec3'>,
     head: instancedDynamicBufferAttribute(heads) as unknown as Node<'vec3'>,
-    color: (instancedDynamicBufferAttribute(colors) as unknown as Node<'vec3'>).mul(uCompensation),
+    color: (instancedDynamicBufferAttribute(headColors) as unknown as Node<'vec3'>).mul(uCompensation),
+    tailColor: (instancedDynamicBufferAttribute(tailColors) as unknown as Node<'vec3'>).mul(uCompensation),
     width: float(WIDTH),
     profile: 'line',
   });
@@ -233,20 +254,30 @@ export function createOrbits(paths: readonly OrbitPath[]): Orbits {
 
   const point = km();
   const rel = km();
-  /** Remapped points of one orbit, flat xyz, and their fade. */
+  /** Remapped points of one orbit, flat xyz, their depth along the view, and their fade. */
   const placed = new Float64Array((SEGMENTS + 1) * 3);
+  const depth = new Float64Array(SEGMENTS + 1);
   const fade = new Float64Array(SEGMENTS + 1);
+
+  const write = (o: number, array: InstancedBufferAttribute['array'], x: number, y: number, z: number): void => {
+    array[o] = x;
+    array[o + 1] = y;
+    array[o + 2] = z;
+  };
 
   return {
     mesh: field.mesh,
     update(frame) {
       uCompensation.value = frame.light / Math.max(frame.compensation, 1e-6);
       const fadeNear = Math.max(frame.focusRadius * 2, Math.min(frame.focusDistance, frame.focusRadius * 60));
+      const cut = frame.near * NEAR_MARGIN;
+      const { forward } = frame;
       paths.forEach((path, p) => {
         const weight = frame.weights[p] ?? 1;
         if (weight <= 1e-3) {
           // Hidden: collapse its segments rather than computing them.
-          colors.array.fill(0, p * SEGMENTS * 3, (p + 1) * SEGMENTS * 3);
+          tailColors.array.fill(0, p * SEGMENTS * 3, (p + 1) * SEGMENTS * 3);
+          headColors.array.fill(0, p * SEGMENTS * 3, (p + 1) * SEGMENTS * 3);
           return;
         }
         // How far the orbit's own centre is from the camera: the scale of "close beside the camera".
@@ -263,31 +294,53 @@ export function createOrbits(paths: readonly OrbitPath[]): Orbits {
           placed[3 * i] = rel.x * k;
           placed[3 * i + 1] = rel.y * k;
           placed[3 * i + 2] = rel.z * k;
-          // Faded near the body in focus (an orbit through a planet seen up close would slice it), and
-          // where it passes close beside the camera compared with the size of the orbit: seen there in
-          // steep perspective it would be a stroke bent across the view, not a curve around its centre.
+          depth[i] = (rel.x * forward.x + rel.y * forward.y + rel.z * forward.z) * k;
+          // Faded near the body in focus, and where the line passes close beside the camera compared
+          // with the size of the orbit: seen there in steep perspective it would be a stroke bent
+          // across the view, not a curve around its centre.
           const near = Math.hypot(point.x - frame.focus.x, point.y - frame.focus.y, point.z - frame.focus.z);
           const beside = Math.hypot(rel.x, rel.y, rel.z) / scale;
-          fade[i] = smoothstep(0.6 * fadeNear, 1.8 * fadeNear, near) * smoothstep(0.004, 0.03, beside);
+          fade[i] = smoothstep(0.6 * fadeNear, 1.8 * fadeNear, near) * smoothstep(0.004, 0.03, beside) * weight;
         }
         const [r, g, b] = path.color;
         for (let i = 0; i < SEGMENTS; i += 1) {
           const o = (p * SEGMENTS + i) * 3;
-          tails.array[o] = placed[3 * i] ?? 0;
-          tails.array[o + 1] = placed[3 * i + 1] ?? 0;
-          tails.array[o + 2] = placed[3 * i + 2] ?? 0;
-          heads.array[o] = placed[3 * i + 3] ?? 0;
-          heads.array[o + 1] = placed[3 * i + 4] ?? 0;
-          heads.array[o + 2] = placed[3 * i + 5] ?? 0;
-          const f = Math.min(fade[i] ?? 0, fade[i + 1] ?? 0) * weight;
-          colors.array[o] = r * f;
-          colors.array[o + 1] = g * f;
-          colors.array[o + 2] = b * f;
+          const a = 3 * i;
+          const da = depth[i] ?? 0;
+          const db = depth[i + 1] ?? 0;
+          let fa = fade[i] ?? 0;
+          let fb = fade[i + 1] ?? 0;
+          let ta = 0;
+          let tb = 1;
+          if (da < cut && db < cut) {
+            fa = 0;
+            fb = 0;
+          } else if (da < cut || db < cut) {
+            // Cut where the segment crosses the near plane; its colour is carried to the cut point.
+            const t = (cut - da) / (db - da);
+            if (da < cut) ta = t;
+            else tb = t;
+            const f0 = fa;
+            const f1 = fb;
+            fa = f0 + (f1 - f0) * ta;
+            fb = f0 + (f1 - f0) * tb;
+          }
+          const ax = placed[a] ?? 0;
+          const ay = placed[a + 1] ?? 0;
+          const az = placed[a + 2] ?? 0;
+          const bx = placed[a + 3] ?? 0;
+          const by = placed[a + 4] ?? 0;
+          const bz = placed[a + 5] ?? 0;
+          write(o, tails.array, ax + (bx - ax) * ta, ay + (by - ay) * ta, az + (bz - az) * ta);
+          write(o, heads.array, ax + (bx - ax) * tb, ay + (by - ay) * tb, az + (bz - az) * tb);
+          write(o, tailColors.array, r * fa, g * fa, b * fa);
+          write(o, headColors.array, r * fb, g * fb, b * fb);
         }
       });
       tails.needsUpdate = true;
       heads.needsUpdate = true;
-      colors.needsUpdate = true;
+      tailColors.needsUpdate = true;
+      headColors.needsUpdate = true;
       field.mesh.visible = frame.light > 1e-3;
     },
     dispose() {

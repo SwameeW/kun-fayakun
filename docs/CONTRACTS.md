@@ -210,9 +210,10 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-experience="film|universe"` (set as soon as a switch starts), `data-universe-ready="true"`
   once the explorer has rendered a frame after loading (removed while it is not on screen).
 - `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
-  `universe.state()` is the explorer's `UniverseView` (focus, travelling, distance and altitude in km,
-  sunlight, date) or null; `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })`
-  puts its camera at once (tests and frame captures).
+  `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
+  whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
+  `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,
+  with the exposure adapted at once too (tests and frame captures).
   `step` advances `frames` frames of `dt` seconds (0 < dt ≤ 0.1) and renders. Its first call switches the
   page to a manual clock for good: frames keep rendering, but the film, fades and exposure move only
   through `step`, and the tier and render scale stop adapting (navigation that waits for a fade needs steps too).
@@ -232,41 +233,63 @@ A second experience beside the film, loaded on demand (`src/explore/**` and `src
 are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and out of the shell).
 
 - **Host.** `ExperienceModule` (types.ts) is the chapter lifecycle without content or cues;
-  `UniverseModule` adds `configure`, `focus`, `view` and `place`. `src/core/universe-host.ts` runs
+  `UniverseModule` adds `configure`, `focus`, `view`, `setInsets` and `place`, and is built with a
+  `UniverseContext` whose `exposure` adds `setVeil` and `jump`. `src/core/universe-host.ts` runs
   the navigation sequence for it (shared navigation token, governor suspended, the film stopped
-  and faded to black, dynamic import, `compileAsync` warm-up, governors held off, fade up) and the
-  reverse on leaving, then restores the chapters' lens. `Engine.frame` updates either the
-  explorer or the timeline, never both; `app.hud()` reads whichever is on screen. The explorer is
-  kept after its first visit. `app.openUniverse(body?)`, `app.closeUniverse()` (back to the
-  chapter and time it was opened from, paused if it was; home after a deep link) and
-  `app.focusBody(body)`; Esc in the explorer is `closeUniverse`. An explorer that cannot load
-  shows `ui.error.universe` and returns the visitor the same way, replacing its address in the
-  history (as a chapter that fails to load does). Chapters 7 to 10 (registry
-  `opensUniverse`) offer it; earlier eras came before the Sun.
+  and faded to black, dynamic import, `compileAsync` warm-up with frustum culling off so every body
+  compiles, governors held off) and the reverse on leaving, then restores the chapters' lens. The
+  picture comes up and goes down through a veil (2.2 s in, 0.9 s out, eased) that multiplies the
+  exposure after its limiter, while the exposure itself jumps to its target under it: the explorer's
+  light spans seven stops, more than the slew limit crosses quickly. `Engine.frame` updates either
+  the explorer or the timeline, never both; `app.hud()` reads whichever is on screen. The explorer
+  is kept after its first visit. `app.openUniverse(body?)`, `app.closeUniverse()` (back to the
+  chapter and time it was opened from, paused if it was; home after a deep link: a step back in
+  the history when the explorer's entry sits on one of ours, else its entry is replaced, so leaving
+  never stacks entries) and `app.focusBody(body)`; Esc in the explorer is `closeUniverse`.
+  `app.setViewInsets({ top, bottom })` (CSS px the interface covers) lets the explorer frame bodies
+  in the clear part of the view. An explorer that cannot load shows `ui.error.universe` and returns
+  the visitor the same way, replacing its address in the history (as a chapter that fails to load
+  does). Chapters 7 to 10 (registry `opensUniverse`) offer it; earlier eras came before the Sun.
+  Keyboard focus moves into the explorer's region when it opens and back to the transport (or the
+  welcome screen's way in) when it closes.
 - **Space.** State is float64 km from the barycentre in the render frame (ecliptic J2000 turned
   so ecliptic north is +y; the Sun's offset from the barycentre is not modelled yet). Each frame
   the camera sits at the origin and every object at `body - camera` (`space/origin.ts`); near is
-  0.4 x the altitude above the nearest surface (1 m to 1e5 km) and far 2e4 x near
-  (`space/lens.ts`, standard 24-bit depth, no renderer flags); bodies beyond half the far plane
-  are drawn nearer and smaller by one factor between 0.5 and 0.95 of it, exactly at their angular
-  size (`space/scaled-space.ts`); the starfield sits at 0.98 x far with depth testing.
+  0.4 x the altitude above the nearest surface, Saturn's rings counting as one (1 m to 1e5 km),
+  and far 2e4 x near (`space/lens.ts`, standard 24-bit depth, no renderer flags); bodies beyond half
+  the far plane are drawn nearer and smaller by one factor between 0.5 and 0.95 of it, exactly at
+  their angular size (`space/scaled-space.ts`); the starfield sits at 0.98 x far with depth testing.
+- **Navigation.** A body is framed to a share of the narrower side of the clear view (a phone held
+  upright frames it by its width) and first seen from its sunlit side turned about 50 degrees,
+  Jupiter from near its equator, Saturn from the side of its rings the Sun lights. A flight leaves
+  its body and closes in on the destination in log distance (its distance to the destination only
+  falls), on an arc out of the planets' plane and clear of the Sun, its gaze on the destination
+  after its first third; with reduced motion it is a cut under the veil, the exposure jumping to the
+  new body while the picture is dim.
 - **Truth and honesty.** Positions, radii, flattening, poles and spin come from
   `public/assets/jpl` through `src/astro`; the date is now (or `?jd=`), clamped to the Moon
-  table's span. Surfaces are procedural until mission maps arrive, and the interface says so
-  ("Surfaces are illustrative"), along with "True scale: real sizes and distances". The film's
-  metres-per-pixel bar is replaced by a readout of true distances.
+  table's span. Saturn's rings are drawn from the Cassini radio-occultation profile
+  (`physical.json` `saturnRings.profile`: mean normal transmission in 2,048 bins, built by
+  `scripts/jpl/build.py`), only their colour illustrative. Surfaces are procedural until mission
+  maps arrive, and the interface says so ("Surfaces are illustrative"), along with "True scale: real
+  sizes and distances". The film's metres-per-pixel bar is replaced by a readout of true distances.
 - **Light.** Sunlight on a body falls as 1/r^2; the exposure adapts to the body in view as
   r^1.8 (so the outer planets stay a little dimmer), through `ctx.exposure` like every change
-  (slew-limited: flash-safe). Guides (orbit lines, points of light for bodies under about 2 px,
-  the Sun's glare) keep their brightness on screen; the Sun's disc stays under a ceiling, and
-  when it fills the view it is shown as through a solar filter (gold, a little dimmer), which
-  the readout says. The engine's exposure cap is 128 (chapters ask for 1 or less).
+  (slew-limited: flash-safe); bloom is judged at that exposure (`PostPipeline.setBloomExposure`;
+  the film keeps 1). Guides (orbit lines, points and ring markers of bodies under a few px, the Sun's
+  glare) keep their brightness on screen; the Sun's disc is brilliant white when small and, as it
+  fills the view, shown as through a solar filter (amber, limb-darkened, mottled), which the readout
+  says. The engine's exposure cap is 128 (chapters ask for 1 or less).
+- **Bodies and detail.** The explorer draws its bodies with its own shaders (`src/explore/bodies`),
+  never the chapters': an Earth with detail that fades in with closeness, cloud shadows, an
+  ocean-only glint and an atmosphere shaded from the air's column; a cratered Moon with relief and
+  earthshine; limb-darkened giants; the rings above; a filtered Sun and its glare. Shading edges
+  (terminators, ring and shadow edges, crescents) are softened over one pixel and fine detail fades
+  before it is smaller than one; MSAA (the scene pass inherits the renderer's 4 samples) handles
+  outlines. `setQuality` lowers mesh segments, detail octaves, cloud shadows and stars on mid and low.
 - **Shared modules, optional parameters only** (left out, the chapters' graphs are unchanged):
-  `createEarth(noise, radius, { segments, atmosphereScale, lava })`, `createSimpleBody(..., {
-  segments, flattening, tilt, lighting: 'wrap'|'lunar'|'giant', surface, ringProfile,
-  ringShadows })`, `createLivingStar(noise, radius, seed, { fine, filter })`, `createStarfield(count,
-  radius, seed, { depthTest, dynamicRadius })` with `setRadius`, `createStreakField({ ...,
-  profile: 'trail'|'line' })`.
+  `createStarfield(count, radius, seed, { depthTest, dynamicRadius })` with `setRadius`,
+  `createStreakField({ ..., profile: 'trail'|'line', tailColor })`.
 
 ## Browsers and local testing (measured on this machine)
 

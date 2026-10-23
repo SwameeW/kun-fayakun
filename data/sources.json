@@ -565,7 +565,7 @@
       "license": "Public domain (NASA Planetary Data System archive)",
       "licenseUrl": null,
       "credit": "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018",
-      "notes": "public/assets/jpl/physical.json records the profile's radial span (72,770.0 to 144,987.5 km) and the sha256 of the table and its label.",
+      "notes": "public/assets/jpl/physical.json records the profile's radial span (72,770.0 to 144,987.5 km), its normal transmission averaged into 2,048 bins (the solar-system explorer draws the rings from it), and the sha256 of the table and its label.",
       "review": {
         "reviewer": null,
         "role": null,

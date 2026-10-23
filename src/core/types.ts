@@ -457,6 +457,10 @@ export interface UniverseView {
   focus: BodyId;
   /** True while the camera flies from one body to another. */
   travelling: boolean;
+  /** During a flight, the body it left (else null). */
+  from: BodyId | null;
+  /** The camera moved this frame (a drag, a zoom, a flight); at rest nothing on screen moves but the sky's slow turn. */
+  moving: boolean;
   /** Distance from the camera to the focus's centre and to its surface (cloud tops, photosphere), km. */
   distanceKm: number;
   altitudeKm: number;
@@ -469,15 +473,45 @@ export interface UniverseView {
   unixMs: number;
 }
 
+/**
+ * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
+ * reduced-motion cuts) and a jump of the exposure while that veil hides the picture, so a cut
+ * from the Earth to Saturn lands already adapted instead of seconds of black.
+ */
+export interface UniverseExposure extends ExposureControl {
+  /**
+   * Dims the whole picture after the exposure (1 none, 0 black). The caller eases it (rule 6): the
+   * engine neither slews it nor holds it, so a reduced-motion dip is a dip whatever the exposure does.
+   */
+  setVeil(value: number): void;
+  /** Moves the exposure straight to its target. Ignored unless the veil (or a fade) has the screen nearly black. */
+  jump(): void;
+}
+
+/** The services the explorer is built with: a chapter's, with its own exposure. */
+export interface UniverseContext extends ChapterContext {
+  exposure: UniverseExposure;
+}
+
+/** CSS pixels at the top and bottom of the view that the interface covers. */
+export interface ViewInsets {
+  top: number;
+  bottom: number;
+}
+
 /** The explorer as the engine hosts it: the experience plus what its UI and route need. */
 export interface UniverseModule extends ExperienceModule {
   readonly id: 'universe';
+  load(ctx: UniverseContext): Promise<void>;
+  enter(ctx: UniverseContext): void;
   /** Applies a route: a body to show (null: the explorer's default) and a pinned UTC Julian date (null: now). */
   configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean }): void;
   /** Flies to a body: an eased flight in log distance, never a jump (a dimmed cut with reduced motion). */
   focus(body: BodyId): void;
   view(): UniverseView;
-  /** Test and capture hook: puts the camera at a pose at once, with no flight. */
+  /** Bodies are framed in the part of the view the interface leaves clear. */
+  setInsets(insets: ViewInsets): void;
+  /** Test and capture hook: puts the camera at a pose at once, with no flight (and the exposure adapted). */
   place(pose: UniversePose): void;
 }
 
@@ -557,6 +591,8 @@ export interface AppCommands {
   closeUniverse(): void;
   /** In the explorer: flies to a body. */
   focusBody(body: BodyId): void;
+  /** The explorer's interface reports what it covers, so bodies are framed in the clear part of the view. */
+  setViewInsets(insets: ViewInsets): void;
 }
 
 /* ------------------------------------------------------------------ */

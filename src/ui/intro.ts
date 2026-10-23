@@ -13,6 +13,8 @@ export interface Intro {
   readonly element: HTMLElement;
   setVisible(visible: boolean): void;
   readonly visible: boolean;
+  /** Focuses the way into the solar-system explorer (coming back from it). */
+  focusUniverse(): void;
 }
 
 /**
@@ -65,6 +67,9 @@ export function createIntro(i18n: I18n, actions: IntroActions): Intro {
     },
     get visible() {
       return visible;
+    },
+    focusUniverse() {
+      universe.focus();
     },
   };
 }

@@ -46,6 +46,11 @@ export interface StreakOptions {
    * polyline (orbits).
    */
   profile?: 'trail' | 'line';
+  /**
+   * With 'line': the colour at the tail end, blended along the segment to `color` at the head, so a
+   * polyline's brightness can change smoothly along it (a fade never steps from segment to segment).
+   */
+  tailColor?: Node<'vec3'>;
 }
 
 export interface StreakField {
@@ -98,7 +103,8 @@ export function createStreakField(options: StreakOptions): StreakField {
   // Motion blur spreads the same light along a longer trail, so it is dimmer per pixel. Fully
   // conserving energy would make fast streaks vanish; a partial falloff keeps them legible.
   const energy = pow(halfWidth.mul(2).div(span.add(halfWidth.mul(2))), 0.55);
-  material.colorNode = line ? varying(options.color).mul(profile) : varying(options.color.mul(energy)).mul(alongFade.mul(profile));
+  const lineColour = options.tailColor ? mix(varying(options.tailColor), varying(options.color), along) : varying(options.color);
+  material.colorNode = line ? lineColour.mul(profile) : varying(options.color.mul(energy)).mul(alongFade.mul(profile));
   material.transparent = true;
   material.blending = AdditiveBlending;
   material.depthWrite = false;

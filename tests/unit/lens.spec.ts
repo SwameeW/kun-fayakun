@@ -3,7 +3,7 @@
  * nearest surface, so 24-bit depth covers the view from 150 km over the Earth to 50 au out.
  */
 import { expect, test } from '@playwright/test';
-import { LENS, lensFor, nearestAltitude } from '../../src/explore/space/lens';
+import { LENS, lensFor, nearestAltitude, ringDistance } from '../../src/explore/space/lens';
 import { km } from '../../src/explore/space/origin';
 
 test('the lens table', () => {
@@ -47,3 +47,22 @@ test('the starfield sits inside the far plane, behind everything scaled space pl
   expect(LENS.starShare).toBeLessThan(1);
   expect(LENS.starShare).toBeGreaterThan(0.95);
 });
+
+test('beside Saturn its rings, not its globe, are the nearest surface', () => {
+  const ring = { pole: km(0, 1, 0), innerKm: 72_770, outerKm: 144_987.5 };
+  // 170,000 km from Saturn's centre and 10 degrees above the ring plane: the outer edge is about
+  // 40,000 km away, while the cloud tops are 110,000 km away.
+  const elevation = (10 * Math.PI) / 180;
+  const centre = km(-170_000 * Math.cos(elevation), -170_000 * Math.sin(elevation), 0);
+  const nearest = ringDistance(centre, ring);
+  expect(nearest).toBeCloseTo(Math.hypot(170_000 * Math.sin(elevation), 170_000 * Math.cos(elevation) - ring.outerKm), 6);
+  const altitude = nearestAltitude([{ centre, radius: 60_268, ring }]);
+  expect(altitude).toBeCloseTo(nearest, 6);
+  // So the near plane stays in front of the nearest ring point.
+  expect(lensFor(altitude).near).toBeLessThan(nearest);
+  // Over the rings themselves the distance is the height above their plane.
+  expect(ringDistance(km(-100_000, -5_000, 0), ring)).toBeCloseTo(5_000, 6);
+  // Right in the ring plane the rings count from a small share of the way in, not from zero.
+  expect(nearestAltitude([{ centre: km(-100_000, 0, 0), radius: 60_268, ring }])).toBeCloseTo(100_000 * LENS.ringFloorShare, 6);
+});
+

@@ -5,7 +5,6 @@ import {
   Group,
   Mesh,
   MeshBasicNodeMaterial,
-  Quaternion,
   RingGeometry,
   SphereGeometry,
   Vector3,
@@ -16,10 +15,8 @@ import {
   abs,
   cos,
   dot,
-  faceDirection,
   float,
   max,
-  min,
   mix,
   normalize,
   normalView,
@@ -29,7 +26,6 @@ import {
   positionWorld,
   cameraPosition,
   pow,
-  select,
   sin,
   smoothstep,
   texture3D,
@@ -100,21 +96,7 @@ const STEAM = vec3(0.5, 0.46, 0.42);
 const HAZY_SKY = vec3(0.9, 0.62, 0.36);
 const BLUE_SKY = vec3(0.32, 0.58, 1.0);
 
-/** Optional extras for views other than the chapters' (the defaults are the chapters' Earth exactly). */
-export interface EarthOptions {
-  /** Sphere segments, width and height. Default [192, 128]. */
-  segments?: readonly [number, number];
-  /** Radius of the atmosphere shell in planet radii. Default 1.035 (a thinner shell lets a camera skim lower). */
-  atmosphereScale?: number;
-  /**
-   * Draws the young world's lava glow. Default true. Today's Earth seen up close needs false: the
-   * glow is built from the lowest noise values, so even with `molten` 0 a few faint specks remain,
-   * too small to see at the chapters' sizes but plain on a night side filling the screen.
-   */
-  lava?: boolean;
-}
-
-export function createEarth(noise: Data3DTexture, radius: number, options?: EarthOptions): Earth {
+export function createEarth(noise: Data3DTexture, radius: number): Earth {
   const object = new Group();
   object.name = 'earth';
   const uTime = uniform(0);
@@ -176,10 +158,8 @@ export function createEarth(noise: Data3DTexture, radius: number, options?: Eart
   const glint = pow(max(dot(normalWorld, half), 0), 90).mul(water).mul(float(1).sub(cloud)).mul(smoothstep(0, 0.2, nDotL)).mul(0.9);
   const emissive = lava.mul(float(1).sub(u.steam.mul(0.4)));
   const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
-  material.colorNode =
-    options?.lava === false ? surface.mul(lit).add(vec3(glint)).mul(uLight) : surface.mul(lit).add(vec3(glint)).mul(uLight).add(emissive.mul(uLight));
-  const [widthSegments, heightSegments] = options?.segments ?? [192, 128];
-  const geometry = new SphereGeometry(1, widthSegments, heightSegments);
+  material.colorNode = surface.mul(lit).add(vec3(glint)).mul(uLight).add(emissive.mul(uLight));
+  const geometry = new SphereGeometry(1, 192, 128);
   const body = new Mesh(geometry, material);
   body.name = 'earth-surface';
 
@@ -192,7 +172,7 @@ export function createEarth(noise: Data3DTexture, radius: number, options?: Eart
   airMaterial.colorNode = sky.mul(rim.mul(1.1).add(0.03)).mul(day).mul(float(1).sub(u.molten.mul(0.6))).mul(uLight);
   airMaterial.opacityNode = float(1);
   const air = new Mesh(geometry, airMaterial);
-  air.scale.setScalar(options?.atmosphereScale ?? 1.035);
+  air.scale.setScalar(1.035);
   air.name = 'earth-atmosphere';
 
   const spinner = new Group();
@@ -230,14 +210,6 @@ export function createEarth(noise: Data3DTexture, radius: number, options?: Eart
 /* Other bodies                                                         */
 /* ------------------------------------------------------------------ */
 
-/** A ring system's radial structure; `radial` runs from 0 at the inner edge to 1 at the outer. */
-export interface RingProfile {
-  /** Share of light the ring blocks, 0 to 1 (0 outside the ring). */
-  opacity(radial: Node<'float'>): Node<'float'>;
-  /** Albedo colour. Default: the body's colour, as the chapters' rings. */
-  color?(radial: Node<'float'>): Node<'vec3'>;
-}
-
 export interface SimpleBodyOptions {
   name: string;
   color: readonly [number, number, number];
@@ -248,32 +220,6 @@ export interface SimpleBodyOptions {
   /** Saturn's rings: inner and outer radius in planet radii. */
   rings?: readonly [number, number];
   seed?: number;
-  /*
-   * Optional extras for the true-scale explorer. Left out, the body is exactly the chapters' body.
-   */
-  /** Sphere segments, width and height. Default [64, 48]. */
-  segments?: readonly [number, number];
-  /** Polar flattening, 1 - polar / equatorial radius (the pole is the body's local y). Default 0. */
-  flattening?: number;
-  /**
-   * Puts the globe and its rings under one group tilted by this angle (radians, about z), the rings in
-   * the equator and lit by the Sun's height above their own plane. Undefined keeps the chapters' look
-   * (an upright globe, rings tilted 0.47 rad and lit as if level). With a tilt, set the object's
-   * orientation before update(): the rings' lighting and shadows work in the body's own frame.
-   */
-  tilt?: number;
-  /**
-   * 'wrap' (default): a soft wrapped terminator. 'lunar': Lommel-Seeliger, as airless regolith reflects
-   * (no darkening at the limb of a full moon, a sharp terminator). 'giant': Minnaert limb darkening, as
-   * cloud decks show.
-   */
-  lighting?: 'wrap' | 'lunar' | 'giant';
-  /** The albedo as a function of the unit surface direction (the pole is y), replacing color, mottle and bands. */
-  surface?: (direction: Node<'vec3'>) => Node<'vec3'>;
-  /** The rings' radial structure (with a tilt). Default: the chapters' ringlets. */
-  ringProfile?: RingProfile;
-  /** With a tilt: the globe's shadow on the rings and the rings' shadow on the globe, both analytic. */
-  ringShadows?: boolean;
 }
 
 export interface SimpleBody {
@@ -281,16 +227,6 @@ export interface SimpleBody {
   update(state: PlanetState): void;
   dispose(): void;
 }
-
-/** The chapters' ringlets: fine sine ringlets, soft edges and one dark division. */
-function chapterRingOpacity(radial: Node<'float'>): Node<'float'> {
-  const ringlets = sin(radial.mul(80)).mul(0.15).add(0.85).mul(smoothstep(0, 0.08, radial)).mul(float(1).sub(smoothstep(0.9, 1, radial)));
-  const gap = float(1).sub(smoothstep(0.55, 0.57, radial).mul(float(1).sub(smoothstep(0.6, 0.62, radial))).mul(0.85));
-  return ringlets.mul(gap).mul(0.75);
-}
-
-/** Minnaert's exponent for the giants' limb darkening (1 would be Lambert); illustrative, not fitted. */
-const MINNAERT_K = 0.85;
 
 /** A sunlit sphere: rocky bodies mottled, gas giants banded, optionally with rings. */
 export function createSimpleBody(noise: Data3DTexture, radius: number, options: SimpleBodyOptions): SimpleBody {
@@ -311,100 +247,32 @@ export function createSimpleBody(noise: Data3DTexture, radius: number, options: 
     const band = sin(n.y.add(wobble).mul(options.bands * Math.PI)).mul(0.5).add(0.5);
     albedo = base.mul(band.mul(0.35).add(0.75));
   }
-  if (options.surface) albedo = options.surface(n);
   const nDotL = dot(normalWorld, uSun);
-  const lighting = options.lighting ?? 'wrap';
-  let lit: Node<'float'>;
-  if (lighting === 'lunar') {
-    // Lommel-Seeliger: mu0 / (mu0 + mu), scaled to 1 where the Sun and the eye are both overhead.
-    const mu0 = max(nDotL, 0);
-    const mu = max(dot(normalView, positionViewDirection), 0);
-    lit = mu0.mul(2).div(mu0.add(mu).add(1e-4)).mul(0.9).add(0.004);
-  } else if (lighting === 'giant') {
-    // Minnaert: mu0^k mu^(k-1), so the limb darkens; a little twilight past the terminator from the haze.
-    const mu0 = max(nDotL.add(0.03).div(1.03), 0);
-    const mu = max(dot(normalView, positionViewDirection), 0.05);
-    lit = pow(mu0, MINNAERT_K).mul(pow(mu, MINNAERT_K - 1)).add(0.004);
-  } else {
-    lit = smoothstep(-0.08, 0.25, nDotL).mul(max(nDotL, 0).mul(0.8).add(0.2)).add(0.01);
-  }
-  const fullRadius = 1;
-  const polar = fullRadius - (options.flattening ?? 0);
-  // With a tilt, the Sun's direction in the rings' frame and in the globe's own frame (set on the CPU).
-  const tilted = options.tilt === undefined ? null : new Group();
-  const uSunRings = uniform(new Vector3(0, 1, 0));
-  const uSunGlobe = uniform(new Vector3(0, 1, 0));
-  const ringProfile: RingProfile = options.ringProfile ?? { opacity: chapterRingOpacity };
+  const lit = smoothstep(-0.08, 0.25, nDotL).mul(max(nDotL, 0).mul(0.8).add(0.2)).add(0.01);
   const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
-  if (tilted && options.rings && options.ringShadows) {
-    // The rings' shadow on the globe: from this point toward the Sun, where does the ray cross the ring plane?
-    const [inner, outer] = options.rings;
-    const point = vec3(positionLocal.x, positionLocal.y.mul(polar), positionLocal.z);
-    const sy = select(uSunGlobe.y.greaterThanEqual(0), max(uSunGlobe.y, 1e-4), min(uSunGlobe.y, -1e-4));
-    const along = point.y.negate().div(sy);
-    const hit = point.add(uSunGlobe.mul(along));
-    const radial = hit.xz.length().sub(inner).div(outer - inner);
-    const blocked = ringProfile.opacity(radial).mul(step01(along));
-    material.colorNode = albedo.mul(lit).mul(float(1).sub(blocked.mul(0.92))).mul(uLight);
-  } else {
-    material.colorNode = albedo.mul(lit).mul(uLight);
-  }
-  const [widthSegments, heightSegments] = options.segments ?? [64, 48];
-  const geometry = new SphereGeometry(1, widthSegments, heightSegments);
+  material.colorNode = albedo.mul(lit).mul(uLight);
+  const geometry = new SphereGeometry(1, 64, 48);
   const body = new Mesh(geometry, material);
-  if (polar !== fullRadius) body.scale.y = polar;
   const spinner = new Group();
   spinner.add(body);
-  if (tilted) {
-    tilted.rotation.z = options.tilt ?? 0;
-    tilted.add(spinner);
-    object.add(tilted);
-  } else {
-    object.add(spinner);
-  }
+  object.add(spinner);
   let ringGeometry: RingGeometry | null = null;
   let ringMaterial: MeshBasicNodeMaterial | null = null;
   if (options.rings) {
     const [inner, outer] = options.rings;
-    ringGeometry = new RingGeometry(inner, outer, tilted ? 512 : 128, 1);
+    ringGeometry = new RingGeometry(inner, outer, 128, 1);
     ringGeometry.rotateX(-Math.PI / 2);
     ringMaterial = new MeshBasicNodeMaterial({ transparent: true, side: DoubleSide, depthWrite: false, fog: false });
     const radial = positionLocal.length().sub(inner).div(outer - inner);
-    if (tilted) {
-      const opacity = ringProfile.opacity(radial);
-      const color = ringProfile.color ? ringProfile.color(radial) : base.mul(1.1);
-      // The face the Sun lights, or the far face, seen by light that filters through (bright where the ring is thin).
-      // The geometry's normal is the rings' local +y, so the front face is the one toward +y.
-      const litFace = smoothstep(-1e-3, 1e-3, faceDirection.mul(uSunRings.y));
-      // A thick ring of icy particles stays fairly bright even with the Sun low over it.
-      const reflected = float(0.5).add(pow(abs(uSunRings.y), 0.3).mul(0.5));
-      const transmitted = float(1).sub(opacity).mul(opacity).mul(1.8).mul(reflected);
-      let light: Node<'float'> = mix(transmitted, reflected, litFace);
-      if (options.ringShadows) {
-        // The globe's shadow on the rings: does the ray toward the Sun meet the (flattened) globe?
-        const p = vec3(positionLocal.x, positionLocal.y.div(polar), positionLocal.z);
-        const l = vec3(uSunRings.x, uSunRings.y.div(polar), uSunRings.z);
-        const b = dot(p, l);
-        const closest = dot(p, p).sub(b.mul(b).div(dot(l, l)));
-        const shadow = float(1).sub(smoothstep(0.985, 1.015, closest)).mul(step01(b.negate()));
-        light = light.mul(float(1).sub(shadow.mul(0.97)));
-      }
-      ringMaterial.colorNode = color.mul(light).mul(uLight);
-      ringMaterial.opacityNode = opacity;
-    } else {
-      ringMaterial.colorNode = base.mul(1.1).mul(uLight).mul(max(dot(vec3(0, 1, 0), uSun).mul(0.5).add(0.6), 0.25));
-      ringMaterial.opacityNode = chapterRingOpacity(radial);
-    }
+    const ringlets = sin(radial.mul(80)).mul(0.15).add(0.85).mul(smoothstep(0, 0.08, radial)).mul(float(1).sub(smoothstep(0.9, 1, radial)));
+    const gap = float(1).sub(smoothstep(0.55, 0.57, radial).mul(float(1).sub(smoothstep(0.6, 0.62, radial))).mul(0.85));
+    ringMaterial.colorNode = base.mul(1.1).mul(uLight).mul(max(dot(vec3(0, 1, 0), uSun).mul(0.5).add(0.6), 0.25));
+    ringMaterial.opacityNode = ringlets.mul(gap).mul(0.75);
     const ring = new Mesh(ringGeometry, ringMaterial);
-    if (tilted) {
-      tilted.add(ring);
-    } else {
-      ring.rotation.z = 0.47;
-      object.add(ring);
-    }
+    ring.rotation.z = 0.47;
+    object.add(ring);
   }
   object.scale.setScalar(radius);
-  const frame = new Quaternion();
   return {
     object,
     update(state) {
@@ -412,12 +280,6 @@ export function createSimpleBody(noise: Data3DTexture, radius: number, options: 
       uSun.value.copy(state.sun).normalize();
       spinner.rotation.y = state.spin;
       object.visible = state.light > 1e-3;
-      if (tilted) {
-        frame.copy(object.quaternion).multiply(tilted.quaternion).invert();
-        uSunRings.value.copy(uSun.value).applyQuaternion(frame);
-        frame.copy(object.quaternion).multiply(tilted.quaternion).multiply(spinner.quaternion).invert();
-        uSunGlobe.value.copy(uSun.value).applyQuaternion(frame);
-      }
     },
     dispose() {
       geometry.dispose();
@@ -426,9 +288,4 @@ export function createSimpleBody(noise: Data3DTexture, radius: number, options: 
       ringMaterial?.dispose();
     },
   };
-}
-
-/** 1 where x > 0, else 0 (a hard step: only used where both sides already agree). */
-function step01(x: Node<'float'>): Node<'float'> {
-  return select(x.greaterThan(0), float(1), float(0));
 }

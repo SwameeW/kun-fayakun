@@ -7,24 +7,43 @@
  * log space, so a wheel step changes the view by the same proportion at 200 km or at 5 au,
  * between a floor above the body's air (or 2% of its radius) and 50 au.
  *
- * Flying: an eased path in log distance, never a jump. The camera backs away until both bodies fit
- * the view, pans across, then closes in on the new body from its sunlit side, so the whole move reads
- * as one gesture; its length grows with the zoom it covers (2.8 to 9 s). With reduced motion the
- * flight is a dimmed cut instead (the exposure dips, the camera moves unseen, the light returns).
+ * Framing: a body is shown at a distance that fits it (with Saturn's rings) to a set share of the
+ * narrower side of the part of the view the interface leaves clear, so a phone held upright frames
+ * it as well as a wide screen; the explorer tilts the camera so the body sits in the middle of that
+ * clear part. Each body is first seen from its own side: the sunlit face turned a little away so
+ * the terminator shows, Jupiter from low latitude, Saturn from the side of its rings the Sun lights.
+ *
+ * Flying: the camera turns to the destination and comes in on it, its distance to it falling
+ * smoothly in log space the whole way (never swinging away), along an arc that rises out of the
+ * planets' plane and keeps well clear of the Sun; the destination stays centred, a point and its
+ * name growing into a world. Its length grows with the zoom it covers (2.6 to 8 s). With reduced
+ * motion the flight is a dimmed cut instead (the picture dips, the camera moves unseen, it returns).
  * Entering, the camera glides in from far away to the first body (none with reduced motion).
  */
 
 import type { BodyId } from '../core/types';
 import { km, type Km } from './space/origin';
 
+/** How a body is first seen: turned this far (radians) from its sunlit face, from this latitude. */
+export interface ViewPreference {
+  azimuth: number;
+  latitude: number;
+  /** The latitude is taken on the side of the equator the Sun lights (Saturn: its rings' lit face). */
+  litFace: boolean;
+}
+
 export interface NavBody {
   readonly id: BodyId;
   readonly radiusKm: number;
   readonly boundKm: number;
   readonly minAltitudeKm: number;
-  readonly framing: number;
+  /** Share of the narrower clear side of the view the bounding sphere spans when framed. */
+  readonly fill: number;
+  readonly view: ViewPreference;
   /** Centre now, render frame, km. */
   readonly position: Km;
+  /** North pole (unit), render frame. */
+  readonly pole: Km;
 }
 
 export interface NavWorld {
@@ -35,6 +54,14 @@ export interface NavWorld {
   readonly sun: Km;
 }
 
+/** The view the camera frames bodies in: its vertical half-angle's tangent, its aspect, and the shares of its height the interface covers. */
+export interface NavView {
+  tanHalfFov: number;
+  aspect: number;
+  top: number;
+  bottom: number;
+}
+
 export interface CameraPose {
   /** Camera position, render frame, km (float64). */
   readonly position: Km;
@@ -42,9 +69,11 @@ export interface CameraPose {
   readonly target: Km;
 }
 
-/** How much the scene is dimmed for a reduced-motion cut (1 = not at all). */
 export interface NavOutput extends CameraPose {
+  /** How much the picture is dimmed for a reduced-motion cut (1 = not at all). */
   dim: number;
+  /** True on the one frame a reduced-motion cut moves the camera (the exposure may jump with it). */
+  cut: boolean;
   /** 0 at the start of a flight, 1 when the camera has arrived (1 while orbiting). */
   progress: number;
   /** The body the flight left, while flying. */
@@ -63,6 +92,15 @@ const KEY_TURN = 1.1;
 const KEY_ZOOM = 1.2;
 /** Entry glide: from this many times the framing distance, over this long. */
 const APPROACH = { from: 70, seconds: 6.5 } as const;
+/** Flight length: base and per decade of the distance it covers (over the arrival distance), seconds, and its bounds. */
+const FLIGHT = { base: 2.6, perDecade: 0.85, min: 2.6, max: 8 } as const;
+/**
+ * The arc's angle out of the planets' plane at its middle (radians, about 20 degrees), and how close
+ * to the Sun a flight between two other bodies may pass, as a share of the nearer one's distance from it.
+ */
+const ARC = { lift: 0.35, sunClearance: 0.45 } as const;
+/** Share of a flight spent turning the gaze from where it was to the destination. */
+const GAZE_TURN = 0.3;
 /** Reduced-motion cut: the dim (a share of the light), and how long each half takes. */
 const CUT = { dim: 0.15, seconds: 1.1 } as const;
 /**
@@ -71,6 +109,8 @@ const CUT = { dim: 0.15, seconds: 1.1 } as const;
  * middle of the view once it would otherwise climb past it.
  */
 const HORIZON_VIEW = 0.3;
+/** The camera counts as moving while its pose changes by more than this share of its distance per frame. */
+const STILL = 1e-6;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 const smootherstep = (a: number, b: number, x: number): number => {
@@ -85,10 +125,12 @@ const set = (out: Km, x: number, y: number, z: number): Km => {
   out.z = z;
   return out;
 };
+const copy = (out: Km, v: Km): Km => set(out, v.x, v.y, v.z);
 const norm = (v: Km): Km => {
   const l = Math.hypot(v.x, v.y, v.z) || 1;
   return set(v, v.x / l, v.y / l, v.z / l);
 };
+const dot = (a: Km, b: Km): number => a.x * b.x + a.y * b.y + a.z * b.z;
 
 /** Unit direction from azimuth (about +y) and elevation. */
 function direction(azimuth: number, elevation: number, out: Km): Km {
@@ -136,7 +178,7 @@ function lookTarget(position: Km, centre: Km, radius: number, out: Km): Km {
 
 /** Spherical interpolation between unit vectors. */
 function slerp(a: Km, b: Km, t: number, out: Km): Km {
-  const d = clamp(a.x * b.x + a.y * b.y + a.z * b.z, -1, 1);
+  const d = clamp(dot(a, b), -1, 1);
   const theta = Math.acos(d);
   if (theta < 1e-6) return set(out, a.x, a.y, a.z);
   // Opposite directions: go around through "up" rather than through the body.
@@ -156,14 +198,18 @@ interface Flight {
   to: BodyId;
   elapsed: number;
   seconds: number;
-  /** Start and end: direction from the body to the camera, and log distance. */
-  dirFrom: Km;
+  /** The start: the camera's offset from the body it left, and the direction it was looking. */
+  startOffset: Km;
+  gaze: Km;
+  /** The end: direction from the destination to the camera, and log distance. */
   dirTo: Km;
-  lnFrom: number;
   lnTo: number;
-  lnPeak: number;
-  /** A reduced-motion cut instead of a flight. */
+  /** How far the arc rises out of the planets' plane (a tangent). */
+  lift: number;
+  /** A reduced-motion cut instead of a flight; for a cut, the start's direction and log distance. */
   cut: boolean;
+  dirFrom: Km;
+  lnFrom: number;
   /** The entry glide: one body, distance falling smoothly the whole way. */
   approach: boolean;
 }
@@ -178,11 +224,14 @@ export class Navigator {
   /** A body asked for during a flight: the camera goes there once it has arrived (never a mid-air swerve). */
   private queued: BodyId | null = null;
   /** The last pose written, so a new flight starts exactly where the camera is. */
-  private readonly last: NavOutput = { position: km(), target: km(), dim: 1, progress: 1, from: null };
+  private readonly last: NavOutput = { position: km(), target: km(), dim: 1, cut: false, progress: 1, from: null };
   /** Held keys' rates: [azimuth, elevation, zoom] per second. */
   private readonly keyRates: [number, number, number] = [0, 0, 0];
   reducedMotion = false;
-  private readonly scratch = { a: km(), b: km(), c: km(), d: km() };
+  /** The camera's pose changed this frame. */
+  moving = false;
+  private view: NavView = { tanHalfFov: Math.tan((25 * Math.PI) / 180), aspect: 16 / 10, top: 0, bottom: 0 };
+  private readonly scratch = { a: km(), b: km(), c: km(), d: km(), e: km(), f: km(), g: km(), h: km() };
 
   constructor(focus: BodyId) {
     this.focus = focus;
@@ -192,43 +241,57 @@ export class Navigator {
     return this.flight !== null;
   }
 
-  /** The framing distance for a body, km from its centre. */
-  static framingKm(body: NavBody): number {
-    return body.boundKm * body.framing;
+  /** The view bodies are framed in (call when the window or the interface around it changes). */
+  setView(view: NavView): void {
+    this.view = { ...view };
+  }
+
+  /** The framing distance for a body in the current view, km from its centre. */
+  framingKm(body: NavBody): number {
+    const { tanHalfFov, aspect, top, bottom } = this.view;
+    const clear = Math.max(0.35, 1 - top - bottom);
+    // On the image plane at distance 1 the view is 2 tan(fov/2) high; the narrower clear side, then
+    // the bounding sphere's tangent half-angle that spans `fill` of it.
+    const narrower = 2 * tanHalfFov * Math.min(clear, aspect);
+    const t = (body.fill * narrower) / 2;
+    return (body.boundKm * Math.sqrt(1 + t * t)) / t;
   }
 
   private minDistance(body: NavBody): number {
     return body.radiusKm + body.minAltitudeKm;
   }
 
-  /** The direction a flight arrives from: the sunlit side, a little above, partly looking back where it came from. */
-  private arrival(world: NavWorld, from: NavBody, to: NavBody, out: Km): Km {
-    const { a, b } = this.scratch;
-    set(a, world.sun.x - to.position.x, world.sun.y - to.position.y, world.sun.z - to.position.z);
-    set(b, to.position.x - from.position.x, to.position.y - from.position.y, to.position.z - from.position.z);
-    if (to.id === 'sun' || Math.hypot(a.x, a.y, a.z) < 1) {
-      // To the Sun: arrive from the side we came from.
-      set(out, -b.x, -b.y, -b.z);
-      if (Math.hypot(out.x, out.y, out.z) < 1) set(out, 0, 0, 1);
-      norm(out);
-      return norm(set(out, out.x, out.y + 0.3, out.z));
-    }
-    norm(a);
-    if (Math.hypot(b.x, b.y, b.z) < 1) set(b, a.x, a.y, a.z);
-    norm(b);
-    return norm(set(out, a.x * 0.8 + b.x * 0.6, a.y * 0.8 + b.y * 0.6 + 0.3, a.z * 0.8 + b.z * 0.6));
-  }
-
   /**
-   * The first view of a body: its sunlit face turned a little away, so the terminator shows, from
-   * slightly above its orbit. (The Sun: seen from the Earth's side.)
+   * The direction (from a body's centre) it is seen from at first: its sunlit face (the Sun: the
+   * Earth's side) turned by its preferred azimuth, toward `toward` when given (the side a flight
+   * comes from), at its preferred latitude.
    */
-  private entryDirection(world: NavWorld, body: NavBody, out: Km): Km {
-    const toward = body.id === 'sun' ? world.body('earth').position : world.sun;
-    const { a } = this.scratch;
-    norm(set(a, toward.x - body.position.x, toward.y - body.position.y, toward.z - body.position.z));
-    const { azimuth } = angles(a);
-    return direction(azimuth + (body.id === 'sun' ? 0.35 : 0.95), 0.22, out);
+  private preferredDirection(world: NavWorld, body: NavBody, toward: Km | null, out: Km): Km {
+    const { a, b, c } = this.scratch;
+    const light = body.id === 'sun' ? world.body('earth').position : world.sun;
+    norm(set(a, light.x - body.position.x, light.y - body.position.y, light.z - body.position.z));
+    const pole = body.pole;
+    // The light's direction across the body's equator, and the equator's direction a quarter turn on.
+    const lightLatitude = dot(a, pole);
+    set(b, a.x - pole.x * lightLatitude, a.y - pole.y * lightLatitude, a.z - pole.z * lightLatitude);
+    if (Math.hypot(b.x, b.y, b.z) < 1e-6) set(b, 1, 0, 0);
+    norm(b);
+    set(c, pole.y * b.z - pole.z * b.y, pole.z * b.x - pole.x * b.z, pole.x * b.y - pole.y * b.x);
+    let azimuth = body.view.azimuth;
+    if (toward && dot(toward, c) < 0) azimuth = -azimuth;
+    const latitude = body.view.litFace && lightLatitude < 0 ? -body.view.latitude : body.view.latitude;
+    const cosA = Math.cos(azimuth);
+    const sinA = Math.sin(azimuth);
+    const cosL = Math.cos(latitude);
+    const sinL = Math.sin(latitude);
+    return norm(
+      set(
+        out,
+        (b.x * cosA + c.x * sinA) * cosL + pole.x * sinL,
+        (b.y * cosA + c.y * sinA) * cosL + pole.y * sinL,
+        (b.z * cosA + c.z * sinA) * cosL + pole.z * sinL,
+      ),
+    );
   }
 
   /**
@@ -239,20 +302,25 @@ export class Navigator {
     const body = world.body(id);
     this.focus = id;
     this.queued = null;
-    const dirTo = this.entryDirection(world, body, km());
-    const lnTo = Math.log(Navigator.framingKm(body));
+    const dirTo = this.preferredDirection(world, body, null, km());
+    const lnTo = Math.log(this.framingKm(body));
     if (!approach || this.reducedMotion) {
       this.flight = null;
       this.settle(dirTo, lnTo);
       this.orbitPose(body, this.last);
       return;
     }
-    // Swing in from a little to one side, so the arrival has some parallax.
+    // Swing in from a little to one side and above, so the arrival has some parallax.
     const { azimuth, elevation } = angles(dirTo);
     const dirFrom = direction(azimuth - 0.6, clamp(elevation + 0.18, -MAX_ELEVATION, MAX_ELEVATION), km());
     const lnFrom = lnTo + Math.log(APPROACH.from);
-    this.flight = { from: id, to: id, elapsed: 0, seconds: APPROACH.seconds, dirFrom, dirTo, lnFrom, lnTo, lnPeak: lnFrom, cut: false, approach: true };
+    const r = Math.exp(lnFrom);
+    const startOffset = km(dirFrom.x * r, dirFrom.y * r, dirFrom.z * r);
+    const gaze = km(-dirFrom.x, -dirFrom.y, -dirFrom.z);
+    this.flight = { from: id, to: id, elapsed: 0, seconds: APPROACH.seconds, startOffset, gaze, dirTo, lnTo, lift: 0, cut: false, dirFrom, lnFrom, approach: true };
     this.settle(dirFrom, lnFrom);
+    set(this.last.position, body.position.x + startOffset.x, body.position.y + startOffset.y, body.position.z + startOffset.z);
+    copy(this.last.target, body.position);
   }
 
   /** Flies to a body from wherever the camera is now (after the current flight, if one is under way). */
@@ -265,21 +333,36 @@ export class Navigator {
     const from = world.body(this.focus);
     if (id === this.focus) {
       // Already here: ease back to the framing distance.
-      this.goal.lnDistance = Math.log(Navigator.framingKm(to));
+      this.goal.lnDistance = Math.log(this.framingKm(to));
       return;
     }
     const camera = this.last.position;
-    const offset = set(km(), camera.x - from.position.x, camera.y - from.position.y, camera.z - from.position.z);
-    const lnFrom = Math.log(Math.max(1, Math.hypot(offset.x, offset.y, offset.z)));
-    const dirFrom = norm(offset);
-    const dirTo = this.arrival(world, from, to, km());
-    const lnTo = Math.log(Navigator.framingKm(to));
-    const span = Math.hypot(to.position.x - from.position.x, to.position.y - from.position.y, to.position.z - from.position.z);
-    // Far enough back that both bodies fit a 50 degree view from the midpoint.
-    const lnPeak = Math.max(lnFrom, lnTo, Math.log(Math.max(1, 1.15 * span)));
-    const zoom = (Math.abs(lnPeak - lnFrom) + Math.abs(lnPeak - lnTo)) / (2 * Math.LN10);
-    const seconds = this.reducedMotion ? 2 * CUT.seconds : clamp(2.8 + 0.85 * zoom, 2.8, 9);
-    this.flight = { from: this.focus, to: id, elapsed: 0, seconds, dirFrom, dirTo, lnFrom, lnTo, lnPeak, cut: this.reducedMotion, approach: false };
+    const startOffset = km(camera.x - from.position.x, camera.y - from.position.y, camera.z - from.position.z);
+    const gaze = norm(km(this.last.target.x - camera.x, this.last.target.y - camera.y, this.last.target.z - camera.z));
+    const incoming = norm(km(camera.x - to.position.x, camera.y - to.position.y, camera.z - to.position.z));
+    const dirTo = this.preferredDirection(world, to, incoming, km());
+    const lnTo = Math.log(this.framingKm(to));
+    const distance = Math.max(1, Math.hypot(camera.x - to.position.x, camera.y - to.position.y, camera.z - to.position.z));
+    const decades = Math.max(0, Math.log10(distance) - lnTo / Math.LN10);
+    const seconds = this.reducedMotion ? 2 * CUT.seconds : clamp(FLIGHT.base + FLIGHT.perDecade * decades, FLIGHT.min, FLIGHT.max);
+    // Short hops barely leave the plane; long flights rise out of it (to ecliptic north, the same for all).
+    const lift = ARC.lift * smootherstep(0.5, 2.5, decades);
+    const dirFrom = norm(km(startOffset.x, startOffset.y, startOffset.z));
+    this.flight = {
+      from: this.focus,
+      to: id,
+      elapsed: 0,
+      seconds,
+      startOffset,
+      gaze,
+      dirTo,
+      lnTo,
+      lift,
+      cut: this.reducedMotion,
+      dirFrom,
+      lnFrom: Math.log(Math.max(1, Math.hypot(startOffset.x, startOffset.y, startOffset.z))),
+      approach: false,
+    };
     this.focus = id;
   }
 
@@ -314,9 +397,15 @@ export class Navigator {
 
   /** Advances by dt seconds and writes the camera pose. */
   update(world: NavWorld, dt: number, out: NavOutput): NavOutput {
+    const { e, f } = this.scratch;
+    copy(e, this.last.position);
+    copy(f, this.last.target);
     this.advance(world, dt, out);
-    set(this.last.position, out.position.x, out.position.y, out.position.z);
-    set(this.last.target, out.target.x, out.target.y, out.target.z);
+    const scale = Math.max(1, Math.hypot(out.position.x - out.target.x, out.position.y - out.target.y, out.position.z - out.target.z));
+    const moved = Math.hypot(out.position.x - e.x, out.position.y - e.y, out.position.z - e.z) + Math.hypot(out.target.x - f.x, out.target.y - f.y, out.target.z - f.z);
+    this.moving = this.flight !== null || moved > STILL * scale;
+    copy(this.last.position, out.position);
+    copy(this.last.target, out.target);
     if (!this.flight && this.queued) {
       const next = this.queued;
       this.queued = null;
@@ -327,16 +416,22 @@ export class Navigator {
 
   private advance(world: NavWorld, dt: number, out: NavOutput): void {
     out.dim = 1;
+    out.cut = false;
     out.progress = 1;
     out.from = null;
     const flight = this.flight;
     if (flight) {
+      const before = flight.elapsed / flight.seconds;
       flight.elapsed += dt;
       const s = clamp(flight.elapsed / flight.seconds, 0, 1);
       out.progress = s;
       out.from = flight.approach ? null : flight.from;
-      if (flight.cut) this.cutStep(world, flight, s, out);
-      else this.flightStep(world, flight, s, out);
+      if (flight.cut) {
+        this.cutStep(world, flight, s, out);
+        out.cut = before < 0.5 && s >= 0.5;
+      } else {
+        this.flightStep(world, flight, s, out);
+      }
       if (s >= 1) {
         this.flight = null;
         this.settle(flight.dirTo, flight.lnTo);
@@ -377,25 +472,88 @@ export class Navigator {
     this.goal.lnDistance = ln;
   }
 
+  /**
+   * One frame of a flight. The camera travels from where it was to the arrival pose along an arc
+   * that rises out of the planets' plane, its progress paced in log space: leaving, its distance
+   * from the start grows exponentially from nothing (the body it left recedes as if zooming out);
+   * arriving, its distance to the end shrinks exponentially (the destination grows from a point into
+   * a world), so its distance to the destination only ever falls. The gaze turns from where it was
+   * to the destination early and then stays on it.
+   */
   private flightStep(world: NavWorld, f: Flight, s: number, out: NavOutput): void {
-    const a = world.body(f.from).position;
-    const b = world.body(f.to).position;
-    // Pan across while backed away; turn toward the arrival side over the second half.
-    const w = smootherstep(0.12, 0.88, s);
-    set(out.target, a.x + (b.x - a.x) * w, a.y + (b.y - a.y) * w, a.z + (b.z - a.z) * w);
-    let ln: number;
-    if (f.approach) ln = f.lnFrom + (f.lnTo - f.lnFrom) * smootherstep(0, 1, s);
-    else if (s < 0.5) ln = f.lnFrom + (f.lnPeak - f.lnFrom) * smootherstep(0, 0.5, s);
-    else ln = f.lnPeak + (f.lnTo - f.lnPeak) * smootherstep(0.5, 1, s);
-    const dir = slerp(f.dirFrom, f.dirTo, smootherstep(f.approach ? 0 : 0.2, 1, s), this.scratch.d);
-    const r = Math.exp(ln);
-    set(out.position, out.target.x + dir.x * r, out.target.y + dir.y * r, out.target.z + dir.z * r);
-    // The same lifted gaze as when orbiting, so a flight that starts or ends low does not jump.
-    const near = world.body(s < 0.5 ? f.from : f.to);
-    const centre = this.scratch.b;
-    set(centre, out.target.x, out.target.y, out.target.z);
-    lookTarget(out.position, centre, near.radiusKm, out.target);
-    this.lnDistance = ln;
+    const { a, b, d } = this.scratch;
+    const from = world.body(f.from);
+    const to = world.body(f.to);
+    if (f.approach) {
+      // The entry glide: centred on the one body, its distance falling smoothly in log space.
+      norm(copy(a, f.startOffset));
+      const ln = Math.log(Math.max(1, Math.hypot(f.startOffset.x, f.startOffset.y, f.startOffset.z)));
+      const lnNow = ln + (f.lnTo - ln) * smootherstep(0, 1, s);
+      const dir = slerp(a, f.dirTo, smootherstep(0, 1, s), d);
+      const r = Math.exp(lnNow);
+      set(out.position, to.position.x + dir.x * r, to.position.y + dir.y * r, to.position.z + dir.z * r);
+      lookTarget(out.position, to.position, to.radiusKm, out.target);
+      this.lnDistance = lnNow;
+      return;
+    }
+    // Leaving, centred on the body left; arriving, centred on the destination. Each half moves in
+    // log distance from its body, exponentially away and exponentially in, and they meet halfway,
+    // raised out of the planets' plane by the arc's angle (both halves reach the same point).
+    const { g: c, h: e } = this.scratch;
+    set(c, to.position.x - from.position.x, to.position.y - from.position.y, to.position.z - from.position.z);
+    const span = Math.max(1, Math.hypot(c.x, c.y, c.z));
+    norm(c);
+    const tilt = f.lift;
+    const halfway = span / 2 / Math.cos(tilt);
+    // "Up" square to the line between the bodies (ecliptic north, or any square direction if they lie along it).
+    set(e, -c.y * c.x, 1 - c.y * c.y, -c.y * c.z);
+    if (Math.hypot(e.x, e.y, e.z) < 1e-6) set(e, 1, 0, 0);
+    norm(e);
+    const lnLeave = Math.log(Math.max(1, Math.hypot(f.startOffset.x, f.startOffset.y, f.startOffset.z)));
+    const lnHalf = Math.log(halfway);
+    // Leaving takes at most a third of the time: once the body left is a point there is little to
+    // see until the destination grows, so the arrival, slowing all the way in, gets the rest.
+    const leaveShare = clamp((lnHalf - lnLeave) / Math.max(1e-6, lnHalf - lnLeave + (lnHalf - f.lnTo)), 0.2, 0.34);
+    const cosT = Math.cos(tilt);
+    const sinT = Math.sin(tilt);
+    if (s < leaveShare) {
+      const t = s / leaveShare;
+      norm(copy(a, f.startOffset));
+      set(b, c.x * cosT + e.x * sinT, c.y * cosT + e.y * sinT, c.z * cosT + e.z * sinT);
+      const dir = slerp(a, b, smootherstep(0, 1, t), d);
+      const r = Math.exp(lnLeave + (lnHalf - lnLeave) * t * t);
+      set(out.position, from.position.x + dir.x * r, from.position.y + dir.y * r, from.position.z + dir.z * r);
+    } else {
+      const t = (s - leaveShare) / (1 - leaveShare);
+      set(a, -c.x * cosT + e.x * sinT, -c.y * cosT + e.y * sinT, -c.z * cosT + e.z * sinT);
+      const dir = slerp(a, f.dirTo, smootherstep(0, 1, t), d);
+      const r = Math.exp(lnHalf + (f.lnTo - lnHalf) * (1 - (1 - t) ** 3));
+      set(out.position, to.position.x + dir.x * r, to.position.y + dir.y * r, to.position.z + dir.z * r);
+    }
+    if (f.to !== 'sun' && f.from !== 'sun') this.clearOfSun(world, from, to, out.position);
+    // The gaze: from where it was to the destination's (the lifted horizon gaze if arriving low).
+    lookTarget(out.position, to.position, to.radiusKm, b);
+    const range = Math.max(1, Math.hypot(b.x - out.position.x, b.y - out.position.y, b.z - out.position.z));
+    norm(set(b, b.x - out.position.x, b.y - out.position.y, b.z - out.position.z));
+    const gaze = slerp(f.gaze, b, smootherstep(0, GAZE_TURN, s), a);
+    set(out.target, out.position.x + gaze.x * range, out.position.y + gaze.y * range, out.position.z + gaze.z * range);
+    this.lnDistance = Math.log(Math.max(1, Math.hypot(out.position.x - to.position.x, out.position.y - to.position.y, out.position.z - to.position.z)));
+  }
+
+  /** Pushes a flight's camera out from the Sun to a share of the nearer body's distance from it. */
+  private clearOfSun(world: NavWorld, from: NavBody, to: NavBody, position: Km): void {
+    const sun = world.sun;
+    const dx = position.x - sun.x;
+    const dy = position.y - sun.y;
+    const dz = position.z - sun.z;
+    const r = Math.hypot(dx, dy, dz);
+    const nearest = Math.min(Math.hypot(from.position.x - sun.x, from.position.y - sun.y, from.position.z - sun.z), Math.hypot(to.position.x - sun.x, to.position.y - sun.y, to.position.z - sun.z));
+    const floor = ARC.sunClearance * nearest;
+    if (r >= floor || r === 0) return;
+    // A soft floor (x + (1 - x)^2 / 2 of it): no kink where it starts to push, and never under half of it.
+    const x = r / floor;
+    const k = (floor * (x + 0.5 * (1 - x) * (1 - x))) / r;
+    set(position, sun.x + dx * k, sun.y + dy * k, sun.z + dz * k);
   }
 
   private cutStep(world: NavWorld, f: Flight, s: number, out: NavOutput): void {

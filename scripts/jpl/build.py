@@ -27,14 +27,17 @@ typed in:
 - EMRAT (the Earth/Moon mass ratio) and the astronomical unit come from the DE440 header.
 - The leap seconds and the TDB - TT terms come from NAIF's LSK naif0012.tls.
 - The J2000 obliquity that Horizons uses for its ecliptic frame comes from its own reply.
-- The radial span of Saturn's rings comes from a Cassini radio-occultation optical-depth
-  profile (PDS).
+- The radial span of Saturn's rings, and their structure across it, come from a Cassini
+  radio-occultation optical-depth profile (PDS): the explorer draws the rings from its normal
+  transmission, averaged into RING_BINS equal bins (about 35 km each).
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import math
 import html
 import json
 import re
@@ -78,6 +81,11 @@ RINGS_ROOT = (
     "Rev007E_RSS_2005_123_X43_E/RSS_2005_123_X43_E_TAU_10KM"
 )
 RINGS_CITATION = "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018"
+# Bins of the ring profile written to physical.json (a power of two: the explorer mipmaps it).
+RING_BINS = 2048
+# Columns of the TAU table (1-based in its label): ring radius, normal optical depth, and the
+# optical depth above which the signal was lost (there the profile only says "at least this").
+RING_COLUMNS = {"radius": 0, "tau": 6, "threshold": 8}
 PLANETS = ["Mercury", "Venus", "EM Bary", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"]
 RADIUS_NAMES = {"Mercury": "Mercury", "Venus": "Venus", "EM Bary": "Earth", "Mars": "Mars", "Jupiter": "Jupiter", "Saturn": "Saturn", "Uranus": "Uranus", "Neptune": "Neptune"}
 
@@ -342,6 +350,27 @@ def parse_rings() -> dict[str, Any]:
     if span != limits:
         raise SystemExit(f"rings: the table spans {span} km and the label says {limits}")
     product = re.search(r'^PRODUCT_ID\s*=\s*"([^"]+)"', label, flags=re.M)
+    # The columns are read where the label says they are, so a reordered table cannot slip through.
+    columns = {name: int(number) - 1 for name, number in re.findall(r'NAME\s*=\s*"([^"]+)"\s*COLUMN_NUMBER\s*=\s*(\d+)', label)}
+    for key, name in (("radius", "RING RADIUS"), ("tau", "NORMAL OPTICAL DEPTH"), ("threshold", "NORMAL OPTICAL DEPTH THRESHOLD")):
+        if columns.get(name) != RING_COLUMNS[key]:
+            raise SystemExit(f"rings label: {name} is column {columns.get(name)}, expected {RING_COLUMNS[key] + 1}")
+    # Mean normal transmission exp(-tau) per bin (the mean of what light gets through, so a bin
+    # half gap and half opaque lets half through); tau below zero (noise) counts as 0 and tau at
+    # or above the threshold as the threshold.
+    sums = [0.0] * RING_BINS
+    counts = [0] * RING_BINS
+    width = (span[1] - span[0]) / RING_BINS
+    for row in rows:
+        values = row.split(",")
+        radius = float(values[RING_COLUMNS["radius"]])
+        tau = min(max(float(values[RING_COLUMNS["tau"]]), 0.0), float(values[RING_COLUMNS["threshold"]]))
+        index = min(RING_BINS - 1, int((radius - span[0]) / width))
+        sums[index] += math.exp(-tau)
+        counts[index] += 1
+    if min(counts) == 0:
+        raise SystemExit("rings: a profile bin has no samples")
+    transmission = bytes(round(255 * s / c) for s, c in zip(sums, counts))
     return {
         "innerKm": span[0],
         "outerKm": span[1],
@@ -351,6 +380,15 @@ def parse_rings() -> dict[str, Any]:
             "Radial span of the Cassini RSS normal optical-depth profile (ring radius from Saturn's centre). The main rings lie "
             "inside it: the C ring begins where the profile's optical depth rises from zero, and the A ring ends where it falls back."
         ),
+        "profile": {
+            "bins": RING_BINS,
+            "binKm": width,
+            "encoding": (
+                "base64, one byte per bin from innerKm outward: round(255 x mean normal transmission exp(-tau)) over the bin's samples, "
+                "tau taken as 0 where below 0 and as the threshold optical depth where at or above it"
+            ),
+            "transmission": base64.b64encode(transmission).decode("ascii"),
+        },
         "citation": RINGS_CITATION,
     }
 
@@ -522,7 +560,7 @@ def step_sources() -> None:
             "license": "Public domain (NASA Planetary Data System archive)",
             "licenseUrl": None,
             "credit": RINGS_CITATION,
-            "notes": f"public/assets/jpl/physical.json records the profile's radial span ({rings['innerKm']:,} to {rings['outerKm']:,} km) and the sha256 of the table and its label.",
+            "notes": f"public/assets/jpl/physical.json records the profile's radial span ({rings['innerKm']:,} to {rings['outerKm']:,} km), its normal transmission averaged into {rings['profile']['bins']:,} bins (the solar-system explorer draws the rings from it), and the sha256 of the table and its label.",
             "review": {"reviewer": None, "role": None, "date": None},
         },
     ]

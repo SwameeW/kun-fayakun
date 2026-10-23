@@ -2,7 +2,18 @@ import { setHook } from './hooks';
 import type { EngineExposure } from './post';
 import type { QualityGovernor } from './quality';
 import type { ResolutionGovernor } from './resolution';
-import type { AppEvents, BodyId, ChapterContext, EventBus, ExperienceModule, QualityProfile, UniverseModule } from './types';
+import type {
+  AppEvents,
+  BodyId,
+  EventBus,
+  ExperienceModule,
+  QualityProfile,
+  UniverseContext,
+  UniverseExposure,
+  UniverseModule,
+  UniverseView,
+  ViewInsets,
+} from './types';
 
 /**
  * Hosts the solar-system explorer ("universe"), the one experience that is not a chapter.
@@ -10,8 +21,14 @@ import type { AppEvents, BodyId, ChapterContext, EventBus, ExperienceModule, Qua
  * It runs the same sequence as the engine's chapter navigation: a navigation token (a newer
  * navigation cancels an older one), the tier governor suspended, the film stopped and faded to
  * black, the explorer's chunk imported (only now: it is its own lazy chunk), its pipelines
- * compiled before the first frame, the governors held off, then the exposure faded up. Leaving
- * is the reverse: fade to black, exit, and give the chapters back their lens.
+ * compiled before the first frame, the governors held off, then the picture brought up. Leaving
+ * is the reverse: down to black, exit, and give the chapters back their lens.
+ *
+ * The explorer's light spans seven stops (Saturn gets about 1.1% of the Earth's sunlight), more
+ * than the exposure's slew limit can cross quickly from black, so the host brings the picture up
+ * and down with a veil instead: the exposure jumps to its target while the screen is black and
+ * the veil eases the picture in (and, leaving, out) over a fixed time, whatever the exposure.
+ * The explorer's own reduced-motion cuts use the same veil.
  *
  * The explorer is kept after the first visit (like a prefetched chapter), so a round trip from
  * a chapter and back reuses its GPU resources instead of building them again.
@@ -19,6 +36,16 @@ import type { AppEvents, BodyId, ChapterContext, EventBus, ExperienceModule, Qua
 
 /** Longest wait for the screen to fade to black before the explorer hands back anyway (as for chapters). */
 const FADE_WAIT_SECONDS = 4;
+/** The veil's ease in after the warm-up and out on leaving, seconds (rule 6: eased over at least 0.5 s). */
+const ENTER_SECONDS = 2.2;
+const LEAVE_SECONDS = 0.9;
+/** The exposure may jump only while the picture is at most this bright (the cut's dim is 0.15). */
+const JUMP_VEIL = 0.25;
+
+const smootherstep = (x: number): number => {
+  const u = Math.min(1, Math.max(0, x));
+  return u * u * u * (u * (u * 6 - 15) + 10);
+};
 
 export interface UniverseGraphics {
   readonly governor: QualityGovernor;
@@ -30,8 +57,8 @@ export interface UniverseHostDeps {
   readonly exposure: EngineExposure;
   /** The chapters' lens defaults (near, far, up), restored when the explorer hands back. */
   resetLens(): void;
-  /** The context the explorer is built with: the same services a chapter gets. */
-  makeContext(): ChapterContext;
+  /** The context the explorer is built with: the same services a chapter gets, with the given exposure. */
+  makeContext(exposure: UniverseExposure): UniverseContext;
   /** Stops the film; resolves once its last frame has faded to black (or straight away if none is showing). */
   stopFilm(): Promise<void>;
   graphics(): Promise<UniverseGraphics | null>;
@@ -55,7 +82,7 @@ type HostState = 'idle' | 'loading' | 'active' | 'leaving';
 interface Loaded {
   module: UniverseModule;
   /** The context passed to load(); the same object is passed to enter(). */
-  ctx: ChapterContext;
+  ctx: UniverseContext;
 }
 
 export class UniverseHost {
@@ -67,6 +94,12 @@ export class UniverseHost {
   private readyPending = false;
   /** A tier the governor dropped to while the explorer was away: it catches up on its next entry. */
   private pendingQuality: QualityProfile | null = null;
+  private insets: ViewInsets = { top: 0, bottom: 0 };
+  /** The explorer's own veil (its cuts) and the host's (in and out), 0 black to 1 clear. */
+  private moduleVeil = 1;
+  private hostVeil = 1;
+  /** Where the host's veil is going: 1 after the warm-up, 0 while leaving; null holds it. */
+  private veilGoal: { from: number; to: number; seconds: number; t: number } | null = null;
 
   constructor(private readonly deps: UniverseHostDeps) {}
 
@@ -88,6 +121,16 @@ export class UniverseHost {
   /** The experience whose HUD tags and scale the engine shows, or null for the film's. */
   get hudSource(): ExperienceModule | null {
     return this.owns ? (this.loaded?.module ?? null) : null;
+  }
+
+  /** How much of the picture shows through the veils (multiplies the exposure while the explorer owns the screen). */
+  get veil(): number {
+    return this.moduleVeil * this.hostVeil;
+  }
+
+  /** The explorer's view while it is on screen (cheap; the UI and the engine poll it per frame). */
+  view(): UniverseView | null {
+    return this.active?.view() ?? null;
   }
 
   /** Opens the explorer, or, when it is already on screen, applies the new route to it. */
@@ -117,14 +160,21 @@ export class UniverseHost {
         module.setQuality?.(this.pendingQuality);
         this.pendingQuality = null;
       }
+      module.setInsets(this.insets);
       module.configure(options);
+      // Black until the warm-up is done: the veil comes up afterwards.
+      this.hostVeil = 0;
+      this.veilGoal = null;
       module.enter(ctx);
       this.setState('active');
       await this.deps.warmUp();
       if (!still('active')) return;
       gfx.governor.holdOff();
       gfx.resolution.holdOff();
+      // The film has gone dark and the veil is down: the exposure starts where the first view wants it.
       this.deps.exposure.setFade(1);
+      this.deps.exposure.jump();
+      this.veilGoal = { from: 0, to: 1, seconds: ENTER_SECONDS, t: 0 };
       this.readyPending = true;
     } catch (err) {
       if (!this.deps.isCurrent(token)) return;
@@ -152,10 +202,13 @@ export class UniverseHost {
       case 'active': {
         this.setState('leaving');
         this.readyPending = false;
-        this.deps.exposure.setFade(0);
+        this.veilGoal = { from: this.hostVeil, to: 0, seconds: LEAVE_SECONDS * this.hostVeil, t: 0 };
         this.leaving = new Promise<void>((resolve) => {
           this.darkWaiter = { resolve, left: FADE_WAIT_SECONDS };
         }).then(() => {
+          // Hand back a dark exposure, so the film rises from black as after any chapter change.
+          this.deps.exposure.setFade(0);
+          this.deps.exposure.jump();
           this.loaded?.module.exit();
           this.deps.resetLens();
           this.leaving = null;
@@ -170,10 +223,17 @@ export class UniverseHost {
   update(dt: number): void {
     if (!this.owns) return;
     this.loaded?.module.update(dt);
+    const goal = this.veilGoal;
+    if (goal && dt > 0) {
+      goal.t += dt;
+      const s = goal.seconds > 0 ? goal.t / goal.seconds : 1;
+      this.hostVeil = goal.from + (goal.to - goal.from) * smootherstep(s);
+      if (s >= 1) this.veilGoal = null;
+    }
     const waiter = this.darkWaiter;
     if (!waiter) return;
     waiter.left -= dt;
-    if (this.deps.exposure.dark || waiter.left <= 0) {
+    if (this.hostVeil <= 1e-3 || this.deps.exposure.dark || waiter.left <= 0) {
       this.darkWaiter = null;
       waiter.resolve();
     }
@@ -188,9 +248,17 @@ export class UniverseHost {
   }
 
   setQuality(profile: QualityProfile): void {
-    if (!this.loaded) return;
+    if (!this.loaded) {
+      this.pendingQuality = profile;
+      return;
+    }
     if (this.owns) this.loaded.module.setQuality?.(profile);
     else this.pendingQuality = profile;
+  }
+
+  setInsets(insets: ViewInsets): void {
+    this.insets = { top: Math.max(0, insets.top), bottom: Math.max(0, insets.bottom) };
+    this.loaded?.module.setInsets(this.insets);
   }
 
   dispose(): void {
@@ -201,13 +269,44 @@ export class UniverseHost {
     this.stateValue = 'idle';
   }
 
+  /** The explorer's exposure: the chapters' target and reading, plus the veil and the guarded jump. */
+  private exposureFor(base: { setTarget(value: number): void; readonly current: number }): UniverseExposure {
+    const engine = this.deps.exposure;
+    const setVeil = (value: number): void => {
+      this.moduleVeil = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+    };
+    const jump = (): void => {
+      if (this.veil <= JUMP_VEIL || engine.dark) engine.jump();
+    };
+    return {
+      setTarget(value) {
+        base.setTarget(value);
+      },
+      get current() {
+        return base.current;
+      },
+      setVeil,
+      jump,
+    };
+  }
+
   private load(): Promise<Loaded> {
     if (this.loaded) return Promise.resolve(this.loaded);
     this.loading ??= (async () => {
       // The explorer is its own chunk: none of it is in the shell until a visitor asks for it.
       const { default: create } = await import('../explore/index');
       const module = create();
-      const ctx = this.deps.makeContext();
+      const engine = this.deps.exposure;
+      const ctx = this.deps.makeContext(
+        this.exposureFor({
+          setTarget: (value) => {
+            engine.setTarget(value);
+          },
+          get current() {
+            return engine.current;
+          },
+        }),
+      );
       await module.load(ctx);
       const loaded: Loaded = { module, ctx };
       this.loaded = loaded;
@@ -225,6 +324,12 @@ export class UniverseHost {
     const before = this.requested;
     const wasActive = this.stateValue === 'active';
     this.stateValue = next;
+    if (next === 'idle') {
+      // The film never sees the explorer's veils.
+      this.moduleVeil = 1;
+      this.hostVeil = 1;
+      this.veilGoal = null;
+    }
     if (next !== 'active') setHook('data-universe-ready', null);
     if (wasActive && next !== 'active') this.deps.events.emit('universe', { ready: false });
     if (this.requested !== before) {

@@ -11,28 +11,41 @@
  * Light is physical in its falloff: a body's sunlight goes as 1/r^2, so Saturn's clouds get about
  * 1.1% of the Earth's. The exposure adapts to the body in view, slowly and slew-limited by the
  * engine like every brightness change (flash safety), and not quite fully, so the outer planets
- * stay a touch dimmer, as they should. Guides drawn on top (orbit lines, points for distant bodies)
- * keep their brightness on screen whatever the exposure. The Sun's disc is held below a ceiling on
- * screen, so no view of it is blinding.
+ * stay a touch dimmer, as they should. A reduced-motion cut dims the picture with the host's veil
+ * (eased, never held back by the exposure's own limits) and the exposure jumps to the new body
+ * while the picture is dim, so it comes back already adapted. Guides drawn on top (orbit lines,
+ * points and rings marking distant bodies, the Sun's glare) keep their brightness on screen
+ * whatever the exposure. The Sun's disc is held at a fixed brightness on screen: brilliant when
+ * small, and as through a solar filter when it fills the view.
  */
 
-import { Group, MathUtils, Matrix4, Vector3, type Data3DTexture } from 'three/webgpu';
+import { Group, MathUtils, Matrix4, Mesh, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
 import { validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
-import { PHYSICAL_URL, type PhysicalFile } from '../astro/physical';
+import { PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import { julianDateUtc, utcToTdb } from '../astro/time';
 import { createNoiseVolume } from '../chapters/shared/noise-volume';
 import { blackbodyRgb } from '../chapters/shared/blackbody';
 import { createStarfield, type Starfield } from '../chapters/shared/starfield';
 import { DEFAULT_FOV } from '../core/camera';
 import { createExposureControl, type EngineExposure } from '../core/post';
-import { BODY_IDS, type BodyId, type ChapterContext, type SceneLabel, type UniverseModule, type UniversePose, type UniverseView } from '../core/types';
-import { createBodies, SUN_KELVIN, type BodyVisual } from './bodies';
+import {
+  BODY_IDS,
+  type BodyId,
+  type QualityTier,
+  type SceneLabel,
+  type UniverseContext,
+  type UniverseModule,
+  type UniversePose,
+  type UniverseView,
+  type ViewInsets,
+} from '../core/types';
+import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
 import { createInput, type ExploreInput } from './input';
 import { Navigator, type NavBody, type NavOutput, type NavWorld } from './navigation';
 import { createOrbits, moonOrbit, planetOrbit, type Orbits, type OrbitPath } from './orbits';
-import { lensFor, LENS, nearestAltitude, type Lens } from './space/lens';
+import { lensFor, LENS, nearestAltitude, type Lens, type Sphere } from './space/lens';
 import { FloatingOrigin, km, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import { createSolarSystem, type SolarSystem } from './system';
@@ -46,21 +59,21 @@ const UNIX_EPOCH_JD = 2440587.5;
 const EXPOSURE_POWER = 1.8;
 /**
  * With the Sun large in view it is shown as photographed through a solar filter, so its disc shows
- * colour, limb darkening and granulation rather than a white blank: its light comes down by up to
- * `share` and takes the filter's gold, as its radius grows between these sizes (CSS px). The
- * readout says so while the filter is on.
+ * colour, limb darkening and granulation rather than a white blank: the filter comes in as its
+ * radius grows between these sizes (CSS px), taking the disc from brilliant white to the filter's
+ * amber at a moderate brightness (display terms). The readout says so while the filter is on.
  */
-const SUN_FILTER = { share: 0.1, fromPx: 20, toPx: 260, color: [1, 0.6, 0.24] } as const;
+const SUN_FILTER = { fromPx: 12, toPx: 110, color: [1, 0.5, 0.12], white: 5, filtered: 1 } as const;
 /**
  * The Moon is dark (it reflects about an eighth of its light, less than half the Earth's share), so
  * with the Moon in view the exposure opens a little further, as a camera's would; beside the Earth
  * it still looks the darker of the two, as it is.
  */
-const MOON_EXPOSURE = 1.25;
-/** The Sun's disc on screen stays below this (linear, before tone mapping). */
-const SUN_DISPLAY_MAX = 6;
+const MOON_EXPOSURE = 1.1;
 /** The starfield's light, and how much of the exposure's adaptation it shows (0 none, 1 all of it). */
 const STARS = { light: 0.85, follow: 0.2 } as const;
+/** Stars drawn per quality tier (a prefix of the same random field: a fair subsample). */
+const STAR_COUNT: Readonly<Record<QualityTier, number>> = { high: 7000, mid: 5000, low: 3000 };
 
 /** Points of light for distant bodies: colour (display terms) and size. Visual constants, not measurements. */
 const DOT: Readonly<Record<BodyId, { tint: readonly [number, number, number]; albedo: number; sizePx: number }>> = {
@@ -75,14 +88,27 @@ const SUN_DOT = blackbodyRgb(SUN_KELVIN).map((v) => v * 3.2) as unknown as reado
 /** Orbit line colours (display terms): a soft gold, the Moon's a little cooler. */
 const ORBIT_COLOR = [0.42, 0.34, 0.21] as const;
 const MOON_ORBIT_COLOR = [0.26, 0.29, 0.34] as const;
-/** Label easing, and when a body's tag gives way (its disc is big enough to need none). */
-const LABEL = { seconds: 0.35, maxDiscPx: 70, clearX: 90, clearY: 22 } as const;
+/**
+ * Labels: easing, when a body's tag gives way (its disc is big enough to need none), how close two
+ * may sit, and below what disc radius (px) a tag is anchored at the body's centre beside its ring
+ * marker rather than at its limb.
+ */
+const LABEL = { seconds: 0.35, maxDiscPx: 70, clearX: 90, clearY: 22, markerPx: 4 } as const;
 /**
  * Up close only the focus's own orbit is drawn (and the Moon's around the Earth); the others come
  * in as the view widens, between these distances in bounding radii of the focus. Changes ease.
  */
 const ORBITS_WIDE = { from: 40, to: 4000, seconds: 0.6 } as const;
 const SUN_ORBITS_WIDE = { from: 8, to: 300 } as const;
+/**
+ * An orbit only reads as an orbit from far enough away: its line fades out as the camera comes
+ * within these shares of the orbit's size of the body on it (seen from beside a planet its orbit is
+ * a straight line through it), and of the orbit's centre (from inside, a loop is a line across the sky).
+ */
+const ORBIT_NEAR_BODY = { from: 0.05, to: 0.25 } as const;
+const ORBIT_INSIDE = { from: 0.35, to: 0.7 } as const;
+/** How quickly the view follows a change in what the interface covers, seconds. */
+const INSET_SECONDS = 0.4;
 
 const smoothstep = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -108,18 +134,31 @@ interface Placed {
   radiusPx: number;
 }
 
+const unit = (out: Km, from: Km, to: Km): Km => {
+  const x = to.x - from.x;
+  const y = to.y - from.y;
+  const z = to.z - from.z;
+  const l = Math.hypot(x, y, z) || 1;
+  out.x = x / l;
+  out.y = y / l;
+  out.z = z / l;
+  return out;
+};
+
 export default function create(): UniverseModule {
   const root = new Group();
   root.name = 'universe';
-  let ctx: ChapterContext | null = null;
+  let ctx: UniverseContext | null = null;
   let system: SolarSystem | null = null;
-  let bodies: Record<BodyId, BodyVisual> | null = null;
+  let bodies: Bodies | null = null;
   let stars: Starfield | null = null;
   let orbits: Orbits | null = null;
   let orbitPaths: OrbitPath[] = [];
   const orbitWeights: number[] = [];
   /** The first frame after enter() or place(): eased values start where they belong. */
   let entering = true;
+  /** The first update after the warm-up: frustum culling comes back on (it was off so every pipeline compiled). */
+  let warming = false;
   /** How far the Sun is shown through its solar filter (0 none, 1 fully), and the filter's colour now. */
   let filterAmount = 0;
   const filterColor: [number, number, number] = [1, 1, 1];
@@ -130,9 +169,13 @@ export default function create(): UniverseModule {
   let range = { startJd: 0, endJd: Infinity };
   let timeConstants: PhysicalFile['time'] | null = null;
   let noise: Data3DTexture | null = null;
+  let tier: QualityTier = 'high';
+  let insets: ViewInsets = { top: 0, bottom: 0 };
+  /** The clear part's offset from the middle of the view, CSS px, eased so a readout growing a line never jolts the view. */
+  let offsetPx = 0;
 
   const nav = new Navigator(DEFAULT_BODY);
-  const navOut: NavOutput = { position: km(), target: km(), dim: 1, progress: 1, from: null };
+  const navOut: NavOutput = { position: km(), target: km(), dim: 1, cut: false, progress: 1, from: null };
   const origin = new FloatingOrigin();
   const lens: Lens = { near: 1, far: 2e4 };
   /** The engine's limiter, mirrored without the fade: how far the exposure has adapted right now. */
@@ -150,7 +193,10 @@ export default function create(): UniverseModule {
   const placed = Object.fromEntries(BODY_IDS.map((id) => [id, { rel: km(), drawn: km(), distance: 0, k: 1, radiusPx: 0 }])) as Record<BodyId, Placed>;
   const labelOpacity = new Map<BodyId, number>(BODY_IDS.map((id) => [id, 0]));
   let labels: SceneLabel[] = [];
-  const dotList: ImpostorDot[] = BODY_IDS.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: 6 }));
+  const dotList: ImpostorDot[] = BODY_IDS.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: 6, marker: 0 }));
+  /** Saturn's rings' span and pole, for the lens (set from physical.json on load, the pole each frame). */
+  const ringSphere = { pole: km(0, 1, 0), innerKm: 0, outerKm: 0 };
+  const spheres: Sphere[] = BODY_IDS.map((id) => (id === 'saturn' ? { centre: km(), radius: 0, ring: ringSphere } : { centre: km(), radius: 0 }));
 
   const look = new Matrix4();
   const eye = new Vector3();
@@ -159,7 +205,11 @@ export default function create(): UniverseModule {
   const basis = new Matrix4();
   const right = new Vector3();
   const projected = new Vector3();
-  const sunDir = { x: 0, y: 0, z: 0 };
+  const origin3 = new Vector3();
+  const sunDir = km();
+  const toEarth = km();
+  const scratch = km();
+  const forward = km();
 
   const setDate = (utc: number | null): void => {
     if (!timeConstants) return;
@@ -194,11 +244,15 @@ export default function create(): UniverseModule {
     return share;
   };
 
-  /** The view's exposure: the focus's, and during a flight the log blend of where it left and where it goes. */
+  /**
+   * The view's exposure: the focus's, and during a flight the log blend of where it left and where
+   * it goes. A reduced-motion cut keeps the old body's until it cuts (then the exposure jumps).
+   */
   const exposureTarget = (): number => {
     const to = exposureFor(nav.focus);
     if (!navOut.from) return to;
     const from = exposureFor(navOut.from);
+    if (nav.reducedMotion) return navOut.progress < 0.5 ? from : to;
     const w = smootherstep(0.12, 0.88, navOut.progress);
     return Math.exp(Math.log(from) + (Math.log(to) - Math.log(from)) * w);
   };
@@ -214,6 +268,8 @@ export default function create(): UniverseModule {
     return {
       focus,
       travelling: nav.travelling,
+      from: navOut.from,
+      moving: nav.moving,
       distanceKm,
       altitudeKm: distanceKm - (spec?.radiusKm ?? 0),
       sunlight: (auKm / fromSun) ** 2,
@@ -223,33 +279,57 @@ export default function create(): UniverseModule {
     };
   };
 
+  /** Frustum culling off for every body's meshes (the warm-up then compiles them all, in view or not), or back on. */
+  const setCulling = (on: boolean): void => {
+    if (!bodies) return;
+    for (const id of BODY_IDS) {
+      bodies.objects[id].traverse((o: Object3D) => {
+        if (o instanceof Mesh) o.frustumCulled = on;
+      });
+    }
+  };
+
   const frame = (dt: number): void => {
     const c = ctx;
     if (!c || !system || !bodies || !stars || !orbits || !dots || !glare || !world) return;
+    const sys = system;
     nav.reducedMotion = c.reducedMotion;
     adaptation.setReducedMotion(c.reducedMotion);
     elapsed += dt;
     jdTdb = Math.min(range.endJd, jdTdb + dt / SECONDS_PER_DAY);
     jdUtc += dt / SECONDS_PER_DAY;
-    system.update(jdTdb);
+    sys.update(jdTdb);
     for (const path of orbitPaths) path.setDate(jdTdb);
+
+    // The view the bodies are framed in: the camera's lens and what the interface covers.
+    const camera = c.camera;
+    const viewportPx = c.renderer.domElement.clientHeight || 1;
+    const widthPx = c.renderer.domElement.clientWidth || 1;
+    const tanHalf = Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2));
+    nav.setView({ tanHalfFov: tanHalf, aspect: widthPx / viewportPx, top: insets.top / viewportPx, bottom: insets.bottom / viewportPx });
 
     // The camera, in doubles; then everything relative to it.
     nav.update(world, dt, navOut);
     origin.setCamera(navOut.position);
-    for (const id of BODY_IDS) {
+    BODY_IDS.forEach((id, i) => {
       const p = placed[id];
-      origin.relative(system.bodies[id].position, p.rel);
+      origin.relative(sys.bodies[id].position, p.rel);
       p.distance = Math.hypot(p.rel.x, p.rel.y, p.rel.z);
-    }
-    const sys = system;
-    lensFor(
-      nearestAltitude(BODY_IDS.map((id) => ({ centre: placed[id].rel, radius: sys.specs[id].radiusKm }))),
-      lens,
-    );
+      const sphere = spheres[i];
+      if (sphere) {
+        sphere.centre = p.rel;
+        sphere.radius = sys.specs[id].radiusKm;
+      }
+    });
+    // Saturn's rings, in its equator: beside them they are the nearest surface.
+    const pole = sys.bodies.saturn.basis;
+    ringSphere.pole.x = pole[3] ?? 0;
+    ringSphere.pole.y = pole[4] ?? 1;
+    ringSphere.pole.z = pole[5] ?? 0;
+    lensFor(nearestAltitude(spheres), lens);
 
-    // The camera: at the origin, looking where the navigator looks, with this frame's depth range.
-    const camera = c.camera;
+    // The camera: at the origin, looking where the navigator looks, tilted so the body sits in the
+    // middle of the part of the view the interface leaves clear, with this frame's depth range.
     camera.position.set(0, 0, 0);
     eye.set(0, 0, 0);
     target.set(navOut.target.x - navOut.position.x, navOut.target.y - navOut.position.y, navOut.target.z - navOut.position.z);
@@ -258,97 +338,119 @@ export default function create(): UniverseModule {
       look.lookAt(eye, target.normalize(), up);
       camera.quaternion.setFromRotationMatrix(look);
     }
+    const pxPerTan = viewportPx / (2 * tanHalf);
+    const wantOffset = (insets.bottom - insets.top) / 2;
+    offsetPx = entering ? wantOffset : offsetPx + (wantOffset - offsetPx) * (1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS));
+    camera.rotateX(-Math.atan(offsetPx / pxPerTan));
     camera.up.copy(up);
     camera.near = lens.near;
     camera.far = lens.far;
     camera.fov = DEFAULT_FOV;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    projected.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    forward.x = projected.x;
+    forward.y = projected.y;
+    forward.z = projected.z;
 
     // Exposure: adapt to the body in view (the engine slews it); the mirror says how far it has got.
+    // A reduced-motion cut dims through the veil, and the exposure jumps while it is dim.
     const exposure = exposureTarget();
-    c.exposure.setTarget(exposure * navOut.dim);
+    c.exposure.setTarget(exposure);
+    c.exposure.setVeil(navOut.dim);
     adaptation.setTarget(exposure);
+    if (navOut.cut) {
+      c.exposure.jump();
+      adaptation.jump();
+    }
     adaptation.update(dt);
     const adapted = Math.max(adaptation.current, 1e-4);
 
     // Bodies: true size and place, scaled space beyond the depth range, real orientation and light.
-    const viewportPx = c.renderer.domElement.clientHeight || 1;
-    const pxPerTan = viewportPx / (2 * Math.tan(MathUtils.degToRad(camera.fov / 2)));
-    const sun = system.bodies.sun.position;
+    const sun = sys.bodies.sun.position;
     for (const id of BODY_IDS) {
-      const spec = system.specs[id];
+      const spec = sys.specs[id];
       const p = placed[id];
       p.k = placeScaled(p.rel, spec.boundKm, lens.far, p.drawn);
       p.radiusPx = pxPerTan * Math.tan(Math.asin(Math.min(1, spec.radiusKm / Math.max(p.distance, spec.radiusKm))));
-      const visual = bodies[id];
-      const object = visual.object;
+      const object = bodies.objects[id];
       object.position.set(p.drawn.x, p.drawn.y, p.drawn.z);
       object.scale.setScalar(spec.radiusKm * p.k);
-      const b = system.bodies[id].basis;
+      const b = sys.bodies[id].basis;
       basis.set(b[0] ?? 1, b[3] ?? 0, b[6] ?? 0, 0, b[1] ?? 0, b[4] ?? 1, b[7] ?? 0, 0, b[2] ?? 0, b[5] ?? 0, b[8] ?? 1, 0, 0, 0, 0, 1);
       object.quaternion.setFromRotationMatrix(basis);
-      const toSun = system.bodies[id].position;
-      sunDir.x = sun.x - toSun.x;
-      sunDir.y = sun.y - toSun.y;
-      sunDir.z = sun.z - toSun.z;
-      const r = Math.hypot(sunDir.x, sunDir.y, sunDir.z);
-      if (r > 0) {
-        sunDir.x /= r;
-        sunDir.y /= r;
-        sunDir.z /= r;
-      } else {
-        sunDir.x = 0;
-        sunDir.y = 1;
-        sunDir.z = 0;
-      }
-      if (id === 'sun') {
-        filterAmount = smoothstep(SUN_FILTER.fromPx, SUN_FILTER.toPx, p.radiusPx);
-        const [fr, fg, fb] = SUN_FILTER.color;
-        filterColor[0] = 1 + (fr - 1) * filterAmount;
-        filterColor[1] = 1 + (fg - 1) * filterAmount;
-        filterColor[2] = 1 + (fb - 1) * filterAmount;
-        const light = Math.min(1, SUN_DISPLAY_MAX / adapted) * (1 - SUN_FILTER.share * filterAmount);
-        visual.update({ time: elapsed, sun: sunDir, light, filter: filterColor });
-      } else {
-        visual.update({ time: elapsed, sun: sunDir, light: (system.auKm / Math.max(r, 1)) ** 2 });
-      }
+      object.updateMatrixWorld();
     }
+    const lightAt = (id: BodyId): number => {
+      const q = sys.bodies[id].position;
+      return (sys.auKm / Math.max(Math.hypot(q.x - sun.x, q.y - sun.y, q.z - sun.z), 1)) ** 2;
+    };
+    // The Sun: brilliant and white when small, through its filter (amber, moderate) when it fills the view.
+    filterAmount = smoothstep(SUN_FILTER.fromPx, SUN_FILTER.toPx, placed.sun.radiusPx);
+    const [fr, fg, fb] = SUN_FILTER.color;
+    filterColor[0] = 1 + (fr - 1) * filterAmount;
+    filterColor[1] = 1 + (fg - 1) * filterAmount;
+    filterColor[2] = 1 + (fb - 1) * filterAmount;
+    const sunDisplay = Math.exp(Math.log(SUN_FILTER.white) + (Math.log(SUN_FILTER.filtered) - Math.log(SUN_FILTER.white)) * filterAmount);
+    bodies.sun.update({ time: elapsed, kelvin: SUN_KELVIN, light: sunDisplay / adapted, filter: filterColor });
+    unit(sunDir, sys.bodies.earth.position, sun);
+    bodies.earth.update({ time: elapsed * 0.1, sun: sunDir, light: lightAt('earth'), radius: sys.specs.earth.radiusKm * placed.earth.k });
+    // The Moon: sunlight, and earthshine from as much of the Earth's face toward it as is lit.
+    const moonAt = sys.bodies.moon.position;
+    unit(sunDir, moonAt, sun);
+    unit(toEarth, moonAt, sys.bodies.earth.position);
+    unit(scratch, sys.bodies.earth.position, sun);
+    const earthLit = (1 - (scratch.x * toEarth.x + scratch.y * toEarth.y + scratch.z * toEarth.z)) / 2;
+    bodies.moon.update({ time: elapsed, sun: sunDir, light: lightAt('moon'), earth: toEarth, earthLit }, origin3);
+    unit(sunDir, sys.bodies.jupiter.position, sun);
+    bodies.jupiter.update({ sun: sunDir, light: lightAt('jupiter') }, origin3);
+    unit(sunDir, sys.bodies.saturn.position, sun);
+    bodies.saturn.update({ sun: sunDir, light: lightAt('saturn') }, origin3);
 
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
     stars.setLight(STARS.light * adapted ** (STARS.follow - 1));
 
-    // Orbit lines, fading near the body in focus; others than its own only in a wide view.
+    // Orbit lines: the focus's own (and the Moon's around the Earth) up close, the rest as the view
+    // widens; each only from where it reads as an orbit; none over the Sun seen through its filter.
     const focus = placed[nav.focus];
     const wide = nav.focus === 'sun' ? SUN_ORBITS_WIDE : ORBITS_WIDE;
-    const bound = system.specs[nav.focus].boundKm;
+    const bound = sys.specs[nav.focus].boundKm;
     const wideness = smoothstep(Math.log(wide.from * bound), Math.log(wide.to * bound), Math.log(Math.max(focus.distance, 1)));
     const settle = dt > 0 ? 1 - Math.exp(-dt / ORBITS_WIDE.seconds) : 0;
     orbitPaths.forEach((path, i) => {
-      const own = path.body === nav.focus || (path.body === 'moon' && (nav.focus === 'earth' || nav.focus === 'moon'));
+      const own = path.body === nav.focus || (path.body === 'moon' && nav.focus === 'earth');
+      const size = path.sizeKm;
+      const nearBody = smoothstep(ORBIT_NEAR_BODY.from * size, ORBIT_NEAR_BODY.to * size, placed[path.body].distance);
+      const fromCentre = Math.hypot(path.centre.x - origin.camera.x, path.centre.y - origin.camera.y, path.centre.z - origin.camera.z);
+      const outside = smoothstep(ORBIT_INSIDE.from * size, ORBIT_INSIDE.to * size, fromCentre);
+      const want = (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
       const current = orbitWeights[i] ?? 0;
-      orbitWeights[i] = current + ((own ? 1 : wideness) - current) * (entering ? 1 : settle);
+      orbitWeights[i] = current + (want - current) * (entering ? 1 : settle);
     });
-    entering = false;
     orbits.update({
       weights: orbitWeights,
       camera: origin.camera,
+      forward,
+      near: lens.near,
       far: lens.far,
-      focus: system.bodies[nav.focus].position,
-      focusRadius: system.specs[nav.focus].radiusKm,
+      focus: sys.bodies[nav.focus].position,
+      focusRadius: sys.specs[nav.focus].radiusKm,
       focusDistance: focus.distance,
       compensation: adapted,
       light: 1,
     });
 
-    // Points of light for bodies under about 2 px.
+    // Labels first: the ring markers of small bodies come and go with their tags.
+    updateLabels(dt, viewportPx, widthPx);
+
+    // Points of light for bodies under about 2 px, and rings marking them where they are named.
     BODY_IDS.forEach((id, i) => {
       const p = placed[id];
       const dot = dotList[i];
       if (!dot) return;
-      const spec = system?.specs[id];
-      const drawnRadius = (spec?.radiusKm ?? 0) * p.k;
+      const spec = sys.specs[id];
+      const drawnRadius = spec.radiusKm * p.k;
       // In front of the body's own sphere, by at least 1% of the distance: far out, one step of the
       // depth buffer spans hundreds of thousands of km, more than the planet itself.
       const toward = Math.max(0, Math.min(0.99, 1 - (1.03 * drawnRadius) / Math.max(Math.hypot(p.drawn.x, p.drawn.y, p.drawn.z), 1e-9)));
@@ -360,14 +462,11 @@ export default function create(): UniverseModule {
         dot.color = [SUN_DOT[0], SUN_DOT[1], SUN_DOT[2]];
       } else {
         // Phase angle at the body, between the Sun and the camera.
-        const body = system?.bodies[id].position ?? km();
+        const body = sys.bodies[id].position;
         const sx = sun.x - body.x;
         const sy = sun.y - body.y;
         const sz = sun.z - body.z;
-        const cx = -p.rel.x;
-        const cy = -p.rel.y;
-        const cz = -p.rel.z;
-        const cos = (sx * cx + sy * cy + sz * cz) / Math.max(1e-9, Math.hypot(sx, sy, sz) * Math.hypot(cx, cy, cz));
+        const cos = (sx * -p.rel.x + sy * -p.rel.y + sz * -p.rel.z) / Math.max(1e-9, Math.hypot(sx, sy, sz) * p.distance);
         const phase = lambertPhase(Math.acos(Math.min(1, Math.max(-1, cos))));
         // A floor keeps a body seen against its night side findable, faintly.
         const brightness = 0.22 + 2.1 * style.albedo * phase;
@@ -375,29 +474,28 @@ export default function create(): UniverseModule {
       }
       dot.opacity = smoothstep(2.8, 1.2, p.radiusPx);
       dot.sizePx = style.sizePx;
+      dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
     dots.update(dotList, adapted);
 
     const sunPlaced = placed.sun;
     glare.update({
       position: sunPlaced.drawn,
-      drawnRadius: system.specs.sun.radiusKm * sunPlaced.k,
+      drawnRadius: sys.specs.sun.radiusKm * sunPlaced.k,
       radiusPx: sunPlaced.radiusPx,
       viewportPx,
       visible: sunVisible(),
       compensation: adapted,
-      filter: filterColor,
+      filtered: filterAmount,
     });
-
-    updateLabels(dt, viewportPx);
+    entering = false;
   };
 
   /** Names beside the bodies: eased, hidden behind other bodies, and never on top of each other. */
-  const updateLabels = (dt: number, viewportPx: number): void => {
+  const updateLabels = (dt: number, viewportPx: number, widthPx: number): void => {
     const c = ctx;
     if (!c || !system) return;
     const camera = c.camera;
-    const widthPx = c.renderer.domElement.clientWidth || 1;
     right.set(1, 0, 0).applyQuaternion(camera.quaternion);
     const order = [...BODY_IDS].sort((a, b) => (a === nav.focus ? -1 : b === nav.focus ? 1 : placed[b].radiusPx - placed[a].radiusPx));
     const taken: Array<{ x: number; y: number }> = [];
@@ -406,8 +504,9 @@ export default function create(): UniverseModule {
     for (const id of order) {
       const spec = system.specs[id];
       const p = placed[id];
-      const drawnRadius = spec.radiusKm * p.k;
-      const anchor = projected.set(p.drawn.x, p.drawn.y, p.drawn.z).addScaledVector(right, drawnRadius * 1.08);
+      // At the limb of a visible disc; at the centre of a point, beside its ring marker.
+      const drawnRadius = spec.radiusKm * p.k * 1.08 * smoothstep(LABEL.markerPx, LABEL.markerPx * 3, p.radiusPx);
+      const anchor = projected.set(p.drawn.x, p.drawn.y, p.drawn.z).addScaledVector(right, drawnRadius);
       const position: [number, number, number] = [anchor.x, anchor.y, anchor.z];
       anchor.project(camera);
       const sx = ((anchor.x + 1) / 2) * widthPx;
@@ -416,7 +515,8 @@ export default function create(): UniverseModule {
       if (want > 0 && occluded(id)) want = 0;
       if (want > 0 && taken.some((t) => Math.abs(t.x - sx) < LABEL.clearX && Math.abs(t.y - sy) < LABEL.clearY)) want = 0;
       if (want > 0) taken.push({ x: sx, y: sy });
-      const now = (labelOpacity.get(id) ?? 0) + (want - (labelOpacity.get(id) ?? 0)) * ease;
+      const was = labelOpacity.get(id) ?? 0;
+      const now = was + (want - was) * (entering ? 1 : ease);
       labelOpacity.set(id, now < 1e-3 && want === 0 ? 0 : now);
       if (now > 1e-3) next.push({ id: `body-${id}`, textKey: spec.nameKey, position, opacity: now });
     }
@@ -441,13 +541,23 @@ export default function create(): UniverseModule {
   const navBodies = (sys: SolarSystem): NavWorld => {
     const list: NavBody[] = BODY_IDS.map((id) => {
       const spec = sys.specs[id];
+      const b = sys.bodies[id].basis;
+      const pole = km(b[3] ?? 0, b[4] ?? 1, b[5] ?? 0);
       return {
         id,
         radiusKm: spec.radiusKm,
         boundKm: spec.boundKm,
         minAltitudeKm: spec.minAltitudeKm,
-        framing: spec.framing,
+        fill: spec.fill,
+        view: spec.view,
         position: sys.bodies[id].position,
+        // The pole moves only over centuries; its direction is read live all the same.
+        get pole() {
+          pole.x = b[3] ?? 0;
+          pole.y = b[4] ?? 1;
+          pole.z = b[5] ?? 0;
+          return pole;
+        },
       };
     });
     const byId = new Map(list.map((b) => [b.id, b]));
@@ -468,6 +578,7 @@ export default function create(): UniverseModule {
     async load(c) {
       ctx = c;
       if (system) return;
+      tier = c.quality.tier;
       const [planets, moon, physical, volume] = await Promise.all([
         c.assets.json<PlanetsFile>('assets/jpl/planets.json'),
         c.assets.json<MoonFile>('assets/jpl/moon.json'),
@@ -480,8 +591,11 @@ export default function create(): UniverseModule {
       range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
       system = createSolarSystem(planets, moon, physical);
       world = navBodies(system);
-      bodies = createBodies(volume, system.specs, physical.saturnRings);
-      stars = createStarfield(7000, 400, 7_101, { depthTest: true, dynamicRadius: true });
+      ringSphere.innerKm = physical.saturnRings.innerKm;
+      ringSphere.outerKm = physical.saturnRings.outerKm;
+      bodies = createBodies(volume, system.specs, { innerKm: ringSphere.innerKm, outerKm: ringSphere.outerKm, transmission: ringTransmission(physical.saturnRings) }, tier);
+      stars = createStarfield(STAR_COUNT.high, 400, 7_101, { depthTest: true, dynamicRadius: true });
+      stars.object.count = STAR_COUNT[tier];
       const body = (name: string): PlanetsFile['bodies'][number] => {
         const found = planets.bodies.find((b) => b.name === name);
         if (!found) throw new Error(`planets.json has no ${name}`);
@@ -497,13 +611,7 @@ export default function create(): UniverseModule {
       orbits = createOrbits(orbitPaths);
       dots = createImpostors(BODY_IDS.length);
       glare = createSunGlare(blackbodyRgb(SUN_KELVIN));
-      root.add(
-        stars.object,
-        orbits.mesh,
-        dots.object,
-        glare.object,
-        ...BODY_IDS.map((id) => bodies?.[id].object).filter((o): o is Group => o !== undefined),
-      );
+      root.add(stars.object, orbits.mesh, dots.object, glare.object, ...BODY_IDS.map((id) => bodies?.objects[id]).filter((o): o is Group => o !== undefined));
       input = createInput(c.renderer.domElement, nav);
     },
 
@@ -524,22 +632,44 @@ export default function create(): UniverseModule {
       setDate(pinnedUtc);
       system.update(jdTdb);
       nav.reducedMotion = c.reducedMotion;
+      // Framing needs the view before the first pose is chosen.
+      const viewportPx = c.renderer.domElement.clientHeight || 1;
+      nav.setView({
+        tanHalfFov: Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)),
+        aspect: (c.renderer.domElement.clientWidth || 1) / viewportPx,
+        top: insets.top / viewportPx,
+        bottom: insets.bottom / viewportPx,
+      });
       nav.begin(world, wantBody ?? DEFAULT_BODY, true);
       wantBody = null;
       // A fresh mirror of the limiter, already adapted, so guides are steady from the first frame.
       adaptation = createExposureControl({ reducedMotion: c.reducedMotion });
       adaptation.setFade(1);
       adaptation.setTarget(exposureFor(nav.focus));
-      for (let i = 0; i < 200; i += 1) adaptation.update(0.1);
+      adaptation.jump();
       for (const id of BODY_IDS) labelOpacity.set(id, 0);
       input?.attach();
-      // Place everything once, so the warm-up compiles every material in view.
+      // Place everything once, then let the warm-up compile every material, in view or not.
       entering = true;
       frame(0);
+      setCulling(false);
+      if (glare) glare.object.visible = true;
+      if (dots) dots.object.visible = true;
+      warming = true;
     },
 
     update(dt) {
+      if (warming) {
+        warming = false;
+        setCulling(true);
+      }
       frame(dt);
+    },
+
+    setQuality(profile) {
+      tier = profile.tier;
+      bodies?.setTier(tier);
+      if (stars) stars.object.count = STAR_COUNT[tier];
     },
 
     focus(body) {
@@ -551,6 +681,10 @@ export default function create(): UniverseModule {
     },
 
     view,
+
+    setInsets(next) {
+      insets = { top: next.top, bottom: next.bottom };
+    },
 
     place(pose: UniversePose) {
       if (!world || !system) return;
@@ -565,6 +699,10 @@ export default function create(): UniverseModule {
       const elevation = Math.asin(Math.min(1, Math.max(-1, base.y / len))) + MathUtils.degToRad(pose.elevationDeg ?? 0);
       const cosE = Math.cos(elevation);
       nav.place(pose.body, km(cosE * Math.sin(azimuth), Math.sin(elevation), cosE * Math.cos(azimuth)), pose.distanceKm, world);
+      // Placed at once, everything eased starts where it belongs, the exposure too (the engine's jumps with it).
+      entering = true;
+      frame(0);
+      adaptation.jump();
       entering = true;
     },
 
@@ -583,12 +721,13 @@ export default function create(): UniverseModule {
       input?.detach();
       entered = false;
       labels = [];
+      ctx?.exposure.setVeil(1);
     },
 
     dispose() {
       root.removeFromParent();
       input?.detach();
-      if (bodies) for (const id of BODY_IDS) bodies[id].dispose();
+      bodies?.dispose();
       stars?.dispose();
       orbits?.dispose();
       dots?.dispose();

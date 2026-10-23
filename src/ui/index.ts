@@ -3,7 +3,7 @@ import type { App, ChapterId, Route } from '../core/types';
 import { createAnnouncer } from './announcer';
 import type { UniverseUi } from './explore/index';
 import { createCueText } from './cue-text';
-import { h } from './dom';
+import { focusLost, h } from './dom';
 import { ARABIC_FONT_PATH, declareArabicFont, loadArabicFont } from './fonts';
 import { createFpsReadout } from './fps';
 import { icon } from './icons';
@@ -230,6 +230,7 @@ export function mountUI(app: App, root: HTMLElement): void {
     if (route.name !== 'home') introDismissed = false;
     // Entering the explorer from the film (not coming back to it from the Sources page): remember the chapter.
     if (route.name === 'universe' && view !== 'universe' && view !== 'sources') universeOrigin = app.chapter;
+    const leavingUniverse = view === 'universe' && route.name !== 'universe';
     view = route.name;
     root.dataset.view = route.name;
     if (route.name === 'sources') sources.show(backHref());
@@ -238,6 +239,16 @@ export function mountUI(app: App, root: HTMLElement): void {
     timeline.element.hidden = route.name === 'sources' || route.name === 'universe';
     panel.setAvailable(route.name === 'chapter');
     showUniverse(route.name === 'universe');
+    if (leavingUniverse) {
+      // The explorer's controls are going away: keyboard focus goes back where the film keeps it
+      // (the transport, or the welcome screen's way into the explorer), not to the page itself.
+      requestAnimationFrame(() => {
+        if (!focusLost()) return;
+        if (view === 'home' && intro.visible) intro.focusUniverse();
+        else if (view === 'chapter') timeline.focusPlay();
+        else main.focus();
+      });
+    }
   }
 
   app.events.on('route', ({ route }) => {

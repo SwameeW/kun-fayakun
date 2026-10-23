@@ -46,6 +46,12 @@ export function externalLink(href: string, text: string, attrs: Attrs = {}): HTM
   return h('a', { href, target: '_blank', rel: 'noopener noreferrer', ...attrs }, text);
 }
 
+/** Keyboard focus is nowhere useful: on the page itself, or on something no longer shown (the control that had it was hidden). */
+export function focusLost(): boolean {
+  const active = document.activeElement;
+  return !(active instanceof HTMLElement) || active === document.body || active.closest('[hidden]') !== null || active.getClientRects().length === 0;
+}
+
 /** Text hidden visually but read by screen readers. */
 export function srOnly(text: string): HTMLSpanElement {
   return h('span', { class: 'kf-sr-only' }, text);
