@@ -16,6 +16,18 @@
  * the limb, 1/mu down to the ground), the sunlight reaching its lowest point reddened by its own
  * slant path, scattered by the same phase functions; the green transmittance dims what is behind.
  *
+ * Seen from afar the lit air is thinner than a pixel: a pixel's ray would land on one height of it or
+ * another and the limb would break into dashes of red and blue. Where a pixel spans more than a
+ * fraction of the air's scale height, its light is averaged over a band two pixels high (several rays
+ * through the band, or the column's exact average in 'chord'), so the limb is a smooth line of light
+ * whose colours blend across it, and never thinner than about two pixels.
+ *
+ * The night side's airglow: atomic oxygen's green line, from a thin layer at its measured height
+ * (data/constants.json earth.airglow.greenLine.height), strongest where the eye looks along the layer:
+ * a faint green band above the night limb, so the dark disc always has an edge. Its true radiance is
+ * far below anything an exposure set for the day side records; it is shown as long exposures from
+ * orbit show it (illustrative strength and width).
+ *
  * Everything is in the Earth's frame in planet radii, so the shell is right at any distance and in
  * scaled space. Sizes and coefficients are the cited reference atmosphere (../render/air).
  */
@@ -36,7 +48,7 @@ import {
   type Texture,
   type UniformNode,
 } from 'three/webgpu';
-import { dot, exp, float, Fn, int, length, Loop, max, min, normalize, positionLocal, select, smoothstep, sqrt, vec3, vec4 } from 'three/tsl';
+import { dot, exp, float, Fn, fwidth, int, length, Loop, max, min, mix, normalize, positionLocal, select, smoothstep, sqrt, vec3, vec4 } from 'three/tsl';
 import { densities, extinction, miePhase, rayleighPhase, sunTransmittance, transmittanceToTop, type AirModel } from '../render/air';
 import type { FloatNode, Vec3Node } from '../render/sampling';
 
@@ -49,9 +61,8 @@ export interface AirUniforms {
   readonly light: UniformNode<'float', number>;
 }
 
-/** Ray from the eye through this fragment of the shell: its direction and where it enters and leaves the air. */
-function rayThroughShell(air: AirModel, eye: Vec3Node): { ray: Vec3Node; start: FloatNode; end: FloatNode; hits: Node<'bool'>; ground: Vec3Node } {
-  const ray = normalize(positionLocal.sub(eye));
+/** Where a ray from `eye` along `ray` enters and leaves the air, and whether it meets the ground. */
+function shellSegment(air: AirModel, eye: Vec3Node, ray: Vec3Node): { start: FloatNode; end: FloatNode; hits: Node<'bool'>; tGround: FloatNode } {
   const b = dot(eye, ray);
   const c = dot(eye, eye);
   const discTop = b.mul(b).sub(c).add(air.top * air.top);
@@ -61,10 +72,34 @@ function rayThroughShell(air: AirModel, eye: Vec3Node): { ray: Vec3Node; start: 
   const discGround = b.mul(b).sub(c).add(1);
   const tGround = b.negate().sub(sqrt(max(discGround, 0)));
   const hits = discGround.greaterThan(0).and(tGround.greaterThan(0));
-  const end = select(hits, tGround, far);
-  const ground = eye.add(ray.mul(tGround));
-  return { ray, start, end, hits, ground };
+  const end = select(hits, tGround, max(far, start));
+  return { start, end, hits, tGround };
 }
+
+/** The ray from the eye through this fragment of the shell, with its segment through the air. */
+function rayThroughShell(air: AirModel, eye: Vec3Node): { ray: Vec3Node; start: FloatNode; end: FloatNode; hits: Node<'bool'>; ground: Vec3Node } {
+  const ray = normalize(positionLocal.sub(eye));
+  const { start, end, hits, tGround } = shellSegment(air, eye, ray);
+  return { ray, start, end, hits, ground: eye.add(ray.mul(tGround)) };
+}
+
+/**
+ * The pixel's ray at the limb: its closest approach to the centre (the tangent radius), how much
+ * that changes from one pixel to the next, and the outward direction at the tangent point.
+ */
+function limbOf(eye: Vec3Node, ray: Vec3Node): { tangent: FloatNode; perPixel: FloatNode; outward: Vec3Node; toTangent: FloatNode } {
+  const b = dot(eye, ray);
+  const closest = eye.sub(ray.mul(b));
+  const tangent = length(closest);
+  return { tangent, perPixel: fwidth(tangent), outward: closest.div(max(tangent, 1e-6)), toTangent: max(b.negate(), 1e-4) };
+}
+
+/** A pixel spanning more of the air's height than this share of its Rayleigh scale height is filtered across. */
+const COARSE = 0.3;
+/** The limb's band, in pixels, its light is spread over where the air is thinner than a pixel. */
+const LIMB_PIXELS = 2;
+/** Rays through that band. */
+const LIMB_RAYS = 4;
 
 /**
  * Light scattered more than once, approximated: every sample is also lit by the sky around it, as a
@@ -76,10 +111,37 @@ function rayThroughShell(air: AirModel, eye: Vec3Node): { ray: Vec3Node; start: 
 const MULTIPLE_SCATTERING = 0.6;
 /** Share of the march's steps a ray that reaches the ground takes. */
 const GROUND_STEP_SHARE = 0.6;
+/**
+ * The airglow as drawn: the layer's half-width (radii, about 4 km: illustrative), its colour (the green
+ * line, linear RGB) and the light it adds per radius of layer the eye looks through (illustrative: a
+ * long exposure's view of it, not its true radiance).
+ */
+const AIRGLOW = { width: 4 / 6371, colour: [0.42, 1, 0.48], strength: 0.9 } as const;
 
-/** Single scattering along the ray, `steps` steps: the light scattered toward the eye (before the sunlight's strength). */
-function scatter(air: AirModel, table: Texture, u: AirUniforms, steps: number): Vec3Node {
-  const { ray, start, end, hits } = rayThroughShell(air, u.eye);
+/**
+ * The airglow the eye sees along `ray`: the layer's column, two crossings for a ray grazing below it,
+ * one for a ray that meets the ground, strongest along the layer; only where the layer is in the
+ * night (the day's sky swamps it).
+ */
+function airglow(air: AirModel, eye: Vec3Node, ray: Vec3Node, sun: Vec3Node, hits: Node<'bool'>): Vec3Node {
+  const rL = air.airglow;
+  const s = AIRGLOW.width;
+  const b = dot(eye, ray);
+  const closest = eye.sub(ray.mul(b));
+  const t2 = dot(closest, closest);
+  const t = sqrt(t2);
+  const ahead = smoothstep(0, 0.01, b.negate());
+  // Per crossing: the layer's vertical column over the cosine of the ray at it, capped at the grazing value.
+  const crossing = float(Math.sqrt(2 * Math.PI) * s * rL).div(sqrt(max(float(rL * rL).sub(t2), 0).add(2.5 * rL * s)));
+  const above = exp(max(t.sub(rL), 0).div(s).pow(2).mul(-0.5));
+  const column = crossing.mul(select(hits, float(1), float(2))).mul(above).mul(ahead);
+  const night = smoothstep(0.12, -0.08, dot(closest.div(max(t, 1e-6)), sun));
+  return vec3(...AIRGLOW.colour).mul(column.mul(night).mul(AIRGLOW.strength));
+}
+
+/** Single scattering along one ray, `steps` steps: the light scattered toward the eye (before the sunlight's strength). */
+function march(air: AirModel, table: Texture, u: AirUniforms, ray: Vec3Node, steps: number): Vec3Node {
+  const { start, end, hits } = shellSegment(air, u.eye, ray);
   // Rays down to the ground cross a short, smoothly varying column: fewer steps hold it.
   const groundSteps = Math.max(4, Math.ceil(steps * GROUND_STEP_SHARE));
   const countF = select(hits, float(groundSteps), float(steps));
@@ -89,36 +151,64 @@ function scatter(air: AirModel, table: Texture, u: AirUniforms, steps: number): 
   const skyGlow = float(1).sub(exp(vec3(tr, tg, tb).negate())).mul(MULTIPLE_SCATTERING);
   const [rr, rg, rb] = air.rayleigh;
   const rayleigh = vec3(rr, rg, rb);
-  const result = Fn(() => {
-    const dt = max(end.sub(start), 0).div(countF);
-    const column = vec3(0, 0, 0).toVar();
-    const sumR = vec3(0, 0, 0).toVar();
-    const sumM = vec3(0, 0, 0).toVar();
-    const sumMs = vec3(0, 0, 0).toVar();
-    Loop({ start: int(0), end: count, type: 'int', condition: '<' }, ({ i }) => {
-      const t = start.add(float(i).add(0.5).mul(dt));
-      const q = u.eye.add(ray.mul(t));
-      const r = length(q);
-      const density = densities(air, r.sub(1));
-      // Air between the eye and this sample: the column so far and half of this step's.
-      const toEye = exp(extinction(air, column.add(density.mul(dt.mul(0.5)))).negate());
-      const muSun = dot(q, sun).div(r);
-      const toSun = sunTransmittance(air, table, r, muSun);
-      const lit = toEye.mul(toSun).mul(dt);
-      sumR.addAssign(lit.mul(density.x));
-      sumM.addAssign(lit.mul(density.y));
-      // The sky's own glow around this sample, scattered toward the eye by both kinds of air.
-      const scattering = rayleigh.mul(density.x).add(density.y.mul(air.mieScattering));
-      sumMs.addAssign(toEye.mul(dt).mul(smoothstep(-0.25, 0.3, muSun)).mul(scattering));
-      column.addAssign(density.mul(dt));
+  const dt = max(end.sub(start), 0).div(countF);
+  const column = vec3(0, 0, 0).toVar();
+  const sumR = vec3(0, 0, 0).toVar();
+  const sumM = vec3(0, 0, 0).toVar();
+  const sumMs = vec3(0, 0, 0).toVar();
+  Loop({ start: int(0), end: count, type: 'int', condition: '<' }, ({ i }) => {
+    const t = start.add(float(i).add(0.5).mul(dt));
+    const q = u.eye.add(ray.mul(t));
+    const r = length(q);
+    const density = densities(air, r.sub(1));
+    // Air between the eye and this sample: the column so far and half of this step's.
+    const toEye = exp(extinction(air, column.add(density.mul(dt.mul(0.5)))).negate());
+    const muSun = dot(q, sun).div(r);
+    const toSun = sunTransmittance(air, table, r, muSun);
+    const lit = toEye.mul(toSun).mul(dt);
+    sumR.addAssign(lit.mul(density.x));
+    sumM.addAssign(lit.mul(density.y));
+    // The sky's own glow around this sample, scattered toward the eye by both kinds of air.
+    const scattering = rayleigh.mul(density.x).add(density.y.mul(air.mieScattering));
+    sumMs.addAssign(toEye.mul(dt).mul(smoothstep(-0.25, 0.3, muSun)).mul(scattering));
+    column.addAssign(density.mul(dt));
+  });
+  const cosTheta = dot(ray, sun);
+  const single = sumR.mul(rayleigh).mul(rayleighPhase(cosTheta)).add(sumM.mul(air.mieScattering).mul(miePhase(air, cosTheta)));
+  // Isotropic phase times pi is 1/4.
+  const multiple = sumMs.mul(skyGlow).mul(0.25);
+  return single.add(multiple);
+}
+
+/**
+ * Single scattering for this pixel: one ray, or where the limb is thinner than the pixel, several
+ * rays spread across a band LIMB_PIXELS high, averaged. Plus the airglow (its own light, not the Sun's).
+ */
+function scatter(air: AirModel, table: Texture, u: AirUniforms, steps: number): Vec3Node {
+  const { ray } = rayThroughShell(air, u.eye);
+  const light = Fn(() => {
+    // Built here, before any branch or loop: the pixel's span comes from screen-space derivatives.
+    const limb = limbOf(u.eye, ray);
+    const perPixel = limb.perPixel.toVar();
+    const tangent = limb.tangent.toVar();
+    const coarse = perPixel
+      .greaterThan(air.rayleighScale * COARSE)
+      .and(tangent.lessThan(float(air.top).add(perPixel.mul(LIMB_PIXELS))))
+      .and(tangent.greaterThan(float(1).sub(perPixel.mul(LIMB_PIXELS * 2))));
+    const rays = select(coarse, int(LIMB_RAYS), int(1)).toVar();
+    // The band the rays spread across (none when the limb is resolved: the one ray goes straight).
+    const band = select(coarse, perPixel.mul(LIMB_PIXELS), float(0)).toVar();
+    const outward = limb.outward.toVar();
+    const toTangent = limb.toTangent.toVar();
+    const total = vec3(0, 0, 0).toVar();
+    Loop({ start: int(0), end: rays, type: 'int', condition: '<' }, ({ i }) => {
+      const offset = float(i).add(0.5).div(LIMB_RAYS).sub(0.5).mul(band);
+      const sub = normalize(ray.add(outward.mul(offset.div(toTangent))));
+      total.addAssign(march(air, table, u, sub, steps));
     });
-    const cosTheta = dot(ray, sun);
-    const single = sumR.mul(rayleigh).mul(rayleighPhase(cosTheta)).add(sumM.mul(air.mieScattering).mul(miePhase(air, cosTheta)));
-    // Isotropic phase times pi is 1/4.
-    const multiple = sumMs.mul(skyGlow).mul(0.25);
-    return vec4(single.add(multiple), 1);
-  })();
-  return result.rgb;
+    return vec4(total.div(float(rays)), 1);
+  })().rgb;
+  return light.mul(u.light);
 }
 
 /** The ray's transmittance from the table alone (no march): through to the ground, or across the limb. */
@@ -146,7 +236,19 @@ function chord(air: AirModel, u: AirUniforms): { light: Vec3Node; opacity: Float
   // 1 / mu where the ray reaches the ground (capped at the grazing value).
   const grazing = Math.sqrt((2 * Math.PI) / H);
   const surfaceCos = sqrt(max(float(1).sub(tangent.mul(tangent)), 0));
-  const column = select(hits, min(float(1).div(max(surfaceCos, 1e-3)), grazing), exp(max(tangent.sub(1), 0).div(-H)).mul(grazing));
+  const exact = select(hits, min(float(1).div(max(surfaceCos, 1e-3)), grazing), exp(max(tangent.sub(1), 0).div(-H)).mul(grazing));
+  // Where the limb is thinner than the pixel, the column's average over a band LIMB_PIXELS high
+  // (the part of the band below the ground counted at the grazing column).
+  const perPixel = fwidth(tangent);
+  const band = max(perPixel.mul(LIMB_PIXELS), 1e-6);
+  const lo = tangent.sub(band.mul(0.5));
+  const hi = tangent.add(band.mul(0.5));
+  const below = min(max(float(1).sub(lo), 0), band);
+  const aloft = exp(max(lo, 1).sub(1).div(-H)).sub(exp(max(hi, 1).sub(1).div(-H))).mul(H);
+  const averaged = below.add(aloft).mul(grazing).div(band);
+  // Only at the limb: a ray well inside the disc meets the ground, where the exact column holds.
+  const atLimb = smoothstep(float(1).sub(band.mul(2)), float(1).sub(band), tangent);
+  const column = mix(exact, averaged, smoothstep(H * COARSE * 0.5, H * COARSE * 1.5, perPixel).mul(atLimb));
   const lowest = select(hits, normalize(eye.add(ray.mul(b.negate().sub(surfaceCos)))), closest.div(max(tangent, 1e-6)));
   const [tr, tg, tb] = air.verticalDepth;
   const tau = vec3(tr, tg, tb);
@@ -160,7 +262,8 @@ function chord(air: AirModel, u: AirUniforms): { light: Vec3Node; opacity: Float
   const [rr, rg, rb] = air.rayleigh;
   const rayleigh = vec3(rr * H, rg * H, rb * H).div(tau);
   const phase = rayleigh.mul(rayleighPhase(cosTheta)).add(float(1).sub(rayleigh).mul(miePhase(air, cosTheta)).mul(0.9));
-  return { light: reaching.mul(scattered).mul(phase), opacity: float(1).sub(exp(column.mul(-tg))) };
+  const light = reaching.mul(scattered).mul(phase).mul(u.light);
+  return { light, opacity: float(1).sub(exp(column.mul(-tg))) };
 }
 
 export interface ExploreAir {
@@ -172,6 +275,10 @@ export interface ExploreAir {
 /** Builds the air for a model: 'scatter' with a baked table and `steps`, or 'chord'. */
 export function createAir(air: AirModel, model: 'scatter' | 'chord', steps: number, table: Texture | null, u: AirUniforms, segments: number): ExploreAir {
   const geometry = new SphereGeometry(air.top, segments, Math.round(segments / 2));
+  // The airglow's own shell, out to just above its layer (above the scattering air's top). From the
+  // lowest orbit its nearest part is inside the depth range's near plane; there the eye looks
+  // straight through the layer, whose light is then negligible.
+  const glowGeometry = new SphereGeometry(air.airglow + 4 * AIRGLOW.width, segments, Math.round(segments / 2));
   const meshes: Mesh[] = [];
   const materials: MeshBasicNodeMaterial[] = [];
   const shellMaterial = (): MeshBasicNodeMaterial => {
@@ -192,7 +299,7 @@ export function createAir(air: AirModel, model: 'scatter' | 'chord', steps: numb
     const glow = shellMaterial();
     glow.blendSrc = OneFactor;
     glow.blendDst = OneFactor;
-    glow.colorNode = scatter(air, table, u, steps).mul(u.light);
+    glow.colorNode = scatter(air, table, u, steps);
     glow.opacityNode = float(1);
     const a = new Mesh(geometry, through);
     a.name = 'explore-earth-air-through';
@@ -207,17 +314,28 @@ export function createAir(air: AirModel, model: 'scatter' | 'chord', steps: numb
     m.blendSrc = OneFactor;
     m.blendDst = OneMinusSrcAlphaFactor;
     const c = chord(air, u);
-    m.colorNode = c.light.mul(u.light);
+    m.colorNode = c.light;
     m.opacityNode = c.opacity;
     const mesh = new Mesh(geometry, m);
     mesh.name = 'explore-earth-air-chord';
     mesh.renderOrder = 2;
     meshes.push(mesh);
   }
+  const night = shellMaterial();
+  night.blendSrc = OneFactor;
+  night.blendDst = OneFactor;
+  const { ray, hits } = rayThroughShell(air, u.eye);
+  night.colorNode = airglow(air, u.eye, ray, u.sun, hits);
+  night.opacityNode = float(1);
+  const glowMesh = new Mesh(glowGeometry, night);
+  glowMesh.name = 'explore-earth-airglow';
+  glowMesh.renderOrder = 4;
+  meshes.push(glowMesh);
   return {
     meshes,
     dispose() {
       geometry.dispose();
+      glowGeometry.dispose();
       for (const m of materials) m.dispose();
     },
   };

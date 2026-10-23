@@ -36,8 +36,12 @@ export interface RingSpan {
 const SEGMENTS: Readonly<Record<ExploreDetail['tier'], number>> = { ultra: 512, high: 512, medium: 384, low: 256 };
 /** Opacity of the strip's most opaque texels (the B ring's cores) reads as this optical depth at most. */
 const MAX_TAU = 5;
-/** The phase function's lobes: back-scattering regolith, forward-scattering dust (asymmetries, illustrative). */
-const LOBES = { back: -0.35, forward: 0.6, forwardShare: [0.12, 0.5] } as const;
+/**
+ * The phase function's lobes: back-scattering regolith, forward-scattering dust (asymmetries and the
+ * forward lobe's share in dense and in thin ring, illustrative). Seen against the Sun the thin, dusty
+ * rings (the C ring, the Cassini Division, the ringlets) outshine the dense B ring.
+ */
+const LOBES = { back: -0.5, forward: 0.74, forwardShare: [0.08, 0.82] } as const;
 
 /** The same phase function in plain numbers (for the normalisation). */
 function phaseJs(cosScatter: number, dusty: number): number {
@@ -101,7 +105,12 @@ export function createRings(slot: MapSlot, span: RingSpan, polar: number, mosaic
   const dusty = float(1).sub(smoothstep(0.05, 0.8, tau));
   // The strip's colour is a thick ring's lit face in the mosaic's geometry, so the law is divided by
   // its value there: the rings show as the mosaic shows them where they are lit as it was.
-  const atMosaic = phaseJs(-Math.cos(mosaic.phaseRad), 0) * (mosaic.mu0 / (mosaic.mu0 + mosaic.mu));
+  // Each kind of ring (thick or dusty) is normalised to its own phase in that geometry, so every ring
+  // looks as the mosaic shows it there; away from it, thin dusty ring brightens toward the Sun far more
+  // than thick ring does.
+  const cosMosaic = -Math.cos(mosaic.phaseRad);
+  const geometryAtMosaic = mosaic.mu0 / (mosaic.mu0 + mosaic.mu);
+  const atMosaic = mix(float(phaseJs(cosMosaic, 0)), float(phaseJs(cosMosaic, 1)), dusty).mul(geometryAtMosaic);
   // Sunlight travels along -sun and leaves toward the eye along view.
   const p = phase(dot(view, uSun).negate(), dusty).div(atMosaic);
   const reflected = p.mul(mu0.div(mu0.add(mu))).mul(float(1).sub(exp(tau.mul(float(1).div(mu0).add(float(1).div(mu))).negate())));
@@ -157,6 +166,12 @@ export function createRings(slot: MapSlot, span: RingSpan, polar: number, mosaic
     },
     apply(detail) {
       mesh.geometry = ringGeometry(SEGMENTS[detail.tier]);
+      // Only the tessellation this detail level uses is kept.
+      for (const [segments, g] of geometries) {
+        if (segments === SEGMENTS[detail.tier]) continue;
+        g.dispose();
+        geometries.delete(segments);
+      }
       particles.setEnabled(detail.ringDetail === 'particles');
     },
     dispose() {

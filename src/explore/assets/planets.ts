@@ -96,11 +96,13 @@ export function ringU(texture: PlanetTexture, radiusKm: number): number {
 
 /**
  * Loads one texture and sets what planets.json asks for: longitude wraps, latitude (and the
- * ring radius) clamps, trilinear filtering. Raw r8/rgba8 files arrive from KTX2Loader as
- * DataTextures with nearest filtering, so the filters are always set here.
+ * ring radius) clamps, trilinear filtering. Raw r8/rgba8 files arrive as DataTextures with nearest
+ * filtering, so the filters are always set here. With `raw`, those raw files are inflated in a worker
+ * (./raw-ktx2) instead of by KTX2Loader on the main thread.
  */
-export async function loadPlanetTexture(assets: AssetLoader, texture: PlanetTexture): Promise<Texture> {
-  const loaded = await assets.ktx2(texture.path);
+export async function loadPlanetTexture(assets: AssetLoader, texture: PlanetTexture, raw?: { load(assets: AssetLoader, path: string): Promise<Texture> }): Promise<Texture> {
+  const isRaw = texture.codec === 'r8' || texture.codec === 'rgba8';
+  const loaded = raw && isRaw ? await raw.load(assets, texture.path) : await assets.ktx2(texture.path);
   loaded.wrapS = texture.map === 'rings' ? ClampToEdgeWrapping : RepeatWrapping;
   loaded.wrapT = ClampToEdgeWrapping;
   loaded.minFilter = texture.levels > 1 ? LinearMipmapLinearFilter : LinearFilter;

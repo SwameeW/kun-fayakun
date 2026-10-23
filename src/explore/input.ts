@@ -6,6 +6,10 @@
  * the same at any scale); the wheel zooms. Keys: arrows or W A S D turn around the body, + and -
  * (or Page Up and Page Down) zoom. Keys are read by physical code, so other layouts work, and are
  * ignored while typing in a field or when a widget owns them. Esc belongs to the UI (back to the film).
+ *
+ * Turning slows with the altitude (the caller's turnScale: altitude over radius, at most 1), so close
+ * to a surface a drag across the screen moves the view by about the ground it shows, not halfway round
+ * the planet: from far away a drag swings the whole globe, from low orbit it glides over the ground.
  */
 
 import type { Navigator } from './navigation';
@@ -45,9 +49,14 @@ function ownedElsewhere(target: EventTarget | null): boolean {
 export interface ExploreInput {
   attach(): void;
   detach(): void;
+  /** Per frame: held keys turn at the rate the current altitude allows. */
+  update(): void;
 }
 
-export function createInput(element: HTMLElement, nav: Navigator): ExploreInput {
+/** How much of the full turn rate applies now (1 far from the body, down to a few hundredths near its surface). */
+export type TurnScale = () => number;
+
+export function createInput(element: HTMLElement, nav: Navigator, turnScale: TurnScale = () => 1): ExploreInput {
   const pointers = new Map<number, { x: number; y: number }>();
   let pinch = 0;
   const held = new Set<string>();
@@ -69,7 +78,8 @@ export function createInput(element: HTMLElement, nav: Navigator): ExploreInput 
       }
       zoom += ZOOM_KEYS[code] ?? 0;
     }
-    nav.setKeyRates(Math.sign(azimuth), Math.sign(elevation), Math.sign(zoom));
+    const scale = turnScale();
+    nav.setKeyRates(Math.sign(azimuth) * scale, Math.sign(elevation) * scale, Math.sign(zoom));
   };
 
   const onPointerDown = (e: PointerEvent): void => {
@@ -86,7 +96,8 @@ export function createInput(element: HTMLElement, nav: Navigator): ExploreInput 
     last.x = e.clientX;
     last.y = e.clientY;
     if (pointers.size === 1) {
-      nav.rotate(-dx * DRAG_RADIANS_PER_PX, dy * DRAG_RADIANS_PER_PX);
+      const rate = DRAG_RADIANS_PER_PX * turnScale();
+      nav.rotate(-dx * rate, dy * rate);
     } else if (pointers.size === 2) {
       const now = spread();
       if (pinch > 0 && now > 0) nav.zoom(-Math.log(now / pinch));
@@ -133,6 +144,9 @@ export function createInput(element: HTMLElement, nav: Navigator): ExploreInput 
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
       window.addEventListener('blur', onBlur);
+    },
+    update() {
+      if (held.size > 0) syncKeys();
     },
     detach() {
       if (!attached) return;

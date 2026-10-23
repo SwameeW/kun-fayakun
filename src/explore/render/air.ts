@@ -57,6 +57,8 @@ export interface AirModel {
   readonly sunAngularRadius: number;
   /** Vertical optical depth of the whole air at the three wavelengths (for the analytic 'chord' model). */
   readonly verticalDepth: readonly [number, number, number];
+  /** Radius (1 is the ground) of the night airglow's layer: atomic oxygen's green line at its brightest. */
+  readonly airglow: number;
 }
 
 /** The air of a planet of `radiusKm` from the cited constants (data/constants.json). */
@@ -97,7 +99,20 @@ export function earthAir(data: DataStore, radiusKm: number, sunAngularRadius: nu
     ozoneHalfWidth,
     sunAngularRadius,
     verticalDepth,
+    airglow: 1 + c('earth.airglow.greenLine.height') * km,
   };
+}
+
+/**
+ * Sunlight that reaches the eye along a line grazing the planet `heightRadii` above its ground (the
+ * Sun seen through the limb, setting or rising behind the planet): Chapman's grazing column of the
+ * whole air, thinning with the height as the Rayleigh scale height does. (r, g, b), 1 above the air.
+ */
+export function limbTransmittance(air: AirModel, heightRadii: number): [number, number, number] {
+  const H = air.rayleighScale;
+  const grazing = Math.sqrt((2 * Math.PI) / H) * Math.exp(-Math.max(0, heightRadii) / H);
+  const [r, g, b] = air.verticalDepth;
+  return [Math.exp(-r * grazing), Math.exp(-g * grazing), Math.exp(-b * grazing)];
 }
 
 export const LUT = { width: 256, height: 64, steps: 40 } as const;

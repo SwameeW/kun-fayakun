@@ -1,6 +1,12 @@
 /**
  * The Moon, for the explorer, from NASA's CGI Moon Kit: LROC WAC colour (albedo with no shading in
- * it) and LOLA relief as a normal map (Medium and up).
+ * it) and LOLA relief as a normal map.
+ *
+ * The Low and Medium colour files are ETC1S, whose 4 x 4 blocks carry colour errors (magenta and green
+ * blocks) that show as soon as the map is magnified. The Moon is nearly grey, so its colour is read
+ * as the fine map's brightness over the colour of a much coarser level (where the blocks average
+ * out); at Low, where the 1024 maps are magnified most, both maps are read through a cubic B-spline
+ * so neither shows its texels.
  *
  * Light is Lommel-Seeliger, as airless regolith reflects it (a full Moon is as bright at its limb as
  * at its centre), with a Hapke-like shadow-hiding opposition surge, the steep brightening as the
@@ -16,6 +22,10 @@
  * stand bright, as in a telescope at first quarter. The shadows are cast by the relief as drawn,
  * which planets.json records as exaggerated (reliefExaggeration).
  *
+ * Close up, where even the relief map is magnified, illustrative small craters (the analytic layers of
+ * ./shading, no real crater placed) fill in below its resolution, each scale fading in only once its
+ * craters span a few pixels and staying out of view from afar; the interface says they are illustrative.
+ *
  * The night side gets earthshine: sunlight the Earth sends back, from its direction and as much of it
  * as the Earth's lit face turned toward the Moon. Real earthshine is about 10^-4 of sunlight, far below
  * what a camera exposed for the day side records; it is shown a few hundred times stronger, as the eye
@@ -23,11 +33,12 @@
  */
 
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Node, type Object3D } from 'three/webgpu';
-import { atan, dot, float, Fn, If, int, Loop, max, normalize, positionLocal, smoothstep, sqrt, tan, uniform, vec2, vec3 } from 'three/tsl';
+import { atan, dot, float, Fn, If, int, Loop, max, mix, normalize, positionLocal, smoothstep, sqrt, tan, uniform, vec2, vec3 } from 'three/tsl';
 import type { PlanetTextures } from '../assets/streaming';
 import type { ExploreDetail } from '../detail';
-import { decodeNormal, mapCoords, mipLevel, sampleSlot, sampleSlotLevel, tangentFrame, type FloatNode, type Vec3Node } from '../render/sampling';
-import { bumpGradient, litCosine, sunlit, tiltNormal } from './shading';
+import { decodeNormal, mapCoords, mipLevel, sampleSlot, sampleSlotLevel, sampleSlotSmooth, tangentFrame, type FloatNode, type Vec3Node } from '../render/sampling';
+import { bumpGradient, craters, keepOnSphere, litCosine, sphereFootprint, sunlit, tiltNormal } from './shading';
+import { textureTier } from '../detail';
 
 /** The kit's maps put the near side's centre (east longitude 0) at u = 0.5 (planets.json bodies.moon.uAtLon0). */
 const U_AT_LON0 = 0.5;
@@ -41,7 +52,28 @@ const PHASE_DARKENING = 0.4;
 /** The map's standard geometry: incidence 30 degrees, emission 0, phase 30 degrees. */
 const STANDARD = { mu0: Math.cos(Math.PI / 6), mu: 1, phase: Math.PI / 6 } as const;
 /** Shadow march: steps per detail tier, and the farthest it looks (radii: about 100 km, the reach of the longest shadows it draws). */
-const SHADOW_STEPS: Readonly<Record<ExploreDetail['tier'], number>> = { ultra: 14, high: 12, medium: 7, low: 0 };
+const SHADOW_STEPS: Readonly<Record<ExploreDetail['tier'], number>> = { ultra: 14, high: 12, medium: 7, low: 4 };
+/** Mip levels coarser than the colour's own that its colour (not its brightness) is read at, for the block-compressed files. */
+const CHROMA_BLUR = 3;
+/**
+ * Illustrative small craters: a crater cell spans this many texels of the streamed map (so the craters
+ * are just below what it resolves), the second scale's cells are this much smaller, the craters' depth
+ * over diameter, and how much of each cell holds a crater.
+ */
+const CRATERS = { cellTexels: 3, second: 2.8, ratio: 0.14, density: 0.62 } as const;
+
+/** Width of the files streamed at a detail level. */
+const mapWidth = (detail: ExploreDetail): number => ({ low: 1024, medium: 2048, high: 4096 })[textureTier(detail)];
+/** Crater cells per radian for a detail level's first scale. */
+const crateredCells = (detail: ExploreDetail): number => mapWidth(detail) / (2 * Math.PI * CRATERS.cellTexels);
+
+/**
+ * True while the illustrative craters show: the first scale is kept straight below a camera
+ * `altitudeRadii` up, with `pxPerRadian` device pixels per radian (the readout then says so).
+ */
+export function craterDetailShown(detail: ExploreDetail, altitudeRadii: number, pxPerRadian: number): boolean {
+  return (Math.max(0, altitudeRadii) / Math.max(pxPerRadian, 1)) * crateredCells(detail) * 3 < 0.55;
+}
 const SHADOW_REACH = 0.06;
 /** Without a relief map: height (radii) per unit of the colour map's local contrast (illustrative). */
 const ALBEDO_RELIEF = 0.006;
@@ -86,19 +118,40 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
   const build = (detail: ExploreDetail): MeshBasicNodeMaterial => {
     const n = normalize(positionLocal);
     const c = mapCoords(n, n.y, U_AT_LON0);
-    const albedo = sampleSlot(colourSlot, c).rgb;
+    const smooth = detail.tier === 'low';
+    const read = smooth ? sampleSlotSmooth : sampleSlot;
+    const luma = (v: Vec3Node): FloatNode => dot(v, vec3(0.2126, 0.7152, 0.0722));
+    let albedo: Vec3Node = read(colourSlot, c).rgb;
+    if (detail.tier === 'low' || detail.tier === 'medium') {
+      // The fine map's brightness over a coarse level's colour: ETC1S's colour blocks average out there
+      // (and at Low the colour a little desaturated: the Moon is nearly grey, its blocks' tints are not).
+      const coarse = sampleSlot(colourSlot, c, CHROMA_BLUR).rgb;
+      const brightness = luma(albedo);
+      albedo = coarse.mul(brightness.div(max(luma(coarse), 1e-3)));
+      if (smooth) albedo = mix(vec3(brightness), albedo, 0.55);
+    }
     const { east, north } = tangentFrame(n);
     let relief: Vec3Node;
     if (detail.normalMaps) {
-      const t = decodeNormal(sampleSlot(normalSlot, c));
+      const t = decodeNormal(read(normalSlot, c));
       relief = normalize(east.mul(t.x).add(north.mul(t.y)).add(n.mul(t.z)));
     } else {
       // No relief map at this detail: a hint of relief from the colour map's local contrast (crater
       // rims and young ejecta are bright), so the terminator is not flat. Illustrative.
-      const luma = (v: Vec3Node): FloatNode => dot(v, vec3(0.2126, 0.7152, 0.0722));
       const contrast = luma(albedo).sub(luma(sampleSlot(colourSlot, c, 2.5).rgb));
       relief = tiltNormal(n, bumpGradient(positionLocal, n, contrast.mul(ALBEDO_RELIEF)), 1);
     }
+    // Illustrative small craters below the map's resolution, each scale only once it spans a few pixels.
+    const footprint = sphereFootprint(n);
+    const cells = crateredCells(detail);
+    const small = craters(n, cells, 1, CRATERS.density, CRATERS.ratio);
+    const smaller = craters(n, cells * CRATERS.second, 2, CRATERS.density, CRATERS.ratio);
+    const keepSmall = keepOnSphere(footprint, cells * 3);
+    const keepSmaller = keepOnSphere(footprint, cells * CRATERS.second * 3);
+    relief = tiltNormal(relief, small.gradient.mul(keepSmall).add(smaller.gradient.mul(keepSmaller)), 1);
+    // Fresh rims a little brighter, floors a little darker.
+    const marks = small.rim.mul(0.12).sub(small.inside.mul(0.06)).mul(keepSmall).add(smaller.rim.mul(0.1).sub(smaller.inside.mul(0.05)).mul(keepSmaller));
+    albedo = albedo.mul(marks.add(1));
     const view = normalize(uEye.sub(n));
     const nDotL = dot(n, uSun);
     const mu0 = litCosine(dot(relief, uSun));
@@ -165,7 +218,7 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
   };
 
   const materials = new Map<string, MeshBasicNodeMaterial>();
-  const keyOf = (d: ExploreDetail): string => `${d.normalMaps}|${d.normalMaps ? SHADOW_STEPS[d.tier] : 0}`;
+  const keyOf = (d: ExploreDetail): string => `${d.tier}|${d.normalMaps}`;
   const materialFor = (d: ExploreDetail): MeshBasicNodeMaterial => {
     const key = keyOf(d);
     let m = materials.get(key);
@@ -212,6 +265,17 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     apply(detail) {
       mesh.material = materialFor(detail);
       mesh.geometry = sphere(detail.sphereSegments);
+      // Only what this detail level uses is kept.
+      for (const [key, m] of materials) {
+        if (key === keyOf(detail)) continue;
+        m.dispose();
+        materials.delete(key);
+      }
+      for (const [segments, g] of geometries) {
+        if (segments === detail.sphereSegments) continue;
+        g.dispose();
+        geometries.delete(segments);
+      }
     },
     dispose() {
       for (const g of geometries.values()) g.dispose();

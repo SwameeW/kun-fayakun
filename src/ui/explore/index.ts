@@ -1,5 +1,5 @@
-import { BODY_IDS, type App, type BodyId, type ChapterId, type UniverseView } from '../../core/types';
-import { PLANETS_MANIFEST_URL, planetCredits, type PlanetsManifest } from '../../explore/assets/planets';
+import { BODY_IDS, type App, type BodyId, type ChapterId, type UniverseIllustration, type UniverseView } from '../../core/types';
+import { PLANETS_MANIFEST_URL, planetCredits, type PlanetCredit, type PlanetsManifest } from '../../explore/assets/planets';
 import { focusLost, h } from '../dom';
 import '../styles/explore.css';
 
@@ -8,9 +8,10 @@ import '../styles/explore.css';
  * shell): a list of bodies to fly to, a way back to the film, and a readout of where the camera
  * is. The readout replaces the chapters' scale bar, which would mislead here: distant bodies are
  * drawn in scaled space, so it gives true distances instead, says plainly that sizes and distances
- * are true, and that the surfaces are illustrative until mission maps arrive. On a narrow screen it
- * shrinks to two short lines, and the explorer is told what the interface covers so it frames the
- * bodies in the clear part of the view.
+ * are true, names what the view draws that is illustrative (the explorer reports it), and credits
+ * the surfaces' imagery in one short line, the credits in full (and the Earth's epochs) a click
+ * away. On a narrow screen it shrinks to a few short lines on a solid backdrop, and the explorer is
+ * told what the interface covers so it frames the bodies in the clear part of the view.
  *
  * Everything is real DOM text. The list is a row of toggle buttons (aria-pressed on the body in
  * view); moves are announced politely; the readout is plain text, not live (it changes every frame).
@@ -80,20 +81,27 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const sunlight = h('p', { class: 'kf-universe-line kf-universe-extra' });
   const filter = h('p', { class: 'kf-universe-line kf-universe-extra kf-universe-filter', hidden: true }, i18n.t('ui.universe.filter'));
   const date = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-extra' });
-  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative', hidden: true }, i18n.t('ui.universe.illustrative'));
-  const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true });
+  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative', 'data-testid': 'universe-illustrative', hidden: true });
+  // The imagery's credits: one short line, and the full lines (with the Earth's epochs) in a panel that opens over the view.
+  const imageryText = h('span', { class: 'kf-universe-imagery-text' });
+  const creditsPanel = h('div', { class: 'kf-universe-credits-panel', id: 'kf-universe-credits', role: 'region', 'aria-label': i18n.t('ui.universe.creditsLabel') });
+  const creditsToggle = h('summary', { class: 'kf-universe-credits-toggle' }, i18n.t('ui.universe.credits'));
+  const credits = h('details', { class: 'kf-universe-credits', 'data-testid': 'universe-credits' }, creditsToggle, creditsPanel);
+  const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true }, imageryText, credits);
   const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, scale, sunlight, filter, date, illustrative, imagery);
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));
 
   // A programmatic focus target (tabindex -1): opening the explorer lands here, not on the page's body.
+  // The readout comes after the bodies in the document (it is placed by CSS), so Tab reaches the way
+  // back and the bodies before the credits.
   const element = h(
     'section',
     { class: 'kf-universe', 'aria-label': i18n.t('ui.universe.label'), 'data-testid': 'universe', tabindex: '-1', hidden: true },
     hint,
     loading,
-    readout,
     nav,
+    readout,
   );
 
   /**
@@ -156,21 +164,39 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     return i18n.t('ui.universe.sunlight', { percent: `${i18n.number(percent, digits)}%` });
   };
 
-  /** Per body: its maps' credits (and the Earth's caption), once planets.json has loaded. */
-  let credits: Partial<Record<BodyId, string>> = {};
+  /**
+   * A source's name as the short line shows it: its full credit where no short name is kept (OPAL's
+   * CC BY credit stays whole), nothing for a source whose terms ask for none (Natural Earth; it is in
+   * the full credits all the same).
+   */
+  const shortName = (source: PlanetCredit): string => {
+    const key = `ui.universe.source.${source.sourceId}`;
+    return i18n.has(key) ? i18n.t(key) : source.credit;
+  };
+  /** Per body: the short imagery line, and the full credits (with the Earth's caption), once planets.json has loaded. */
+  let imageryLines: Partial<Record<BodyId, { short: string; full: string[] }>> = {};
   void app.assets.json<PlanetsManifest>(PLANETS_MANIFEST_URL).then(
     (manifest) => {
-      const next: Partial<Record<BodyId, string>> = {};
+      const next: Partial<Record<BodyId, { short: string; full: string[] }>> = {};
       for (const body of ['earth', 'moon', 'jupiter', 'saturn'] as const) {
-        const lines = planetCredits(manifest.files.filter((f) => f.body === body));
+        const files = manifest.files.filter((f) => f.body === body);
+        const lines = planetCredits(files);
         if (lines.length === 0) continue;
-        const caption = body === 'earth' ? manifest.bodies?.earth?.caption : undefined;
-        next[body] = [caption, i18n.t('ui.universe.imagery', { credits: lines.join('; ') })].filter(Boolean).join(' ');
+        const sources = files.flatMap((f) => [f, ...(f.alsoFrom ?? [])]);
+        const names = [...new Set(sources.map(shortName))].filter((name) => name !== '');
+        const caption = manifest.bodies?.[body]?.caption;
+        next[body] = { short: i18n.t('ui.universe.imagery', { credits: names.join(', ') }), full: [...(caption ? [caption] : []), ...lines] };
       }
-      credits = next;
+      imageryLines = next;
     },
     () => undefined,
   );
+  const listFormat = new Intl.ListFormat(i18n.locale, { style: 'long', type: 'conjunction' });
+  /** The readout's note of what is illustrative, or '' for none. */
+  const illustrativeNote = (items: readonly UniverseIllustration[] | undefined): string =>
+    items && items.length > 0 ? i18n.t('ui.universe.illustrative', { items: listFormat.format(items.map((id) => i18n.t(`ui.universe.illustrative.${id}`))) }) : '';
+  /** The credits the panel holds now (rebuilt when the focus or the loaded lines change). */
+  let creditsShown: { short: string; full: string[] } | undefined;
 
   let visible = false;
   let ready = false;
@@ -191,11 +217,18 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     filter.hidden = !view.solarFilter;
     readout.classList.toggle('is-filtered', view.solarFilter);
     write(date, i18n.t('ui.universe.date', { date: dateFormat.format(new Date(view.unixMs)) }));
-    // Whose imagery this is (the focus's maps), or, for the procedural Sun, that it is illustrative.
-    const line = credits[view.focus];
-    imagery.hidden = !line;
-    write(imagery, line ?? '');
-    illustrative.hidden = view.focus !== 'sun';
+    // What is illustrative in the view now, and whose imagery this is (the focus's maps).
+    const note = illustrativeNote(view.illustrative);
+    illustrative.hidden = note === '';
+    write(illustrative, note);
+    const lines = imageryLines[view.focus];
+    imagery.hidden = !lines;
+    write(imageryText, lines?.short ?? '');
+    if (creditsShown !== lines) {
+      creditsShown = lines;
+      credits.open = false;
+      creditsPanel.replaceChildren(...(lines?.full ?? []).map((line) => h('p', { class: 'kf-universe-credits-line' }, line)));
+    }
     if (view.focus !== shownFocus) {
       for (const [id, button] of buttons) button.setAttribute('aria-pressed', String(id === view.focus));
       if (shownFocus !== null) announce(i18n.t('ui.universe.announce.travel', { body: name(view.focus) }));

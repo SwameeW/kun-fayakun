@@ -1,26 +1,31 @@
 /**
  * The Sun's disc, for the explorer. Seen small it is a brilliant white point that the glare
  * (./glare) surrounds; seen large it is shown as through a solar filter, the way the Sun is
- * photographed: amber, its limb darkened by the measured law (quadratic in mu, Allen's Astrophysical
- * Quantities at 550 nm, from data/constants.json) and reddened (there we see higher, cooler layers),
- * mottled by supergranulation and, closer, by the granulation's cells (bright upwelling cells and
- * dark lanes, each scale fading in only once it spans a few pixels), with bright faculae toward the
- * limb and a crisp edge. The mottling is illustrative; its scales and the limb darkening are the
- * real Sun's. The colour is the blackbody colour of its temperature, never picked by eye.
+ * photographed in white light: amber, its limb darkened by the measured law (quadratic in mu,
+ * Allen's Astrophysical Quantities at 550 nm, from data/constants.json: the edge 30% as bright as the
+ * centre) and reddened (there we see higher, cooler layers), held at a brightness the display's tone
+ * curve leaves nearly linear so that the darkening reads. Its surface is granulation: bright
+ * upwelling cells parted by dark lanes (cellular noise at the granules' real size, about 1,000 km),
+ * shown only once a cell spans a few pixels; further out, where the cells are finer than that, a
+ * faint grain stands for them. Bright faculae show toward the limb, and the edge is crisp. The
+ * surface detail is illustrative; its scales and the limb darkening are the real Sun's. The colour is
+ * the blackbody colour of its temperature, never picked by eye.
  *
  * With 'full' Sun detail, the limb carries more (one sprite behind the disc): the chromosphere's thin
- * red rim, prominences (flames and arches of cooler gas in the colour of hydrogen-alpha light, rising
- * from a few active regions and slowly changing), and a layered corona (a steep inner glow and fainter
- * streamers reaching out radially). All three are anchored to the Sun, not the screen, so turning
- * around it brings other prominences to the limb. Their shapes are illustrative; the real corona is
- * about a millionth of the disc's brightness and is drawn brighter, as in eclipse photographs.
+ * red rim, prominences (translucent hedgerows and thin threads of cooler gas arching over a few active
+ * regions, in the colour of hydrogen-alpha light, slowly changing), and a layered corona (a steep
+ * inner glow and fainter streamers reaching out radially). A white-light filter would not show the
+ * prominences; they are drawn as eclipse and hydrogen-alpha photographs show them. All three are
+ * anchored to the Sun, not the screen, so turning around it brings other prominences to the limb.
+ * Their shapes are illustrative; the real corona is about a millionth of the disc's brightness and is
+ * drawn brighter, as in eclipse photographs.
  *
  * Flash safety: nothing here changes faster than slow drifts, and the disc's radiance has a ceiling in
  * display terms, so however the exposure and the filter move it never exceeds a fixed brightness.
  */
 
 import { BackSide, FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, Quaternion, SphereGeometry, Vector3, Vector4, type Data3DTexture, type Object3D } from 'three/webgpu';
-import { abs, dot, exp, float, Fn, If, max, min, mix, mx_worley_noise_float, normalize, normalView, positionLocal, positionViewDirection, pow, smoothstep, texture3D, uniform, vec2, vec3 } from 'three/tsl';
+import { abs, atan, dot, exp, float, Fn, If, max, min, mix, mx_worley_noise_float, normalize, normalView, positionLocal, positionViewDirection, pow, smoothstep, sqrt, texture3D, uniform, vec2, vec3 } from 'three/tsl';
 import { blackbodyRgb } from '../../chapters/shared/blackbody';
 import type { ExploreDetail } from '../detail';
 import { blendAdditive } from '../render/blending';
@@ -28,13 +33,15 @@ import type { FloatNode, Vec3Node } from '../render/sampling';
 import { keepOnSphere, noiseIfKept, sphereFootprint } from './shading';
 
 /** The limb's light comes from layers about this much cooler (its reddening): illustrative. */
-const LIMB_COOLING = 0.66;
+const LIMB_COOLING = 0.6;
 /** The disc's brightest, display terms (after the exposure): the radiance ceiling. */
 const SUN_CEILING = 6;
 /** The limb sprite reaches this many solar radii from the centre. */
 const HALO_EXTENT = 3.2;
 /** The mean of 1 - |2 noise - 1| over the explorer's noise volume (measured: 0.676 per texel, a little more filtered). */
 const RIDGE_MEAN = 0.68;
+/** The mean of the granulation's cell pattern, smoothstep(0.78, 0.32, F1), for this jitter (sampled). */
+const GRANULE_MEAN = 0.565;
 /** Loop prominences drawn at once (the ones whose footpoints are nearest the limb). */
 const LOOP_SLOTS = 4;
 /** Granulation cells per unit of the unit sphere (granules are about 1,000 km across, the Sun 696,000 km in radius), and supergranulation. */
@@ -60,7 +67,7 @@ const LOOPS = ((): ReadonlyArray<{ direction: [number, number, number]; radius: 
     return {
       direction: [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)],
       radius: 0.03 + random() * 0.06,
-      width: 0.005 + random() * 0.006,
+      width: 0.003 + random() * 0.004,
       strength: 0.8 + random() * 0.8,
       seed: random() * 10,
     };
@@ -126,34 +133,33 @@ export function createSun(noise: Data3DTexture, limb: SunLimb, initial: ExploreD
     const footprint = sphereFootprint(n);
     const mu = abs(dot(normalView, positionViewDirection));
     const darkening = float(a0).add(mu.mul(limb.a1)).add(mu.mul(mu).mul(limb.a2));
-    // Large, slow cells (the chapters' boiling), then supergranulation, then granulation as the disc grows.
-    const cells = T(n.mul(2.2).add(vec3(uTime.mul(0.006), 0.31, uTime.mul(-0.004)))).sub(0.5);
-    const network = T(n.mul(7).add(vec3(uTime.mul(0.002), 0.81, 0))).sub(0.5).mul(keepOnSphere(footprint, 56));
+    // The active network (where faculae stand): slow, large patches; a faint trace of supergranulation.
+    const network = T(n.mul(7).add(vec3(uTime.mul(0.002), 0.81, 0))).sub(0.5);
     const superKept = keepOnSphere(footprint, SUPERGRANULES * 2);
-    const granKept = keepOnSphere(footprint, GRANULES * 2);
-    // Cellular patterns: bright cell centres, dark lanes (worley F1), skipped where they would be under a pixel.
-    const cellular = (scale: number, kept: FloatNode, drift: number): FloatNode =>
-      Fn(() => {
-        const value = float(0).toVar();
-        If(kept.greaterThan(1e-3), () => {
-          const f1 = mx_worley_noise_float(n.mul(scale).add(vec3(uTime.mul(drift), 0.37, uTime.mul(drift * 0.7))), 0.9);
-          // Less F1's mean distance (0.517 for this jitter, sampled), so its fade never shifts the brightness.
-          value.assign(float(0.517).sub(f1).mul(kept));
-        });
-        return value;
-      })();
-    const full = detail.sunDetail === 'full';
-    // Supergranulation: a ridged noise (cell-like, one lookup) at every detail; true cells (worley)
-    // only for the granulation, which needs them and shows only very close up.
     const ridge = float(1).sub(noiseIfKept(noise, n.mul(SUPERGRANULES / 4).add(vec3(uTime.mul(0.0008), 0.37, 0)), superKept).mul(2).sub(1).abs());
-    // Less its mean over the volume (0.68), so fading it in by the pixel's footprint never shifts the brightness.
+    // Less its mean over the volume, so fading it in by the pixel's footprint never shifts the brightness.
     const supergranules = ridge.sub(RIDGE_MEAN).mul(superKept);
-    const granules = full ? cellular(GRANULES, granKept, 0.004) : float(0);
-    const fine = detail.tier === 'low' ? float(0) : noiseIfKept(noise, n.mul(40).add(vec3(0, uTime.mul(0.01), 0.27)), keepOnSphere(footprint, 320)).sub(0.5).mul(keepOnSphere(footprint, 320));
-    const mottle = cells.mul(0.12).add(network.mul(0.2)).add(supergranules.mul(0.18)).add(granules.mul(0.34)).add(fine.mul(0.12)).add(1);
+    // Granulation: bright cells parted by narrow dark lanes (cellular noise, F1), only once a cell spans
+    // a few pixels; where the cells are finer than that, a faint grain of the same mean stands for them.
+    const granKept = keepOnSphere(footprint, GRANULES * 2);
+    const full = detail.sunDetail === 'full';
+    const granules = full
+      ? Fn(() => {
+          const value = float(0).toVar();
+          If(granKept.greaterThan(1e-3), () => {
+            const f1 = mx_worley_noise_float(n.mul(GRANULES).add(vec3(uTime.mul(0.004), 0.37, uTime.mul(0.0028))), 0.9);
+            // Bright plateaus, dark lanes; less the pattern's mean so fading it never shifts the brightness.
+            value.assign(smoothstep(0.78, 0.32, f1).sub(GRANULE_MEAN).mul(granKept));
+          });
+          return value;
+        })()
+      : float(0);
+    const grainKept = keepOnSphere(footprint, 320).mul(float(1).sub(granKept));
+    const grain = detail.tier === 'low' ? float(0) : noiseIfKept(noise, n.mul(40).add(vec3(0, uTime.mul(0.01), 0.27)), grainKept).sub(0.5).mul(grainKept);
+    const mottle = network.mul(0.04).add(supergranules.mul(0.05)).add(granules.mul(0.42)).add(grain.mul(0.16)).add(1);
     // Faculae: bright patches of the network, seen best toward the limb.
-    const faculae = smoothstep(0.1, 0.28, network).mul(float(1).sub(smoothstep(0.06, 0.45, mu))).mul(0.5);
-    const tint = mix(uLimb, uCentre, pow(mu, 0.45));
+    const faculae = smoothstep(0.16, 0.32, network).mul(float(1).sub(smoothstep(0.05, 0.4, mu))).mul(0.3);
+    const tint = mix(uLimb, uCentre, pow(mu, 0.5));
     const disc: Vec3Node = tint.mul(darkening).mul(mottle.add(faculae)).mul(uFilter).mul(uLight);
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = min(disc, vec3(uCeiling, uCeiling, uCeiling));
@@ -187,21 +193,32 @@ export function createSun(noise: Data3DTexture, limb: SunLimb, initial: ExploreD
         // Chromosphere: a thin red rim just above the photosphere, its top ragged with spicules.
         const spicules = TL(d.mul(90).add(vec3(0.19, uTime.mul(0.01), 0.61))).mul(0.6).add(0.7);
         const chromosphere = exp(max(h, 0).div(spicules.mul(-0.01))).mul(0.6);
-        // Hedgerow prominences: soft flames in a few active regions, their height and shape from slow noise.
-        const regions = smoothstep(0.6, 0.72, TL(d.mul(1.3).add(0.21)));
+        // Hedgerow prominences: soft, translucent veils in a few active regions, their height and texture
+        // from slow noise, fading upward (never a hard-edged flame).
+        const regions = smoothstep(0.58, 0.74, TL(d.mul(1.3).add(0.21)));
         const flame = TL(vec3(d.mul(7)).add(vec3(h.mul(3.5), uTime.mul(0.002), h.mul(-2.5))).add(0.47));
-        const hedge = smoothstep(0.02, 0.07, flame.mul(0.11).sub(h)).mul(smoothstep(-0.002, 0.008, h)).mul(regions);
+        const strands = TL(vec3(d.mul(31)).add(vec3(h.mul(12), uTime.mul(0.003), 0.11))).mul(0.6).add(0.4);
+        const reach = flame.mul(0.06).add(0.004);
+        const hedge = exp(max(h, 0).div(reach).negate()).mul(smoothstep(0.42, 0.7, flame)).mul(strands).mul(smoothstep(-0.002, 0.006, h)).mul(regions).mul(0.55);
         // Loop prominences: arches standing on the limb over footpoints fixed on the Sun; the CPU picks
         // the few whose footpoints are near the limb now (uLoops).
         let loops: FloatNode = float(0);
+        const radial = c.length().max(1e-4);
         for (const slot of uLoops) {
+          // The arch's middle, on the limb as seen now, and this pixel's angle from it around the disc.
           const sky = vec2(dot(slot.foot, uRight), dot(slot.foot, uUp));
           const base = sky.div(sky.length().max(1e-4));
-          const fromBase = c.sub(base);
-          // Wavy, so no arch is a perfect circle.
-          const wobble = TL(vec3(fromBase.mul(9), uTime.mul(0.003)).add(slot.shape.w)).sub(0.5).mul(slot.shape.x.mul(0.35));
-          const offset = fromBase.length().sub(wobble.add(slot.shape.x)).div(slot.shape.y);
-          loops = loops.add(exp(offset.mul(offset).negate()).mul(slot.shape.z));
+          const along = atan(base.x.mul(c.y).sub(base.y.mul(c.x)), dot(base, c));
+          // An arch between two footpoints on the limb: half its span (radians around the disc) and its
+          // height (radii) follow its size; a semi-ellipse, wavy so no two are alike.
+          const t = along.div(slot.shape.x.mul(1.7));
+          const rise = slot.shape.x.mul(1.15).mul(sqrt(max(float(1).sub(t.mul(t)), 0)));
+          const wobble = TL(vec3(c.mul(9), uTime.mul(0.003)).add(slot.shape.w)).sub(0.5).mul(slot.shape.x.mul(0.25));
+          const offset = radial.sub(rise.add(wobble).add(1)).div(slot.shape.y);
+          // A thin thread of gas, brighter in knots along it, fading into the footpoints.
+          const knots = TL(vec3(c.mul(40), slot.shape.w.add(uTime.mul(0.002)))).mul(0.8).add(0.35);
+          const feet = float(1).sub(smoothstep(0.72, 1, t.abs()));
+          loops = loops.add(exp(offset.mul(offset).negate()).mul(feet).mul(slot.shape.z).mul(knots).mul(0.85));
         }
         value.assign(vec2(chromosphere, hedge.add(loops).mul(exp(max(h, 0).div(-0.12)))));
       });
@@ -215,7 +232,7 @@ export function createSun(noise: Data3DTexture, limb: SunLimb, initial: ExploreD
     const outer = pow(max(r, 1), -2.6).mul(0.06).mul(smoothstep(0.35, 0.8, streamers).mul(1.6).add(0.2));
     const fadeOut = float(1).sub(smoothstep(HALO_EXTENT * 0.6, HALO_EXTENT * 0.95, r));
     const corona = inner.add(outer).mul(above).mul(fadeOut);
-    const hAlpha = vec3(1, 0.32, 0.16);
+    const hAlpha = vec3(1, 0.36, 0.3);
     // Through the filter the prominences and rim stand out; unfiltered, the pearly corona does.
     const filteredLight = hAlpha.mul(chromosphere.add(prominences.mul(0.9))).mul(uFiltered.mul(0.7).add(0.3));
     const coronaLight = vec3(1, 0.95, 0.88).mul(corona).mul(float(1).sub(uFiltered.mul(0.8)));
@@ -311,6 +328,17 @@ export function createSun(noise: Data3DTexture, limb: SunLimb, initial: ExploreD
     apply(detail) {
       mesh.material = discFor(detail);
       mesh.geometry = sphere(sunSegments(detail));
+      // Only what this detail level uses is kept.
+      for (const [key, m] of discs) {
+        if (m === mesh.material) continue;
+        m.dispose();
+        discs.delete(key);
+      }
+      for (const [segments, g] of geometries) {
+        if (segments === sunSegments(detail)) continue;
+        g.dispose();
+        geometries.delete(segments);
+      }
       full = detail.sunDetail === 'full';
       if (!full) halo.visible = false;
     },

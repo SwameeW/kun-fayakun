@@ -876,6 +876,19 @@
         "url": "https://en.wikipedia.org/wiki/Limb_darkening",
         "accessed": "2026-10-23"
       }
+    },
+    {
+      "id": "earth.airglow.greenLine.height",
+      "description": "Height at which the night sky's green airglow, atomic oxygen's 557.7 nm line, is brightest: about 90 km over 10 to 20 degrees north in May and about 95 km at mid-latitudes in both hemispheres in November (ISUAL and SABER measurements).",
+      "value": 95,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "it varies with latitude and season (about 90 to 95 km in the cited measurements); the explorer draws the night side's airglow as one thin layer at this height",
+      "citation": {
+        "text": "Gao, H., Nee, J.-B. and Xu, J. 2012, \"The emission of oxygen green line and density of O atom determined by using ISUAL and SABER measurements\", Annales Geophysicae 30, 695-701",
+        "url": "https://doi.org/10.5194/angeo-30-695-2012",
+        "accessed": "2026-10-23"
+      }
     }
   ]
 }

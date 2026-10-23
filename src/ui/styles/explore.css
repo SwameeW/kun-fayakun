@@ -51,22 +51,34 @@
   color: var(--kf-text-muted);
 }
 
-/* Bottom-left, where the chapters' scale bar sits: true distances instead of a bar. */
+/*
+ * Bottom-left, where the chapters' scale bar sits: true distances instead of a bar. Its backdrop is
+ * dark enough that every line keeps 4.5:1 over the brightest scene (the Sun's disc filling the view).
+ */
 .kf-universe-readout {
   position: absolute;
   inset-inline-start: var(--kf-gutter);
   inset-block-end: calc(var(--kf-universe-nav-h, 4.5rem) + var(--kf-space-4));
-  max-inline-size: min(22rem, calc(100vw - 2 * var(--kf-gutter)));
+  max-inline-size: min(24rem, calc(100vw - 2 * var(--kf-gutter)));
   padding-block: var(--kf-space-2);
   padding-inline: var(--kf-space-3) var(--kf-space-4);
   border-inline-start: 1px solid var(--kf-gold-soft);
-  background: linear-gradient(to right, rgb(5 6 10 / 0.72), rgb(5 6 10 / 0.5));
+  background: linear-gradient(to right, rgb(5 6 10 / 0.84), rgb(5 6 10 / 0.7));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   color: var(--kf-text);
   font-size: 0.8125rem;
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
   opacity: 0;
-  transition: opacity 600ms var(--kf-ease);
+  transition:
+    opacity 600ms var(--kf-ease),
+    background-color 600ms var(--kf-ease);
+}
+
+/* Over the Sun seen through its filter the scene behind is at its brightest. */
+.kf-universe-readout.is-filtered {
+  background: rgb(6 7 11 / 0.9);
 }
 
 .kf-universe.is-ready .kf-universe-readout {
@@ -94,12 +106,69 @@
   color: var(--kf-text-muted);
 }
 
-/* The surface's imagery credits: small, wrapping, never wider than the readout. */
+/* What is illustrative, in the same small type as the imagery line below it. */
+.kf-universe-illustrative {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  margin-block-start: var(--kf-space-1);
+}
+
+/* The surface's imagery: one short line of sources, and a way to the credits in full. */
 .kf-universe-imagery {
-  max-inline-size: 26rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--kf-space-2);
   margin-block-start: var(--kf-space-1);
   font-size: 0.6875rem;
   line-height: 1.35;
+}
+
+.kf-universe-imagery[hidden] {
+  display: none;
+}
+
+.kf-universe-credits-toggle {
+  display: inline;
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--kf-gold);
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+  list-style: none;
+}
+
+.kf-universe-credits-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.kf-universe-credits[open] .kf-universe-credits-toggle {
+  color: var(--kf-gold-strong);
+}
+
+/* The credits in full open over the view, above the readout, so the view's framing never moves. */
+.kf-universe-credits-panel {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: calc(100% + var(--kf-space-2));
+  max-block-size: min(18rem, 45vh);
+  overflow: auto;
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-scrim-strong);
+  color: var(--kf-text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+
+.kf-universe-credits-line {
+  margin: 0 0 var(--kf-space-1);
+}
+
+.kf-universe-credits-line:last-child {
+  margin-block-end: 0;
 }
 
 .kf-universe-nav {
@@ -193,7 +262,9 @@
     font-size: 0.875rem;
   }
 
-  .kf-universe-readout {
+  /* A solid backdrop: on a phone the readout spans the view, over whatever is brightest in it. */
+  .kf-universe-readout,
+  .kf-universe-readout.is-filtered {
     inset-inline: var(--kf-space-2);
     inset-block-end: calc(var(--kf-universe-nav-h, 6rem) + var(--kf-space-3));
     max-inline-size: none;
@@ -201,10 +272,12 @@
     padding-inline: var(--kf-space-3);
     font-size: 0.75rem;
     line-height: 1.35;
-    background: linear-gradient(to right, rgb(5 6 10 / 0.7), rgb(5 6 10 / 0.25));
+    background: rgb(8 9 14 / 0.88);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
   }
 
-  /* Line one: the body and the distance. Line two: what the view is (true scale, illustrative surfaces). */
+  /* Line one: the body and the distance; then what the view is (true scale, what is illustrative), and whose imagery. */
   .kf-universe-title {
     display: inline;
     margin: 0 var(--kf-space-2) 0 0;
@@ -221,28 +294,13 @@
   }
 
   .kf-universe-scale,
-  .kf-universe-illustrative {
-    display: inline;
+  .kf-universe-illustrative,
+  .kf-universe-imagery {
     font-size: 0.6875rem;
   }
 
-  .kf-universe-scale::before {
-    content: "";
-    display: block;
-  }
-
-  .kf-universe-illustrative::before {
-    content: " · ";
-  }
-
-  /* Credits stay, as a small line of their own (two lines at most; the Sources page has them in full). */
-  .kf-universe-imagery {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    font-size: 0.625rem;
+  .kf-universe-credits-panel {
+    max-block-size: 40vh;
   }
 
   .kf-universe-hint {

@@ -14,7 +14,7 @@
  */
 
 import type { Node } from 'three/webgpu';
-import { abs, asin, atan, clamp, dFdx, dFdy, exp2, float, fract, fwidth, mix, select, vec2, vec3 } from 'three/tsl';
+import { abs, asin, atan, clamp, dFdx, dFdy, exp2, float, floor, fract, fwidth, int, mix, select, vec2, vec3 } from 'three/tsl';
 import type { MapSlot } from '../assets/streaming';
 
 export type FloatNode = Node<'float'>;
@@ -76,6 +76,47 @@ export function sampleSlotLevel(slot: MapSlot, uv: Vec2Node, level: FloatNode): 
 export function mipLevel(c: MapCoords, width: FloatNode): FloatNode {
   const texels = vec2(c.dx.x.mul(width), c.dx.y.mul(width).mul(0.5)).length().max(vec2(c.dy.x.mul(width), c.dy.y.mul(width).mul(0.5)).length());
   return texels.max(1e-6).log2().max(0);
+}
+
+/** The bound texture's size in texels (it changes as files stream in; the lookup follows). */
+function slotSize(slot: MapSlot): Vec2Node {
+  const size = slot.node.size(int(0)) as unknown as Node<'ivec2'>;
+  return vec2(float(size.x), float(size.y));
+}
+
+/** Pixels one texel of the slot's bound map spans here (above 1: magnified), from the lookup's gradients. */
+export function magnification(c: MapCoords, slot: MapSlot): FloatNode {
+  const size = slotSize(slot);
+  const texels = c.dx.mul(size).length().max(c.dy.mul(size).length());
+  return float(1).div(texels.max(1e-6));
+}
+
+/**
+ * A slot's value through a cubic B-spline instead of bilinear filtering (four bilinear taps, Sigg and
+ * Hadwiger 2005): a magnified low-resolution map then shades smoothly instead of showing its texels
+ * and its block-compression edges. Same gradients (and so the same mip level) as sampleSlot.
+ */
+export function sampleSlotSmooth(slot: MapSlot, c: MapCoords, extraBlur: FloatNode | number = 0): Vec4Node {
+  const size = slotSize(slot);
+  const scale = exp2(slot.blur.add(extraBlur));
+  const dx = c.dx.mul(scale);
+  const dy = c.dy.mul(scale);
+  const p = c.uv.mul(size).sub(0.5);
+  const i = floor(p);
+  const f = p.sub(i);
+  const f2 = f.mul(f);
+  const f3 = f2.mul(f);
+  const w0 = float(1).sub(f).pow(3).div(6);
+  const w1 = f3.mul(3).sub(f2.mul(6)).add(4).div(6);
+  const w2 = f3.mul(-3).add(f2.mul(3)).add(f.mul(3)).add(1).div(6);
+  const w3 = f3.div(6);
+  const g0 = w0.add(w1);
+  const g1 = w2.add(w3);
+  const h0 = i.sub(0.5).add(w1.div(g0.max(1e-6))).div(size);
+  const h1 = i.add(1.5).add(w3.div(g1.max(1e-6))).div(size);
+  const tap = (u: FloatNode, v: FloatNode): Vec4Node => slot.node.sample(vec2(u, v)).grad(dx, dy);
+  const value = tap(h0.x, h0.y).mul(g0.x).add(tap(h1.x, h0.y).mul(g1.x)).mul(g0.y).add(tap(h0.x, h1.y).mul(g0.x).add(tap(h1.x, h1.y).mul(g1.x)).mul(g1.y));
+  return mix(slot.mean, value, slot.arrive);
 }
 
 /**

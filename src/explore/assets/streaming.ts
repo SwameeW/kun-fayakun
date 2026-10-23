@@ -4,12 +4,16 @@
  * - Every map starts on a placeholder: one texel of the map's mean value, so the first frames need
  *   nothing from the network. Each body's Low file (1024 wide) is fetched straight away and is the
  *   floor it never drops below; the body in focus (during a flight, the one being flown to) is then
- *   raised to the detail's texture tier (textureTier), and a body that leaves the focus falls back to
- *   its floor a few seconds later, its larger textures disposed. Leaving the explorer drops every
- *   upgrade. Maps a detail level does not use (relief and night lights at Low) are never fetched.
- * - Fetching and transcoding run off the main thread (the engine's KTX2 loader and its workers).
- *   Uploading is the one main-thread cost: at most one texture is uploaded per frame, the frame
- *   before it is first drawn, so no frame pays for two and none uploads in the middle of drawing.
+ *   raised to the detail's texture tier (textureTier). A body that leaves the focus keeps its upgrade
+ *   while the tier's budget has room for it (going back costs no refetch and no upload); when another
+ *   body's upgrade needs the room, the longest-unwanted upgrades go first. Leaving the explorer drops
+ *   every upgrade. Maps a detail level does not use are never fetched.
+ * - Fetching and decoding run off the main thread (the engine's KTX2 loader and its workers for the
+ *   Basis files, ./raw-ktx2's worker for the raw ones, which KTX2Loader would inflate on it).
+ *   Uploading is the main thread's cost, so it is budgeted by bytes: at most UPLOAD_BYTES_PER_FRAME a
+ *   frame, a large texture going up in row bands over several frames (./upload), and a texture is
+ *   bound only on a frame after the one its upload finished in, so no frame both uploads a texture
+ *   and first draws with it.
  * - Nothing changes in a flash: a texture that replaces another is first sampled as blurred as the
  *   one it replaces (a mip bias of log2 of their widths' ratio) and sharpens over about a second; a
  *   map's first file also fades in from the placeholder's mean over half a second.
@@ -17,6 +21,8 @@
  *   only if what is resident, in flight and its estimated size fit (other bodies' upgrades make room
  *   first); every arrival corrects the estimate by what the device really holds (a device that has
  *   to unpack compressed textures holds four times as much).
+ * - Once on the GPU a texture's CPU copy is let go (./upload releaseLevels); a fetch that lands after
+ *   the explorer has closed is disposed at once.
  *
  * A swap only changes which texture a node samples, never a material, so nothing recompiles.
  */
@@ -40,12 +46,20 @@ import { texture as textureNode, uniform } from 'three/tsl';
 import type { AssetLoader } from '../../core/types';
 import { textureTier, type ExploreDetail, type ExploreTier } from '../detail';
 import { findPlanetTexture, loadPlanetTexture, type PlanetBody, type PlanetMap, type PlanetsManifest, type PlanetTexture } from './planets';
+import type { RawDecoder } from './raw-ktx2';
+import { levelBytes, releaseLevels, type Uploader, type UploadJob } from './upload';
 
 export type MapKey = `${PlanetBody}/${PlanetMap}`;
 
 const MIB = 1024 * 1024;
 /** Resident planet textures per detail tier, bytes (synthesis section 3, "Resident textures"). */
 export const TEXTURE_BUDGET_BYTES: Readonly<Record<ExploreTier, number>> = { ultra: 512 * MIB, high: 320 * MIB, medium: 160 * MIB, low: 96 * MIB };
+/**
+ * Bytes uploaded per frame at most (a band of a large texture, or whole small ones). Measured on
+ * the reference machine, 2 MiB a frame costs about a millisecond of the main thread on WebGPU and
+ * WebGL2; the whole High Earth (five 4096 maps) arrives in under a second at 60 fps.
+ */
+export const UPLOAD_BYTES_PER_FRAME = 2 * MIB;
 
 /**
  * Each map's mean value in its file's own encoding (sRGB for colour), read from the pipeline's 16 x 8
@@ -69,7 +83,7 @@ const isColour = (map: PlanetMap): boolean => map === 'day' || map === 'colour' 
 /** Seconds a replacing texture takes to sharpen from its predecessor's blur, and a map's first file to fade in. */
 const SHARPEN_SECONDS = 1.1;
 const ARRIVE_SECONDS = 0.6;
-/** A body out of focus keeps its upgrade this long (flying past and back costs no refetch). */
+/** A body out of focus still has its upgrade fetched and uploaded this long (flying past and back). */
 const HOLD_SECONDS = 8;
 /** Files fetched at once. */
 const MAX_FETCHES = 4;
@@ -92,6 +106,8 @@ interface Resident {
   file: PlanetTexture;
   texture: Texture;
   bytes: number;
+  /** The update() its upload finished in: it is bound only on a later one. */
+  readyFrame: number;
 }
 
 interface SlotState {
@@ -111,6 +127,16 @@ interface SlotState {
   sharpenFrom: number;
 }
 
+/** A fetched file on its way to the GPU. */
+interface Pending {
+  readonly state: SlotState;
+  readonly file: PlanetTexture;
+  readonly texture: Texture;
+  readonly bytes: number;
+  /** Its upload, once started. */
+  job: UploadJob | null;
+}
+
 /** Bytes per texel as published, before mips (block-compressed formats hold one byte per texel). */
 const TEXEL_BYTES: Readonly<Record<PlanetTexture['codec'], number>> = { etc1s: 1, uastc: 1, r8: 1, rgba8: 4 };
 
@@ -120,12 +146,7 @@ export function estimateBytes(file: Pick<PlanetTexture, 'width' | 'height' | 'co
 }
 
 /** What a loaded texture holds: its mip levels as they are uploaded. */
-export function textureBytes(texture: Texture): number {
-  const mipmaps = (texture as { mipmaps?: Array<{ data?: ArrayBufferView }> }).mipmaps;
-  if (mipmaps && mipmaps.length > 0) return mipmaps.reduce((sum, m) => sum + (m.data?.byteLength ?? 0), 0);
-  const data = (texture.image as { data?: ArrayBufferView } | null)?.data;
-  return data?.byteLength ?? 0;
-}
+export const textureBytes = levelBytes;
 
 const srgbToLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
@@ -140,17 +161,19 @@ export interface PlanetTextures {
   setRingPlaceholder(transmission: readonly number[], innerKm: number, outerKm: number): void;
   /** Which maps the detail level uses (others are not fetched, or are dropped) and the tier the focus is raised to. */
   setDetail(detail: ExploreDetail): void;
-  /** Bodies to raise to the detail's tier now (the focus, a flight's destination); the rest fall back to Low after a while. */
+  /** Bodies to raise to the detail's tier now (the focus, a flight's destination); the rest keep what they have while it fits. */
   setWanted(bodies: readonly PlanetBody[]): void;
-  /** Per frame: binds last frame's upload, uploads at most one texture, starts fetches, eases, drops what is not wanted. */
+  /** Per frame: uploads up to the frame's bytes, binds what finished before this frame, starts fetches, eases. */
   update(dt: number): void;
-  /** Leaving the explorer: every upgrade is dropped (floors and placeholders stay for the next visit). */
+  /** Leaving the explorer: every upgrade and every upload still under way is dropped (floors and placeholders stay). */
   suspend(): void;
   /** Bytes of uploaded files now. */
   residentBytes(): number;
+  /** Bytes in flight: fetches (estimated) and fetched files not yet resident. */
+  inflightBytes(): number;
   /** The files bound for a body now (for its credits). */
   boundFiles(body: PlanetBody): PlanetTexture[];
-  /** True while anything is fetching or waiting to be uploaded or bound. */
+  /** True while anything is fetching, uploading or waiting to be bound. */
   busy(): boolean;
   dispose(): void;
 }
@@ -158,9 +181,15 @@ export interface PlanetTextures {
 export interface StreamerOptions {
   assets: AssetLoader;
   manifest: PlanetsManifest;
-  /** Uploads a texture to the GPU now (renderer.initTexture). */
-  upload: (texture: Texture) => void;
+  /** Starts a texture's upload (./upload createUploader for the renderer). */
+  upload: Uploader;
   detail: ExploreDetail;
+  /** Bytes uploaded per frame at most (default UPLOAD_BYTES_PER_FRAME). */
+  uploadBytesPerFrame?: number;
+  /** Resident bytes allowed per tier (default TEXTURE_BUDGET_BYTES; tests narrow it). */
+  budgetBytes?: Readonly<Record<ExploreTier, number>>;
+  /** Inflates the raw (r8, rgba8) files off the main thread (./raw-ktx2); without it, KTX2Loader does. */
+  raw?: RawDecoder;
 }
 
 /** The maps each body's shaders use at a detail level. */
@@ -186,24 +215,34 @@ const BODIES: readonly PlanetBody[] = ['earth', 'moon', 'jupiter', 'saturn'];
 
 export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
   const { assets, manifest, upload } = options;
+  const perFrame = options.uploadBytesPerFrame ?? UPLOAD_BYTES_PER_FRAME;
+  const budgets = options.budgetBytes ?? TEXTURE_BUDGET_BYTES;
   let detail = options.detail;
   const slots = new Map<MapKey, SlotState>();
   /** When each body was last wanted (the streamer's own clock, seconds), and which are wanted now. */
   const wantedAt = new Map<PlanetBody, number>();
   let wantedNow = new Set<PlanetBody>();
   let clock = 0;
-  /** Loaded files waiting for their upload, in arrival order. */
-  const uploads: Array<{ state: SlotState; file: PlanetTexture; texture: Texture }> = [];
-  /** Uploaded last frame, bound this one (an upload is never in the same frame as its first draw). */
-  let toBind: { state: SlotState; resident: Resident } | null = null;
+  /** Counts update() calls: a texture finished in one is bound in a later one. */
+  let frame = 0;
+  /** Fetched files waiting for (or partway through) their upload. */
+  const uploads: Pending[] = [];
   /** Unbound last frame, disposed this one. */
   let toDispose: Texture[] = [];
   /** Real bytes over the estimate, as measured (1 until a file arrives). */
   let inflation = 1;
   const failed = new Set<string>();
   let disposed = false;
+  /** Between suspend() and the next update(): the explorer is closed, so arrivals are dropped. */
+  let suspended = false;
 
   const floorOf = (state: SlotState): PlanetTexture | undefined => findPlanetTexture(manifest, state.body, state.map, 'low');
+  const tierFileOf = (state: SlotState): PlanetTexture | undefined => findPlanetTexture(manifest, state.body, state.map, textureTier(detail)) ?? floorOf(state);
+
+  const immediate = (texture: Texture): void => {
+    const job = upload(texture);
+    while (!job.done) job.step(Infinity);
+  };
 
   const placeholderTexture = (body: PlanetBody, map: PlanetMap): Texture => {
     const [r, g, b, a] = PLACEHOLDER[`${body}/${map}`] ?? [0, 0, 0, 255];
@@ -230,7 +269,7 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
     if (existing) return existing;
     const placeholder = placeholderTexture(body, map);
     // Each slot gets its own placeholder: texture bindings are keyed by the texture first bound.
-    upload(placeholder);
+    immediate(placeholder);
     const state: SlotState = {
       slot: { key, node: textureNode(placeholder), blur: uniform(0), arrive: uniform(0), mean: uniform(meanOf(body, map)) },
       body,
@@ -247,13 +286,19 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
   };
 
   const needed = (state: SlotState): boolean => mapsFor(state.body, detail).includes(state.map);
+  /** The body is in focus now, or was within HOLD_SECONDS: its tier's files are fetched and uploaded. */
+  const raised = (body: PlanetBody): boolean => wantedNow.has(body) || clock - (wantedAt.get(body) ?? -Infinity) < HOLD_SECONDS;
 
-  /** The file a slot should show now: its tier's while the body is wanted (or held), else its floor. */
+  /**
+   * The file a slot should show now: its tier's while the body is raised; otherwise its tier's file if
+   * that is still resident (kept while it fits), else its floor.
+   */
   const wantedFile = (state: SlotState): PlanetTexture | undefined => {
     const floor = floorOf(state);
-    const held = wantedNow.has(state.body) || clock - (wantedAt.get(state.body) ?? -Infinity) < HOLD_SECONDS;
-    if (!held) return floor;
-    return findPlanetTexture(manifest, state.body, state.map, textureTier(detail)) ?? floor;
+    const tier = tierFileOf(state);
+    if (raised(state.body)) return tier;
+    if (tier && state.resident.has(tier.path)) return tier;
+    return floor;
   };
 
   const residentBytes = (): number => {
@@ -269,7 +314,7 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
         if (file) sum += estimateBytes(file) * inflation;
       }
     }
-    for (const u of uploads) sum += textureBytes(u.texture);
+    for (const u of uploads) sum += u.bytes;
     return sum;
   };
   const fetchCount = (): number => {
@@ -314,13 +359,16 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
     state.sharpenFrom = state.slot.blur.value;
   };
 
-  /** Frees other bodies' upgrades (the longest unwanted first) until `bytes` more fit the budget. */
+  /**
+   * Frees kept upgrades (bodies not raised, the longest unwanted first) until `bytes` more fit the
+   * budget; as a last resort, bound files a detail change has left unwanted.
+   */
   const makeRoom = (bytes: number): boolean => {
-    const budget = TEXTURE_BUDGET_BYTES[detail.tier];
+    const budget = budgets[detail.tier];
     const fits = (): boolean => residentBytes() + inflightBytes() + bytes <= budget;
     if (fits()) return true;
     const candidates = [...slots.values()]
-      .filter((s) => !wantedNow.has(s.body))
+      .filter((s) => !raised(s.body))
       .sort((a, b) => (wantedAt.get(a.body) ?? -Infinity) - (wantedAt.get(b.body) ?? -Infinity));
     for (const s of candidates) {
       const floorPath = floorOf(s)?.path;
@@ -330,21 +378,32 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
         if (fits()) return true;
       }
     }
+    for (const s of slots.values()) {
+      const floorPath = floorOf(s)?.path;
+      const want = wantedFile(s)?.path;
+      for (const path of [...s.resident.keys()]) {
+        if (path === floorPath || path === want) continue;
+        drop(s, path);
+        if (fits()) return true;
+      }
+    }
     return fits();
   };
 
   const startFetch = (state: SlotState, file: PlanetTexture): void => {
     state.fetching.add(file.path);
-    loadPlanetTexture(assets, file).then(
+    loadPlanetTexture(assets, file, options.raw).then(
       (texture) => {
         state.fetching.delete(file.path);
-        if (disposed) {
+        // Closed (or gone) meanwhile: nothing will upload it, so it is not kept on the heap.
+        if (disposed || suspended) {
           texture.dispose();
           return;
         }
         texture.anisotropy = ANISOTROPY;
-        inflation = Math.max(inflation, textureBytes(texture) / Math.max(1, estimateBytes(file)));
-        uploads.push({ state, file, texture });
+        const bytes = textureBytes(texture);
+        inflation = Math.max(inflation, bytes / Math.max(1, estimateBytes(file)));
+        uploads.push({ state, file, texture, bytes, job: null });
       },
       (err: unknown) => {
         state.fetching.delete(file.path);
@@ -372,19 +431,59 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
     }
   };
 
-  /** Drops what is not wanted (upgrades past their hold, maps this detail level does not use) and binds what is. */
+  /** A fetched file is still worth uploading: its map is used and it is the slot's floor or the file it wants. */
+  const stillWanted = (p: Pending): boolean =>
+    needed(p.state) && (p.file.path === floorOf(p.state)?.path || p.file.path === wantedFile(p.state)?.path) && !p.state.resident.has(p.file.path);
+
+  /** Upload priority: floors before upgrades, the focus's first. */
+  const priority = (p: Pending): number => (p.file.path === floorOf(p.state)?.path ? 0 : 2) + (wantedNow.has(p.state.body) ? 0 : 1);
+
+  /** Spends this frame's upload bytes: the upload under way first, then the most urgent waiting file. */
+  const uploadSome = (): void => {
+    let budget = perFrame;
+    // A file no longer wanted is not uploaded (one partway up is abandoned, its partial copy freed).
+    for (let i = uploads.length - 1; i >= 0; i -= 1) {
+      const p = uploads[i];
+      if (p && !stillWanted(p)) {
+        p.texture.dispose();
+        uploads.splice(i, 1);
+      }
+    }
+    while (budget > 0 && uploads.length > 0) {
+      const current = uploads.find((u) => u.job !== null) ?? [...uploads].sort((a, b) => priority(a) - priority(b))[0];
+      if (!current) break;
+      current.job ??= upload(current.texture);
+      const spent = current.job.step(budget);
+      budget -= spent;
+      if (!current.job.done) {
+        if (spent <= 0) break;
+        continue;
+      }
+      uploads.splice(uploads.indexOf(current), 1);
+      releaseLevels(current.texture);
+      current.state.resident.set(current.file.path, { file: current.file, texture: current.texture, bytes: current.bytes, readyFrame: frame });
+    }
+  };
+
+  /** Drops what is not wanted (files of unused maps, upgrades a detail change replaced) and binds what is ready. */
   const prune = (): void => {
     for (const state of slots.values()) {
       const use = needed(state);
       const floorPath = floorOf(state)?.path;
       const want = use ? wantedFile(state) : undefined;
+      const ready = want ? state.resident.get(want.path) : undefined;
+      // Only a texture whose upload finished before this frame is ever bound.
+      const bindable = ready && ready.readyFrame < frame ? ready : undefined;
       for (const path of [...state.resident.keys()]) {
         if (use && (path === floorPath || path === want?.path)) continue;
+        // A bound file the detail no longer wants stays until what replaces it can be bound.
+        if (use && state.bound?.file.path === path && !bindable) continue;
         drop(state, path);
       }
-      if (want && state.bound?.file.path !== want.path) {
-        const ready = state.resident.get(want.path);
-        if (ready) bind(state, ready);
+      if (bindable && state.bound !== bindable) bind(state, bindable);
+      else if (use && !state.bound) {
+        const floor = floorPath ? state.resident.get(floorPath) : undefined;
+        if (floor && floor.readyFrame < frame) bind(state, floor);
       }
     }
   };
@@ -417,7 +516,7 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
       texture.name = 'placeholder-saturn-rings-profile';
       const old = state.placeholder;
       state.placeholder = texture;
-      upload(texture);
+      immediate(texture);
       if (state.bound === null) {
         state.slot.node.value = texture;
         state.boundWidth = width;
@@ -435,40 +534,15 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
     },
     update(dt) {
       if (disposed) return;
+      suspended = false;
+      frame += 1;
       const step = Math.max(0, dt);
       clock += step;
       for (const t of toDispose) t.dispose();
       toDispose = [];
       for (const b of wantedNow) wantedAt.set(b, clock);
       for (const body of BODIES) for (const map of mapsFor(body, detail)) stateOf(body, map);
-      if (toBind) {
-        const { state, resident } = toBind;
-        toBind = null;
-        // Bound if it is what is wanted now, or, being the floor, while nothing better is bound.
-        const want = needed(state) ? wantedFile(state) : undefined;
-        const floorPath = floorOf(state)?.path;
-        if (state.resident.get(resident.file.path) === resident) {
-          if (resident.file.path === want?.path) bind(state, resident);
-          else if (resident.file.path === floorPath && (state.bound === null || state.bound.file.path === floorPath)) bind(state, resident);
-        }
-      }
-      let next = uploads.shift();
-      // A file that arrived after it stopped being wanted is not uploaded at all.
-      while (next && !(needed(next.state) && (next.file.path === floorOf(next.state)?.path || next.file.path === wantedFile(next.state)?.path))) {
-        next.texture.dispose();
-        next = uploads.shift();
-      }
-      if (next) {
-        upload(next.texture);
-        const resident: Resident = { file: next.file, texture: next.texture, bytes: textureBytes(next.texture) };
-        const replaced = next.state.resident.get(next.file.path);
-        next.state.resident.set(next.file.path, resident);
-        if (replaced && replaced !== resident) {
-          if (next.state.bound === replaced) bind(next.state, resident);
-          toDispose.push(replaced.texture);
-        }
-        toBind = { state: next.state, resident };
-      }
+      uploadSome();
       prune();
       schedule();
       for (const state of slots.values()) {
@@ -478,8 +552,12 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
       }
     },
     suspend() {
+      suspended = true;
       wantedNow = new Set();
       wantedAt.clear();
+      // Uploads under way or waiting: their CPU copies (and any partial GPU copy) go now.
+      for (const p of uploads) p.texture.dispose();
+      uploads.length = 0;
       for (const state of slots.values()) {
         const floorPath = floorOf(state)?.path;
         for (const path of [...state.resident.keys()]) if (path !== floorPath || !needed(state)) drop(state, path);
@@ -489,13 +567,22 @@ export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
       toDispose = [];
     },
     residentBytes,
+    inflightBytes,
     boundFiles(body) {
       const files: PlanetTexture[] = [];
       for (const s of slots.values()) if (s.body === body && s.bound && needed(s)) files.push(s.bound.file);
       return files;
     },
     busy() {
-      return fetchCount() > 0 || uploads.length > 0 || toBind !== null;
+      if (fetchCount() > 0 || uploads.length > 0) return true;
+      // A file uploaded this frame is bound on the next.
+      for (const s of slots.values()) {
+        if (!needed(s)) continue;
+        const want = wantedFile(s);
+        const r = want ? s.resident.get(want.path) : undefined;
+        if (r && s.bound !== r) return true;
+      }
+      return false;
     },
     dispose() {
       disposed = true;

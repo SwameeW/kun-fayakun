@@ -59,9 +59,11 @@ export const DETAIL: Readonly<Record<ExploreTier, ExploreDetail>> = {
     tier: 'medium', maxTexture: 2048, atmosphere: 'scatter', atmosphereSteps: 8, sphereSegments: 128, clouds: true, cloudShadows: false,
     nightLights: true, normalMaps: true, ringDetail: 'strip', sunDetail: 'basic', bloom: true, dprCap: 1.5, starCount: 7000, minRenderScale: 0.6,
   },
+  // Low keeps the 1024 night lights (the night side's whole content) and the 1024 relief maps (the
+  // Moon's terminator reads by them): two small files, one texture tap each.
   low: {
     tier: 'low', maxTexture: 1024, atmosphere: 'chord', atmosphereSteps: 0, sphereSegments: 64, clouds: true, cloudShadows: false,
-    nightLights: false, normalMaps: false, ringDetail: 'strip', sunDetail: 'basic', bloom: false, dprCap: 1.5, starCount: 3500, minRenderScale: 0.55,
+    nightLights: true, normalMaps: true, ringDetail: 'strip', sunDetail: 'basic', bloom: false, dprCap: 1.5, starCount: 3500, minRenderScale: 0.55,
   },
 };
 
