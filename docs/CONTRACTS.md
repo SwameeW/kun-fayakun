@@ -112,7 +112,7 @@ scale + credit while the map is visible. The `bbn-abundances` figure lives in th
 ch04 shows `hubble-tension` (overlay and science layer) and the `expansion` slider; ch06 shows
 `decay-chain` (overlay and science layer); ch10 shows `cosmic-futures` (overlay and science layer).
 
-| ch07 | protoplanetary disk radius ~8.6; orrery with sqrt-compressed orbits (Neptune ~6.9); Sun radius 0.32 | `disk`, `ignite`, `clear`, `orrery`, `moon`, `galaxy` | Disk with gaps and protoplanets; the Sun ignites (eased); planets on their real orbits for today from JPL elements, engraved astrolabe rings; a long-lens Moon showing its real phase (JPL Horizons); then a log pull-back to the Milky Way model and the Sun's path. Labelled not to scale. `app.interact('discovery', 1/null)` dims and slows the scene for the letter analysis. |
+| ch07 | protoplanetary disk radius ~8.6; orrery with sqrt-compressed orbits (Neptune ~6.9); Sun radius 0.32 | `disk`, `ignite`, `clear`, `orrery`, `moon`, `galaxy` | Disk with gaps and protoplanets; the Sun ignites (eased); planets on their real orbits for today from JPL elements, engraved astrolabe rings; a long-lens Moon showing its real phase (JPL Horizons); then a log pull-back to the Milky Way model and the Sun's path. Labelled not to scale. `app.interact('discovery', 1/null)` dims (eased, through `ctx.exposure`) and slows the scene for the letter analysis, which also holds the film clock with `app.holdFilm('discovery')` while it is open. |
 | ch08 | Earth radius 1 at origin; Moon (radius 0.27) at 3.4 | `molten`, `impact`, `moon`, `oceans`, `continents` | One planet shader through molten rock, steam, oceans and drifting continents; a glancing impact (eased glow, exposure dip), debris ring gathering into the Moon. |
 | ch09 | micro: 1 unit = 10 micrometres; planet: Earth radius 1 | `ocean`, `rise`, `oxygen`, `green` | Underwater light shafts, caustics and illustrative single cells; a soft dissolve up to orbit; seas and sky shift as oxygen rises; land greens. Ends before humans. |
 | ch10 | galaxy field radius 40; calligraphy quad at y 1.25 | `cosmos`, `heat-death`, `big-rip`, `big-crunch`, `still`, `fold`, `light`, `calligraphy`, `silence` | Three labelled hypotheses; calm verses; a labelled artistic fold; calm light and the 21:104 calligraphy (MSDF, `kama-badana`); silence; end credits follow. |
@@ -205,7 +205,8 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 
 `intro`, `begin`, `disclaimer`, `panel`, `panel-toggle`, `layer-text`, `layer-scholarly`,
 `layer-science`, `timeline`, `stop-chNN`, `play-pause`, `mode-toggle`, `verse-overlay`,
-`sources-page`, `cmb-legend`, `loading`, `error`.
+`sources-page`, `cmb-legend`, `loading`, `error`, `discovery` (the Chapter 7 letter analysis),
+`film-held` (the transport's status line while `app.holdFilm` holds the film).
 
 ## Browsers and local testing (measured on this machine)
 

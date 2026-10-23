@@ -64,7 +64,8 @@
   border-block-start: none;
 }
 
-@media (max-width: 767px) {
+/* Narrow screens, and short ones (a phone held sideways), lift the bar clear of the captions. */
+@media (max-width: 767px), (max-height: 500px) {
   .kf-hud-scale {
     inset-block-end: calc(var(--kf-timeline-h) + 5rem);
   }

@@ -206,6 +206,9 @@ class Engine implements KunFayakunApp {
   get paused(): boolean {
     return this.timeline.paused;
   }
+  get held(): boolean {
+    return this.timeline.held;
+  }
   get mode(): 'cinematic' | 'explore' {
     return this.timeline.mode;
   }
@@ -588,6 +591,10 @@ class Engine implements KunFayakunApp {
 
   interact(id: string, value: number | null): void {
     this.timeline.module?.onInteract?.(id, value);
+  }
+
+  holdFilm(reason: string): () => void {
+    return this.timeline.hold(reason);
   }
 
   hud(): HudState {

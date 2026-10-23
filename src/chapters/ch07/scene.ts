@@ -52,6 +52,13 @@ const SUN_KELVIN = { young: 3800, main: 5772 } as const;
 const SUN_KPC = 8.2;
 const KPC_PER_UNIT = { inside: 0.004, galaxy: 5 } as const;
 const KPC_IN_METRES = 3.085677581491367e19;
+/**
+ * The letter analysis (docs/SPEC.md, Chapter 7): the scene dims to 45% through the engine's
+ * exposure (one slew-limited control for the galaxy, the Sun's path and the marker alike) and
+ * slows to a few per cent of its pace, but never stops. The film clock is held meanwhile, so the
+ * orbits move only by these days. The dim and slow ease in and out with this time constant.
+ */
+const DISCOVERY = { dim: 0.55, daysPerSecond: 0.4, reducedDaysPerSecond: 0.05, livingRate: 0.25, easeSeconds: 0.8 } as const;
 const COUNT: Readonly<Record<QualityTier, { disk: number; stars: number }>> = {
   high: { disk: 260_000, stars: 320_000 },
   mid: { disk: 120_000, stars: 160_000 },
@@ -108,9 +115,12 @@ export default function create(): ChapterModule {
   let earthIndex = 2;
   /** Julian date at chapter time 0 + elapsed days gives the date shown; today falls at TODAY_AT. */
   let jdZero = 0;
-  /** Extra days added while the letter analysis is open (the orbits keep turning, slowly). */
+  /** The letter analysis: its target (0 or 1), the eased value, and the extra days and seconds it lets pass. */
   let discovery = 0;
+  let discoveryEased = 0;
   let discoveryDays = 0;
+  /** Extra time for the living surfaces (granulation, spin) while the film clock is held, so they slow rather than freeze. */
+  let discoveryLiving = 0;
   let now = 0;
   let kpc: number = KPC_PER_UNIT.inside;
   let galaxyShare = 0;
@@ -193,7 +203,9 @@ export default function create(): ChapterModule {
     enter(c) {
       ctx = c;
       discovery = 0;
+      discoveryEased = 0;
       discoveryDays = 0;
+      discoveryLiving = 0;
       setCounts(c.quality.tier);
       c.exposure.setTarget(1);
       c.scene.add(root);
@@ -202,11 +214,16 @@ export default function create(): ChapterModule {
     update(t, dt) {
       if (!ctx || !ephemeris || !sun || !disk || !rings || !earth || !moon || !stars || !galaxy || !sunPath) return;
       now = t;
-      // While the letter analysis is open the scene dims and slows, but never stops.
-      const target = discovery;
-      discoveryDays += Math.max(0, dt) * 0.4 * target;
-      const dimmed = 1 - 0.55 * target;
+      // While the letter analysis is open the scene dims and slows, but never stops (eased both ways).
+      const step = Math.max(0, dt);
+      discoveryEased += (discovery - discoveryEased) * (1 - Math.exp(-step / DISCOVERY.easeSeconds));
+      if (discovery === 0 && discoveryEased < 1e-4) discoveryEased = 0;
+      const rate = ctx.reducedMotion ? DISCOVERY.reducedDaysPerSecond : DISCOVERY.daysPerSecond;
+      discoveryDays += step * rate * discoveryEased;
+      if (!ctx.reducedMotion) discoveryLiving += step * DISCOVERY.livingRate * discoveryEased;
+      ctx.exposure.setTarget(1 - DISCOVERY.dim * discoveryEased);
       const jd = jdZero + elapsedDays(t) + discoveryDays;
+      const living = t + discoveryLiving;
 
       // Solar-system scale for the final pull-back: the system shrinks to the point of the Sun.
       const shrink = 10 ** (-3 * smootherstep(times.galaxy, times.galaxy + 9, t));
@@ -227,27 +244,27 @@ export default function create(): ChapterModule {
       // The Sun: dim and cool inside its dust, then shining; it stays a point when the view pulls back.
       const ignite = smootherstep(times.ignite, times.ignite + 12, t);
       const kelvin = SUN_KELVIN.young + (SUN_KELVIN.main - SUN_KELVIN.young) * ignite;
-      sun.update({ time: t, kelvin, light: (0.3 + 0.7 * ignite) * smootherstep(0, 3, t) * dimmed });
-      stars.setLight((0.35 + 0.65 * smootherstep(times.clear, times.clear + 10, t)) * (1 - galaxyShare) * dimmed);
+      sun.update({ time: living, kelvin, light: (0.3 + 0.7 * ignite) * smootherstep(0, 3, t) });
+      stars.setLight((0.35 + 0.65 * smootherstep(times.clear, times.clear + 10, t)) * (1 - galaxyShare));
 
-      disk.update({ time: t, light: smootherstep(0, 3, t) * dimmed, clearing: smootherstep(times.clear, times.clear + 12, t) });
+      disk.update({ time: t, light: smootherstep(0, 3, t), clearing: smootherstep(times.clear, times.clear + 12, t) });
 
       // Planets on their real orbits; they come out as the disk clears, and fade as the view pulls back.
-      const planetLight = smootherstep(times.clear + 2, times.clear + 10, t) * (1 - smootherstep(times.galaxy + 1, times.galaxy + 6, t)) * dimmed;
+      const planetLight = smootherstep(times.clear + 2, times.clear + 10, t) * (1 - smootherstep(times.galaxy + 1, times.galaxy + 6, t));
       for (const o of others) {
         ephemeris.planetAu(o.index, jd, au);
         const p = compress(au, positions.get(o.name) ?? new Vector3());
         positions.set(o.name, p);
         o.body.object.position.copy(p);
         sunDir.copy(p).negate().normalize();
-        o.body.update({ time: t, sun: sunDir, spin: t * 0.6, light: planetLight });
+        o.body.update({ time: t, sun: sunDir, spin: living * 0.6, light: planetLight });
       }
       earth.object.position.copy(earthPos);
       earth.object.scale.setScalar((RADII.Earth ?? 0.05) * (1 + 1.6 * close));
       positions.set('Earth', earthPos);
       sunDir.copy(earthPos).negate().normalize();
       // A slow, steady turn: at the sped-up calendar a true day would strobe.
-      earth.update({ time: t, sun: sunDir, spin: t * 0.25, light: planetLight, epoch: EARTH_TODAY });
+      earth.update({ time: t, sun: sunDir, spin: living * 0.25, light: planetLight, epoch: EARTH_TODAY });
 
       // The Moon: around the Earth on its real bearing; in the close-up, before the camera, lit for its real phase.
       ephemeris.moonKm(jd, moonPos).normalize().multiplyScalar(MOON.orbit);
@@ -262,7 +279,7 @@ export default function create(): ChapterModule {
       moon.object.scale.setScalar(MOON.radius + (MOON.closeRadius - MOON.radius) * close);
       moon.update({ time: t, sun: sunDir, spin: 0, light: Math.max(planetLight, close) });
 
-      rings.update({ light: smootherstep(times.orrery, times.orrery + 4, t) * (1 - close) * (1 - smootherstep(times.galaxy, times.galaxy + 4, t)) * dimmed, offset: system.position, scale: shrink });
+      rings.update({ light: smootherstep(times.orrery, times.orrery + 4, t) * (1 - close) * (1 - smootherstep(times.galaxy, times.galaxy + 4, t)), offset: system.position, scale: shrink });
 
       // The galaxy, and the Sun's path around it.
       const viewportPx = ctx.renderer.domElement.clientHeight;
@@ -316,6 +333,7 @@ export default function create(): ChapterModule {
     exit() {
       root.removeFromParent();
       discovery = 0;
+      discoveryEased = 0;
     },
 
     dispose() {
