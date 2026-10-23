@@ -66,13 +66,19 @@ export async function canvasStats(page: Page): Promise<CanvasStats> {
   );
 }
 
-/** Retries until the canvas shows something, since exposure eases in after a seek. */
-export async function expectCanvasNotBlank(page: Page, timeout = 20_000): Promise<void> {
+/**
+ * Retries until the canvas shows something, since exposure eases in after a seek. The fade
+ * advances with frame time (capped per frame), so on a software renderer (GPU-less CI, a few
+ * frames per second) it takes far longer in real time: those runs get a longer wait.
+ */
+export async function expectCanvasNotBlank(page: Page, timeout?: number): Promise<void> {
+  const software = await page.evaluate(() => document.documentElement.dataset.tier === 'low' && navigator.webdriver);
+  const wait = timeout ?? (software ? 75_000 : 20_000);
   await expect(async () => {
     const stats = await canvasStats(page);
     expect(stats.litFraction, `lit fraction of the canvas ${JSON.stringify(stats)}`).toBeGreaterThan(
       MIN_LIT_FRACTION,
     );
     test.info().annotations.push({ type: 'canvas', description: JSON.stringify(stats) });
-  }).toPass({ timeout, intervals: [250, 500, 1000] });
+  }).toPass({ timeout: wait, intervals: [250, 500, 1000] });
 }
