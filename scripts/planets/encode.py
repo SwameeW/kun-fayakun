@@ -11,8 +11,8 @@ source, flipped back to north-up first: so a file in the wrong row order, or shi
 longitude, cannot be published. Byte budgets per tier and for everything committed are
 enforced last.
 
-Low, Medium and High go to public/assets/planets/<body>/; Ultra (8192) files go to
-.cache/planets/ultra/<body>/ and are not published (where to host them is an owner decision).
+Every published tier (config.PUBLISHED_TIERS: Low, Medium, High and Ultra) goes to
+public/assets/planets/<body>/; a tier left out of it would go to .cache/planets/ultra/<body>/.
 
 Output: the files above and .cache/planets/reports/encode.json.
 Usage: python scripts/planets/encode.py [body/map ...]

@@ -63,7 +63,7 @@ const CHROMA_BLUR = 3;
 const CRATERS = { cellTexels: 3, second: 2.8, ratio: 0.14, density: 0.62 } as const;
 
 /** Width of the files streamed at a detail level. */
-const mapWidth = (detail: ExploreDetail): number => ({ low: 1024, medium: 2048, high: 4096 })[textureTier(detail)];
+const mapWidth = (detail: ExploreDetail): number => ({ low: 1024, medium: 2048, high: 4096, ultra: 8192 })[textureTier(detail)];
 /** Crater cells per radian for a detail level's first scale. */
 const crateredCells = (detail: ExploreDetail): number => mapWidth(detail) / (2 * Math.PI * CRATERS.cellTexels);
 

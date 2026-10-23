@@ -32,7 +32,7 @@ const PREFERENCE = 'exploreDetail';
 const CHOICES: readonly Choice[] = ['auto', 'ultra', 'high', 'medium', 'low'];
 const isChoice = (value: string | null): value is Choice => CHOICES.some((c) => c === value);
 /** Published map widths by texture tier, px. */
-const MAP_PX = { low: 1024, medium: 2048, high: 4096 } as const;
+const MAP_PX = { low: 1024, medium: 2048, high: 4096, ultra: 8192 } as const;
 /** A radio's click within this long of a press on its row is the pointer's (a click, a tap), not the keyboard's. */
 const POINTER_CLICK_MS = 1500;
 
@@ -57,6 +57,8 @@ export function createQualityMenu(app: App, onApplied: (title: string, line: str
       d.ringDetail === 'particles' ? i18n.t('ui.universe.detailHas.particles') : null,
       d.sunDetail === 'full' ? i18n.t('ui.universe.detailHas.corona') : null,
       d.bloom ? i18n.t('ui.universe.detailHas.glow') : null,
+      // The 8K maps are a large download: said before anyone chooses them.
+      tier === 'ultra' ? i18n.t('ui.universe.detailHas.download') : null,
     ];
     return parts.filter((p): p is string => p !== null).join(' · ');
   };

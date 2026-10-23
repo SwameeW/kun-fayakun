@@ -15,7 +15,7 @@ const manifest = JSON.parse(readFileSync(new URL('assets/planets/planets.json', 
   facts: { jupiter: { greatRedSpot: { westLongitudeSystemIII: number; latitudePlanetographic: number } } };
   bodies: { saturn: { maps: { rings: { alpha?: string; channels: Record<string, string> } } } };
 };
-const TIERS = ['low', 'medium', 'high'] as const;
+const TIERS = ['low', 'medium', 'high', 'ultra'] as const;
 const MAPS: Record<string, PlanetMap[]> = {
   earth: ['day', 'night', 'clouds', 'water', 'normal'],
   moon: ['colour', 'normal'],
@@ -29,12 +29,12 @@ const texture = (body: keyof typeof MAPS, map: PlanetMap, tier: (typeof TIERS)[n
   return found;
 };
 
-test('every map is published at Low, Medium and High, and nothing else', () => {
+test('every map is published at Low, Medium, High and Ultra, and nothing else', () => {
   for (const [body, maps] of Object.entries(MAPS)) {
     for (const map of maps) for (const tier of TIERS) expect(texture(body, map, tier).path).toMatch(new RegExp(`^assets/planets/${body}/${map}-\\d+-\\w+\\.ktx2$`));
   }
   expect(manifest.files).toHaveLength(Object.values(MAPS).flat().length * TIERS.length);
-  expect(manifest.tiers.ultra.published).toBe(false);
+  for (const tier of TIERS) expect(manifest.tiers[tier].published, tier).toBe(true);
 });
 
 test('tiers never shrink and stay within the WebGPU default limit', () => {
@@ -43,12 +43,18 @@ test('tiers never shrink and stay within the WebGPU default limit', () => {
       const widths = TIERS.map((t) => texture(body, map, t).width);
       expect(widths[0], `${body}/${map}`).toBeLessThanOrEqual(widths[1] ?? 0);
       expect(widths[1], `${body}/${map}`).toBeLessThanOrEqual(widths[2] ?? 0);
+      expect(widths[2], `${body}/${map}`).toBeLessThanOrEqual(widths[3] ?? 0);
       expect(Math.max(...widths)).toBeLessThanOrEqual(8192);
     }
   }
   expect(texture('earth', 'day', 'low').width).toBe(1024);
   expect(texture('earth', 'day', 'medium').width).toBe(2048);
   expect(texture('earth', 'day', 'high').width).toBe(4096);
+  // Ultra is 8192 where the source reaches it; narrower sources serve their High file at Ultra too.
+  for (const [body, map] of [['earth', 'day'], ['earth', 'night'], ['earth', 'clouds'], ['earth', 'water'], ['earth', 'normal'], ['moon', 'colour']] as const) {
+    expect(texture(body, map, 'ultra').width, `${body}/${map}`).toBe(8192);
+  }
+  expect(texture('jupiter', 'colour', 'ultra').path).toBe(texture('jupiter', 'colour', 'high').path);
   // Every map whose source reaches 4096 ships it at High, the Moon's relief included.
   for (const [body, map] of [['earth', 'normal'], ['moon', 'colour'], ['moon', 'normal'], ['jupiter', 'colour']] as const) {
     expect(texture(body, map, 'high').width, `${body}/${map}`).toBe(4096);

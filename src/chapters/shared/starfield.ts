@@ -17,9 +17,9 @@ export interface Starfield {
   dispose(): void;
 }
 
-/** Optional extras for views other than the chapters' (left out, the stars are the chapters' exactly). */
+/** Optional extras (left out, the stars are the chapters'). */
 export interface StarfieldOptions {
-  /** Test against the depth buffer, so planets hide the stars behind them. Default false (drawn over everything). */
+  /** Test against the depth buffer, so planets and the Sun hide the stars behind them. Default true. */
   depthTest?: boolean;
   /** The sphere's radius is a uniform that setRadius() moves (a view whose far plane changes every frame). */
   dynamicRadius?: boolean;
@@ -59,7 +59,8 @@ export function createStarfield(count = 7000, radius = 400, seed = 7_101, option
     transparent: true,
     blending: AdditiveBlending,
     depthWrite: false,
-    depthTest: options?.depthTest ?? false,
+    // The stars are transparent, so they draw after every opaque body: a planet hides the stars behind it.
+    depthTest: options?.depthTest ?? true,
     sizeAttenuation: false,
     fog: false,
   });

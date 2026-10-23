@@ -283,12 +283,12 @@ function checkAnalyses(ctx: ValidationContext, log: RuleLog): void {
 }
 
 const PLANETS_OWNER = 'planets builder, bash scripts/preprocess-planets.sh';
-/** Published detail tiers; Ultra (8192) is built locally and must not appear in planets.json. */
-const PLANET_TIERS = ['low', 'medium', 'high'] as const;
+/** Published detail tiers, all served with the site (Ultra: maps narrower than 8192 at source serve their High file). */
+const PLANET_TIERS = ['low', 'medium', 'high', 'ultra'] as const;
 type PlanetTier = (typeof PLANET_TIERS)[number];
 /** Transfer per tier (every body's set) and for all committed files; mirrors scripts/planets/config.py. */
-const PLANET_TIER_BUDGET: Record<PlanetTier, number> = { low: 4_000_000, medium: 12_000_000, high: 60_000_000 };
-const PLANET_COMMITTED_BUDGET = 45_000_000;
+const PLANET_TIER_BUDGET: Record<PlanetTier, number> = { low: 4_000_000, medium: 12_000_000, high: 60_000_000, ultra: 160_000_000 };
+const PLANET_COMMITTED_BUDGET = 135_000_000;
 /** WebGPU's default maxTextureDimension2D: the renderer requests no larger limit. */
 const PLANET_MAX_SIZE = 8192;
 /**
@@ -406,7 +406,7 @@ function checkPlanets(ctx: ValidationContext, log: RuleLog): void {
     const label = `${path} files[${i}] (${String(entry.body)}/${String(entry.map)} ${String(entry.tier)})`;
     const key = `${String(entry.body)}/${String(entry.map)}`;
     tiersOf.set(key, [...(tiersOf.get(key) ?? []), String(entry.tier)]);
-    if (!PLANET_TIERS.includes(entry.tier as PlanetTier)) problems.push(`${label}: tier must be one of ${PLANET_TIERS.join(', ')} (Ultra is not published)`);
+    if (!PLANET_TIERS.includes(entry.tier as PlanetTier)) problems.push(`${label}: tier must be one of ${PLANET_TIERS.join(', ')} `);
     else {
       const perTier = tierBytes.get(String(entry.tier)) ?? new Map<string, number>();
       perTier.set(String(entry.path), Number(entry.bytes));
@@ -444,8 +444,10 @@ function checkPlanets(ctx: ValidationContext, log: RuleLog): void {
   for (const file of listFiles(rootPath('public', 'assets', 'planets'))) {
     if (file.endsWith('.ktx2') && !listed.has(file)) problems.push(`${relPath(file)} is not listed in ${path}`);
   }
-  const ultra = isRecord(manifest.tiers) ? manifest.tiers.ultra : undefined;
-  if (!isRecord(ultra) || ultra.published !== false) problems.push(`${path}: tiers.ultra.published must be false until the owner decides where Ultra is hosted`);
+  for (const tier of PLANET_TIERS) {
+    const info = isRecord(manifest.tiers) ? manifest.tiers[tier] : undefined;
+    if (!isRecord(info) || info.published !== true) problems.push(`${path}: tiers.${tier}.published must be true (every tier is served with the site)`);
+  }
   if (problems.length > 0) for (const p of problems) log.fail(`${p} (owner: ${PLANETS_OWNER})`);
   else {
     log.pass(

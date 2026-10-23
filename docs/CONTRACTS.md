@@ -93,9 +93,9 @@ ellipsoid's normal). The ring strip (saturn `rings`, 8192 x 1 RGBA8, `u` from `r
 colour, not multiplied by a, and a its normal opacity, so blend
 `mix(background, rgb * light, 1 - (1 - a)^(1/mu))`. `bodies` and `facts` (the Great Red Spot's position
 on 2025-12-11; the ring strip's radius span, colour registration, colour model and opacity noise floor)
-say the rest. The `ultra` tier (8192) is built into `.cache/planets/ultra` and described there by
-`planets-ultra.json` (repository paths; maps narrower than 8192 point at their published High file); it
-is not published until the owner decides where to host it.
+say the rest. All four tiers are published and served with the site (GitHub Pages, same origin):
+the `ultra` tier (8192, about 96 MB for every body's set) lists maps narrower than 8192 at source with
+their High file. Only a visitor who chooses Ultra in the explorer's menu fetches it (Auto never does).
 
 ### `assets/calligraphy/<id>.json`
 ```json

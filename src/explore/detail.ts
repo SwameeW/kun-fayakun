@@ -18,7 +18,7 @@ export const EXPLORE_TIERS: readonly ExploreTier[] = ['ultra', 'high', 'medium',
 
 export interface ExploreDetail {
   readonly tier: ExploreTier;
-  /** Widest planet texture to stream. Published files stop at 4096; 8192 needs the locally built Ultra set. */
+  /** Widest planet texture to stream (8192: the Ultra set, chosen in the menu only; Auto never picks Ultra). */
   readonly maxTexture: 1024 | 2048 | 4096 | 8192;
   /** Atmosphere model: an analytic chord-length glow, or single scattering through a transmittance table. */
   readonly atmosphere: 'chord' | 'scatter';
@@ -70,8 +70,9 @@ export const DETAIL: Readonly<Record<ExploreTier, ExploreDetail>> = {
 /** The film tier whose shared code paths (bloom, star counts in shared modules) match an explorer tier. */
 export const FILM_TIER: Readonly<Record<ExploreTier, QualityTier>> = { ultra: 'high', high: 'high', medium: 'mid', low: 'low' };
 
-/** The published texture tier to stream for a detail level (Ultra streams High until an Ultra set is hosted). */
+/** The published texture tier to stream for a detail level. */
 export function textureTier(detail: ExploreDetail): PlanetTier {
+  if (detail.maxTexture >= 8192) return 'ultra';
   if (detail.maxTexture >= 4096) return 'high';
   return detail.maxTexture >= 2048 ? 'medium' : 'low';
 }
