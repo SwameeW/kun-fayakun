@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Rebuilds public/assets/planets/ (KTX2 textures of the Earth, Moon, Jupiter and Saturn at the
-# Low, Medium and High detail tiers, plus planets.json) and the planet entries of
+# Low, Medium, High and Ultra detail tiers, plus planets.json) and the planet entries of
 # data/sources.json from pinned sources that are public domain, CC0 or (Hubble OPAL) CC BY 4.0.
-# Ultra (8192) is built into .cache/planets/ultra and not published.
+# Ultra (8192) is published with the rest; maps narrower than 8192 at source serve their High file.
 # Usage: bash scripts/preprocess-planets.sh
 #
 # Needs network access (first run only; files already in .cache/planets/download are checked,
@@ -61,4 +61,4 @@ step "preview"
 "$VENV/bin/python" "$ROOT/scripts/planets/preview.py" low medium high ultra
 
 step "done"
-du -sh "$ROOT/public/assets/planets" "$ROOT/.cache/planets/ultra"
+du -sh "$ROOT/public/assets/planets"

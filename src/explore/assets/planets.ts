@@ -8,8 +8,8 @@ import type { AssetLoader } from '../../core/types';
 
 export const PLANETS_MANIFEST_URL = 'assets/planets/planets.json';
 
-/** Published detail tiers. Ultra (8192) is built locally and not in the manifest's files. */
-export type PlanetTier = 'low' | 'medium' | 'high';
+/** Published detail tiers (Ultra: maps narrower than 8192 at source serve their High file). */
+export type PlanetTier = 'low' | 'medium' | 'high' | 'ultra';
 export type PlanetBody = 'earth' | 'moon' | 'jupiter' | 'saturn';
 export type PlanetMap = 'day' | 'night' | 'clouds' | 'water' | 'normal' | 'colour' | 'rings';
 
@@ -47,7 +47,7 @@ export interface PlanetTexture extends PlanetCredit {
 
 export interface PlanetsManifest {
   schema: number;
-  tiers: Record<PlanetTier | 'ultra', { width: number; bytes: number; budgetBytes: number; published: boolean }>;
+  tiers: Record<PlanetTier, { width: number; bytes: number; budgetBytes: number; published: boolean }>;
   files: PlanetTexture[];
   /** Per body: captions and conventions (as written by scripts/planets/manifest.py). */
   bodies?: Partial<Record<PlanetBody, { caption?: string }>>;

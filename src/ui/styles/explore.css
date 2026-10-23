@@ -1545,6 +1545,13 @@
   .kf-nav.is-sheet.is-expanded .kf-nav-map {
     display: none;
   }
+
+  /* Pulled up on a phone held sideways, the worlds sit in two columns: all five fit without scrolling. */
+  .kf-nav.is-sheet.is-expanded .kf-nav-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--kf-space-2);
+  }
 }
 
 /* Touch: every control at least 44 px each way (the visual size kept where it was smaller). */

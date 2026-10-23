@@ -98,7 +98,7 @@ export interface ExploreEarth {
 const srgbToLinear = (x: FloatNode): FloatNode => pow(max(x, 0), 2.2);
 
 /** Width of the files streamed at a detail level (the detail octaves are scaled to their texels). */
-const mapWidth = (detail: ExploreDetail): number => ({ low: 1024, medium: 2048, high: 4096 })[textureTier(detail)];
+const mapWidth = (detail: ExploreDetail): number => ({ low: 1024, medium: 2048, high: 4096, ultra: 8192 })[textureTier(detail)];
 
 /**
  * Noise frequencies (cycles of the noise volume per radian) for octaves starting at the map's texel:

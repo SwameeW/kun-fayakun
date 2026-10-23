@@ -134,6 +134,8 @@ const LABEL = {
   holdPx: 14,
   /** A tag that gave way comes back only with this much more room than it needs (no flicker at the edge). */
   clearAgain: 1.3,
+  /** A form (tag or edge pointer) taking over from the other waits until that one is below this opacity. */
+  handover: 0.08,
 } as const;
 /**
  * Up close only the focus's own orbit is drawn (and the Moon's around the Earth); the others come
@@ -236,6 +238,8 @@ export default function create(): UniverseModule {
    */
   let frameTarget: RenderTarget | null = null;
   let compileTarget: RenderTarget | null = null;
+  /** compileForFrames calls still waiting on their pipelines. */
+  let compilesPending = 0;
   /** The worker that inflates the raw planet files. */
   let rawDecoder: RawDecoder | null = null;
   let stars: Starfield | null = null;
@@ -981,8 +985,14 @@ export default function create(): UniverseModule {
    * plain compileAsync) are built again, synchronously, the first frame each object is drawn: a stall
    * of a few hundred milliseconds for the Earth's shaders. compileAsync reads the target when it is
    * called, so it is bound only for the call, never across a frame. Before the first frame a stand-in
-   * of the same formats is used.
+   * of the same formats is used, and released (two GPU textures) once the frames' own target is
+   * known and no compile still uses it.
    */
+  const releaseStandIn = (): void => {
+    if (!frameTarget || !compileTarget || compilesPending > 0) return;
+    compileTarget.dispose();
+    compileTarget = null;
+  };
   const compileForFrames = async (objects: Object3D[]): Promise<void> => {
     const c = ctx;
     if (!c) return;
@@ -1003,10 +1013,14 @@ export default function create(): UniverseModule {
       }
     };
     const pending = compiling();
+    compilesPending += 1;
     try {
       await Promise.all(pending);
     } catch (err) {
       console.warn('explore: could not compile ahead', err);
+    } finally {
+      compilesPending -= 1;
+      releaseStandIn();
     }
   };
 
@@ -1238,14 +1252,20 @@ export default function create(): UniverseModule {
           takenCount += 1;
         }
       }
-      // Easing: in at the usual pace, out quickly when it gave way to another (no ghosting).
-      const settleTo = (was: number, want: number): number => {
-        const k = entering ? 1 : want > was ? show : blocked ? hide : show;
+      // Easing: in at the usual pace, out quickly when it gave way to another tag or to its own other
+      // form (the tag beside the body and the pointer at the edge); a form taking over waits until the
+      // other has nearly gone, so a name never shows twice.
+      const settleTo = (was: number, want: number, other: number, otherWanted: boolean): number => {
+        if (!entering && want > was && other > LABEL.handover) return was;
+        const k = entering ? 1 : want > was ? show : blocked || otherWanted ? hide : show;
         const now = was + (want - was) * k;
         return now < 1e-3 && want === 0 ? 0 : now;
       };
-      state.tag = settleTo(state.tag, showTag ? LABEL.opacity : 0);
-      state.edge = settleTo(state.edge, showEdge ? LABEL.opacity : 0);
+      const tagWant = showTag ? LABEL.opacity : 0;
+      const edgeWant = showEdge ? LABEL.opacity : 0;
+      const tagWas = state.tag;
+      state.tag = settleTo(tagWas, tagWant, state.edge, edgeWant > 0);
+      state.edge = settleTo(state.edge, edgeWant, tagWas, tagWant > 0);
       labelOpacity.set(id, state.tag);
       if (state.tag > 1e-3) {
         const label = state.tagLabel;
@@ -1417,7 +1437,10 @@ export default function create(): UniverseModule {
       // the one the explorer's pipelines must be compiled for (compileForFrames).
       stars.object.onBeforeRender = (r: unknown) => {
         const target = (r as { getRenderTarget(): RenderTarget | null }).getRenderTarget();
-        if (target && target !== compileTarget) frameTarget = target;
+        if (target && target !== compileTarget) {
+          frameTarget = target;
+          releaseStandIn();
+        }
       };
       const body = (name: string): PlanetsFile['bodies'][number] => {
         const found = planets.bodies.find((b) => b.name === name);

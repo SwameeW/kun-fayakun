@@ -18,13 +18,12 @@ DOWNLOAD = CACHE / "download"
 WORK = CACHE / "work"
 REPORTS = CACHE / "reports"
 PREVIEW = CACHE / "preview"
-# Ultra (8192) files are built here and never published (hosting is an owner decision).
+# A tier left out of PUBLISHED_TIERS would be built here and not published (every tier is published now).
 ULTRA = CACHE / "ultra"
 PUBLIC = ROOT / "public" / "assets" / "planets"
 # The site path that planets.json paths start with (resolved by assets.url at runtime).
 SITE_PREFIX = "assets/planets"
 MANIFEST = PUBLIC / "planets.json"
-ULTRA_MANIFEST = ULTRA / "planets-ultra.json"
 SOURCES_JSON = ROOT / "data" / "sources.json"
 # The JPL builder already downloads and pins the Cassini RSS ring profile (scripts/jpl/build.py).
 JPL_CACHE = ROOT / ".cache" / "jpl"
@@ -366,15 +365,16 @@ SOURCE_IDS = {s.id for s in SOURCES} | {"cassini-rss-rings"}
 
 # --- Tiers and encodings ----------------------------------------------------------------
 
-# Equirectangular width per detail tier (height is half). Ultra is built but not published.
+# Equirectangular width per detail tier (height is half). All four are published (served with the site).
 TIERS: dict[str, int] = {"low": 1024, "medium": 2048, "high": 4096, "ultra": 8192}
-PUBLISHED_TIERS = ("low", "medium", "high")
+PUBLISHED_TIERS = ("low", "medium", "high", "ultra")
 TOP_WIDTH = TIERS["ultra"]
 
 # Transfer budgets (bytes) per published tier set, and for everything committed together.
-# The tier budgets are the synthesis' Stage 7 ceilings; the total keeps the repository small.
+# The tier budgets are the synthesis' Stage 7 ceilings; the total keeps the repository and the site
+# (GitHub Pages, 1 GB) well within their limits with Ultra included.
 TIER_BUDGET_BYTES = {"low": 4_000_000, "medium": 12_000_000, "high": 60_000_000, "ultra": 160_000_000}
-COMMITTED_BUDGET_BYTES = 45_000_000
+COMMITTED_BUDGET_BYTES = 135_000_000
 
 # Colour: ETC1S (BasisLZ) at Low and Medium, UASTC + RDO + zstd at High and Ultra.
 # --uastc-rdo-m keeps RDO single-threaded so a rebuild gives the same bytes.

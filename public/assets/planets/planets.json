@@ -32,11 +32,10 @@
       "width": 8192,
       "bytes": 96088484,
       "budgetBytes": 160000000,
-      "published": false,
-      "note": "Built into .cache/planets/ultra by scripts/preprocess-planets.sh and described by planets-ultra.json there; not published until the owner decides where to host it. Maps whose source is narrower than 8192 reuse their High file."
+      "published": true
     }
   },
-  "committedBytes": 44500406,
+  "committedBytes": 126446306,
   "bodies": {
     "earth": {
       "longitude": "east longitude (Greenwich at u = 0.5), as in the source maps (-180 to 180 from the left edge)",
@@ -241,6 +240,31 @@
     },
     {
       "body": "earth",
+      "map": "day",
+      "tier": "ultra",
+      "path": "assets/planets/earth/day-8192-uastc.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 12134328,
+      "sha256": "b682e4fc72d19b4173db4e7bf397174d8b0115fba5c25d58e9ce752e03ee34cc",
+      "sourceId": "nasa-bmng-2004",
+      "credit": "Blue Marble: Next Generation, Reto Stöckli, NASA Earth Observatory (NASA Goddard Space Flight Center)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 45.97,
+        "psnrR": 45.77,
+        "psnrG": 46.32,
+        "psnrB": 45.84
+      }
+    },
+    {
+      "body": "earth",
       "map": "night",
       "tier": "low",
       "path": "assets/planets/earth/night-1024-r8.ktx2",
@@ -295,6 +319,28 @@
       "colorSpace": "linear",
       "bytes": 588011,
       "sha256": "0e2890cc2f1fa422549a15046b11a56ddff4a54f1089c4a48154ea8c9064a3ca",
+      "sourceId": "nasa-black-marble-2016",
+      "credit": "NASA Earth Observatory images by Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA GSFC",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnr": 99.0
+      }
+    },
+    {
+      "body": "earth",
+      "map": "night",
+      "tier": "ultra",
+      "path": "assets/planets/earth/night-8192-r8.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "r8",
+      "colorSpace": "linear",
+      "bytes": 1770525,
+      "sha256": "dff923926aba8b38316148627c15c34ebe75be57352684a0e9e1ec9b5925255c",
       "sourceId": "nasa-black-marble-2016",
       "credit": "NASA Earth Observatory images by Joshua Stevens, using Suomi NPP VIIRS data from Miguel Román, NASA GSFC",
       "uAtLon0": 0.5,
@@ -373,6 +419,28 @@
     },
     {
       "body": "earth",
+      "map": "clouds",
+      "tier": "ultra",
+      "path": "assets/planets/earth/clouds-8192-r8.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "r8",
+      "colorSpace": "linear",
+      "bytes": 30224042,
+      "sha256": "ed827e25c5cfbc5b00a6bc8507b0c36b67f91b5ec50842fe7f71125bed6690cf",
+      "sourceId": "nasa-blue-marble-clouds-2002",
+      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnr": 99.0
+      }
+    },
+    {
+      "body": "earth",
       "map": "water",
       "tier": "low",
       "path": "assets/planets/earth/water-1024-r8.ktx2",
@@ -427,6 +495,28 @@
       "colorSpace": "linear",
       "bytes": 400357,
       "sha256": "5b6a4b712aed215c2f7d6fa5733db04bf98b8136bde45216647167ce57ff1d0f",
+      "sourceId": "natural-earth-5.1.2",
+      "credit": "Made with Natural Earth",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnr": 99.0
+      }
+    },
+    {
+      "body": "earth",
+      "map": "water",
+      "tier": "ultra",
+      "path": "assets/planets/earth/water-8192-r8.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "r8",
+      "colorSpace": "linear",
+      "bytes": 802378,
+      "sha256": "3cf80eda694259820971b3aed3debf60859c62b680bb60d0e50fa5c753ce6b9e",
       "sourceId": "natural-earth-5.1.2",
       "credit": "Made with Natural Earth",
       "uAtLon0": 0.5,
@@ -534,6 +624,38 @@
       }
     },
     {
+      "body": "earth",
+      "map": "normal",
+      "tier": "ultra",
+      "path": "assets/planets/earth/normal-8192-uastc.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 10738352,
+      "sha256": "96aeb0be054105ed2bc331e1fd0b699d4b53177dc17a18b27572cdf9d37ed0ae",
+      "sourceId": "noaa-etopo-2022",
+      "credit": "NOAA National Centers for Environmental Information. 2022: ETOPO 2022 15 Arc-Second Global Relief Model. https://doi.org/10.25921/fd45-gt74",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
+      "rowsBottomUp": true,
+      "alsoFrom": [
+        {
+          "sourceId": "natural-earth-5.1.2",
+          "credit": "Made with Natural Earth"
+        }
+      ],
+      "reliefExaggeration": 12.0,
+      "quality": {
+        "psnrX": 40.79,
+        "psnrY": 41.94,
+        "meanAngleErrorDeg": 0.51,
+        "p99AngleErrorDeg": 7.66
+      }
+    },
+    {
       "body": "moon",
       "map": "colour",
       "tier": "low",
@@ -610,6 +732,31 @@
     },
     {
       "body": "moon",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/moon/colour-8192-uastc.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 26276275,
+      "sha256": "7adf2c83ffde32e2f60e8559b51f9d32877078b17123ab2cb3912fa13fe01d41",
+      "sourceId": "nasa-svs-cgi-moon-kit",
+      "credit": "NASA's Scientific Visualization Studio (Ernie Wright, USRA; scientist Noah Petro, NASA/GSFC), from LRO LROC WAC (Arizona State University) and LOLA data",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric (the Moon is a sphere here)",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 44.35,
+        "psnrR": 44.55,
+        "psnrG": 44.29,
+        "psnrB": 44.21
+      }
+    },
+    {
+      "body": "moon",
       "map": "normal",
       "tier": "low",
       "path": "assets/planets/moon/normal-1024-uastc.ktx2",
@@ -664,6 +811,32 @@
       "body": "moon",
       "map": "normal",
       "tier": "high",
+      "path": "assets/planets/moon/normal-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 9128134,
+      "sha256": "4b709fe810b474aca52e3bbcd92ec767817b6c8025ff2b47c249855427d595a4",
+      "sourceId": "nasa-svs-cgi-moon-kit",
+      "credit": "NASA's Scientific Visualization Studio (Ernie Wright, USRA; scientist Noah Petro, NASA/GSFC), from LRO LROC WAC (Arizona State University) and LOLA data",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric (the Moon is a sphere here)",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 36.94,
+        "psnrY": 37.55,
+        "meanAngleErrorDeg": 1.769,
+        "p99AngleErrorDeg": 6.998
+      }
+    },
+    {
+      "body": "moon",
+      "map": "normal",
+      "tier": "ultra",
       "path": "assets/planets/moon/normal-4096-uastc.ktx2",
       "width": 4096,
       "height": 2048,
@@ -762,6 +935,31 @@
       }
     },
     {
+      "body": "jupiter",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/jupiter/colour-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 4170245,
+      "sha256": "519e891f25dc996834b3d8d6a2a34bf0a5cc09ee8c89235240ebff2b82f1a56d",
+      "sourceId": "hst-opal-jupiter-2025a",
+      "credit": "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team",
+      "uAtLon0": 0.0,
+      "lonIncreases": "right",
+      "latitude": "planetographic (sample with the latitude of the ellipsoid's outward normal); OPAL navigated with radii 71492 / 66854 km",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 45.83,
+        "psnrR": 45.69,
+        "psnrG": 45.59,
+        "psnrB": 46.23
+      }
+    },
+    {
       "body": "saturn",
       "map": "colour",
       "tier": "low",
@@ -815,6 +1013,31 @@
       "body": "saturn",
       "map": "colour",
       "tier": "high",
+      "path": "assets/planets/saturn/colour-2048-uastc.ktx2",
+      "width": 2048,
+      "height": 1024,
+      "levels": 12,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 799666,
+      "sha256": "362f4a5a0555a9ab2a8818486c791ccc8483d796c5661e8f4ceaabc01e12f0cc",
+      "sourceId": "hst-opal-saturn-2025a",
+      "credit": "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team",
+      "uAtLon0": 0.0,
+      "lonIncreases": "right",
+      "latitude": "planetographic (sample with the latitude of the ellipsoid's outward normal); OPAL navigated with radii 60268 / 54364 km",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 47.5,
+        "psnrR": 47.9,
+        "psnrG": 47.89,
+        "psnrB": 46.81
+      }
+    },
+    {
+      "body": "saturn",
+      "map": "colour",
+      "tier": "ultra",
       "path": "assets/planets/saturn/colour-2048-uastc.ktx2",
       "width": 2048,
       "height": 1024,
@@ -906,6 +1129,39 @@
       "body": "saturn",
       "map": "rings",
       "tier": "high",
+      "path": "assets/planets/saturn/rings-8192-rgba8.ktx2",
+      "width": 8192,
+      "height": 1,
+      "levels": 14,
+      "codec": "rgba8",
+      "colorSpace": "srgb",
+      "bytes": 44539,
+      "sha256": "1f65bf1405836b87a737aeeaa6b7e67ecc99f16402a9ad7c972ec3d802001819",
+      "sourceId": "cassini-rss-rings",
+      "credit": "Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0, CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018",
+      "uAtLon0": null,
+      "lonIncreases": null,
+      "latitude": null,
+      "rowsBottomUp": true,
+      "alsoFrom": [
+        {
+          "sourceId": "cassini-pia11142",
+          "credit": "NASA/JPL/Space Science Institute"
+        }
+      ],
+      "radiusKm": [
+        72770.0,
+        144987.5
+      ],
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrA": 99.0
+      }
+    },
+    {
+      "body": "saturn",
+      "map": "rings",
+      "tier": "ultra",
       "path": "assets/planets/saturn/rings-8192-rgba8.ktx2",
       "width": 8192,
       "height": 1,
