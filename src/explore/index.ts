@@ -25,7 +25,7 @@
  * pixel-ratio cap. Notes about what the camera is near come from ./discoveries.
  */
 
-import { Group, MathUtils, Matrix4, Mesh, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
+import { Group, MathUtils, Matrix4, Mesh, Quaternion, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
 import { validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import { julianDateUtc, utcToTdb } from '../astro/time';
@@ -47,11 +47,14 @@ import {
   type UniverseView,
   type ViewInsets,
 } from '../core/types';
+import { PLANETS_MANIFEST_URL, findPlanetTexture, type PlanetsManifest } from './assets/planets';
+import { createPlanetTextures } from './assets/streaming';
 import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
-import { DETAIL, EXPLORE_TIERS, FILM_TIER, type ExploreDetail, type ExploreTier } from './detail';
+import { DETAIL, EXPLORE_TIERS, type ExploreDetail, type ExploreTier } from './detail';
 import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
+import { createTransmittanceTable, earthAir, type TransmittanceTable } from './render/air';
 import { createInput, type ExploreInput } from './input';
 import { Navigator, navOutput, type NavBody, type NavWorld } from './navigation';
 import { createOrbits, moonOrbit, planetOrbit, type Orbits, type OrbitPath } from './orbits';
@@ -74,7 +77,7 @@ const EXPOSURE_POWER = 1.8;
  * radius grows between these sizes (CSS px), taking the disc from brilliant white to the filter's
  * amber at a moderate brightness (display terms). The readout says so while the filter is on.
  */
-const SUN_FILTER = { fromPx: 12, toPx: 110, color: [1, 0.5, 0.12], white: 5, filtered: 1 } as const;
+const SUN_FILTER = { fromPx: 12, toPx: 110, color: [1, 0.5, 0.12], white: 5, filtered: 0.62 } as const;
 /**
  * The Moon is dark (it reflects about an eighth of its light, less than half the Earth's share), so
  * with the Moon in view the exposure opens a little further, as a camera's would; beside the Earth
@@ -124,6 +127,8 @@ const INSET_SECONDS = 0.4;
 const PICK_PX = 22;
 /** How much brighter the orbit lines are during a trip (eased in and out with the lines' own weights). */
 const TRIP_ORBIT_GLOW = 0.8;
+/** A planet this large on screen (radius, CSS px) streams the detail's maps as the focus does. */
+const LARGE_PX = 200;
 
 const smoothstep = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -171,6 +176,8 @@ export default function create(): UniverseModule {
   let ctx: UniverseContext | null = null;
   let system: SolarSystem | null = null;
   let bodies: Bodies | null = null;
+  /** The Earth's transmittance table: baked on the first frame (it needs the renderer). */
+  let airTable: TransmittanceTable | null = null;
   let stars: Starfield | null = null;
   let orbits: Orbits | null = null;
   let orbitPaths: OrbitPath[] = [];
@@ -266,6 +273,11 @@ export default function create(): UniverseModule {
   const scratch = km();
   const scratch2 = km();
   const forward = km();
+  const camRight = new Vector3();
+  const sunView = new Vector3();
+  const viewTurn = new Quaternion();
+  const ringCamera = km();
+  const focusBodies: BodyId[] = [];
 
   const setDate = (utc: number | null): void => {
     if (!timeConstants) return;
@@ -373,7 +385,10 @@ export default function create(): UniverseModule {
   const applyDetail = (next: ExploreDetail): void => {
     detail = next;
     if (bodies) {
-      bodies.setDetail(detail);
+      // New materials compile ahead and swap in when ready; the governor judges nothing for a while after.
+      void bodies.setDetail(detail).then(() => {
+        governor?.holdOff();
+      });
     }
     if (stars) stars.object.count = Math.min(STAR_MAX, detail.starCount);
     if (entered && ctx) {
@@ -537,9 +552,23 @@ export default function create(): UniverseModule {
     filterColor[1] = 1 + (fg - 1) * filterAmount;
     filterColor[2] = 1 + (fb - 1) * filterAmount;
     const sunDisplay = Math.exp(Math.log(SUN_FILTER.white) + (Math.log(SUN_FILTER.filtered) - Math.log(SUN_FILTER.white)) * filterAmount);
-    bodies.sun.update({ time: elapsed, kelvin: SUN_KELVIN, light: sunDisplay / adapted, filter: filterColor });
+    // The Earth's air table is baked once, on the first frame (it needs the renderer).
+    if (airTable && !airTable.baked) airTable.bake(c.renderer);
+    camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    bodies.sun.update({
+      time: elapsed,
+      kelvin: SUN_KELVIN,
+      light: sunDisplay / adapted,
+      exposure: adapted,
+      filter: filterColor,
+      filtered: filterAmount,
+      radiusPx: placed.sun.radiusPx,
+      right: camRight,
+      up: camUp,
+    });
     unit(sunDir, sys.bodies.earth.position, sun);
-    bodies.earth.update({ time: elapsed * 0.1, sun: sunDir, light: lightAt('earth'), radius: sys.specs.earth.radiusKm * placed.earth.k });
+    bodies.earth.update({ time: elapsed, sun: sunDir, light: lightAt('earth') }, origin3);
     // The Moon: sunlight, and earthshine from as much of the Earth's face toward it as is lit.
     const moonAt = sys.bodies.moon.position;
     unit(sunDir, moonAt, sun);
@@ -548,9 +577,26 @@ export default function create(): UniverseModule {
     const earthLit = (1 - (scratch.x * toEarth.x + scratch.y * toEarth.y + scratch.z * toEarth.z)) / 2;
     bodies.moon.update({ time: elapsed, sun: sunDir, light: lightAt('moon'), earth: toEarth, earthLit }, origin3);
     unit(sunDir, sys.bodies.jupiter.position, sun);
-    bodies.jupiter.update({ sun: sunDir, light: lightAt('jupiter') }, origin3);
+    bodies.jupiter.update({ time: elapsed, sun: sunDir, light: lightAt('jupiter') }, origin3);
     unit(sunDir, sys.bodies.saturn.position, sun);
-    bodies.saturn.update({ sun: sunDir, light: lightAt('saturn') }, origin3);
+    bodies.saturn.update({ time: elapsed, sun: sunDir, light: lightAt('saturn') }, origin3);
+    // Saturn's ring particles: the camera in the rings' frame (km, doubles), the Sun in the view's.
+    const particles = bodies.saturn.rings?.particles;
+    if (particles?.enabled) {
+      const sb = sys.bodies.saturn.basis;
+      const rel = placed.saturn.rel;
+      const column = (i: number): number => -(rel.x * (sb[3 * i] ?? 0) + rel.y * (sb[3 * i + 1] ?? 0) + rel.z * (sb[3 * i + 2] ?? 0));
+      ringCamera.x = column(0);
+      ringCamera.y = column(1);
+      ringCamera.z = column(2);
+      sunView.set(sunDir.x, sunDir.y, sunDir.z).applyQuaternion(viewTurn.copy(camera.quaternion).invert());
+      particles.update({ camera: ringCamera, basis: sb, sunView, light: lightAt('saturn'), pxPerRadian: pxPerTan, radiusKm: sys.specs.saturn.radiusKm, nearKm: lens.near });
+    }
+    // Texture streaming: the focus (during a flight, the destination) and any planet large in view get the detail's maps.
+    focusBodies.length = 0;
+    for (const id of BODY_IDS) if (id === nav.focus || placed[id].radiusPx > LARGE_PX) focusBodies.push(id);
+    bodies.setFocus(focusBodies);
+    bodies.update(dt);
 
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
@@ -841,11 +887,13 @@ export default function create(): UniverseModule {
     async load(c) {
       ctx = c;
       if (system) return;
-      const [planets, moon, physical, volume] = await Promise.all([
+      const [planets, moon, physical, volume, manifest] = await Promise.all([
         c.assets.json<PlanetsFile>('assets/jpl/planets.json'),
         c.assets.json<MoonFile>('assets/jpl/moon.json'),
         c.assets.json<PhysicalFile>(PHYSICAL_URL),
         createNoiseVolume(NOISE.size, NOISE.seed),
+        c.assets.json<PlanetsManifest>(PLANETS_MANIFEST_URL),
+        c.data.ready,
       ]);
       noise = volume;
       timeConstants = physical.time;
@@ -874,8 +922,30 @@ export default function create(): UniverseModule {
         }
       }
 
-      const rings = { innerKm: ringSphere.innerKm, outerKm: ringSphere.outerKm, transmission: ringTransmission(physical.saturnRings) };
-      bodies = createBodies(volume, system.specs, rings, FILM_TIER[detail.tier]);
+      // The mission maps stream by detail (Low on entry, the focus raised after); the Earth's air from the cited model.
+      const renderer = c.renderer;
+      const textures = createPlanetTextures({ assets: c.assets, manifest, detail, upload: (t) => { renderer.initTexture(t); } });
+      textures.setRingPlaceholder(ringTransmission(physical.saturnRings), physical.saturnRings.innerKm, physical.saturnRings.outerKm);
+      const sunKm = system.specs.sun.radiusKm;
+      const air = earthAir(c.data, system.specs.earth.radiusKm, Math.asin(sunKm / physical.auKm));
+      airTable = createTransmittanceTable(air);
+      const strip = findPlanetTexture(manifest, 'saturn', 'rings', 'low')?.radiusKm ?? [physical.saturnRings.innerKm, physical.saturnRings.outerKm];
+      bodies = createBodies({
+        noise: volume,
+        specs: system.specs,
+        ringSpanKm: strip,
+        textures,
+        air,
+        table: airTable,
+        sunLimb: { a1: c.data.constant('sun.limbDarkening.a1').value, a2: c.data.constant('sun.limbDarkening.a2').value },
+        sunAngularRadius: Math.asin(sunKm / physical.auKm),
+        detail,
+        compile: async (objects) => {
+          const cx = ctx;
+          if (!cx) return;
+          await Promise.all(objects.map((o) => cx.renderer.compileAsync(o, cx.camera, cx.scene)));
+        },
+      });
       stars = createStarfield(STAR_MAX, 400, 7_101, { depthTest: true, dynamicRadius: true });
       applyDetail(detail);
       const body = (name: string): PlanetsFile['bodies'][number] => {
@@ -893,7 +963,7 @@ export default function create(): UniverseModule {
       orbits = createOrbits(orbitPaths);
       dots = createImpostors(BODY_IDS.length);
       glare = createSunGlare(blackbodyRgb(SUN_KELVIN));
-      root.add(stars.object, orbits.mesh, dots.object, glare.object, ...BODY_IDS.map((id) => bodies?.objects[id]).filter((o): o is Group => o !== undefined));
+      root.add(stars.object, orbits.mesh, dots.object, glare.object, ...BODY_IDS.map((id) => bodies?.objects[id]).filter((o): o is Group => o !== undefined), ...bodies.extras);
 
       // Notes from cited data: without the constants file they are left out, never guessed.
       try {
@@ -1073,6 +1143,8 @@ export default function create(): UniverseModule {
     exit() {
       root.removeFromParent();
       input?.detach();
+      // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
+      bodies?.suspend();
       entered = false;
       labels = [];
       ctx?.exposure.setVeil(1);
@@ -1087,6 +1159,7 @@ export default function create(): UniverseModule {
       dots?.dispose();
       glare?.dispose();
       noise?.dispose();
+      airTable = null;
       bodies = null;
       stars = null;
       orbits = null;

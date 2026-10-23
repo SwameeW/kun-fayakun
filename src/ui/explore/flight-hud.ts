@@ -1,4 +1,5 @@
 import type { App, BodyId, UniverseView } from '../../core/types';
+import { PLANETS_MANIFEST_URL, planetCredits, type PlanetsManifest } from '../../explore/assets/planets';
 import { h } from '../dom';
 import type { Formatters } from './format';
 
@@ -47,8 +48,25 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   const sunlight = h('p', { class: 'kf-universe-line kf-universe-extra' });
   const filter = h('p', { class: 'kf-universe-line kf-universe-extra kf-universe-filter', hidden: true }, i18n.t('ui.universe.filter'));
   const date = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-extra' });
-  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative' }, i18n.t('ui.universe.illustrative'));
-  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, sunlight, filter, date, illustrative);
+  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative', hidden: true }, i18n.t('ui.universe.illustrative'));
+  const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true });
+  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, sunlight, filter, date, illustrative, imagery);
+
+  /** Per body: its maps' credits (and the Earth's caption), once planets.json has loaded. */
+  let credits: Partial<Record<BodyId, string>> = {};
+  void app.assets.json<PlanetsManifest>(PLANETS_MANIFEST_URL).then(
+    (manifest) => {
+      const next: Partial<Record<BodyId, string>> = {};
+      for (const body of ['earth', 'moon', 'jupiter', 'saturn'] as const) {
+        const lines = planetCredits(manifest.files.filter((file) => file.body === body));
+        if (lines.length === 0) continue;
+        const caption = body === 'earth' ? manifest.bodies?.earth?.caption : undefined;
+        next[body] = [caption, i18n.t('ui.universe.imagery', { credits: lines.join('; ') })].filter(Boolean).join(' ');
+      }
+      credits = next;
+    },
+    () => undefined,
+  );
 
   const tripTitle = h('p', { class: 'kf-trip-title' });
   const stop = h('button', { type: 'button', class: 'kf-btn kf-trip-stop', 'data-testid': 'universe-stop' }, i18n.t('ui.universe.stop'));
@@ -135,6 +153,11 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
       filter.hidden = !view.solarFilter;
       readout.classList.toggle('is-filtered', view.solarFilter);
       write(date, i18n.t('ui.universe.date', { date: dateFormat.format(new Date(view.unixMs)) }));
+      // Whose imagery this is (the focus's maps), or, for the procedural Sun, that it is illustrative.
+      const line = credits[view.focus];
+      imagery.hidden = !line;
+      write(imagery, line ?? '');
+      illustrative.hidden = view.focus !== 'sun';
 
       const t = view.travelling ? view.trip : null;
       trip.classList.toggle('is-active', t !== null);

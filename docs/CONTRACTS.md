@@ -344,9 +344,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   `public/assets/jpl` through `src/astro`; the date is now (or `?jd=`), clamped to the Moon
   table's span. Saturn's rings are drawn from the Cassini radio-occultation profile
   (`physical.json` `saturnRings.profile`: mean normal transmission in 2,048 bins, built by
-  `scripts/jpl/build.py`), only their colour illustrative. Surfaces are procedural until mission
-  maps arrive, and the interface says so ("Surfaces are illustrative"), along with "True scale: real
-  sizes and distances". The film's metres-per-pixel bar is replaced by a readout of true distances.
+  `scripts/jpl/build.py`) until the Cassini ring strip (`assets/planets`) arrives. Surfaces are the
+  mission maps of `assets/planets/planets.json`; the readout names their imagery (an "Imagery:" line
+  with the focus's credits, and the Earth's caption: a composite of several epochs) and says the
+  Sun's surface detail is illustrative, along with "True scale: real sizes and distances". The film's
+  metres-per-pixel bar is replaced by a readout of true distances.
 - **Light.** Sunlight on a body falls as 1/r^2; the exposure adapts to the body in view as
   r^1.8 (so the outer planets stay a little dimmer), through `ctx.exposure` like every change
   (slew-limited: flash-safe); bloom is judged at that exposure (`PostPipeline.setBloomExposure`;
@@ -355,13 +357,25 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   fills the view, shown as through a solar filter (amber, limb-darkened, mottled), which the readout
   says. The engine's exposure cap is 128 (chapters ask for 1 or less).
 - **Bodies and detail.** The explorer draws its bodies with its own shaders (`src/explore/bodies`),
-  never the chapters': an Earth with detail that fades in with closeness, cloud shadows, an
-  ocean-only glint and an atmosphere shaded from the air's column; a cratered Moon with relief and
-  earthshine; limb-darkened giants; the rings above; a filtered Sun and its glare. Shading edges
-  (terminators, ring and shadow edges, crescents) are softened over one pixel and fine detail fades
-  before it is smaller than one; MSAA (the scene pass inherits the renderer's 4 samples) handles
-  outlines. The detail rung (`UniverseModule.setDetail`, one call site `bodies.setDetail(detail)`)
-  sets mesh segments, detail octaves, cloud shadows and stars; the film's `setQuality` no longer reaches the explorer.
+  never the chapters': the Earth from Blue Marble (day), Black Marble (city lights, night side only:
+  today's Earth only), ETOPO relief and Natural Earth's water mask (an ocean-only glint), clouds on
+  their own drifting shell that shade the ground, and Bruneton's reference atmosphere
+  (`src/explore/render/air.ts`, constants in `data/constants.json`): single scattering through a
+  transmittance table baked once by a quad pass ('scatter'), or an analytic chord ('chord'); the Moon
+  from LROC colour and LOLA relief, Lommel-Seeliger light with an opposition surge and relief that casts
+  shadows near the terminator; Jupiter and Saturn from OPAL with Minnaert limbs (Jupiter's bands drift
+  in a two-phase flow, schematic speeds); Saturn's rings from the strip, lit by their own normal,
+  shadows both ways, and at close range a field of particles; a filtered Sun (limb darkening from
+  `data/constants.json`) with, at 'full' detail, a chromosphere, prominences and a corona, and a
+  radiance ceiling. Detail follows `src/explore/detail.ts`: the rung (`UniverseModule.setDetail`, one
+  call site `bodies.setDetail(detail)`) changes materials (compiled ahead), mesh segments, cloud shadows,
+  stars and which maps stream; the film's `setQuality` no longer reaches the explorer. Maps stream through `src/explore/assets/streaming.ts`: one-texel
+  means first, every body's Low files on entry, the focus (or a flight's destination) raised to
+  `textureTier(detail)`, at most one upload a frame, each arrival sharpening in from its predecessor's
+  blur, upgrades dropped after their hold and on leaving, within the tier's memory budget. Shading
+  edges (terminators, ring and shadow edges, crescents) are softened over one pixel and fine detail
+  fades before it is smaller than one; MSAA (the scene pass inherits the renderer's 4 samples) handles
+  outlines.
 - **Shared modules, optional parameters only** (left out, the chapters' graphs are unchanged):
   `createStarfield(count, radius, seed, { depthTest, dynamicRadius })` with `setRadius`,
   `createStreakField({ ..., profile: 'trail'|'line', tailColor })`.

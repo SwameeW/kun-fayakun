@@ -187,6 +187,14 @@
   color: var(--kf-text-muted);
 }
 
+/* The surface's imagery credits: small, wrapping, never wider than the readout. */
+.kf-universe-imagery {
+  max-inline-size: 26rem;
+  margin-block-start: var(--kf-space-1);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
 /* ------------------------------------------------------------------ */
 /* Trip indicator                                                      */
 /* ------------------------------------------------------------------ */
@@ -1042,6 +1050,16 @@
 
   .kf-universe-illustrative::before {
     content: " · ";
+  }
+
+  /* Credits stay, as a small line of their own (two lines at most; the Sources page has them in full). */
+  .kf-universe-imagery {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: 0.625rem;
   }
 
   .kf-universe-hint {
