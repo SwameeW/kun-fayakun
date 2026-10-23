@@ -1,6 +1,7 @@
 import { MathUtils, PerspectiveCamera, Scene, Vector3 } from 'three/webgpu';
 import { CHAPTERS, isPlayable } from '../chapters/index';
 import { createAudioEngine } from './audio';
+import { createFrameCadence } from './cadence';
 import { CameraDirector, DEFAULT_FOV, FAR, NEAR } from './camera';
 import { createChapterLoader, type ChapterLoader } from './chapter-loader';
 import { createDataStore } from './data';
@@ -11,7 +12,7 @@ import { createAssetLoader } from './loader';
 import type { LaunchParams } from './params';
 import { createPerfMonitor, type PerfMonitor } from './perf';
 import { createExposureControl, createPostPipeline, type EngineExposure, type PostPipeline } from './post';
-import { chooseInitialTier, createQualityGovernor, type QualityGovernor } from './quality';
+import { chooseInitialTier, createQualityGovernor, isMobileDevice, type QualityGovernor } from './quality';
 import { createResolutionGovernor, type ResolutionGovernor } from './resolution';
 import { createRenderer, RENDERER_UNAVAILABLE_MESSAGE, type BackendName, type RendererHandle } from './renderer';
 import { createRouter, type Router } from './router';
@@ -33,9 +34,12 @@ import type {
   TimelineState,
   HudState,
   ScreenLabel,
+  UniverseGraphics,
+  UniverseSteer,
   UniverseView,
   ViewInsets,
 } from './types';
+import type { ExploreTier } from '../explore/detail';
 
 export interface AppOptions {
   canvas: HTMLCanvasElement;
@@ -76,6 +80,8 @@ interface FilmOrigin {
 
 /** Frame steps longer than this are clamped so a hitch never skips content. */
 const MAX_FRAME_DT = 0.1;
+/** ?tier= read on the explorer's detail ladder (a fixed film tier fixes the explorer's too). */
+const DETAIL_FOR_TIER: Readonly<Record<QualityProfile['tier'], ExploreTier>> = { high: 'high', mid: 'medium', low: 'low' };
 /** Upper bound for one __kf.step call (an hour of film at 60 fps), so a typo cannot hang the page. */
 const MAX_STEP_FRAMES = 216_000;
 const EMPTY_HUD: HudState = { labels: [], metresPerPixel: null };
@@ -147,6 +153,11 @@ class Engine implements KunFayakunApp {
   private warming = false;
   /** Set by the __kf.step test hook: frames still render, but only step() advances time. */
   private manualClock = false;
+  /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms. */
+  private lastGpuMs: number | null = null;
+  /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
+  private readonly cadence = createFrameCadence();
+  private universeGraphics: UniverseGraphics | null = null;
   private readonly loggedErrors = new Set<string>();
 
   constructor(options: AppOptions) {
@@ -203,7 +214,19 @@ class Engine implements KunFayakunApp {
       resetLens: () => {
         this.director.resetLens();
       },
-      makeContext: (exposure) => this.makeContext(this.assets, exposure),
+      makeContext: (exposure) => Object.assign(this.makeContext(this.assets, exposure), { graphics: this.pictureControl() }),
+      claimPicture: () => {
+        // The explorer scales its scene pass instead of the canvas.
+        this.gfx?.handle.setResolutionScale(1);
+      },
+      restorePicture: () => {
+        const gfx = this.gfx;
+        if (!gfx) return;
+        gfx.post.setSceneScale(1);
+        gfx.post.setBloom(this.profile.bloom);
+        gfx.handle.setDprCap(this.profile.dprCap);
+        gfx.handle.setResolutionScale(gfx.resolution.scale);
+      },
       stopFilm: () => {
         this.timeline.stop();
         return this.timeline.whenDark();
@@ -319,7 +342,7 @@ class Engine implements KunFayakunApp {
   }
 
   private async initGraphics(): Promise<Graphics> {
-    const handle = await createRenderer(this.canvas, { forceWebGL: this.params.forceWebGL, trackTimestamp: this.params.profile });
+    const handle = await createRenderer(this.canvas, { forceWebGL: this.params.forceWebGL, trackTimestamp: this.timesGpu });
     this.backendName = handle.backend;
     const { profile, reason } = chooseInitialTier({ backend: handle.backend, gpu: handle.gpu, override: this.params.tier });
     this.profile = profile;
@@ -399,10 +422,17 @@ class Engine implements KunFayakunApp {
         this.perf.record(raw * 1000);
         // Under a manual clock the tier and render scale stay fixed, so stepped frames are reproducible.
         if (!this.manualClock) {
-          const scale = gfx.resolution.sample(raw);
-          if (scale !== null) gfx.handle.setResolutionScale(scale);
-          const lower = gfx.governor.sample(raw);
-          if (lower) this.applyQuality(lower, 'governor');
+          // The display's own rate, learned from every frame since the page opened (light ones included).
+          this.cadence.sample(raw);
+          if (this.universeHost.owns) {
+            // The explorer governs its own detail ladder and render scale; the film's governors rest.
+            this.universeHost.sample(raw, this.timesGpu ? this.lastGpuMs : null, this.cadence.interval);
+          } else {
+            const scale = gfx.resolution.sample(raw);
+            if (scale !== null) gfx.handle.setResolutionScale(scale);
+            const lower = gfx.governor.sample(raw);
+            if (lower) this.applyQuality(lower, 'governor');
+          }
         }
       }
       this.advance(gfx, this.manualClock ? 0 : Math.min(raw, MAX_FRAME_DT));
@@ -461,18 +491,51 @@ class Engine implements KunFayakunApp {
     if (!this.warming) gfx.post.render();
   }
 
-  /** Renderer facts for frameStats(); with ?profile=1 also the frame's GPU time. */
+  /** GPU time is measured (timestamp queries) with ?profile=1, or ?gpuTime=1 (which holds nothing still). */
+  private get timesGpu(): boolean {
+    return this.params.profile || this.params.gpuTime;
+  }
+
+  /** Renderer facts for frameStats(); with ?profile=1 or ?gpuTime=1 also the frame's GPU time. */
   private measure(gfx: Graphics): void {
     const renderer = gfx.handle.renderer;
     const { geometries, textures } = renderer.info.memory;
     this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls, geometries, textures, experience: this.experience });
-    if (!this.params.profile) return;
+    if (!this.timesGpu) return;
     renderer
       .resolveTimestampsAsync('render')
       .then((ms) => {
-        if (typeof ms === 'number') this.perf.recordGpu(ms);
+        if (typeof ms !== 'number') return;
+        this.perf.recordGpu(ms);
+        this.lastGpuMs = ms;
       })
       .catch(() => undefined);
+  }
+
+  /** What the explorer may change about the picture (made once the renderer exists). */
+  private pictureControl(): UniverseGraphics {
+    if (this.universeGraphics) return this.universeGraphics;
+    const gfx = this.gfx;
+    if (!gfx) throw new Error('Renderer not initialised');
+    const { gpu } = gfx.handle;
+    const params = this.params;
+    const fixedDetail = params.detail ?? (params.tier ? DETAIL_FOR_TIER[params.tier] : null);
+    this.universeGraphics = {
+      device: { backend: gfx.handle.backend, description: gpu.description, software: gpu.software, mobile: isMobileDevice(), maxTextureSize: gpu.maxTextureSize },
+      fixedDetail,
+      adaptive: fixedDetail === null && !params.profile,
+      // Only while the explorer has the screen (or is taking it): the film never sees these.
+      setRenderScale: (scale) => {
+        if (this.universeHost.requested) this.gfx?.post.setSceneScale(scale);
+      },
+      setDprCap: (cap) => {
+        if (this.universeHost.requested) this.gfx?.handle.setDprCap(cap);
+      },
+      setBloom: (on) => {
+        if (this.universeHost.requested) this.gfx?.post.setBloom(on);
+      },
+    };
+    return this.universeGraphics;
   }
 
   private readonly onVisibility = (): void => {
@@ -814,6 +877,14 @@ class Engine implements KunFayakunApp {
 
   setViewInsets(insets: ViewInsets): void {
     this.universeHost.setInsets(insets);
+  }
+
+  setUniverseDetail(choice: 'auto' | ExploreTier): void {
+    this.universeHost.setDetailChoice(choice);
+  }
+
+  steerUniverse(command: UniverseSteer): boolean {
+    return this.universeHost.steer(command);
   }
 
   universe(): UniverseView | null {

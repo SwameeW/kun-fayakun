@@ -221,8 +221,11 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
   (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
   (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
-  holds the render scale at 1), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
-  from 1 CE to 9999 CE, anything else is ignored; the explorer reads it as UTC).
+  holds the render scale at 1), `?gpuTime=1` (the same timestamp queries without holding anything
+  still: the explorer's governor then judges GPU time), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
+  from 1 CE to 9999 CE, anything else is ignored; the explorer reads it as UTC),
+  `?detail=ultra|high|medium|low` (fixes the explorer's detail tier and holds its governor still;
+  `?tier=` fixes it too, mapped high→high, mid→medium, low→low; Ultra only where the device allows it).
 - Dynamic resolution: unless `?tier` or `?profile` is set, the engine lowers the render scale in small
   steps (down to 0.6× the tier's DPR cap) when frames run slow, before the tier governor drops a tier,
   and probes back up after long comfortable stretches. Frames over 0.25 s (stalls) are ignored, a tier
@@ -237,7 +240,9 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-ready="true"` after the first rendered frame, `data-chapter-ready="chNN"` after a
   chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`,
   `data-experience="film|universe"` (set as soon as a switch starts), `data-universe-ready="true"`
-  once the explorer has rendered a frame after loading (removed while it is not on screen).
+  once the explorer has rendered a frame after loading (removed while it is not on screen),
+  `data-travel="flying|arrived|stopped"` (the explorer's trips; removed when it leaves) and
+  `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves).
 - `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
@@ -254,7 +259,11 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 `sources-page`, `cmb-legend`, `loading`, `error`, `discovery` (the Chapter 7 letter analysis),
 `film-held` (the transport's status line while `app.holdFilm` holds the film), `open-universe`
 (the ways into the explorer: the welcome screen, and Chapters 7 to 10's outro and free-look hint),
-`universe` (the explorer's interface), `universe-bodies`, `universe-back`, `universe-readout`.
+`universe` (the explorer's interface), `universe-bodies` (the navigator), `universe-back`,
+`universe-readout`, `universe-nav-toggle` (folds and unfolds the navigator), `universe-detail` and
+`universe-detail-<auto|ultra|high|medium|low>` (the detail menu and its choices), `universe-trip`
+(the trip indicator), `universe-stop`, `universe-orbit` (stop a trip; orbit again from free
+flight), `universe-note` (the note about what is near), `universe-seen` (the log of what was seen).
 
 ## Solar-system explorer (Stages 3 and 4)
 
@@ -289,12 +298,72 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   the far plane are drawn nearer and smaller by one factor between 0.5 and 0.95 of it, exactly at
   their angular size (`space/scaled-space.ts`); the starfield sits at 0.98 x far with depth testing.
 - **Navigation.** A body is framed to a share of the narrower side of the clear view (a phone held
-  upright frames it by its width) and first seen from its sunlit side turned about 50 degrees,
-  Jupiter from near its equator, Saturn from the side of its rings the Sun lights. A flight leaves
-  its body and closes in on the destination in log distance (its distance to the destination only
-  falls), on an arc out of the planets' plane and clear of the Sun, its gaze on the destination
-  after its first third; with reduced motion it is a cut under the veil, the exposure jumping to the
-  new body while the picture is dim.
+  upright frames it by its width; a side panel or sheet is left out of it) and first seen from its
+  sunlit side turned about 50 degrees, Jupiter from near its equator, Saturn from the side of its
+  rings the Sun lights. A trip (`src/explore/travel.ts`) leaves its body and closes in on the
+  destination in log distance (its distance to the destination only falls, never below where it
+  arrives), on an arc out of the planets' plane and clear of the Sun and of any body on the way,
+  rounding the body it leaves when it starts on its far side; it eases in and out, lasts 2.5 s plus
+  0.9 s per factor of ten in distance (2.5 to 9 s), hurries through the stretch where both ends are
+  only points, pulls back from the world it leaves for its first tenth, has its gaze on the
+  destination after its first third, banks a little into turns and widens the lens a touch at
+  speed; with reduced motion it is a cut under the veil, the exposure jumping to the new body while
+  the picture is dim, with neither bank nor lens. Esc stops a trip (the camera coasts to rest in free
+  flight; a reduced-motion cut not yet made is called off, the light easing back where the visitor
+  was, and one already made finishes) or folds a pulled-up navigator sheet; with neither to do, Esc
+  goes back to the film. Entering, the camera pushes in on the first world from 2.4 times its framing
+  distance over 5.5 s (it fills much of the view from the first frame; none with reduced motion), and
+  the hint waits until the camera has settled.
+- **Flight** (`src/explore/flight.ts`, `src/explore/input.ts`). Exact critically damped springs on
+  the orbit's angles, its log height above the surface and its pan, and on free flight's turn
+  rates; the lens is a spring too. Orbit: drag (one finger) turns round the focus (gently when low),
+  wheel or pinch zooms in log height, right/middle/Shift drag or two fingers pan, a double click or
+  tap on a body travels there. Free flight (W A S D, R F up and down, Q E roll, Shift five times
+  faster, arrows look): speed is proportional to the height above the nearest surface, the camera
+  rides along with the body it is near, never enters one nor rises past the orbit rig's ceiling
+  (50 au above the nearest surface), says "holding still" at rest (speeds under 1 km/s in m/s), and
+  O (or the readout's button) orbits again with the gaze easing round. `touch-action: none` is set
+  on the canvas only while the explorer is on screen and restored after.
+- **Detail** (`src/explore/detail.ts` presets, `src/explore/quality.ts` governor). The explorer
+  starts on a rung from what the device says (phone Low, or Medium for an Apple GPU on WebGPU;
+  software Low; hidden adapter, WebGL2 or an integrated GPU Medium; else High; Ultra only by choice,
+  on non-software, non-mobile WebGPU with 8192 px textures). Its governor judges half-second
+  buckets by their mean, each frame counted at most two display intervals, so a vsync-paced display
+  that drops one frame in three (45 fps) reads as slow while one hitch decides nothing. The shipped
+  page judges frame time against the display's rate the engine learned; GPU time only where timestamp
+  queries run (`?gpuTime=1`; `?profile=1` measures too but holds the governor still). It ignores
+  stalls over 0.25 s and the 2 s after a tier change or a texture upload, lowers the scene pass's
+  internal resolution (`PostPipeline.setSceneScale`) to the rung's `minRenderScale` before dropping
+  a rung, tries the rung above after 20 s stable (never Ultra), backs off 20 s (doubling) after a
+  failed try and stops trying a rung after three failures in a visit; a phone slowing after a long
+  steady spell is read as heat and not tried upward for 3 minutes. A visitor's choice (the navigator's detail menu,
+  remembered in localStorage `kf.ui.exploreDetail`) is kept: then only the resolution adapts. In the
+  menu (headed, with a close control and a line per level on what it draws, read from the presets)
+  the arrow keys only select; a click or tap, Enter or Space applies the selection and closes it,
+  leaving it with the selection moved applies it, Esc puts it back; an applied level is named in a
+  toast with what it draws. The
+  explorer's pixel-ratio cap and bloom follow the rung while it is on screen; the host gives the film
+  its own back when it leaves (`UniverseHostDeps.claimPicture`/`restorePicture`), and the film's
+  governors rest while the explorer runs.
+- **Navigator and notes** (`src/ui/explore`). Every body with a live portrait (phase and lit side
+  as the camera sees it, never black: a dim night side and a faint rim), its distance (to the
+  surface, km up to 0.1 au, never broken from its unit) and the light-time of that same distance, an
+  orrery to fly by (directions true for the date, distances compressed), the log of what was seen
+  (its summary says how many entries it holds, with no total, score or achievement; each new entry
+  gets a quiet toast, a polite live region) and the detail menu; a side panel on wide screens (the
+  menu opening beside it), a bottom sheet on phones (the list first, the log, then the orrery as a
+  small strip, none held sideways; sized to what it holds, fading where it scrolls; held sideways,
+  pulled up at the right, the world framed beside it). The world in view is marked `aria-current`.
+  Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
+  the view (the same width) and never show at once: a trip takes the note out first, and a note comes
+  back only after the indicator has gone. A note's title folds it; on a phone it folds by itself after
+  6.5 s or at a touch on the scene. Names beside the bodies stay inside the clear view (at a body's
+  left when its right has no room; a body just out of frame gets a pointer at the edge), each choice
+  holding until the body is clearly past the line, and a name that gives way to another fades
+  quickly (no ghosting); they come up with the picture, never over a black screen. Notes near a body give numbers derived
+  from cited data only (`src/explore/discoveries.ts`: IAU rotation rates, JPL elements, the Cassini
+  ring profile, and `light.speed`, `earth.atmosphere.scaleHeight`, `sun.effectiveTemperature` in
+  data/constants.json). Exploration shows no scripture.
 - **Truth and honesty.** Positions, radii, flattening, poles and spin come from
   `public/assets/jpl` through `src/astro`; the date is now (or `?jd=`), clamped to the Moon
   table's span. Saturn's rings are drawn from the Cassini radio-occultation profile
@@ -322,9 +391,9 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   in a two-phase flow, schematic speeds); Saturn's rings from the strip, lit by their own normal,
   shadows both ways, and at close range a field of particles; a filtered Sun (limb darkening from
   `data/constants.json`) with, at 'full' detail, a chromosphere, prominences and a corona, and a
-  radiance ceiling. Detail follows `src/explore/detail.ts`: the module's `setDetail(detail)` changes
-  materials (compiled ahead) and which maps stream; `setQuality` maps the film tier onto it (high ->
-  High, mid -> Medium, low -> Low). Maps stream through `src/explore/assets/streaming.ts`: one-texel
+  radiance ceiling. Detail follows `src/explore/detail.ts`: the rung (`UniverseModule.setDetail`, one
+  call site `bodies.setDetail(detail)`) changes materials (compiled ahead), mesh segments, cloud shadows,
+  stars and which maps stream; the film's `setQuality` no longer reaches the explorer. Maps stream through `src/explore/assets/streaming.ts`: one-texel
   means first, every body's Low files on entry, the focus (or a flight's destination) raised to
   `textureTier(detail)`, uploads budgeted by bytes (at most `UPLOAD_BYTES_PER_FRAME` a frame, a large
   texture in row bands over several frames) and each texture bound only on a frame after its upload

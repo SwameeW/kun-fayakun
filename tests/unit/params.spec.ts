@@ -10,8 +10,24 @@ test('defaults when nothing is set', () => {
     autoplay: false,
     showFps: false,
     profile: false,
+    gpuTime: false,
     jd: null,
+    detail: null,
   });
+});
+
+test('?gpuTime measures GPU time without holding anything still (unlike ?profile)', () => {
+  expect(readLaunchParams('?gpuTime=1').gpuTime).toBe(true);
+  expect(readLaunchParams('?gpuTime=1').profile).toBe(false);
+  expect(readLaunchParams('?gpuTime=0').gpuTime).toBe(false);
+  expect(readLaunchParams('?profile=1').gpuTime).toBe(false);
+});
+
+test('?detail fixes the explorer detail tier (and only to a tier of its ladder)', () => {
+  expect(readLaunchParams('?detail=Ultra').detail).toBe('ultra');
+  expect(readLaunchParams('?detail=medium').detail).toBe('medium');
+  expect(readLaunchParams('?detail=mid').detail).toBeNull();
+  expect(readLaunchParams('?detail=').detail).toBeNull();
 });
 
 test('?jd pins a Julian date', () => {

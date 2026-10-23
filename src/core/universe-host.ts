@@ -1,3 +1,4 @@
+import type { ExploreTier } from '../explore/detail';
 import { setHook } from './hooks';
 import type { EngineExposure } from './post';
 import type { QualityGovernor } from './quality';
@@ -11,6 +12,7 @@ import type {
   UniverseContext,
   UniverseExposure,
   UniverseModule,
+  UniverseSteer,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -68,6 +70,13 @@ export interface UniverseHostDeps {
   nextToken(): number;
   isCurrent(token: number): boolean;
   onError(err: unknown): void;
+  /**
+   * The explorer takes the picture over (before it enters): the canvas back to its full resolution
+   * (the explorer scales its scene pass instead). restorePicture gives the film its own settings
+   * back (pixel-ratio cap, canvas scale, scene scale, bloom) once the explorer has gone dark.
+   */
+  claimPicture(): void;
+  restorePicture(): void;
 }
 
 export interface UniverseOpenOptions {
@@ -100,6 +109,8 @@ export class UniverseHost {
   private hostVeil = 1;
   /** Where the host's veil is going: 1 after the warm-up, 0 while leaving; null holds it. */
   private veilGoal: { from: number; to: number; seconds: number; t: number } | null = null;
+  /** The visitor's detail choice, kept for the explorer until (and after) it loads. */
+  private detailChoice: 'auto' | ExploreTier | null = null;
 
   constructor(private readonly deps: UniverseHostDeps) {}
 
@@ -160,8 +171,10 @@ export class UniverseHost {
         module.setQuality?.(this.pendingQuality);
         this.pendingQuality = null;
       }
+      if (this.detailChoice) module.setDetailChoice(this.detailChoice);
       module.setInsets(this.insets);
       module.configure(options);
+      this.deps.claimPicture();
       // Black until the warm-up is done: the veil comes up afterwards.
       this.hostVeil = 0;
       this.veilGoal = null;
@@ -179,6 +192,8 @@ export class UniverseHost {
     } catch (err) {
       if (!this.deps.isCurrent(token)) return;
       if (this.is('active')) this.loaded?.module.exit();
+      // Whatever the explorer had set for its picture goes back to the film's.
+      this.deps.restorePicture();
       this.setState('idle');
       this.deps.onError(err);
     }
@@ -196,6 +211,7 @@ export class UniverseHost {
       case 'loading':
         // The open() in flight sees the state change and stops before entering.
         this.setState('idle');
+        this.deps.restorePicture();
         return Promise.resolve();
       case 'leaving':
         return this.leaving ?? Promise.resolve();
@@ -211,6 +227,7 @@ export class UniverseHost {
           this.deps.exposure.jump();
           this.loaded?.module.exit();
           this.deps.resetLens();
+          this.deps.restorePicture();
           this.leaving = null;
           this.setState('idle');
         });
@@ -257,8 +274,24 @@ export class UniverseHost {
   }
 
   setInsets(insets: ViewInsets): void {
-    this.insets = { top: Math.max(0, insets.top), bottom: Math.max(0, insets.bottom) };
+    const clean = (v: number | undefined): number => (Number.isFinite(v) ? Math.max(0, v ?? 0) : 0);
+    this.insets = { top: clean(insets.top), bottom: clean(insets.bottom), left: clean(insets.left), right: clean(insets.right) };
     this.loaded?.module.setInsets(this.insets);
+  }
+
+  /** One frame's real duration, GPU time and the display's interval, for the explorer's quality governor (while it is on screen). */
+  sample(frameSeconds: number, gpuMs: number | null, intervalSeconds: number): void {
+    this.active?.sampleFrame(frameSeconds, gpuMs, intervalSeconds);
+  }
+
+  /** The visitor's detail choice (from the interface's menu, or remembered from an earlier visit). */
+  setDetailChoice(choice: 'auto' | ExploreTier): void {
+    this.detailChoice = choice;
+    this.loaded?.module.setDetailChoice(choice);
+  }
+
+  steer(command: UniverseSteer): boolean {
+    return this.active?.steer(command) ?? false;
   }
 
   dispose(): void {
@@ -331,6 +364,10 @@ export class UniverseHost {
       this.veilGoal = null;
     }
     if (next !== 'active') setHook('data-universe-ready', null);
+    if (next === 'idle') {
+      setHook('data-travel', null);
+      setHook('data-detail', null);
+    }
     if (wasActive && next !== 'active') this.deps.events.emit('universe', { ready: false });
     if (this.requested !== before) {
       const experience = this.requested ? 'universe' : 'film';

@@ -8,15 +8,15 @@ import { QUALITY_PROFILES, type QualityProfile, type QualityTier } from './types
 
 export interface TierInput {
   backend: BackendName;
-  gpu: GpuInfo;
+  gpu: Pick<GpuInfo, 'description' | 'software'>;
   override: QualityTier | null;
 }
 
 /** Integrated GPUs that should start at mid even on WebGPU. Apple Silicon counts as high. */
 const INTEGRATED_GPU = /intel|uhd|iris|hd graphics|mali|adreno|powervr|vega \d+ graphics|radeon\(tm\) graphics/;
 
-/** A phone or tablet: the only pointer is coarse, or the UA says mobile. */
-function isMobileDevice(): boolean {
+/** A phone or tablet: the only pointer is coarse, or the UA says mobile. (The explorer's detail starts from it too.) */
+export function isMobileDevice(): boolean {
   const coarseOnly = window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches;
   const uaMobile = (navigator as { userAgentData?: { mobile?: boolean } }).userAgentData?.mobile === true;
   return coarseOnly || uaMobile || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
