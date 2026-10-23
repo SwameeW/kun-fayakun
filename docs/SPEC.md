@@ -34,6 +34,7 @@ Build it in milestones (see DELIVERABLE). Ship a working vertical slice (Chapter
 - CMB map: Planck PR3 SMICA HEALPix FITS (Planck Legacy Archive). Convert offline to a 4096x2048 equirectangular texture. Credit “ESA and the Planck Collaboration”.
 - Galaxy positions: latest public SDSS release (DR20, Sept 2026) via SkyServer/CasJobs. Credit per SDSS policy.
 - Solar system: NASA JPL Horizons and DE440/441 ephemerides. Free with credit.
+- Planetary imagery (exploration only): NASA Blue Marble Next Generation, Black Marble 2016 and Blue Marble clouds (Earth), NOAA ETOPO 2022 (relief, CC0), Natural Earth (water mask), NASA SVS CGI Moon Kit (LRO colour and LOLA relief), Hubble OPAL 2025a (Jupiter, Saturn), Cassini RSS and PIA11142 (Saturn's rings). Public domain or CC0; credit lines in sources.json. No agency logos. The Earth is captioned as a composite of several epochs.
 
 —
 

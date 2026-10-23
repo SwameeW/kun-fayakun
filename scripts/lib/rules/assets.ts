@@ -5,7 +5,8 @@ import { arabicWords } from '../arabic';
 import { calligraphyCitations, type CalligraphyCitation } from '../citations';
 import { deriveAnalysis, type AnalysisSpec } from '../analysis';
 import type { ValidationContext } from '../context';
-import { fileExists, loadJson, readBytes, relPath, rootPath } from '../files';
+import { fileExists, listFiles, loadJson, readBytes, relPath, rootPath } from '../files';
+import { COLOR_MODEL, readKtx2Header, SUPERCOMPRESSION, TRANSFER, VK_FORMAT, type Ktx2Header } from '../ktx2';
 import type { RuleLog } from '../report';
 import { checkFields, isRecord } from '../shape';
 import { describeCodePoints, nfc, sha256Hex } from '../text';
@@ -274,11 +275,153 @@ function checkAnalyses(ctx: ValidationContext, log: RuleLog): void {
   }
 }
 
+const PLANETS_OWNER = 'planets builder, bash scripts/preprocess-planets.sh';
+/** Published detail tiers; Ultra (8192) is built locally and must not appear in planets.json. */
+const PLANET_TIERS = ['low', 'medium', 'high'] as const;
+type PlanetTier = (typeof PLANET_TIERS)[number];
+/** Transfer per tier (every body's set) and for all committed files; mirrors scripts/planets/config.py. */
+const PLANET_TIER_BUDGET: Record<PlanetTier, number> = { low: 4_000_000, medium: 12_000_000, high: 60_000_000 };
+const PLANET_COMMITTED_BUDGET = 45_000_000;
+/** WebGPU's default maxTextureDimension2D: the renderer requests no larger limit. */
+const PLANET_MAX_SIZE = 8192;
+
+/** What each planets.json codec must look like in the KTX2 header. */
+const PLANET_CODECS: Record<string, (h: Ktx2Header) => boolean> = {
+  etc1s: (h) => h.vkFormat === VK_FORMAT.undefined && h.colorModel === COLOR_MODEL.etc1s && h.supercompressionScheme === SUPERCOMPRESSION.basisLz,
+  uastc: (h) => h.vkFormat === VK_FORMAT.undefined && h.colorModel === COLOR_MODEL.uastc && h.supercompressionScheme === SUPERCOMPRESSION.zstd,
+  r8: (h) => h.vkFormat === VK_FORMAT.r8Unorm && h.supercompressionScheme === SUPERCOMPRESSION.zstd,
+  rgba8: (h) => h.vkFormat === VK_FORMAT.r8g8b8a8Srgb && h.supercompressionScheme === SUPERCOMPRESSION.zstd,
+};
+
+const isPowerOfTwo = (n: number): boolean => Number.isInteger(n) && n > 0 && (n & (n - 1)) === 0;
+
+/** One planets.json file entry: its file against the manifest, the KTX2 header and the credits. */
+function planetFileProblems(entry: Record<string, unknown>, label: string, credits: Map<string, string>): string[] {
+  const problems: string[] = [];
+  const path = String(entry.path);
+  if (!path.startsWith('assets/planets/')) return [`${label}: path ${path} is not under assets/planets/`];
+  const file = rootPath('public', ...path.split('/'));
+  if (!fileExists(file)) return [`${label}: ${relPath(file)} is missing`];
+  const bytes = readBytes(file);
+  if (bytes.byteLength !== entry.bytes) problems.push(`${label}: ${bytes.byteLength} bytes, the manifest says ${String(entry.bytes)}`);
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  if (hash !== entry.sha256) problems.push(`${label}: sha256 ${hash} does not match the manifest; rebuild rather than edit by hand`);
+  const header = readKtx2Header(bytes);
+  if (typeof header === 'string') return [...problems, `${label}: ${header}`];
+  const width = Number(entry.width);
+  const height = Number(entry.height);
+  if (header.pixelWidth !== width || header.pixelHeight !== height) {
+    problems.push(`${label}: the file is ${header.pixelWidth} x ${header.pixelHeight}, the manifest says ${width} x ${height}`);
+  }
+  if (!isPowerOfTwo(width) || !isPowerOfTwo(height) || width > PLANET_MAX_SIZE || height > PLANET_MAX_SIZE) {
+    problems.push(`${label}: ${width} x ${height} must be powers of two no larger than ${PLANET_MAX_SIZE}`);
+  }
+  if (entry.map !== 'rings' && width !== 2 * height) problems.push(`${label}: an equirectangular map must be 2:1, not ${width} x ${height}`);
+  const fullChain = Math.log2(Math.max(width, height)) + 1;
+  if (header.levelCount !== entry.levels || entry.levels !== fullChain) {
+    problems.push(`${label}: ${header.levelCount} mip levels in the file, ${String(entry.levels)} in the manifest, ${fullChain} for a full chain`);
+  }
+  const codecOk = PLANET_CODECS[String(entry.codec)];
+  if (!codecOk) problems.push(`${label}: unknown codec "${String(entry.codec)}"`);
+  else if (!codecOk(header)) problems.push(`${label}: the file is not ${String(entry.codec)} (vkFormat ${header.vkFormat}, model ${header.colorModel}, supercompression ${header.supercompressionScheme})`);
+  const transfer = entry.colorSpace === 'srgb' ? TRANSFER.srgb : TRANSFER.linear;
+  if (header.transferFunction !== transfer) problems.push(`${label}: colorSpace ${String(entry.colorSpace)} but the file's transfer function is ${header.transferFunction}`);
+  if (entry.rowsBottomUp !== true || header.orientation !== 'ru') {
+    problems.push(`${label}: rows must be stored bottom-up and declared (KTXorientation "ru"); the file says ${String(header.orientation)}`);
+  }
+  const sources = [{ sourceId: entry.sourceId, credit: entry.credit }, ...(Array.isArray(entry.alsoFrom) ? (entry.alsoFrom as unknown[]) : [])];
+  for (const s of sources) {
+    const id = isRecord(s) ? String(s.sourceId) : '?';
+    const credit = credits.get(id);
+    if (credit === undefined) problems.push(`${label}: source "${id}" is not in data/sources.json`);
+    else if (!isRecord(s) || s.credit !== credit) problems.push(`${label}: the credit for "${id}" differs from data/sources.json`);
+  }
+  return problems;
+}
+
+/**
+ * The planet textures (scripts/planets): every file matches planets.json (bytes, sha256, size,
+ * levels, codec, colour space, row order), credits match data/sources.json, every map has every
+ * published tier, and the transfer budgets hold.
+ */
+function checkPlanets(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'planets', 'planets.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${PLANETS_OWNER})`);
+    return;
+  }
+  const manifest = loaded.value;
+  const problems = checkFields(manifest, { files: 'array', tiers: 'object', bodies: 'object' }, path);
+  if (!isRecord(manifest) || problems.length > 0) {
+    for (const p of problems) log.fail(`${p} (owner: ${PLANETS_OWNER})`);
+    return;
+  }
+  const credits = new Map(ctx.sources.status === 'ok' ? ctx.sources.value.sources.map((s) => [s.id, s.credit] as const) : []);
+  const entries: unknown[] = Array.isArray(manifest.files) ? manifest.files : [];
+  const tiersOf = new Map<string, string[]>();
+  const tierBytes = new Map<string, Map<string, number>>();
+  entries.forEach((entry, i) => {
+    const fields = checkFields(
+      entry,
+      {
+        body: 'nonempty', map: 'nonempty', tier: 'nonempty', path: 'nonempty', width: 'number', height: 'number', levels: 'number',
+        codec: 'nonempty', colorSpace: 'nonempty', bytes: 'number', sha256: 'nonempty', sourceId: 'nonempty', credit: 'nonempty', rowsBottomUp: 'boolean',
+      },
+      `${path} files[${i}]`,
+    );
+    if (!isRecord(entry) || fields.length > 0) {
+      problems.push(...fields);
+      return;
+    }
+    const label = `${path} files[${i}] (${String(entry.body)}/${String(entry.map)} ${String(entry.tier)})`;
+    const key = `${String(entry.body)}/${String(entry.map)}`;
+    tiersOf.set(key, [...(tiersOf.get(key) ?? []), String(entry.tier)]);
+    if (!PLANET_TIERS.includes(entry.tier as PlanetTier)) problems.push(`${label}: tier must be one of ${PLANET_TIERS.join(', ')} (Ultra is not published)`);
+    else {
+      const perTier = tierBytes.get(String(entry.tier)) ?? new Map<string, number>();
+      perTier.set(String(entry.path), Number(entry.bytes));
+      tierBytes.set(String(entry.tier), perTier);
+    }
+    if (entry.map !== 'rings' && (typeof entry.uAtLon0 !== 'number' || (entry.lonIncreases !== 'left' && entry.lonIncreases !== 'right'))) {
+      problems.push(`${label}: needs uAtLon0 and lonIncreases ('left' or 'right')`);
+    }
+    problems.push(...planetFileProblems(entry, label, credits));
+  });
+  for (const [key, tiers] of tiersOf) {
+    const missing = PLANET_TIERS.filter((t) => !tiers.includes(t));
+    const repeated = tiers.filter((t, i) => tiers.indexOf(t) !== i);
+    if (missing.length > 0 || repeated.length > 0) problems.push(`${path}: ${key} must list each of ${PLANET_TIERS.join(', ')} once (missing ${missing.join(', ') || 'none'}, repeated ${repeated.join(', ') || 'none'})`);
+  }
+  const unique = new Map<string, number>();
+  for (const [tier, files] of tierBytes) {
+    const total = [...files.values()].reduce((a, b) => a + b, 0);
+    if (total > PLANET_TIER_BUDGET[tier as PlanetTier]) problems.push(`${path}: the ${tier} set is ${total} bytes, over its ${PLANET_TIER_BUDGET[tier as PlanetTier]}-byte budget`);
+    for (const [file, bytes] of files) unique.set(file, bytes);
+  }
+  const committed = [...unique.values()].reduce((a, b) => a + b, 0);
+  if (committed > PLANET_COMMITTED_BUDGET) problems.push(`${path}: published planet textures total ${committed} bytes, over ${PLANET_COMMITTED_BUDGET}`);
+  const listed = new Set([...unique.keys()].map((p) => rootPath('public', ...p.split('/'))));
+  for (const file of listFiles(rootPath('public', 'assets', 'planets'))) {
+    if (file.endsWith('.ktx2') && !listed.has(file)) problems.push(`${relPath(file)} is not listed in ${path}`);
+  }
+  const ultra = isRecord(manifest.tiers) ? manifest.tiers.ultra : undefined;
+  if (!isRecord(ultra) || ultra.published !== false) problems.push(`${path}: tiers.ultra.published must be false until the owner decides where Ultra is hosted`);
+  if (problems.length > 0) for (const p of problems) log.fail(`${p} (owner: ${PLANETS_OWNER})`);
+  else {
+    log.pass(
+      `${path}: ${tiersOf.size} maps x ${PLANET_TIERS.length} tiers, ${unique.size} files (${committed} bytes) match their sha256, size, levels, codec, ` +
+        'colour space and bottom-up rows; credits match data/sources.json; budgets hold',
+    );
+  }
+}
+
 export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   for (const entry of calligraphyCitations(ctx.citations)) checkCalligraphy(ctx, entry, log);
   checkFont(log);
   checkCmb(log);
   checkSdss(ctx, log);
   checkJpl(ctx, log);
+  checkPlanets(ctx, log);
   checkAnalyses(ctx, log);
 }
