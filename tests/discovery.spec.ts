@@ -14,7 +14,7 @@ import type { VerseKey } from '../src/core/types';
 import { canvasStats } from './support/canvas';
 import { chapterContent, normalizeSpace, quranByKey } from './support/data';
 import { expect, test, type Kf, type KfHook } from './support/fixtures';
-import { SLOW } from './support/env';
+import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from './support/env';
 
 const NAMES = ['kāf', 'lām', 'fāʾ', 'alif maqṣūra', 'fāʾ', 'lām', 'kāf'];
 const OPEN_NAME = 'Explore the letters of this phrase';
@@ -360,6 +360,7 @@ test('keys pressed inside the analysis never reach the film shortcuts', async ({
 });
 
 test('the mirrored pairs glide toward the centre and meet it with a soft ring', async ({ page, kf }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   const region = await openAnalysis(page, kf, 150);
   const tiles = region.locator('.kf-discovery-tile');
   const rest = await tiles.nth(0).evaluate((el) => getComputedStyle(el).transform);
@@ -392,6 +393,7 @@ test('the mirrored pairs glide toward the centre and meet it with a soft ring', 
 });
 
 test('opening the analysis dims the scene gently, never in a step', async ({ page, kf }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   test.setTimeout(180_000 * SLOW);
   // The young Sun in its lit disk: the brightest wide view of the chapter.
   await kf.openChapter('ch07', { autoplay: true, t: 30 });

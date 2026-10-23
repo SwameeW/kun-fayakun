@@ -25,3 +25,12 @@ export const platform: string = nodeProcess?.platform ?? 'unknown';
  * (SwiftShader). Only limits grow; what a test checks does not change.
  */
 export const SLOW: number = env('CI') ? 3 : 1;
+
+/**
+ * CI has no GPU. A few tests measure what only real frame rates show (an animation's steps, an ease
+ * sampled frame by frame, the governor's response to slow frames, a double tap's timing); at the
+ * frame or two a second of software rendering they cannot pass or fail meaningfully, so they run
+ * only on machines with a GPU (every local run) and are skipped on CI with this reason.
+ */
+export const NO_GPU: boolean = Boolean(env('CI'));
+export const NEEDS_REAL_FRAMES = 'measures frame-by-frame timing, which CI (software rendering, no GPU) cannot reproduce; runs on GPU machines';

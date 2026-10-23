@@ -9,7 +9,7 @@
 import type { Page } from '@playwright/test';
 import { canvasStats, expectCanvasNotBlank } from '../support/canvas';
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 
 /** Loading, compiling and the fades take a few seconds; software renderers take much longer. */
 const UNIVERSE_TIMEOUT = 90_000 * SLOW;
@@ -268,6 +268,7 @@ test('keyboard focus moves into the explorer when it opens and back to the way i
 });
 
 test('with reduced motion a flight is a dimmed cut that lands already adapted to the new light', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD, reducedMotion: '1' } });
   await waitForUniverse(page);

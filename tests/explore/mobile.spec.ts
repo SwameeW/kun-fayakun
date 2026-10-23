@@ -9,7 +9,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { CDPSession, Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { JD, overflow, place, settled, view, waitForUniverse } from '../support/universe';
-import { SLOW } from '../support/env';
+import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 
@@ -91,6 +91,7 @@ test('a pinch zooms in log distance, two fingers pan, and touch-action is none o
 });
 
 test('a double tap on a world flies there; one finger orbits', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);

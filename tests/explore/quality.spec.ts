@@ -7,7 +7,7 @@
  */
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
 import { JD, place, view, waitForUniverse } from '../support/universe';
-import { SLOW } from '../support/env';
+import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 
 const stats = (page: import('@playwright/test').Page): Promise<FrameStats> => page.evaluate(() => (window as unknown as KfHook).__kf.frameStats());
 
@@ -110,6 +110,7 @@ test('keyboard browsing of the menu applies nothing: arrows only select, Enter a
 });
 
 test('on Auto, frames that run slow cost internal resolution first, then a tier', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
