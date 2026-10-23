@@ -75,12 +75,35 @@ function styleCanvas(canvas: HTMLCanvasElement): void {
 }
 
 /**
+ * True when the only WebGPU adapter on offer is a software fallback (SwiftShader and the like,
+ * as on GPU-less CI machines). Those are slower than WebGL2's software path and have been seen
+ * to lose their device mid-scene ("Instance dropped in popErrorScope"), so WebGL2 is used instead.
+ */
+async function onlySoftwareWebGPU(): Promise<boolean> {
+  const gpu = (navigator as { gpu?: GPU }).gpu;
+  if (!gpu) return false;
+  try {
+    const adapter = await gpu.requestAdapter();
+    // No adapter: three.js falls back to WebGL2 on its own.
+    if (!adapter) return false;
+    const info = (adapter as { info?: GPUAdapterInfo & { isFallbackAdapter?: boolean } }).info;
+    const legacyFlag = (adapter as { isFallbackAdapter?: boolean }).isFallbackAdapter;
+    const description = info ? [info.vendor, info.architecture, info.device, info.description].join(' ').toLowerCase() : '';
+    return info?.isFallbackAdapter === true || legacyFlag === true || SOFTWARE_GPU.test(description);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Creates the WebGPURenderer on #scene, awaiting init(). three.js falls back to
- * its WebGL2 backend by itself when WebGPU is missing; forceWebGL forces it.
+ * its WebGL2 backend by itself when WebGPU is missing; forceWebGL forces it, and so
+ * does a software-only WebGPU adapter.
  */
 export async function createRenderer(canvas: HTMLCanvasElement, options: { forceWebGL: boolean }): Promise<RendererHandle> {
   styleCanvas(canvas);
-  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL: options.forceWebGL });
+  const forceWebGL = options.forceWebGL || (await onlySoftwareWebGPU());
+  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL });
   try {
     await renderer.init();
   } catch (err) {
