@@ -5,5 +5,7 @@
  */
 declare module 'node:fs' {
   export function readFileSync(path: URL, encoding: 'utf8'): string;
-  export function existsSync(path: string): boolean;
+  /** Without an encoding Node returns a Buffer, which is a Uint8Array. */
+  export function readFileSync(path: URL): Uint8Array;
+  export function existsSync(path: string | URL): boolean;
 }

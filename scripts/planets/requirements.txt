@@ -1,0 +1,5 @@
+# Python packages for scripts/preprocess-planets.sh, installed into the same environment as
+# scripts/cmb/requirements.txt (.cache/venv-cmb). tifffile and imagecodecs read the ETOPO 2022
+# GeoTIFF (float32, deflate with the floating-point predictor) and the 16-bit Moon heights.
+tifffile==2026.9.20
+imagecodecs==2026.8.16

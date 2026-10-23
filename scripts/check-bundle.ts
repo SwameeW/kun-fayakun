@@ -7,9 +7,14 @@
  * Counted, each file once, gzipped at level 9:
  * - shell: index.html, every entry chunk and its static imports (JS, CSS, assets)
  * - ch00: the Chapter 0 dynamic chunk and its static imports
- * - data: data/*.json, the Arabic font, the kun calligraphy assets and
- *   assets/cmb/cmb.json (the UI's CMB legend fetches it at startup)
- * Exits 1 above the budget or when anything it must count is missing.
+ * - data: data/*.json, the Arabic font, Chapter 0's calligraphy atlas (kun.json and the
+ *   image it names) and assets/cmb/cmb.json (the UI's CMB legend fetches it at startup)
+ * Exits 1 above the budget, when the shell grows more than 10 KB past its committed
+ * baseline, or when anything it must count is missing.
+ *
+ * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
+ * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
+ * the shell) must stay within 150 KB gzipped, and none of it may be in the shell.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -29,7 +34,7 @@ interface ManifestChunk {
 }
 type Manifest = Record<string, ManifestChunk>;
 
-type Group = 'shell' | 'ch00' | 'data';
+type Group = 'shell' | 'ch00' | 'data' | 'explore';
 
 interface Row {
   group: Group;
@@ -39,7 +44,22 @@ interface Row {
 }
 
 const BUDGET_BYTES = 1_500_000;
+/**
+ * The shell group (index.html, entry chunk and its CSS), gzipped. Everything else loads lazily,
+ * so this is what every visit pays before anything else. Raise it deliberately, in the commit
+ * that grows the shell on purpose. Stage 0: 320,198. Stages 3 and 4 (the explorer's host, route,
+ * entry points and interface strings; the explorer itself is lazy): 327,629.
+ */
+const SHELL_BASELINE_BYTES = 327_629;
+/** Shell growth beyond the baseline that fails the check (an accidental eager import). */
+const SHELL_GROWTH_LIMIT_BYTES = 10_000;
 const CH00_SOURCE = 'src/chapters/ch00/scene.ts';
+/** The solar-system explorer's lazy entry points: its engine module and its interface. */
+const EXPLORE_SOURCES = ['src/explore/index.ts', 'src/ui/explore/index.ts'] as const;
+/** What the explorer's code may add beyond the shell, gzipped. */
+const EXPLORE_BUDGET_BYTES = 150_000;
+/** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
+const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DIST = resolve(process.argv[2] ?? join(ROOT, 'dist'));
 
@@ -63,6 +83,16 @@ function listDir(relativeDir: string, filter: (name: string) => boolean): string
     .map((name) => `${relativeDir}/${name}`);
 }
 
+/** The atlas metadata and the image it names, exactly as Chapter 0 fetches them. */
+function chapter0Calligraphy(): string[] {
+  const metaPath = join(DIST, CH00_ATLAS_META);
+  if (!existsSync(metaPath)) throw new Error(`dist/${CH00_ATLAS_META} is missing`);
+  const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { atlas?: unknown };
+  if (typeof meta.atlas !== 'string' || meta.atlas === '') throw new Error(`${CH00_ATLAS_META} names no atlas image`);
+  const dir = CH00_ATLAS_META.slice(0, CH00_ATLAS_META.lastIndexOf('/') + 1);
+  return [CH00_ATLAS_META, `${dir}${meta.atlas}`];
+}
+
 function budgetFiles(manifest: Manifest): Map<string, Group> {
   const files = new Map<string, Group>([['index.html', 'shell']]);
   const entries = Object.keys(manifest).filter((key) => manifest[key]?.isEntry === true);
@@ -78,12 +108,29 @@ function budgetFiles(manifest: Manifest): Map<string, Group> {
   const data = [
     ...listDir('data', (name) => name.endsWith('.json')),
     'fonts/AmiriQuran.woff2',
-    ...listDir('assets/calligraphy', () => true),
+    // Only Chapter 0's atlas: the directory also holds later chapters' atlases (Chapter 10's
+    // is about 190 KB), which load with their own chapters and are not part of the first visit.
+    ...chapter0Calligraphy(),
     // Fetched by src/ui/figures.ts (CMB legend) when the UI mounts, on every route.
     'assets/cmb/cmb.json',
   ];
   for (const file of data) if (!files.has(file)) files.set(file, 'data');
   return files;
+}
+
+/**
+ * The explorer's chunks and their static imports that the shell does not already load (chunks
+ * shared with chapters count: a visitor opening the explorer first pays for them).
+ */
+function exploreFiles(manifest: Manifest, shell: ReadonlySet<string>): Map<string, Group> {
+  const files = new Map<string, Group>([...shell].map((file) => [file, 'shell'] as const));
+  for (const source of EXPLORE_SOURCES) {
+    const key = Object.keys(manifest).find((k) => k === source || manifest[k]?.src === source);
+    if (!key) throw new Error(`manifest has no chunk for ${source}`);
+    if (shell.has(manifest[key]?.file ?? '')) throw new Error(`${source} is in the shell: it must load lazily`);
+    collectChunk(manifest, key, 'explore', files);
+  }
+  return new Map([...files].filter(([, group]) => group === 'explore'));
 }
 
 function measure(files: Map<string, Group>): Row[] {
@@ -124,10 +171,36 @@ function main(): void {
     throw new Error(`${manifestPath} not found: run \`npx vite build\` first`);
   }
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
-  const total = printTable(measure(budgetFiles(manifest)));
-  const verdict = total <= BUDGET_BYTES ? 'PASS' : 'FAIL';
-  console.log(`\n${verdict}: shell + Chapter 0 = ${formatBytes(total)} bytes gzipped (budget ${formatBytes(BUDGET_BYTES)})`);
-  if (total > BUDGET_BYTES) process.exitCode = 1;
+  const rows = measure(budgetFiles(manifest));
+  const total = printTable(rows);
+
+  const shellRows = rows.filter((row) => row.group === 'shell');
+  const shell = shellRows.reduce((sum, row) => sum + row.gzip, 0);
+  const entryChunk = shellRows.filter((row) => row.file.endsWith('.js')).reduce((sum, row) => sum + row.gzip, 0);
+  const growth = shell - SHELL_BASELINE_BYTES;
+  const shellOk = growth <= SHELL_GROWTH_LIMIT_BYTES;
+  console.log(
+    `\n${shellOk ? 'PASS' : 'FAIL'}: shell = ${formatBytes(shell)} bytes gzipped (entry chunk ${formatBytes(entryChunk)}); ` +
+      `baseline ${formatBytes(SHELL_BASELINE_BYTES)}, ${growth >= 0 ? '+' : ''}${formatBytes(growth)} ` +
+      `(limit +${formatBytes(SHELL_GROWTH_LIMIT_BYTES)})`,
+  );
+
+  const totalOk = total <= BUDGET_BYTES;
+  console.log(`${totalOk ? 'PASS' : 'FAIL'}: shell + Chapter 0 = ${formatBytes(total)} bytes gzipped (budget ${formatBytes(BUDGET_BYTES)})`);
+
+  // The explorer, outside the first-visit total: what opening it adds.
+  const shellFiles = new Set(shellRows.map((row) => row.file));
+  const exploreRows = measure(exploreFiles(manifest, shellFiles));
+  console.log('');
+  for (const row of [...exploreRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`explore  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const explore = exploreRows.reduce((sum, row) => sum + row.gzip, 0);
+  const exploreOk = explore <= EXPLORE_BUDGET_BYTES;
+  console.log(
+    `${exploreOk ? 'PASS' : 'FAIL'}: solar-system explorer (lazy, ${exploreRows.length} files) = ${formatBytes(explore)} bytes gzipped (budget ${formatBytes(EXPLORE_BUDGET_BYTES)})`,
+  );
+  if (!totalOk || !shellOk || !exploreOk) process.exitCode = 1;
 }
 
 try {

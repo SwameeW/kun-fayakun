@@ -16,9 +16,14 @@ export interface ShortcutActions {
 
 const SEEK_STEP_S = 10;
 
-/** Text-entry controls own every key; a slider owns only its arrow keys. */
+/**
+ * Text-entry controls own every key; a slider owns only its arrow keys. A region marked
+ * data-kf-keys="own" (the letter analysis) owns every key pressed inside it, so its arrows,
+ * P and Escape never also seek, toggle the panel or leave explore mode.
+ */
 function ownsKey(target: EventTarget | null, key: string): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (target.closest('[data-kf-keys="own"]')) return true;
   if (target.isContentEditable || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
   if (target instanceof HTMLInputElement) {
     if (target.type === 'range') return key.startsWith('Arrow') || key === 'Home' || key === 'End' || key.startsWith('Page');

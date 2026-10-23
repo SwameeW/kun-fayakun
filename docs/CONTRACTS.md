@@ -28,6 +28,7 @@ interfaces every builder shares so parallel work fits together. Types live in
 |---|---|
 | data | `scripts/fetch-quran.ts`, `scripts/validate.ts`, `scripts/lib/**`, `data/quran.json`, `data/tanzil/**` (pinned raw files), `data/sources.json`, `LICENSES`, `REVIEW.md` |
 | cmb | `scripts/preprocess-cmb.sh`, `scripts/cmb/**`, `public/assets/cmb/**` |
+| planets | `scripts/preprocess-planets.sh`, `scripts/planets/**`, `public/assets/planets/**`, the planet imagery entries of `data/sources.json` and section 12 of `LICENSES` |
 | calligraphy | `scripts/fetch-font.ts`, `scripts/build-calligraphy.ts`, `public/fonts/**`, `public/assets/calligraphy/**` |
 | content | `src/chapters/ch0{0,1,2}/content.json` (panel, intro, verse/hadith/caption/panel/overlay cues, duration), `src/i18n/en.chapters.json`, `data/constants.json`, `data/hadith.json` |
 | engine | `src/core/**` except `types.ts` and `events.ts`, `src/main.ts` |
@@ -35,6 +36,7 @@ interfaces every builder shares so parallel work fits together. Types live in
 | scene chNN | `src/chapters/chNN/scene.ts`, `src/chapters/chNN/*.ts`, `src/chapters/shared/**` (ch00 builder owns shared/msdf*), and in that chapter's `content.json` only `camera`, `explore` and `scene` cues |
 | tests | `playwright.config.ts`, `tests/**`, `scripts/check-bundle.ts`, `.github/workflows/ci.yml`, `README.md` |
 | integrator (lead) | `src/core/types.ts`, `src/core/events.ts`, `src/chapters/index.ts`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `index.html`, `package.json`, `data/citations.json` |
+| explorer | `src/explore/**` (the lazy solar-system explorer), `src/ui/explore/**`, `src/ui/styles/explore.css`, `tests/explore/**`; with the engine builder, `src/core/universe-host.ts` |
 
 ## Hard rules (validator-enforced where possible)
 
@@ -66,6 +68,34 @@ Everything is fetched relative to `document.baseURI` via `assets.url(path)` (Vit
 - `fonts/AmiriQuran.woff2` → CSS family `"Amiri Quran"` (ui declares the @font-face; `font-display: swap`)
 - `assets/calligraphy/kun.png` + `assets/calligraphy/kun.json`
 - `assets/cmb/cmb-temperature-2048.ktx2`, `assets/cmb/cmb.json`
+- `assets/planets/planets.json` and the textures it lists, `assets/planets/<body>/<map>-<width>-<codec>.ktx2`
+  (exploration only; nothing in the film loads them)
+
+### `assets/planets/planets.json`
+Written by `scripts/planets/manifest.py`; validator rule j checks it against the files. One entry in
+`files` per map and published tier (`low` 1024, `medium` 2048, `high` 4096 wide; a map whose source is
+narrower reuses its widest file for the higher tiers):
+```json
+{ "body": "earth", "map": "day", "tier": "low", "path": "assets/planets/earth/day-1024-etc1s.ktx2",
+  "width": 1024, "height": 512, "levels": 11, "codec": "etc1s|uastc|r8|rgba8", "colorSpace": "srgb|linear",
+  "bytes": 90480, "sha256": "…", "sourceId": "nasa-bmng-2004", "credit": "<data/sources.json credit>",
+  "uAtLon0": 0.5, "lonIncreases": "right", "latitude": "…", "rowsBottomUp": true }
+```
+Maps: earth `day` `night` `clouds` `water` `normal`, moon `colour` `normal`, jupiter `colour`, saturn
+`colour` `rings`. `path` goes straight to `assets.ktx2()`. Every equirectangular file is 2:1 with a full
+mip chain, `u = (uAtLon0 + east longitude / 360) mod 1`, `v = 0.5 + latitude / 180` (v = 0 south), rows
+stored bottom-up (`KTXorientation` "ru"), so use the textures as loaded; wrap S, clamp T. Raw `r8`/`rgba8`
+files load as DataTexture with nearest filtering: set linear mip filtering yourself. Normal maps are UASTC
+normal mode (`n.xy = texel.ga * 2 - 1`, x east, y north, z out) with relief exaggerated by
+`reliefExaggeration`. Jupiter and Saturn use planetographic latitude (sample with the latitude of the
+ellipsoid's normal). The ring strip (saturn `rings`, 8192 x 1 RGBA8, `u` from `radiusKm[0]` to
+`radiusKm[1]`) has straight alpha (`bodies.saturn.maps.rings.alpha`): rgb is the ring material's own
+colour, not multiplied by a, and a its normal opacity, so blend
+`mix(background, rgb * light, 1 - (1 - a)^(1/mu))`. `bodies` and `facts` (the Great Red Spot's position
+on 2025-12-11; the ring strip's radius span, colour registration, colour model and opacity noise floor)
+say the rest. The `ultra` tier (8192) is built into `.cache/planets/ultra` and described there by
+`planets-ultra.json` (repository paths; maps narrower than 8192 point at their published High file); it
+is not published until the owner decides where to host it.
 
 ### `assets/calligraphy/<id>.json`
 ```json
@@ -112,7 +142,7 @@ scale + credit while the map is visible. The `bbn-abundances` figure lives in th
 ch04 shows `hubble-tension` (overlay and science layer) and the `expansion` slider; ch06 shows
 `decay-chain` (overlay and science layer); ch10 shows `cosmic-futures` (overlay and science layer).
 
-| ch07 | protoplanetary disk radius ~8.6; orrery with sqrt-compressed orbits (Neptune ~6.9); Sun radius 0.32 | `disk`, `ignite`, `clear`, `orrery`, `moon`, `galaxy` | Disk with gaps and protoplanets; the Sun ignites (eased); planets on their real orbits for today from JPL elements, engraved astrolabe rings; a long-lens Moon showing its real phase (JPL Horizons); then a log pull-back to the Milky Way model and the Sun's path. Labelled not to scale. `app.interact('discovery', 1/null)` dims and slows the scene for the letter analysis. |
+| ch07 | protoplanetary disk radius ~8.6; orrery with sqrt-compressed orbits (Neptune ~6.9); Sun radius 0.32 | `disk`, `ignite`, `clear`, `orrery`, `moon`, `galaxy` | Disk with gaps and protoplanets; the Sun ignites (eased); planets on their real orbits for today from JPL elements, engraved astrolabe rings; a long-lens Moon showing its real phase (JPL Horizons); then a log pull-back to the Milky Way model and the Sun's path. Labelled not to scale. `app.interact('discovery', 1/null)` dims (eased, through `ctx.exposure`) and slows the scene for the letter analysis, which also holds the film clock with `app.holdFilm('discovery')` while it is open. |
 | ch08 | Earth radius 1 at origin; Moon (radius 0.27) at 3.4 | `molten`, `impact`, `moon`, `oceans`, `continents` | One planet shader through molten rock, steam, oceans and drifting continents; a glancing impact (eased glow, exposure dip), debris ring gathering into the Moon. |
 | ch09 | micro: 1 unit = 10 micrometres; planet: Earth radius 1 | `ocean`, `rise`, `oxygen`, `green` | Underwater light shafts, caustics and illustrative single cells; a soft dissolve up to orbit; seas and sky shift as oxygen rises; land greens. Ends before humans. |
 | ch10 | galaxy field radius 40; calligraphy quad at y 1.25 | `cosmos`, `heat-death`, `big-rip`, `big-crunch`, `still`, `fold`, `light`, `calligraphy`, `silence` | Three labelled hypotheses; calm verses; a labelled artistic fold; calm light and the 21:104 calligraphy (MSDF, `kama-badana`); silence; end credits follow. |
@@ -184,28 +214,209 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 
 ## URL parameters and routes
 
-- Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`.
+- Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`,
+  `#/universe[/<body>][?jd=<Julian date>]` the solar-system explorer (`body` one of sun, earth,
+  moon, jupiter, saturn; an unknown body opens the default view; `jd` is UTC and wins over the
+  `?jd=` query parameter). One parser (`src/core/router.ts`) serves the engine and the UI.
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
   (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
   (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
-  holds the render scale at 1).
+  holds the render scale at 1), `?gpuTime=1` (the same timestamp queries without holding anything
+  still: the explorer's governor then judges GPU time), `?jd=<Julian date>` (pins "now" for astronomy views; plain decimals
+  from 1 CE to 9999 CE, anything else is ignored; the explorer reads it as UTC),
+  `?detail=ultra|high|medium|low` (fixes the explorer's detail tier and holds its governor still;
+  `?tier=` fixes it too, mapped high→high, mid→medium, low→low; Ultra only where the device allows it).
 - Dynamic resolution: unless `?tier` or `?profile` is set, the engine lowers the render scale in small
   steps (down to 0.6× the tier's DPR cap) when frames run slow, before the tier governor drops a tier,
-  and probes back up after long comfortable stretches. A software-only WebGPU adapter (e.g. SwiftShader
+  and probes back up after long comfortable stretches. Frames over 0.25 s (stalls) are ignored, a tier
+  change holds the render scale for 3 s, and both governors judge frames against the display's cadence:
+  a rAF that has never run faster than 30 Hz (Low Power Mode, battery savers) targets 30 fps, anything
+  else 60 fps. A software-only WebGPU adapter (e.g. SwiftShader
   on GPU-less CI) is treated as unavailable: WebGL2 is used instead.
 
 ## Test hooks (engine sets these on `<html>`)
 
 - `data-backend="webgpu|webgl2"`, `data-tier`, `data-state` (TimelineState), `data-chapter`,
   `data-ready="true"` after the first rendered frame, `data-chapter-ready="chNN"` after a
-  chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`.
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs }, resetFrameStats() }`.
+  chapter is entered and has rendered a frame, `data-reduced-motion="true|false"`,
+  `data-experience="film|universe"` (set as soon as a switch starts), `data-universe-ready="true"`
+  once the explorer has rendered a frame after loading (removed while it is not on screen),
+  `data-travel="flying|arrived|stopped"` (the explorer's trips; removed when it leaves),
+  `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
+  and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
+  that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
+  `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
+  whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
+  `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,
+  with the exposure adapted at once too (tests and frame captures).
+  `step` advances `frames` frames of `dt` seconds (0 < dt ≤ 0.1) and renders. Its first call switches the
+  page to a manual clock for good: frames keep rendering, but the film, fades and exposure move only
+  through `step`, and the tier and render scale stop adapting (navigation that waits for a fade needs steps too).
 
 ## UI test ids (ui builder)
 
 `intro`, `begin`, `disclaimer`, `panel`, `panel-toggle`, `layer-text`, `layer-scholarly`,
 `layer-science`, `timeline`, `stop-chNN`, `play-pause`, `mode-toggle`, `verse-overlay`,
-`sources-page`, `cmb-legend`, `loading`, `error`.
+`sources-page`, `cmb-legend`, `loading`, `error`, `discovery` (the Chapter 7 letter analysis),
+`film-held` (the transport's status line while `app.holdFilm` holds the film), `open-universe`
+(the ways into the explorer: the welcome screen, and Chapters 7 to 10's outro and free-look hint),
+`universe` (the explorer's interface), `universe-bodies` (the navigator), `universe-back`,
+`universe-readout`, `universe-nav-toggle` (folds and unfolds the navigator), `universe-detail` and
+`universe-detail-<auto|ultra|high|medium|low>` (the detail menu and its choices), `universe-trip`
+(the trip indicator), `universe-stop`, `universe-orbit` (stop a trip; orbit again from free
+flight), `universe-note` (the note about what is near), `universe-seen` (the log of what was seen).
+
+## Solar-system explorer (Stages 3 and 4)
+
+A second experience beside the film, loaded on demand (`src/explore/**` and `src/ui/explore/**`
+are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and out of the shell).
+
+- **Host.** `ExperienceModule` (types.ts) is the chapter lifecycle without content or cues;
+  `UniverseModule` adds `configure`, `focus`, `view`, `setInsets` and `place`, and is built with a
+  `UniverseContext` whose `exposure` adds `setVeil` and `jump`. `src/core/universe-host.ts` runs
+  the navigation sequence for it (shared navigation token, governor suspended, the film stopped
+  and faded to black, dynamic import, `compileAsync` warm-up with frustum culling off so every body
+  compiles, governors held off) and the reverse on leaving, then restores the chapters' lens. The
+  picture comes up and goes down through a veil (2.2 s in, 0.9 s out, eased) that multiplies the
+  exposure after its limiter, while the exposure itself jumps to its target under it: the explorer's
+  light spans seven stops, more than the slew limit crosses quickly. `Engine.frame` updates either
+  the explorer or the timeline, never both; `app.hud()` reads whichever is on screen. The explorer
+  is kept after its first visit. `app.openUniverse(body?)`, `app.closeUniverse()` (back to the
+  chapter and time it was opened from, paused if it was; home after a deep link: a step back in
+  the history when the explorer's entry sits on one of ours, else its entry is replaced, so leaving
+  never stacks entries) and `app.focusBody(body)`; Esc in the explorer is `closeUniverse`.
+  `app.setViewInsets({ top, bottom })` (CSS px the interface covers) lets the explorer frame bodies
+  in the clear part of the view. An explorer that cannot load shows `ui.error.universe` and returns
+  the visitor the same way, replacing its address in the history (as a chapter that fails to load
+  does). Chapters 7 to 10 (registry `opensUniverse`) offer it; earlier eras came before the Sun.
+  They fetch its code 1.5 s after they are ready (`universeHost.prefetch()`: the code only, nothing
+  built or fetched besides), so the way in waits only on its warm-up. From Chapter 7, with no body or
+  date asked for (`UniverseOpenOptions.stretch`), the explorer opens on the film's compressed system
+  (Chapter 7's square-root distances and enlarged sizes, every world lit alike, seen from 2.35 x
+  Saturn's orbit, 32 degrees above the ecliptic) and stretches it out to true distances, sizes and
+  sunlight over 6.5 s after a 2.6 s hold (`src/explore/stretch.ts`, log-space blends, eased), then
+  flies on to the Earth unless the visitor has steered; a trip asked for meanwhile finishes it in
+  0.9 s. The readout says it is not to scale until it is (`UniverseView.trueScale` < 1), then
+  announces true scale; notes wait until then; the enlarged Sun keeps the filtered brightness
+  without glare until it shrinks. Under reduced motion it opens at true scale at once.
+  Keyboard focus moves into the explorer's region when it opens and back to the transport (or the
+  welcome screen's way in) when it closes.
+- **Space.** State is float64 km from the barycentre in the render frame (ecliptic J2000 turned
+  so ecliptic north is +y; the Sun's offset from the barycentre is not modelled yet). Each frame
+  the camera sits at the origin and every object at `body - camera` (`space/origin.ts`); near is
+  0.4 x the altitude above the nearest surface, Saturn's rings counting as one (1 m to 1e5 km),
+  and far 2e4 x near (`space/lens.ts`, standard 24-bit depth, no renderer flags); bodies beyond half
+  the far plane are drawn nearer and smaller by one factor between 0.5 and 0.95 of it, exactly at
+  their angular size (`space/scaled-space.ts`); the starfield sits at 0.98 x far with depth testing.
+- **Navigation.** A body is framed to a share of the narrower side of the clear view (a phone held
+  upright frames it by its width; a side panel or sheet is left out of it) and first seen from its
+  sunlit side turned about 50 degrees, Jupiter from near its equator, Saturn from the side of its
+  rings the Sun lights. A trip (`src/explore/travel.ts`) leaves its body and closes in on the
+  destination in log distance (its distance to the destination only falls, never below where it
+  arrives), on an arc out of the planets' plane and clear of the Sun and of any body on the way,
+  rounding the body it leaves when it starts on its far side; it eases in and out, lasts 2.5 s plus
+  0.9 s per factor of ten in distance (2.5 to 9 s), hurries through the stretch where both ends are
+  only points, pulls back from the world it leaves for its first tenth, has its gaze on the
+  destination after its first third, banks a little into turns and widens the lens a touch at
+  speed; with reduced motion it is a cut under the veil, the exposure jumping to the new body while
+  the picture is dim, with neither bank nor lens. Esc stops a trip (the camera coasts to rest in free
+  flight; a reduced-motion cut not yet made is called off, the light easing back where the visitor
+  was, and one already made finishes) or folds a pulled-up navigator sheet; with neither to do, Esc
+  goes back to the film. Entering, the camera pushes in on the first world from 2.4 times its framing
+  distance over 5.5 s (it fills much of the view from the first frame; none with reduced motion), and
+  the hint waits until the camera has settled.
+- **Flight** (`src/explore/flight.ts`, `src/explore/input.ts`). Exact critically damped springs on
+  the orbit's angles, its log height above the surface and its pan, and on free flight's turn
+  rates; the lens is a spring too. Orbit: drag (one finger) turns round the focus (gently when low),
+  wheel or pinch zooms in log height, right/middle/Shift drag or two fingers pan, a double click or
+  tap on a body travels there. Free flight (W A S D, R F up and down, Q E roll, Shift five times
+  faster, arrows look): speed is proportional to the height above the nearest surface, the camera
+  rides along with the body it is near, never enters one nor rises past the orbit rig's ceiling
+  (50 au above the nearest surface), says "holding still" at rest (speeds under 1 km/s in m/s), and
+  O (or the readout's button) orbits again with the gaze easing round. `touch-action: none` is set
+  on the canvas only while the explorer is on screen and restored after.
+- **Detail** (`src/explore/detail.ts` presets, `src/explore/quality.ts` governor). The explorer
+  starts on a rung from what the device says (phone Low, or Medium for an Apple GPU on WebGPU;
+  software Low; hidden adapter, WebGL2 or an integrated GPU Medium; else High; Ultra only by choice,
+  on non-software, non-mobile WebGPU with 8192 px textures). Its governor judges half-second
+  buckets by their mean, each frame counted at most two display intervals, so a vsync-paced display
+  that drops one frame in three (45 fps) reads as slow while one hitch decides nothing. The shipped
+  page judges frame time against the display's rate the engine learned; GPU time only where timestamp
+  queries run (`?gpuTime=1`; `?profile=1` measures too but holds the governor still). It ignores
+  stalls over 0.25 s and the 2 s after a tier change or a texture upload, lowers the scene pass's
+  internal resolution (`PostPipeline.setSceneScale`) to the rung's `minRenderScale` before dropping
+  a rung, tries the rung above after 20 s stable (never Ultra), backs off 20 s (doubling) after a
+  failed try and stops trying a rung after three failures in a visit; a phone slowing after a long
+  steady spell is read as heat and not tried upward for 3 minutes. A visitor's choice (the navigator's detail menu,
+  remembered in localStorage `kf.ui.exploreDetail`) is kept: then only the resolution adapts. In the
+  menu (headed, with a close control and a line per level on what it draws, read from the presets)
+  the arrow keys only select; a click or tap, Enter or Space applies the selection and closes it,
+  leaving it with the selection moved applies it, Esc puts it back; an applied level is named in a
+  toast with what it draws. The
+  explorer's pixel-ratio cap and bloom follow the rung while it is on screen; the host gives the film
+  its own back when it leaves (`UniverseHostDeps.claimPicture`/`restorePicture`), and the film's
+  governors rest while the explorer runs.
+- **Navigator and notes** (`src/ui/explore`). Every body with a live portrait (phase and lit side
+  as the camera sees it, never black: a dim night side and a faint rim), its distance (to the
+  surface, km up to 0.1 au, never broken from its unit) and the light-time of that same distance, an
+  orrery to fly by (directions true for the date, distances compressed), the log of what was seen
+  (its summary says how many entries it holds, with no total, score or achievement; each new entry
+  gets a quiet toast, a polite live region) and the detail menu; a side panel on wide screens (the
+  menu opening beside it), a bottom sheet on phones (the list first, the log, then the orrery as a
+  small strip, none held sideways; sized to what it holds, fading where it scrolls; held sideways,
+  pulled up at the right, the world framed beside it). The world in view is marked `aria-current`.
+  Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
+  the view (the same width) and never show at once: a trip takes the note out first, and a note comes
+  back only after the indicator has gone. A note's title folds it; on a phone it folds by itself after
+  6.5 s or at a touch on the scene. Names beside the bodies stay inside the clear view (at a body's
+  left when its right has no room; a body just out of frame gets a pointer at the edge), each choice
+  holding until the body is clearly past the line, and a name that gives way to another fades
+  quickly (no ghosting); they come up with the picture, never over a black screen. Notes near a body give numbers derived
+  from cited data only (`src/explore/discoveries.ts`: IAU rotation rates, JPL elements, the Cassini
+  ring profile, and `light.speed`, `earth.atmosphere.scaleHeight`, `sun.effectiveTemperature` in
+  data/constants.json). Exploration shows no scripture.
+- **Truth and honesty.** Positions, radii, flattening, poles and spin come from
+  `public/assets/jpl` through `src/astro`; the date is now (or `?jd=`), clamped to the Moon
+  table's span. Saturn's rings are drawn from the Cassini radio-occultation profile
+  (`physical.json` `saturnRings.profile`: mean normal transmission in 2,048 bins, built by
+  `scripts/jpl/build.py`) until the Cassini ring strip (`assets/planets`) arrives. Surfaces are the
+  mission maps of `assets/planets/planets.json`; the readout names their imagery (an "Imagery:" line
+  with the focus's credits, and the Earth's caption: a composite of several epochs) and says the
+  Sun's surface detail is illustrative, along with "True scale: real sizes and distances". The film's
+  metres-per-pixel bar is replaced by a readout of true distances.
+- **Light.** Sunlight on a body falls as 1/r^2; the exposure adapts to the body in view as
+  r^1.8 (so the outer planets stay a little dimmer), through `ctx.exposure` like every change
+  (slew-limited: flash-safe); bloom is judged at that exposure (`PostPipeline.setBloomExposure`;
+  the film keeps 1). Guides (orbit lines, points and ring markers of bodies under a few px, the Sun's
+  glare) keep their brightness on screen; the Sun's disc is brilliant white when small and, as it
+  fills the view, shown as through a solar filter (amber, limb-darkened, mottled), which the readout
+  says. The engine's exposure cap is 128 (chapters ask for 1 or less).
+- **Bodies and detail.** The explorer draws its bodies with its own shaders (`src/explore/bodies`),
+  never the chapters': the Earth from Blue Marble (day), Black Marble (city lights, night side only:
+  today's Earth only), ETOPO relief and Natural Earth's water mask (an ocean-only glint), clouds on
+  their own drifting shell that shade the ground, and Bruneton's reference atmosphere
+  (`src/explore/render/air.ts`, constants in `data/constants.json`): single scattering through a
+  transmittance table baked once by a quad pass ('scatter'), or an analytic chord ('chord'); the Moon
+  from LROC colour and LOLA relief, Lommel-Seeliger light with an opposition surge and relief that casts
+  shadows near the terminator; Jupiter and Saturn from OPAL with Minnaert limbs (Jupiter's bands drift
+  in a two-phase flow, schematic speeds); Saturn's rings from the strip, lit by their own normal,
+  shadows both ways, and at close range a field of particles; a filtered Sun (limb darkening from
+  `data/constants.json`) with, at 'full' detail, a chromosphere, prominences and a corona, and a
+  radiance ceiling. Detail follows `src/explore/detail.ts`: the rung (`UniverseModule.setDetail`, one
+  call site `bodies.setDetail(detail)`) changes materials (compiled ahead), mesh segments, cloud shadows,
+  stars and which maps stream; the film's `setQuality` no longer reaches the explorer. Maps stream through `src/explore/assets/streaming.ts`: one-texel
+  means first, every body's Low files on entry, the focus (or a flight's destination) raised to
+  `textureTier(detail)`, uploads budgeted by bytes (at most `UPLOAD_BYTES_PER_FRAME` a frame, a large
+  texture in row bands over several frames) and each texture bound only on a frame after its upload
+  finished, each arrival sharpening in from its predecessor's blur, upgrades kept while the tier's
+  memory budget has room (the longest-unwanted go first) and dropped on leaving, within that budget. Shading
+  edges (terminators, ring and shadow edges, crescents) are softened over one pixel and fine detail
+  fades before it is smaller than one; MSAA (the scene pass inherits the renderer's 4 samples) handles
+  outlines.
+- **Shared modules, optional parameters only** (left out, the chapters' graphs are unchanged):
+  `createStarfield(count, radius, seed, { depthTest, dynamicRadius })` with `setRadius`,
+  `createStreakField({ ..., profile: 'trail'|'line', tailColor })`.
 
 ## Browsers and local testing (measured on this machine)
 

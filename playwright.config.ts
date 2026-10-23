@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 import { env, flag, platform } from './tests/support/env';
 import type { KfOptions } from './tests/support/fixtures';
 
-const PORT = 4173;
+/** KF_PORT lets several checkouts (worktrees) run browser tests at once without sharing a server. */
+const PORT = Number(env('KF_PORT') ?? 4173);
 const BASE_URL = `http://127.0.0.1:${PORT}/`;
 const CI = Boolean(env('CI'));
 
@@ -32,6 +33,9 @@ const WEBGPU_ARGS = [
 /** Brave is the project owner's browser; its project runs only where Brave is installed (override with BRAVE_PATH). */
 const BRAVE_PATH = env('BRAVE_PATH') ?? '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
 const HAS_BRAVE = existsSync(BRAVE_PATH);
+
+/** Specs that run only on the emulated phone (the "mobile" project). */
+const MOBILE_SPECS = /explore\/mobile\.spec\.ts/u;
 
 const desktopChromium = {
   ...devices['Desktop Chrome'],
@@ -69,13 +73,20 @@ export default defineConfig<KfOptions>({
     { name: 'unit', testMatch: /unit\//u },
     {
       name: 'webgpu',
-      testIgnore: /unit\//u,
+      testIgnore: [/unit\//u, MOBILE_SPECS],
       use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS } },
     },
     {
       name: 'webgl2',
-      testIgnore: /unit\//u,
+      testIgnore: [/unit\//u, MOBILE_SPECS],
       use: { ...desktopChromium, forceWebGL: true },
+    },
+    // A phone (Pixel 7: 412 x 839 CSS px at DPR 2.625, touch, Android Chrome's user agent) for the
+    // explorer's touch controls and layouts. Emulation, not a real phone: the GPU is this machine's.
+    {
+      name: 'mobile',
+      testMatch: MOBILE_SPECS,
+      use: { ...devices['Pixel 7'], channel: 'chromium', launchOptions: { args: WEBGPU_ARGS } },
     },
     ...(HAS_BRAVE
       ? [

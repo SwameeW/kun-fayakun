@@ -6,6 +6,7 @@
  * validator all depend on the exact shapes below.
  */
 import type { PerspectiveCamera, Scene, Texture, WebGPURenderer } from 'three/webgpu';
+import type { ExploreDetail, ExploreTier } from '../explore/detail';
 
 /* ------------------------------------------------------------------ */
 /* Identifiers                                                         */
@@ -411,10 +412,242 @@ export interface HudState {
 
 export type TimelineState = 'idle' | 'loading' | 'intro' | 'playing' | 'explore' | 'outro';
 
+/* ------------------------------------------------------------------ */
+/* Experiences: the film, and the solar-system explorer ("universe")    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the engine is showing. The film is the timeline of chapters; the universe is the
+ * true-scale solar-system explorer, a separate experience loaded on demand. (The chapters'
+ * own free-look stays the TimelineState 'explore' and the E key; it is not the universe.)
+ */
+export type ExperienceId = 'film' | 'universe';
+
+/** Bodies the explorer can focus, in the order its body list shows them. */
+export type BodyId = 'sun' | 'earth' | 'moon' | 'jupiter' | 'saturn';
+
+export const BODY_IDS: readonly BodyId[] = ['sun', 'earth', 'moon', 'jupiter', 'saturn'];
+
+/**
+ * A non-chapter experience: the chapter lifecycle minus content and cues (no film clock).
+ * Lifecycle: load → enter → update* → exit → (enter again …) → dispose.
+ */
+export interface ExperienceModule {
+  readonly id: Exclude<ExperienceId, 'film'>;
+  /** Fetch assets and build GPU resources. Must not add anything to the scene. */
+  load(ctx: ChapterContext): Promise<void>;
+  /** Add the root object to ctx.scene and reset state. */
+  enter(ctx: ChapterContext): void;
+  /** dt = real seconds since the last frame (0 while the page is on a manual test clock between steps). */
+  update(dt: number): void;
+  /** Quality tier dropped by the governor while this experience is active. */
+  setQuality?(profile: QualityProfile): void;
+  /** World-anchored HUD tags, as for chapters. */
+  labels?(): readonly SceneLabel[];
+  /** True physical scale for the HUD scale bar; null when a single bar would mislead. */
+  scale?(): SceneScale | null;
+  /** Remove from the scene; keep GPU resources for a possible re-enter. */
+  exit(): void;
+  /** Free all GPU resources. */
+  dispose(): void;
+}
+
+/** Where the explorer's camera is and what it is doing, for its UI and the tests. */
+export interface UniverseView {
+  /** The body the camera orbits (during a flight: the body it is flying to). */
+  focus: BodyId;
+  /** True while the camera flies from one body to another. */
+  travelling: boolean;
+  /** During a flight, the body it left (else null). */
+  from: BodyId | null;
+  /** The camera moved this frame (a drag, a zoom, a flight); at rest nothing on screen moves but the sky's slow turn. */
+  moving: boolean;
+  /** Distance from the camera to the focus's centre and to its surface (cloud tops, photosphere), km. */
+  distanceKm: number;
+  altitudeKm: number;
+  /** Sunlight at the camera as a share of the Sun's light at 1 au (1 at the Earth). */
+  sunlight: number;
+  /** The Sun is large in view and shown as photographed through a solar filter (gold, dimmed). */
+  solarFilter: boolean;
+  /** The date shown: TDB Julian date, and the same instant as a Unix time (ms) for display. */
+  jdTdb: number;
+  unixMs: number;
+  /**
+   * What the view draws now that is illustrative rather than measured, for the readout to name
+   * (optional: an explorer that leaves it out shows no such note).
+   */
+  illustrative?: readonly UniverseIllustration[];
+  /** 'orbit': circling the focus; 'flight': flying freely near it (carried along with it). */
+  mode: 'orbit' | 'flight';
+  /** Camera speed, km/s (free flight and trips; 0 while orbiting). */
+  speedKmS: number;
+  /** During a trip: its progress (0 to 1), and the camera's height above the destination's surface now, at the start and on arrival, km. */
+  trip: { progress: number; remainingKm: number; startKm: number; endKm: number } | null;
+  /** Every body, in BODY_IDS order: where it is and how the camera sees it. */
+  bodies: readonly UniverseBodyView[];
+  /** The camera's heliocentric ecliptic position, km, and its heading in the ecliptic (radians from +x toward +y). */
+  camera: { x: number; y: number; z: number; heading: number };
+  /** A note about what the camera is near (science only, every number from cited data), or null. */
+  discovery: { id: string; values: Readonly<Record<string, number>> } | null;
+  /** Phenomena seen on this visit, in the order first seen (no scores or counts). */
+  witnessed: readonly string[];
+  /** The detail tier running, how it was chosen, and what may be chosen. */
+  detail: UniverseDetail;
+  /** km per astronomical unit, from the explorer's data (DE440), for displaying distances. */
+  auKm: number;
+  /** The speed of light, km/s (data/constants.json; 0 if it did not load), for light-times and speeds. */
+  lightKmS: number;
+  /** 1 at true scale; below 1 while the film's compressed view stretches out to it (the way in from Chapter 7). */
+  trueScale: number;
+}
+
+/** One body as the explorer's camera sees it (live from the ephemeris). */
+export interface UniverseBodyView {
+  id: BodyId;
+  /** From the camera to the surface (cloud tops, photosphere), km. */
+  distanceKm: number;
+  /** Light-time over distanceKm (from its surface to the camera), s: the two always agree. */
+  lightSeconds: number;
+  /** As the camera sees it: lit share of the disc (0 to 1) and the bright limb's direction on screen (radians from screen right, counterclockwise). */
+  lit: number;
+  limbAngle: number;
+  /** Saturn: its rings' opening as the camera sees them (radians, signed; 0 edge-on); 0 for the rest. */
+  ringOpening: number;
+  /** Where its centre is on the canvas (CSS px from its top left), its disc's radius there, and whether it is in view. */
+  screen: { x: number; y: number; radiusPx: number; inView: boolean };
+  /** Heliocentric ecliptic position, km (x to the vernal equinox, z to ecliptic north). */
+  ecliptic: { x: number; y: number; z: number };
+}
+
+/** The explorer's detail: the tier running and the visitor's choice (src/explore/detail.ts is the ladder). */
+export interface UniverseDetail {
+  tier: ExploreTier;
+  choice: 'auto' | ExploreTier;
+  /** Tiers this device may run, highest first (Ultra only where it is allowed). */
+  available: readonly ExploreTier[];
+  /** The scene's internal render scale now (dynamic resolution; the canvas keeps its size). */
+  renderScale: number;
+  /** Held still by the address (?detail=, ?tier=, ?profile=1): nothing adapts on its own. */
+  fixed: boolean;
+}
+
+/** What the device says about itself, for the explorer's starting detail. */
+export interface UniverseDevice {
+  backend: 'webgpu' | 'webgl2';
+  /** Lower-case adapter description; '' when the browser hides it. */
+  description: string;
+  software: boolean;
+  mobile: boolean;
+  /** Largest 2D texture, px (0 when unknown). */
+  maxTextureSize: number;
+}
+
+/**
+ * What the explorer may change about the picture while it owns the screen. The host gives the film
+ * its own settings back when the explorer leaves, so none of this ever reaches a chapter.
+ */
+export interface UniverseGraphics {
+  readonly device: UniverseDevice;
+  /** A tier fixed by the address (?detail=, or ?tier= mapped onto the ladder), or null. */
+  readonly fixedDetail: ExploreTier | null;
+  /** False when the address holds the picture still (?detail=, ?tier=, ?profile=1). */
+  readonly adaptive: boolean;
+  /** The scene's internal render scale (dynamic resolution; post-processing and the canvas keep full size), 0.5 to 1. */
+  setRenderScale(scale: number): void;
+  /** The canvas's device-pixel-ratio ceiling. */
+  setDprCap(cap: number): void;
+  setBloom(on: boolean): void;
+}
+
+/**
+ * Illustrative elements the explorer can draw: the Sun's surface detail, prominences and corona; the
+ * Earth's fine detail below its maps' texels up close, the clouds' drift, and its night side (city
+ * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
+ * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still.
+ */
+export type UniverseIllustration = 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
+
+/**
+ * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
+ * reduced-motion cuts) and a jump of the exposure while that veil hides the picture, so a cut
+ * from the Earth to Saturn lands already adapted instead of seconds of black.
+ */
+export interface UniverseExposure extends ExposureControl {
+  /**
+   * Dims the whole picture after the exposure (1 none, 0 black). The caller eases it (rule 6): the
+   * engine neither slews it nor holds it, so a reduced-motion dip is a dip whatever the exposure does.
+   */
+  setVeil(value: number): void;
+  /** Moves the exposure straight to its target. Ignored unless the veil (or a fade) has the screen nearly black. */
+  jump(): void;
+}
+
+/** The services the explorer is built with: a chapter's, with its own exposure and control of the picture. */
+export interface UniverseContext extends ChapterContext {
+  exposure: UniverseExposure;
+  graphics: UniverseGraphics;
+}
+
+/** CSS pixels at the edges of the view that the interface covers (left and right: a side panel). */
+export interface ViewInsets {
+  top: number;
+  bottom: number;
+  left?: number;
+  right?: number;
+}
+
+/** The explorer's steering commands from its interface: stop a trip, or orbit the body the camera is near. */
+export type UniverseSteer = 'stop' | 'orbit';
+
+/** The explorer as the engine hosts it: the experience plus what its UI and route need. */
+export interface UniverseModule extends ExperienceModule {
+  readonly id: 'universe';
+  load(ctx: UniverseContext): Promise<void>;
+  enter(ctx: UniverseContext): void;
+  /** Applies a route: a body to show (null: the explorer's default) and a pinned UTC Julian date (null: now). */
+  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean; stretch?: boolean }): void;
+  /** Flies to a body: an eased flight in log distance, never a jump (a dimmed cut with reduced motion). */
+  focus(body: BodyId): void;
+  view(): UniverseView;
+  /** Bodies are framed in the part of the view the interface leaves clear. */
+  setInsets(insets: ViewInsets): void;
+  /** Test and capture hook: puts the camera at a pose at once, with no flight (and the exposure adapted). */
+  place(pose: UniversePose): void;
+  /** Applies a detail level: what the bodies draw and stream, the stars, bloom and the canvas's pixel ratio. */
+  setDetail(detail: ExploreDetail): void;
+  /** The visitor's detail choice: 'auto' (the governor decides) or a tier to keep. */
+  setDetailChoice(choice: 'auto' | ExploreTier): void;
+  /**
+   * One frame's real duration (s), its GPU time (ms) when the renderer measures it, and the
+   * display's frame interval (s) as the engine has learned it since the page opened: the quality
+   * governor's input.
+   */
+  sampleFrame(frameSeconds: number, gpuMs: number | null, intervalSeconds: number): void;
+  /** Stops a trip (the camera coasts to rest in free flight) or orbits the body the camera is near; false when there was nothing to do. */
+  steer(command: UniverseSteer): boolean;
+}
+
+/** A camera pose around a body, for tests and frame captures. */
+export interface UniversePose {
+  body: BodyId;
+  /** From the body's centre, km. */
+  distanceKm: number;
+  /** Degrees around and above the direction the camera is placed in (see `from`). */
+  azimuthDeg?: number;
+  elevationDeg?: number;
+  /**
+   * 'sun' (default): start from the body-to-Sun direction, so azimuth 0 looks at the lit face.
+   * A body id: start from the far side of the focus from that body, so it shows behind the focus.
+   */
+  from?: 'sun' | BodyId;
+}
+
 export type Route =
   | { name: 'home' }
   | { name: 'chapter'; chapter: ChapterId; t: number | null }
-  | { name: 'sources' };
+  | { name: 'sources' }
+  /** The solar-system explorer, optionally on a body and at a pinned UTC Julian date. */
+  | { name: 'universe'; body: BodyId | null; jd: number | null };
 
 export interface AppEvents {
   route: { route: Route };
@@ -426,10 +659,18 @@ export interface AppEvents {
   /** A chapter was entered; the panel renders its content. */
   chapter: { chapter: ChapterId; content: ChapterContent };
   paused: { paused: boolean };
+  /** The film clock was held or let go, or the set of holds changed (see AppCommands.holdFilm). */
+  held: { held: boolean; reasons: readonly string[] };
+  /** An explicit jump within the active chapter (the slider, a shortcut, a deep link to the same chapter). */
+  seek: { chapter: ChapterId; t: number };
   mode: { mode: 'cinematic' | 'explore' };
   quality: { profile: QualityProfile; reason: 'initial' | 'governor' | 'override' };
   renderer: { backend: 'webgpu' | 'webgl2' };
   loading: { chapter: ChapterId; progress: number };
+  /** The engine switched between the film and the universe (emitted when the switch starts). */
+  experience: { experience: ExperienceId };
+  /** The universe finished loading and is on screen (true), or it left the screen (false). */
+  universe: { ready: boolean };
   /** Non-scripture error text only. */
   error: { message: string };
 }
@@ -446,6 +687,28 @@ export interface AppCommands {
   setMode(mode: 'cinematic' | 'explore'): void;
   /** Forwards a panel control to the active chapter (null: give control back to the film). */
   interact(id: string, value: number | null): void;
+  /**
+   * Holds the film clock (intro, chapter time and outro) while a reader is busy with something
+   * the film must not run past, e.g. the letter analysis. The scene keeps moving and a pause stays
+   * a pause; no cue fires and the chapter cannot end until every hold is released. Holds belong to
+   * the chapter: leaving it drops them. The returned function releases this hold (idempotent).
+   */
+  holdFilm(reason: string): () => void;
+  /**
+   * Opens the solar-system explorer (true scale), optionally on a body. From a chapter, the
+   * explorer remembers where the film was, so closeUniverse() returns there.
+   */
+  openUniverse(body?: BodyId | null): void;
+  /** Leaves the explorer for the film where the visitor came from (the home screen after a deep link). */
+  closeUniverse(): void;
+  /** In the explorer: flies to a body. */
+  focusBody(body: BodyId): void;
+  /** The explorer's interface reports what it covers, so bodies are framed in the clear part of the view. */
+  setViewInsets(insets: ViewInsets): void;
+  /** The explorer's detail: 'auto', or a tier the visitor chose (kept until they choose again). */
+  setUniverseDetail(choice: 'auto' | ExploreTier): void;
+  /** In the explorer: stop a trip, or orbit the body the camera is near. False when there was nothing to do. */
+  steerUniverse(command: UniverseSteer): boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -487,6 +750,11 @@ export interface ChapterMeta {
    * fading to black: that chapter ends exactly in this one's opening state.
    */
   continuesFrom?: ChapterId;
+  /**
+   * The chapter's era has the solar system in it, so its outro and free-look offer the
+   * solar-system explorer (Chapters 7 to 10; earlier eras came before the Sun formed).
+   */
+  opensUniverse?: boolean;
   /** Lazy loader; absent for chapters not yet built. */
   load?: () => Promise<{ default: ChapterFactory }>;
 }
@@ -502,11 +770,17 @@ export interface App extends AppCommands {
   readonly content: ChapterContent | null;
   readonly time: number;
   readonly paused: boolean;
+  /** True while any holdFilm() hold is in place. */
+  readonly held: boolean;
   readonly mode: 'cinematic' | 'explore';
+  /** The film, or the universe (from the moment it is asked for until it has handed back). */
+  readonly experience: ExperienceId;
   readonly quality: QualityProfile;
   readonly backend: 'webgpu' | 'webgl2';
   readonly reducedMotion: boolean;
   readonly assets: AssetLoader;
-  /** HUD tags and scale for this frame (cheap; the UI polls it once per animation frame). */
+  /** HUD tags and scale for this frame from the active experience (cheap; the UI polls it once per animation frame). */
   hud(): HudState;
+  /** The explorer's camera and focus while it is on screen, else null (cheap; polled per frame by its UI). */
+  universe(): UniverseView | null;
 }

@@ -27,6 +27,17 @@ export interface PostPipeline {
   render(): void;
   setBloom(enabled: boolean): void;
   /**
+   * The exposure the bloom threshold is judged at (default 1: the threshold applies to the scene's
+   * own values, as the chapters have it). The solar-system explorer's exposure spans seven stops,
+   * so it passes its exposure here and only what is bright on screen blooms, wherever the camera is.
+   */
+  setBloomExposure(exposure: number): void;
+  /**
+   * The scene pass's share of the canvas resolution (default 1). The solar-system explorer lowers it
+   * when frames run slow (dynamic resolution without resizing the canvas); the film never sets it.
+   */
+  setSceneScale(scale: number): void;
+  /**
    * Film grain changes each frame only while the film plays; paused or with reduced
    * motion it holds still (WCAG 2.2.2: nothing moves on its own while paused).
    */
@@ -93,10 +104,12 @@ export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camer
   const color = scenePass.getTextureNode('output');
   const seed = uniform(0);
   let bloomNode: ReturnType<typeof bloom> | null = null;
+  let bloomExposure = 1;
+  const threshold = (): number => BLOOM.threshold / bloomExposure;
 
   const build = (withBloom: boolean): void => {
     bloomNode?.dispose();
-    bloomNode = withBloom ? bloom(color, BLOOM.strength, BLOOM.radius, BLOOM.threshold) : null;
+    bloomNode = withBloom ? bloom(color, BLOOM.strength, BLOOM.radius, threshold()) : null;
     const hdr = bloomNode ? color.rgb.add(bloomNode.rgb) : color.rgb;
     const display = renderOutput(vec4(vignette(hdr), 1));
     pipeline.outputNode = vec4(grain(display.rgb, seed), 1);
@@ -110,6 +123,16 @@ export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camer
     },
     setBloom(enabled) {
       if (enabled !== (bloomNode !== null)) build(enabled);
+    },
+    setBloomExposure(exposure) {
+      const next = Number.isFinite(exposure) && exposure > 1e-6 ? exposure : 1;
+      if (next === bloomExposure) return;
+      bloomExposure = next;
+      if (bloomNode) bloomNode.threshold.value = threshold();
+    },
+    setSceneScale(scale) {
+      const next = Number.isFinite(scale) ? Math.min(1, Math.max(0.5, scale)) : 1;
+      if (next !== scenePass.getResolutionScale()) scenePass.setResolutionScale(next);
     },
     advanceGrain() {
       // Wraps long before float precision matters; the pattern has no visible period.
@@ -133,6 +156,12 @@ export interface EngineExposure extends ExposureControl {
   /** Resets the chapter's target to neutral before a chapter enters. */
   resetTarget(): void;
   setReducedMotion(on: boolean): void;
+  /**
+   * Moves the exposure straight to its goal (target times fade), with no slew. Only for a picture
+   * nobody can see change: the solar-system explorer calls it (through its host) while its own veil
+   * holds the screen dark, at the moment its camera cuts to another body.
+   */
+  jump(): void;
   /** True once the applied exposure is effectively black. */
   readonly dark: boolean;
   update(dt: number): void;
@@ -162,7 +191,11 @@ const SMOOTHING_SECONDS = 0.35;
  * a chapter should emit), so the log scale can stop there.
  */
 const FLOOR_STOPS = -8;
-const MAX_EXPOSURE = 16;
+/**
+ * Seven stops above neutral: room for the solar-system explorer's adaptation to sunlight (Saturn gets
+ * about 1.1% of the Earth's), which it asks for gradually like any target. Chapters ask for 1 or less.
+ */
+const MAX_EXPOSURE = 128;
 /** Dark enough to swap chapters unseen. */
 const DARK_STOPS = -6;
 const SNAP_STOPS = 0.005;
@@ -195,6 +228,13 @@ export function createExposureControl(options: { reducedMotion: boolean }): Engi
     },
     setReducedMotion(on) {
       reduced = on;
+    },
+    jump() {
+      u = Math.max(FLOOR_STOPS, Math.log2(Math.max(target * fade, Number.MIN_VALUE)));
+      current = u <= FLOOR_STOPS ? 0 : 2 ** u;
+      // A fresh start: no change to hold still after.
+      lastDirection = 0;
+      still = Infinity;
     },
     update(dt) {
       if (dt <= 0) return;

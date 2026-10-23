@@ -242,12 +242,28 @@
   column-gap: var(--kf-space-3);
 }
 
-.kf-tl-chapter {
+.kf-tl-chapter,
+.kf-tl-held {
+  grid-row: 1;
+  grid-column: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.8125rem;
   color: var(--kf-text-muted);
+}
+
+/* The held status takes the chapter label's place (a crossfade); it is always in the tree so it is announced. */
+.kf-tl-chapter {
+  transition: opacity 300ms var(--kf-ease);
+}
+
+.kf-tl-held {
+  color: var(--kf-gold);
+}
+
+.kf-tl-controls.is-held .kf-tl-chapter {
+  opacity: 0;
 }
 
 .kf-tl-clock {

@@ -1,101 +1,292 @@
-/* The letter analysis (Chapter 7): styled apart from scripture, never in the Quran display face. */
+/*
+ * The letter analysis (Chapter 7): the cited verse in its own scripture card on top, and the
+ * analysis beneath it in a box of its own, styled apart from scripture, never in the Quran display face.
+ * Motion is transform and opacity only (compositor work, no layout per frame); the one
+ * travelling light and the gliding pairs are CSS transitions between tile positions.
+ */
 .kf-discovery-wrap {
   margin-block-start: var(--kf-space-4);
 }
 
 .kf-discovery {
+  --kf-tile-w: max(2.75rem, 44px);
+  --kf-tile-h: 3.4rem;
+  display: grid;
+  gap: var(--kf-space-3);
   margin-block-start: var(--kf-space-3);
+  font: 400 0.9rem/1.5 var(--kf-font-ui);
+  color: var(--kf-text);
+  opacity: 0;
+  translate: 0 0.4rem;
+  transition: opacity 350ms var(--kf-ease), translate 350ms var(--kf-ease);
+}
+
+.kf-discovery.is-open {
+  opacity: 1;
+  translate: none;
+}
+
+.kf-discovery-body {
+  display: grid;
+  gap: var(--kf-space-3);
   padding: var(--kf-space-4);
   border-inline-start: 2px solid var(--kf-gold-soft);
   border-radius: var(--kf-radius);
   background: var(--kf-surface-2);
-  font: 400 0.9rem/1.5 var(--kf-font-ui);
-  color: var(--kf-text);
+}
+
+.kf-discovery-head > *,
+.kf-discovery-notes > * {
+  margin: 0;
+}
+
+/*
+ * The cited verse, whole and as stored, above the analysis: scripture keeps its own card
+ * styles (the Quran display face, the translation's rule). Only its size is eased down so
+ * the letters still fit beneath it; the transliteration is left to the full card in the text layer.
+ */
+.kf-discovery-verse {
+  margin: 0;
+}
+
+.kf-discovery-verse .kf-ref {
+  margin-block-end: 0;
+  font-size: 0.95rem;
+}
+
+.kf-discovery-verse .kf-arabic {
+  margin-block: var(--kf-space-1) var(--kf-space-2);
+  font-size: 1.4rem;
+  line-height: 1.95;
+}
+
+.kf-discovery-verse .kf-translit {
+  display: none;
+}
+
+.kf-discovery-verse .kf-translation {
+  margin-block-end: var(--kf-space-2);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.kf-discovery-verse .kf-attrib {
+  margin-block-end: 0;
+  font-size: 0.75rem;
 }
 
 .kf-discovery-title {
-  margin: 0 0 var(--kf-space-2);
   font: 600 0.95rem/1.35 var(--kf-font-ui);
 }
 
 .kf-discovery-label {
-  margin: 0 0 var(--kf-space-2);
+  margin-block-start: var(--kf-space-1) !important;
   font-weight: 600;
   color: var(--kf-gold);
 }
 
-.kf-discovery-note,
-.kf-discovery-same,
-.kf-discovery-closing,
-.kf-discovery-keys {
-  margin: var(--kf-space-2) 0 0;
+.kf-discovery-stage {
+  display: grid;
+  gap: var(--kf-space-3);
 }
 
-.kf-discovery-keys {
+.kf-discovery-notes {
+  display: grid;
+  gap: var(--kf-space-2);
+}
+
+.kf-discovery-keys,
+.kf-discovery-touch {
   color: var(--kf-text-muted);
   font-size: 0.8rem;
 }
 
-/* Seven tiles on a gentle arc of their own, the mirror axis through the centre. */
-.kf-discovery-arc {
+/* The keyboard hint only where there is a fine pointer and hover; touch gets its own. */
+.kf-discovery-touch,
+.kf-discovery.is-touch .kf-discovery-keys {
+  display: none;
+}
+
+.kf-discovery.is-touch .kf-discovery-touch {
+  display: block;
+}
+
+/* The orbit ------------------------------------------------------------------------------ */
+
+/*
+ * Seven tiles on a gentle arc of their own. The arc's step scales with the room it has
+ * (container units) so it never overflows: at most 3.4rem, never less than one tile apart
+ * at the widths the analysis is shown inline (narrower panels open it as a layer).
+ * --kf-arc-i is a tile's place from the centre (+3 is letter 1, on the right).
+ */
+.kf-discovery-orbit {
+  /* (Resolved at the tiles, inside this container; 1.5rem leaves the edge glow room.) */
+  --kf-step: min(3.4rem, (100cqi - var(--kf-tile-w) - 1.5rem) / 6);
+  /* Rise per step², proportional to the step so the arc keeps its shape at every size. */
+  --kf-rise: calc(var(--kf-step) * 0.0824);
+  --kf-light-i: 0;
   position: relative;
-  list-style: none;
-  margin: var(--kf-space-4) 0 var(--kf-space-3);
+  container-type: inline-size;
+  /* Room for the deepest arc (0.75 of the largest step) and the glow around the lowest tiles. */
+  block-size: calc(0.9rem + var(--kf-tile-h) + 2.55rem + 1rem);
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.kf-discovery-arc {
+  position: absolute;
+  inset: 0;
+  margin: 0;
   padding: 0;
-  block-size: 6.5rem;
+  list-style: none;
+}
+
+/* The faint orbit line through the tile centres (an SVG parabola sized to the arc, so nothing overflows). */
+.kf-discovery-path {
+  position: absolute;
+  inset-block-start: calc(0.9rem + var(--kf-tile-h) / 2);
+  left: 50%;
+  inline-size: calc(var(--kf-step) * 7);
+  block-size: calc(var(--kf-rise) * 12.25);
+  translate: -50% 0;
+  fill: none;
+  stroke: rgb(214 178 106 / 0.26);
+  stroke-width: 1px;
+  mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+  pointer-events: none;
+}
+
+/* The mirror axis through the central letter, drawn under the tiles so it never strikes through it. */
+.kf-discovery-axis {
+  position: absolute;
+  inset-block: 0 0.2rem;
+  left: 50%;
+  inline-size: 1px;
+  background: linear-gradient(to bottom, rgb(214 178 106 / 0), rgb(214 178 106 / 0.55) 30%, rgb(214 178 106 / 0.55) 70%, rgb(214 178 106 / 0));
+  pointer-events: none;
 }
 
 .kf-discovery-tile {
+  --kf-glide: 1;
   position: absolute;
-  inset-block-start: 0;
+  inset-block-start: 0.9rem;
   left: 50%;
-  inline-size: 2.9rem;
-  block-size: 3.4rem;
-  margin-left: -1.45rem;
+  z-index: 1;
+  inline-size: var(--kf-tile-w);
+  block-size: var(--kf-tile-h);
+  margin-left: calc(var(--kf-tile-w) / -2);
   display: grid;
   justify-items: center;
   align-content: center;
-  border: 1px solid rgb(237 231 218 / 0.18);
-  border-radius: 0.6rem;
-  background: rgb(5 6 10 / 0.6);
-  transform: translate(var(--kf-arc-x), var(--kf-arc-y));
-  transition: box-shadow 400ms ease, border-color 400ms ease, background-color 400ms ease;
-  cursor: default;
+  gap: 0.15rem;
+  border: 1px solid rgb(237 231 218 / 0.16);
+  border-radius: 0.7rem;
+  /* Opaque enough that the axis and orbit line pass behind the letters, not through them. */
+  background: rgb(12 13 19 / 0.94);
+  transform: translate(
+    calc(var(--kf-arc-i) * var(--kf-glide) * var(--kf-step)),
+    calc(var(--kf-arc-i) * var(--kf-arc-i) * var(--kf-glide) * var(--kf-glide) * var(--kf-rise))
+  );
+  transition: transform 800ms cubic-bezier(0.4, 0, 0.2, 1), opacity 450ms var(--kf-ease);
+  cursor: pointer;
+}
+
+/* The highlight is a layer that crossfades in; no box-shadow or border is animated. */
+.kf-discovery-tile::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--kf-gold);
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 40%, rgb(232 201 131 / 0.2), rgb(214 178 106 / 0.06) 70%);
+  opacity: 0;
+  transition: opacity 450ms var(--kf-ease);
+  pointer-events: none;
+}
+
+.kf-discovery-tile.is-lit::before,
+.kf-discovery-tile.is-pair::before {
+  opacity: 1;
 }
 
 .kf-discovery-letter {
-  font: 400 1.5rem/1 'Geeza Pro', 'Noto Naskh Arabic', 'Segoe UI', sans-serif;
+  position: relative;
+  font: 400 1.5rem/1 "Geeza Pro", "Noto Naskh Arabic", "Segoe UI", sans-serif;
+  transition: color 450ms var(--kf-ease);
+}
+
+.kf-discovery-tile.is-lit .kf-discovery-letter,
+.kf-discovery-tile.is-pair .kf-discovery-letter {
+  color: var(--kf-gold-strong);
 }
 
 .kf-discovery-number {
+  position: relative;
   font: 500 0.65rem/1 var(--kf-font-ui);
   color: var(--kf-text-muted);
 }
 
-.kf-discovery-tile.is-lit {
-  border-color: var(--kf-gold);
-  box-shadow: 0 0 14px 2px rgb(214 178 106 / 0.45);
-  background: rgb(214 178 106 / 0.14);
-}
-
-.kf-discovery-tile.is-pair {
-  border-color: var(--kf-gold);
-  box-shadow: 0 0 0 2px rgb(214 178 106 / 0.5);
-}
-
 .kf-discovery-tile:focus-visible {
-  outline: 2px solid var(--kf-gold);
+  outline: 2px solid var(--kf-gold-strong);
   outline-offset: 3px;
 }
 
-.kf-discovery-axis {
+/* While a pair travels, the other letters step back, and the travellers pass in front. */
+.kf-discovery-orbit.is-pairing .kf-discovery-tile:not(.is-pair, .is-centre) {
+  opacity: 0.45;
+}
+
+.kf-discovery-tile.is-gliding {
+  --kf-glide: var(--kf-meet, 1);
+}
+
+.kf-discovery-tile.is-pair {
+  z-index: 2;
+}
+
+/* The meeting: a soft ring of light around the central letter, eased in and out, never a flash. */
+.kf-discovery-tile.is-centre::after {
+  content: "";
   position: absolute;
-  inset-block: -0.4rem 0.8rem;
-  left: 50%;
-  inline-size: 1px;
-  background: linear-gradient(to bottom, rgb(214 178 106 / 0), rgb(214 178 106 / 0.6), rgb(214 178 106 / 0));
+  inset: -0.55rem;
+  border: 1px solid rgb(232 201 131 / 0.55);
+  border-radius: 1rem;
+  background: radial-gradient(closest-side, rgb(232 201 131 / 0) 70%, rgb(232 201 131 / 0.12));
+  opacity: 0;
+  scale: 0.9;
+  transition: opacity 650ms var(--kf-ease), scale 650ms var(--kf-ease);
   pointer-events: none;
 }
+
+.kf-discovery-tile.is-centre.is-meeting::after {
+  opacity: 0.8;
+  scale: 1;
+}
+
+/* The one reading light: a soft glow that travels from tile to tile along the arc. */
+.kf-discovery-light {
+  position: absolute;
+  inset-block-start: calc(0.9rem + var(--kf-tile-h) / 2);
+  left: 50%;
+  /* Its radius stays inside the 0.75rem the arc leaves at either end. */
+  inline-size: 4.2rem;
+  block-size: 4.2rem;
+  margin: -2.1rem 0 0 -2.1rem;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(232 201 131 / 0.34), rgb(214 178 106 / 0.12) 55%, rgb(214 178 106 / 0));
+  opacity: 0;
+  transform: translate(calc(var(--kf-light-i) * var(--kf-step)), calc(var(--kf-light-i) * var(--kf-light-i) * var(--kf-rise)));
+  transition: transform 450ms var(--kf-ease), opacity 450ms var(--kf-ease);
+  pointer-events: none;
+}
+
+.kf-discovery-orbit.has-light .kf-discovery-light {
+  opacity: 1;
+}
+
+/* Controls and readings -------------------------------------------------------------------- */
 
 .kf-discovery-controls {
   display: flex;
@@ -109,7 +300,7 @@
 
 .kf-discovery-live {
   min-block-size: 1.5em;
-  margin: var(--kf-space-2) 0 0;
+  margin: 0;
   color: var(--kf-text);
 }
 
@@ -117,7 +308,7 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.2rem var(--kf-space-3);
-  margin: var(--kf-space-3) 0 0;
+  margin: var(--kf-space-1) 0 0;
 }
 
 .kf-discovery-readings dt {
@@ -128,13 +319,192 @@
   margin: 0;
 }
 
-.kf-reduced-motion .kf-discovery-tile {
-  transition: none;
+/* The three words, underlined in place in the verse (CSS Custom Highlight API; the text is untouched). */
+::highlight(kf-falak) {
+  text-decoration: underline 2px rgb(232 201 131 / 0.85);
 }
 
-@media (max-width: 767.98px) {
-  .kf-discovery-tile {
-    inline-size: 2.5rem;
-    margin-left: -1.25rem;
+[data-verse] [lang="ar"] {
+  text-underline-offset: 0.42em;
+  text-decoration-skip-ink: none;
+}
+
+/* The layer: narrow or short screens ---------------------------------------------------------- */
+
+/*
+ * Its own full-width layer between header and timeline, translucent (no blur) so the slowed
+ * orbits stay visible behind the letters. The arc and controls stay put; the notes scroll.
+ */
+.kf-discovery.is-layer {
+  position: fixed;
+  inset-block: var(--kf-header-h) var(--kf-timeline-h);
+  inset-inline: 0;
+  z-index: 2;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  margin: 0;
+  padding-block: var(--kf-space-3);
+  padding-inline: max(var(--kf-space-4), env(safe-area-inset-left)) max(var(--kf-space-4), env(safe-area-inset-right));
+  border-block-start: 1px solid var(--kf-line);
+  background: rgb(5 6 10 / 0.55);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+  visibility: visible;
+  overflow: hidden;
+}
+
+/* In the layer the analysis box gives way: its parts take their places in the layer's own grid. */
+.kf-discovery.is-layer .kf-discovery-body {
+  display: contents;
+}
+
+/* The verse keeps its place at the top, whole; the translation is left to the text layer to save room. */
+.kf-discovery.is-layer .kf-discovery-verse {
+  padding-block-end: var(--kf-space-2);
+  border-block-end: 1px solid var(--kf-line);
+}
+
+.kf-discovery.is-layer .kf-discovery-verse .kf-translation {
+  display: none;
+}
+
+.kf-discovery.is-layer .kf-discovery-verse .kf-arabic {
+  /* (The gap below keeps the lowest marks clear of the attribution line.) */
+  margin-block: 0 var(--kf-space-2);
+  font-size: 1.25rem;
+  line-height: 1.85;
+}
+
+.kf-discovery.is-layer .kf-discovery-notes {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--kf-space-3);
+  border-radius: var(--kf-radius);
+  background: rgb(5 6 10 / 0.45);
+}
+
+.kf-discovery.is-layer .kf-discovery-orbit {
+  max-inline-size: 32rem;
+  inline-size: 100%;
+  justify-self: center;
+}
+
+/* Short screens (a phone held sideways): the arc and controls on one side; the verse, then the words, on the other. */
+@media (max-height: 500px) {
+  .kf-discovery.is-layer {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "stage verse"
+      "stage head"
+      "stage notes";
+    column-gap: var(--kf-space-4);
+    row-gap: var(--kf-space-2);
+    padding-block: var(--kf-space-2);
+  }
+
+  .kf-discovery.is-layer .kf-discovery-verse {
+    grid-area: verse;
+    padding-block-end: var(--kf-space-1);
+  }
+
+  .kf-discovery.is-layer .kf-discovery-verse .kf-arabic {
+    font-size: 1.15rem;
+    line-height: 1.75;
+  }
+
+  .kf-discovery.is-layer .kf-discovery-head {
+    grid-area: head;
+  }
+
+  .kf-discovery.is-layer .kf-discovery-stage {
+    grid-area: stage;
+    align-content: start;
+    gap: var(--kf-space-2);
+    overflow-y: auto;
+  }
+
+  .kf-discovery.is-layer .kf-discovery-notes {
+    grid-area: notes;
+  }
+
+  .kf-discovery.is-layer .kf-discovery-label {
+    font-size: 0.8rem;
+  }
+
+  .kf-discovery.is-layer .kf-discovery-controls .kf-btn {
+    padding-inline: var(--kf-space-3);
+    font-size: 0.85rem;
+  }
+}
+
+/* While the layer is open the panel steps aside (only the analysis, with its verse, shows), the stage
+   text and HUD fade out whole, the scene fills the window, and the timeline keeps only its transport row. */
+.kf-discovery-layer-open .kf-panel {
+  visibility: hidden;
+}
+
+:root.kf-discovery-layer-open {
+  --kf-scene-inset-end: 0px;
+}
+
+/* (Raised specificity: base.css loads later and owns the stage's inset transition.) */
+:root .kf-stage {
+  transition: inset-inline-end 400ms var(--kf-ease), opacity 350ms var(--kf-ease);
+}
+
+:root .kf-hud {
+  transition: opacity 350ms var(--kf-ease);
+}
+
+.kf-discovery-layer-open :is(.kf-stage, .kf-hud) {
+  opacity: 0;
+}
+
+.kf-discovery-layer-open .kf-tl-track {
+  display: none;
+}
+
+/* Reduced motion: nothing travels or glides; highlights and the ring only crossfade. */
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-discovery {
+  translate: none;
+  transition: opacity 350ms var(--kf-ease);
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) :is(.kf-discovery-tile, .kf-discovery-light) {
+  transition-property: opacity;
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-discovery-tile.is-centre::after {
+  scale: none;
+  transition-property: opacity;
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-discovery-light {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-discovery {
+    translate: none;
+    transition: opacity 350ms var(--kf-ease);
+  }
+
+  :is(.kf-discovery-tile, .kf-discovery-light) {
+    transition-property: opacity;
+  }
+
+  .kf-discovery-tile.is-centre::after {
+    scale: none;
+    transition-property: opacity;
+  }
+
+  .kf-discovery-light {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .kf-discovery-tile.is-lit,
+  .kf-discovery-tile.is-pair {
+    outline: 2px solid Highlight;
   }
 }

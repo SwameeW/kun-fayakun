@@ -40,6 +40,17 @@ export interface StreakOptions {
   color: Node<'vec3'>;
   /** Full width as a share of the screen height (0.003 ≈ 3 px at 1080p). */
   width: Node<'float'>;
+  /**
+   * 'trail' (default): a spark with a fading trail, dimmer the longer it is drawn out (motion).
+   * 'line': an even hairline with no end caps, so instances laid end to end draw one steady
+   * polyline (orbits).
+   */
+  profile?: 'trail' | 'line';
+  /**
+   * With 'line': the colour at the tail end, blended along the segment to `color` at the head, so a
+   * polyline's brightness can change smoothly along it (a fade never steps from segment to segment).
+   */
+  tailColor?: Node<'vec3'>;
 }
 
 export interface StreakField {
@@ -73,8 +84,10 @@ export function createStreakField(options: StreakOptions): StreakField {
   const along = uv().x;
   const across = uv().y.mul(2).sub(1);
   const halfWidth = options.width.mul(pixels.y).mul(0.5).max(0.75);
+  const line = options.profile === 'line';
   const base = mix(tail, head, along);
-  const offsetPx = normal.mul(across.mul(halfWidth)).add(dir.mul(along.mul(2).sub(1).mul(halfWidth)));
+  const sideways = normal.mul(across.mul(halfWidth));
+  const offsetPx = line ? sideways : sideways.add(dir.mul(along.mul(2).sub(1).mul(halfWidth)));
   const offsetClip = offsetPx.div(pixels).mul(2).mul(base.w);
   const placed = vec4(base.xy.add(offsetClip), base.z, base.w);
   // Heads behind the camera are pushed outside the clip volume.
@@ -90,7 +103,8 @@ export function createStreakField(options: StreakOptions): StreakField {
   // Motion blur spreads the same light along a longer trail, so it is dimmer per pixel. Fully
   // conserving energy would make fast streaks vanish; a partial falloff keeps them legible.
   const energy = pow(halfWidth.mul(2).div(span.add(halfWidth.mul(2))), 0.55);
-  material.colorNode = varying(options.color.mul(energy)).mul(alongFade.mul(profile));
+  const lineColour = options.tailColor ? mix(varying(options.tailColor), varying(options.color), along) : varying(options.color);
+  material.colorNode = line ? lineColour.mul(profile) : varying(options.color.mul(energy)).mul(alongFade.mul(profile));
   material.transparent = true;
   material.blending = AdditiveBlending;
   material.depthWrite = false;

@@ -1,0 +1,1610 @@
+/*
+ * The solar-system explorer's interface: an instrument of light over the sky. A celestial
+ * navigator (side panel on wide screens, bottom sheet on phones), a quiet heads-up readout, a trip
+ * indicator, and notes about what is near. Panels are near-opaque (>= 0.86) where they hold text,
+ * gold hairlines in the manner of an astrolabe's engraving, and nothing that blurs the sky behind.
+ */
+.kf-universe {
+  --kf-glass: rgb(9 10 16 / 0.9);
+  --kf-glass-strong: rgb(9 10 16 / 0.96);
+  /* The top-centre slot the notes and the trip indicator share (one at a time), and its width. */
+  --kf-slot-w: 32rem;
+  --kf-hairline: rgb(214 178 106 / 0.2);
+  --kf-hairline-strong: rgb(214 178 106 / 0.42);
+  --kf-nav-w: 19.5rem;
+  --kf-nav-gap: var(--kf-space-4);
+
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Over the explorer the header's shade is deeper, so orbit lines and glare pass under it unseen. */
+.kf-universe-open .kf-header {
+  background: linear-gradient(to bottom, rgb(5 6 10 / 0.96), rgb(5 6 10 / 0.92) 70%, rgb(5 6 10 / 0));
+}
+
+/* Focus lands on the explorer itself when it opens (a programmatic target, not a control). */
+.kf-universe:focus {
+  outline: none;
+}
+
+.kf-universe :is(button, details, summary, input, label, a) {
+  pointer-events: auto;
+}
+
+/* ------------------------------------------------------------------ */
+/* Back, hint and loading                                              */
+/* ------------------------------------------------------------------ */
+
+.kf-universe-back {
+  position: absolute;
+  inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
+  inset-inline-start: var(--kf-gutter);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-1);
+  min-block-size: 2.5rem;
+  padding-inline: var(--kf-space-2) var(--kf-space-4);
+  border: 1px solid var(--kf-hairline);
+  border-radius: 999px;
+  background: var(--kf-glass);
+  color: var(--kf-text);
+  font-size: 0.875rem;
+}
+
+.kf-universe-back .kf-icon {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  color: var(--kf-gold);
+}
+
+.kf-universe-hint {
+  position: absolute;
+  inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
+  inset-inline: calc(var(--kf-gutter) + 15rem) calc(var(--kf-nav-w) + var(--kf-gutter) + var(--kf-space-4));
+  max-inline-size: 38rem;
+  margin: 0 auto;
+  padding-block: var(--kf-space-2);
+  padding-inline: var(--kf-space-4);
+  border: 1px solid var(--kf-hairline);
+  border-radius: 999px;
+  background: var(--kf-glass);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--kf-text);
+  transition:
+    opacity 900ms var(--kf-ease),
+    visibility 0s linear 0s;
+}
+
+/* Gone once the visitor has moved the view, or after a few seconds. */
+.kf-universe.is-hinted .kf-universe-hint {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 900ms var(--kf-ease),
+    visibility 0s linear 900ms;
+}
+
+/* A trip's indicator or a note takes the hint's place at once (they share it). */
+.kf-universe:is(.is-travelling, .has-note) .kf-universe-hint {
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
+}
+
+.kf-universe-loading {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline: 0;
+  margin: 0;
+  text-align: center;
+  font-family: var(--kf-font-display);
+  font-size: 1.125rem;
+  letter-spacing: 0.08em;
+  color: var(--kf-text-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Readout                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Bottom-left, where the chapters' scale bar sits: true distances instead of a bar. */
+.kf-universe-readout {
+  position: absolute;
+  inset-inline-start: var(--kf-gutter);
+  inset-block-end: var(--kf-space-5);
+  max-inline-size: min(26rem, calc(100vw - 2 * var(--kf-gutter)));
+  padding-block: var(--kf-space-3);
+  padding-inline: var(--kf-space-4);
+  border-inline-start: 1px solid var(--kf-gold-soft);
+  background: linear-gradient(to right, rgb(9 10 16 / 0.9), rgb(9 10 16 / 0.86));
+  border-radius: 0 var(--kf-radius) var(--kf-radius) 0;
+  color: var(--kf-text);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 600ms var(--kf-ease);
+}
+
+.kf-universe.is-ready .kf-universe-readout {
+  opacity: 1;
+}
+
+.kf-universe-title {
+  margin: 0 0 var(--kf-space-1);
+  font-family: var(--kf-font-display);
+  font-size: 1.3rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--kf-gold-strong);
+}
+
+.kf-universe-line {
+  margin: 0;
+}
+
+.kf-universe-altitude {
+  font-size: 0.9375rem;
+}
+
+.kf-universe-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-2);
+  margin-block: var(--kf-space-1);
+  color: var(--kf-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.kf-universe-mode-text::before {
+  content: "";
+  display: inline-block;
+  inline-size: 0.45rem;
+  block-size: 0.45rem;
+  margin-inline-end: var(--kf-space-2);
+  border-radius: 50%;
+  background: var(--kf-gold);
+  box-shadow: 0 0 6px rgb(232 201 131 / 0.7);
+  vertical-align: 0.05em;
+}
+
+.kf-universe[data-mode="flight"] .kf-universe-mode-text::before {
+  background: var(--kf-hydrogen);
+  box-shadow: 0 0 6px rgb(143 179 217 / 0.8);
+}
+
+.kf-universe-orbit {
+  min-block-size: 2rem;
+  padding-inline: var(--kf-space-3);
+  font-size: 0.8125rem;
+  border-color: var(--kf-hairline-strong);
+}
+
+.kf-universe-scale {
+  color: var(--kf-gold);
+}
+
+/* Not yet true scale (the film's view stretching out): plain text, the gold kept for the real thing. */
+.kf-universe-scale.is-stretching {
+  color: var(--kf-text-muted);
+}
+
+.kf-universe-short {
+  display: none;
+}
+
+.kf-universe-faint {
+  color: var(--kf-text-muted);
+}
+
+/* The surface's imagery credits: one short line that opens to the full list (never a wall of text). */
+.kf-universe-imagery {
+  max-inline-size: 26rem;
+  margin-block-start: var(--kf-space-1);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.kf-universe-imagery summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  min-block-size: 1.75rem;
+  border-radius: var(--kf-radius-small);
+  cursor: pointer;
+  list-style: none;
+}
+
+.kf-universe-imagery summary:hover {
+  color: var(--kf-gold-strong);
+}
+
+.kf-universe-imagery-text {
+  margin: 0 0 var(--kf-space-1);
+  max-block-size: 8.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* The short line and its way to the credits in full share a line where they fit. */
+.kf-universe-imagery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--kf-space-2);
+}
+
+.kf-universe-imagery[hidden] {
+  display: none;
+}
+
+.kf-universe-credits-toggle {
+  color: var(--kf-gold);
+  pointer-events: auto;
+}
+
+/* In a line of small text the toggle keeps the line's height (a coarse pointer widens its touch area below). */
+.kf-universe-imagery .kf-universe-credits-toggle {
+  min-block-size: 0;
+}
+
+.kf-universe-credits[open] .kf-universe-credits-toggle {
+  color: var(--kf-gold-strong);
+}
+
+/* The credits in full open over the view, above the readout, so the view's framing never moves. */
+.kf-universe-credits-panel {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: calc(100% + var(--kf-space-2));
+  max-block-size: min(18rem, 45vh);
+  overflow: auto;
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-scrim-strong);
+  color: var(--kf-text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+
+.kf-universe-credits-line {
+  margin: 0 0 var(--kf-space-1);
+}
+
+.kf-universe-credits-line:last-child {
+  margin-block-end: 0;
+}
+
+/* What is illustrative, in the same small type as the imagery line. */
+.kf-universe-illustrative {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  margin-block-start: var(--kf-space-1);
+}
+
+/* Over the Sun seen through its filter the scene behind is at its brightest. */
+.kf-universe-readout.is-filtered {
+  background: rgb(6 7 11 / 0.92);
+}
+
+/* Every disclosure in the explorer shows that it opens: a chevron, down when closed and up when open. */
+.kf-universe summary {
+  list-style: none;
+}
+
+.kf-universe summary::-webkit-details-marker {
+  display: none;
+}
+
+.kf-universe summary::after {
+  content: "";
+  flex: none;
+  inline-size: 0.42rem;
+  block-size: 0.42rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  opacity: 0.85;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 250ms var(--kf-ease);
+}
+
+.kf-universe details[open] > summary::after {
+  transform: translateY(0.12rem) rotate(-135deg);
+}
+
+/* ------------------------------------------------------------------ */
+/* Trip indicator                                                      */
+/* ------------------------------------------------------------------ */
+
+.kf-trip {
+  position: absolute;
+  inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
+  inset-inline: calc(var(--kf-gutter) + 15rem) calc(var(--kf-nav-w) + var(--kf-gutter) + var(--kf-space-4));
+  max-inline-size: var(--kf-slot-w);
+  margin: 0 auto;
+  padding: var(--kf-space-3) var(--kf-space-4) var(--kf-space-2);
+  border: 1px solid var(--kf-hairline);
+  border-radius: calc(var(--kf-radius) * 1.4);
+  background: var(--kf-glass);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition:
+    opacity 450ms var(--kf-ease),
+    transform 450ms var(--kf-ease),
+    visibility 0s linear 450ms;
+}
+
+/* It comes in a moment after the trip starts, when a note sharing its place has faded right out. */
+.kf-trip.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 500ms var(--kf-ease) 320ms,
+    transform 500ms var(--kf-ease) 320ms,
+    visibility 0s linear 0s;
+}
+
+.kf-trip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-3);
+}
+
+.kf-trip-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 0.875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--kf-gold-strong);
+}
+
+.kf-trip-stop {
+  min-block-size: 2rem;
+  padding-inline: var(--kf-space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+/*
+ * From where the trip began (its distance, in words, at the left) to the destination (named at the
+ * right): a tick for each factor of ten on the way; the marker slides as the distance falls.
+ */
+.kf-trip-scale {
+  display: grid;
+  grid-template-columns: auto minmax(4rem, 1fr) auto;
+  align-items: center;
+  gap: var(--kf-space-3);
+  margin-block: var(--kf-space-2) 0;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.kf-trip-end {
+  color: var(--kf-text-muted);
+}
+
+.kf-trip-end--to {
+  font-family: var(--kf-font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--kf-gold-strong);
+}
+
+.kf-trip-ruler {
+  position: relative;
+  block-size: 1rem;
+}
+
+.kf-trip-ruler::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 50%;
+  block-size: 1px;
+  background: var(--kf-hairline-strong);
+}
+
+.kf-trip-fill {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: calc(50% - 0.5px);
+  block-size: 2px;
+  inline-size: calc(var(--at, 0) * 100%);
+  background: linear-gradient(to right, rgb(214 178 106 / 0.15), var(--kf-gold-strong));
+  border-radius: 1px;
+}
+
+.kf-trip-marker {
+  position: absolute;
+  inset-block-start: calc(50% - 4px);
+  inset-inline-start: calc(var(--at, 0) * 100%);
+  inline-size: 9px;
+  block-size: 9px;
+  margin-inline-start: -4.5px;
+  border-radius: 50%;
+  background: #fff6df;
+  box-shadow:
+    0 0 0 2px rgb(214 178 106 / 0.5),
+    0 0 10px rgb(255 226 160 / 0.9);
+}
+
+.kf-trip-tick {
+  position: absolute;
+  inset-block-start: calc(50% - 0.25rem);
+  inset-inline-start: calc(var(--at) * 100%);
+  inline-size: 1px;
+  block-size: 0.5rem;
+  background: var(--kf-hairline-strong);
+  transition: background 400ms var(--kf-ease);
+}
+
+.kf-trip-tick.is-passed {
+  background: var(--kf-gold);
+}
+
+.kf-trip-line {
+  margin: var(--kf-space-1) 0 0;
+  font-size: 0.8125rem;
+  color: var(--kf-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* Notes                                                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Notes sit at the top of the clear view, like a caption, in the slot the hint and the trip
+ * indicator use (never at the same time): there they stay clear of the world framed below.
+ */
+.kf-note-slot {
+  position: absolute;
+  /* A note never stands in the way of a drag across the sky. */
+  pointer-events: none;
+  inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
+  inset-inline: calc(var(--kf-gutter) + 15rem) calc(var(--kf-nav-w) + var(--kf-gutter) + var(--kf-space-4));
+  max-inline-size: var(--kf-slot-w);
+  margin: 0 auto;
+  /* Back only once the trip indicator (which shares this place) has faded out; eased over 0.6 s (flash safety). */
+  transition:
+    opacity 600ms var(--kf-ease) 500ms,
+    visibility 0s linear 0s;
+}
+
+/* Never two cards in one place: a trip takes the note right out before its indicator comes in. */
+.kf-universe.is-travelling .kf-note-slot {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 250ms var(--kf-ease),
+    visibility 0s linear 250ms;
+}
+
+.kf-note {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  padding: var(--kf-space-2) var(--kf-space-4) var(--kf-space-3);
+  border: 1px solid var(--kf-hairline);
+  border-radius: calc(var(--kf-radius) * 1.2);
+  background: var(--kf-glass);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.kf-note.kf-fade {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity var(--kf-fade-ms, 900ms) var(--kf-ease),
+    transform var(--kf-fade-ms, 900ms) var(--kf-ease);
+}
+
+.kf-note.kf-fade.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.kf-note-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  inline-size: 100%;
+  min-block-size: 1.75rem;
+  margin: 0 0 var(--kf-space-1);
+  padding: 0;
+  border: 0;
+  border-radius: var(--kf-radius-small);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.kf-note-toggle .kf-icon {
+  flex: none;
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+  color: var(--kf-text-muted);
+  transition: transform 250ms var(--kf-ease);
+}
+
+.kf-note.is-folded .kf-note-toggle {
+  margin-block-end: 0;
+}
+
+.kf-note.is-folded .kf-note-toggle .kf-icon {
+  transform: rotate(180deg);
+}
+
+.kf-note.is-folded .kf-note-body {
+  display: none;
+}
+
+.kf-note-title {
+  font-family: var(--kf-font-display);
+  font-size: 0.8125rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--kf-gold-strong);
+}
+
+.kf-note-line {
+  margin: 0 0 var(--kf-space-1);
+  color: var(--kf-text);
+}
+
+.kf-note-source {
+  margin: var(--kf-space-2) 0 0;
+  padding-block-start: var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+  font-size: 0.6875rem;
+  color: var(--kf-text-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Toast                                                               */
+/* ------------------------------------------------------------------ */
+
+.kf-toast {
+  position: absolute;
+  inset-inline-start: var(--kf-gutter);
+  inset-block-end: calc(var(--kf-space-5) + var(--kf-readout-h, 10rem) + var(--kf-space-2));
+  max-inline-size: min(23rem, calc(100vw - 2 * var(--kf-gutter)));
+  padding: var(--kf-space-2) var(--kf-space-4);
+  border: 1px solid var(--kf-hairline-strong);
+  border-inline-start: 2px solid var(--kf-gold);
+  border-radius: 0 var(--kf-radius) var(--kf-radius) 0;
+  background: var(--kf-glass-strong);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 600ms var(--kf-ease),
+    transform 600ms var(--kf-ease);
+}
+
+.kf-toast.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.kf-toast-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--kf-gold-strong);
+}
+
+.kf-toast-line {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--kf-text-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Navigator                                                           */
+/* ------------------------------------------------------------------ */
+
+.kf-nav {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  color: var(--kf-text);
+  border: 1px solid var(--kf-hairline);
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgb(214 178 106 / 0.06), transparent 60%),
+    var(--kf-glass-strong);
+  box-shadow:
+    0 18px 50px rgb(0 0 0 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+  opacity: 0;
+  transition: opacity 600ms var(--kf-ease);
+}
+
+.kf-universe.is-ready .kf-nav {
+  opacity: 1;
+}
+
+.kf-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  padding: var(--kf-space-2) var(--kf-space-2) var(--kf-space-2) var(--kf-space-4);
+}
+
+.kf-nav-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--kf-gold-strong);
+}
+
+.kf-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kf-space-1);
+  min-inline-size: 2.5rem;
+  min-block-size: 2.5rem;
+  padding: 0 var(--kf-space-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--kf-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.kf-nav-toggle:hover {
+  color: var(--kf-gold-strong);
+  border-color: var(--kf-hairline);
+}
+
+.kf-nav-toggle .kf-icon {
+  transition: transform 300ms var(--kf-ease);
+}
+
+.kf-nav-toggle-text {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.kf-nav-grip {
+  display: none;
+}
+
+.kf-nav-body-wrap {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(214 178 106 / 0.3) transparent;
+}
+
+/* The orrery: an astrolabe's face of gold hairlines. */
+.kf-nav-map {
+  padding: 0 var(--kf-space-4) var(--kf-space-2);
+}
+
+.kf-orrery {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: min(14rem, 30vh);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+.kf-orrery-limb-ring {
+  fill: none;
+  stroke: rgb(214 178 106 / 0.45);
+  stroke-width: 0.5;
+}
+
+.kf-orrery-tick {
+  stroke: rgb(214 178 106 / 0.35);
+  stroke-width: 0.4;
+}
+
+.kf-orrery-tick.is-major {
+  stroke: rgb(232 201 131 / 0.75);
+  stroke-width: 0.6;
+}
+
+.kf-orrery-zero {
+  fill: rgb(232 201 131 / 0.7);
+  font-size: 4.5px;
+  font-family: var(--kf-font-ui);
+  letter-spacing: 0.04em;
+}
+
+.kf-orrery-ring {
+  fill: none;
+  stroke: rgb(214 178 106 / 0.3);
+  stroke-width: 0.45;
+}
+
+.kf-orrery-sun-glow {
+  fill: rgb(255 200 110 / 0.16);
+}
+
+.kf-orrery-route {
+  stroke: rgb(232 201 131 / 0.8);
+  stroke-width: 0.6;
+  stroke-dasharray: 1.6 1.6;
+}
+
+.kf-orrery-body {
+  cursor: pointer;
+}
+
+.kf-orrery-hit {
+  fill: transparent;
+}
+
+.kf-orrery-focus {
+  fill: none;
+  stroke: var(--kf-gold-strong);
+  stroke-width: 0.6;
+  opacity: 0;
+  transition: opacity 400ms var(--kf-ease);
+}
+
+.kf-orrery-body.is-focus .kf-orrery-focus,
+.kf-orrery-body:hover .kf-orrery-focus {
+  opacity: 1;
+}
+
+.kf-orrery-body--sun .kf-orrery-dot {
+  filter: drop-shadow(0 0 2px rgb(255 210 122 / 0.9));
+}
+
+.kf-orrery-saturn-ring {
+  fill: none;
+  stroke: rgb(236 217 168 / 0.8);
+  stroke-width: 0.5;
+}
+
+.kf-orrery-camera-halo {
+  fill: rgb(143 179 217 / 0.16);
+}
+
+.kf-orrery-camera-mark {
+  fill: #eaf3ff;
+}
+
+.kf-nav-caption {
+  margin: var(--kf-space-1) auto 0;
+  max-inline-size: 17rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--kf-text-muted);
+}
+
+/* The worlds: a live portrait, the name, and how far (and how long its light takes). */
+.kf-nav-list {
+  margin: 0;
+  padding: var(--kf-space-1) var(--kf-space-2) var(--kf-space-2);
+  list-style: none;
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-nav-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--kf-space-2);
+  padding: var(--kf-space-1) var(--kf-space-2);
+  border-radius: var(--kf-radius);
+  transition: background 250ms var(--kf-ease);
+}
+
+.kf-nav-row:hover {
+  background: rgb(214 178 106 / 0.06);
+}
+
+.kf-nav-body {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-3);
+  min-block-size: 2.6rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--kf-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* The whole row is the button's target (its name stays the button's only text). */
+.kf-nav-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.kf-nav-body:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.kf-nav-row:has(.kf-nav-body:focus-visible) {
+  outline: 2px solid var(--kf-gold-strong);
+  outline-offset: -2px;
+}
+
+.kf-nav-name {
+  font-family: var(--kf-font-display);
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+}
+
+.kf-nav-body[aria-current="true"] .kf-nav-name {
+  color: var(--kf-gold-strong);
+}
+
+.kf-nav-row:has(.kf-nav-body[aria-current="true"]) {
+  background: linear-gradient(to right, rgb(214 178 106 / 0.12), rgb(214 178 106 / 0.02));
+}
+
+.kf-nav-row:has(.kf-nav-body[aria-current="true"])::before {
+  content: "";
+  position: absolute;
+  inset-block: 22%;
+  inset-inline-start: 0;
+  inline-size: 2px;
+  border-radius: 1px;
+  background: var(--kf-gold-strong);
+  box-shadow: 0 0 8px rgb(232 201 131 / 0.8);
+}
+
+.kf-body-icon {
+  flex: none;
+  inline-size: 2rem;
+  block-size: 2rem;
+  overflow: visible;
+}
+
+.kf-body-icon--saturn {
+  inline-size: 2.9rem;
+  margin-inline: -0.45rem;
+}
+
+.kf-nav-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.kf-nav-distance {
+  font-size: 0.8125rem;
+  color: var(--kf-text);
+}
+
+.kf-nav-light {
+  font-size: 0.6875rem;
+  color: var(--kf-text-muted);
+}
+
+/* What has been seen, the detail menu and the keys. */
+.kf-nav-seen,
+.kf-nav-keys {
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+  padding-block-start: var(--kf-space-2);
+  font-size: 0.8125rem;
+}
+
+.kf-nav-seen summary,
+.kf-nav-keys summary {
+  min-block-size: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  padding-inline: var(--kf-space-1);
+  border-radius: var(--kf-radius-small);
+  color: var(--kf-text-muted);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.kf-nav-seen summary:hover,
+.kf-nav-keys summary:hover {
+  color: var(--kf-gold-strong);
+}
+
+.kf-nav-seen-list {
+  margin: 0;
+  padding: 0 var(--kf-space-1) var(--kf-space-2) var(--kf-space-5);
+  color: var(--kf-text);
+}
+
+.kf-nav-seen-list li::marker {
+  color: var(--kf-gold);
+}
+
+.kf-nav-seen-empty,
+.kf-nav-keys p {
+  margin: 0;
+  padding: 0 var(--kf-space-1) var(--kf-space-2);
+  color: var(--kf-text-muted);
+  line-height: 1.5;
+}
+
+.kf-nav-foot {
+  flex: none;
+  padding-block: var(--kf-space-1) var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-nav-foot .kf-nav-keys {
+  margin-block-end: 0;
+  border-block-start: 0;
+  padding-block-start: 0;
+}
+
+.kf-nav-detail {
+  position: relative;
+  margin: 0 var(--kf-space-3);
+}
+
+.kf-nav-detail-button {
+  display: flex;
+  inline-size: 100%;
+  justify-content: space-between;
+  min-block-size: 2.5rem;
+  font-size: 0.8125rem;
+}
+
+.kf-nav-detail-label {
+  color: var(--kf-text-muted);
+  letter-spacing: 0.06em;
+}
+
+.kf-nav-detail-value {
+  color: var(--kf-gold-strong);
+}
+
+/* Opens upward, over the list, from the button at the foot. */
+.kf-nav-detail-panel {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  inset-block-end: calc(100% + var(--kf-space-2));
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-hairline-strong);
+  border-radius: var(--kf-radius);
+  background: var(--kf-surface-2);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.55);
+}
+
+.kf-nav-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  margin-block-end: var(--kf-space-1);
+}
+
+.kf-nav-detail-heading {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--kf-gold-strong);
+}
+
+.kf-nav-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--kf-text-muted);
+  cursor: pointer;
+}
+
+.kf-nav-detail-close:hover {
+  color: var(--kf-gold-strong);
+  border-color: var(--kf-hairline);
+}
+
+.kf-nav-detail-close .kf-icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.kf-nav-detail-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.kf-nav-detail-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kf-space-2);
+  min-block-size: 2.25rem;
+  padding: var(--kf-space-1);
+  border-radius: var(--kf-radius-small);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.kf-nav-detail-option-text {
+  display: grid;
+  gap: 1px;
+}
+
+.kf-nav-detail-option-what {
+  font-size: 0.71875rem;
+  line-height: 1.35;
+  color: var(--kf-text-muted);
+}
+
+.kf-nav-detail-option:has(input:checked) {
+  background: rgb(214 178 106 / 0.1);
+}
+
+.kf-nav-detail-option:hover {
+  background: rgb(214 178 106 / 0.08);
+}
+
+.kf-nav-detail-option input {
+  flex: none;
+  accent-color: var(--kf-gold);
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin: 0.15rem 0 0;
+}
+
+.kf-nav-detail-note {
+  margin: var(--kf-space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--kf-text-muted);
+}
+
+/* Beside the side panel, to its left, level with its button: the list of worlds stays in view. */
+.kf-nav.is-panel .kf-nav-detail-panel {
+  inset-inline: auto calc(100% + var(--kf-space-3) + 1px);
+  inset-block-end: 0;
+  inline-size: 19.5rem;
+}
+
+/* The side panel (wide screens): at the right, from below the header to the bottom; folds to a rail. */
+.kf-nav.is-panel {
+  inset-block: calc(var(--kf-header-h) + var(--kf-space-2)) var(--kf-space-4);
+  inset-inline-end: var(--kf-gutter);
+  inline-size: var(--kf-nav-w);
+  border-radius: calc(var(--kf-radius) * 1.6);
+  transition:
+    opacity 600ms var(--kf-ease),
+    inline-size 350ms var(--kf-ease);
+}
+
+.kf-nav.is-panel:not(.is-expanded) {
+  inline-size: 4.25rem;
+  inset-block-end: auto;
+}
+
+.kf-nav.is-panel:not(.is-expanded) .kf-nav-head {
+  flex-direction: column;
+  padding: var(--kf-space-2) 0;
+}
+
+.kf-nav.is-panel:not(.is-expanded) .kf-nav-title {
+  display: none;
+}
+
+.kf-nav.is-panel:not(.is-expanded) .kf-nav-toggle .kf-icon {
+  transform: rotate(-90deg);
+}
+
+.kf-nav.is-panel.is-expanded .kf-nav-toggle .kf-icon {
+  transform: rotate(90deg);
+}
+
+/* Folded: the worlds as a column (or, on a phone, a row) of portraits, names for screen readers. */
+.kf-nav-row.is-chip {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding: var(--kf-space-1);
+}
+
+.kf-nav-row.is-chip .kf-nav-meta {
+  display: none;
+}
+
+.kf-nav.is-panel .kf-nav-row.is-chip .kf-nav-name {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.kf-nav.is-panel:not(.is-expanded) .kf-nav-list {
+  padding: var(--kf-space-1);
+  border-block-start: 0;
+}
+
+/* The bottom sheet (phones, small windows): a row of portraits, pulled up for the rest. */
+.kf-nav.is-sheet {
+  inset-inline: var(--kf-space-2);
+  inset-block-end: var(--kf-space-2);
+  max-block-size: min(72vh, 34rem);
+  border-radius: calc(var(--kf-radius) * 1.8);
+}
+
+.kf-nav.is-sheet .kf-nav-head {
+  position: relative;
+  padding: var(--kf-space-1) var(--kf-space-2) 0 var(--kf-space-4);
+}
+
+.kf-nav.is-sheet .kf-nav-grip {
+  display: block;
+  position: absolute;
+  inset-block-start: 5px;
+  inset-inline-start: 50%;
+  inline-size: 2.5rem;
+  block-size: 4px;
+  margin-inline-start: -1.25rem;
+  border-radius: 2px;
+  background: rgb(237 231 218 / 0.28);
+}
+
+.kf-nav.is-sheet .kf-nav-toggle {
+  position: static;
+}
+
+.kf-nav.is-sheet .kf-nav-toggle::after {
+  /* The whole head is the handle. */
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.kf-nav.is-sheet:not(.is-expanded) .kf-nav-title {
+  font-size: 0.6875rem;
+}
+
+.kf-nav.is-sheet .kf-nav-toggle .kf-icon {
+  transform: rotate(0deg);
+}
+
+.kf-nav.is-sheet.is-expanded .kf-nav-toggle .kf-icon {
+  transform: rotate(180deg);
+}
+
+.kf-nav.is-sheet:not(.is-expanded) .kf-nav-list {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--kf-space-1);
+  padding: 0 var(--kf-space-2) var(--kf-space-2);
+  border-block-start: 0;
+}
+
+.kf-nav.is-sheet .kf-nav-row.is-chip {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+.kf-nav.is-sheet .kf-nav-row.is-chip .kf-nav-body {
+  flex-direction: column;
+  gap: 2px;
+  min-block-size: 3.25rem;
+}
+
+.kf-nav.is-sheet .kf-nav-row.is-chip .kf-nav-name {
+  font-family: var(--kf-font-ui);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+}
+
+.kf-nav.is-sheet .kf-nav-row.is-chip .kf-body-icon {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+}
+
+.kf-nav.is-sheet .kf-nav-row.is-chip .kf-body-icon--saturn {
+  inline-size: 2.5rem;
+}
+
+.kf-nav.is-sheet.is-expanded .kf-nav-map {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-3);
+  order: 3;
+  padding-block: var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-nav.is-sheet .kf-nav-list {
+  order: 1;
+}
+
+.kf-nav.is-sheet .kf-nav-seen {
+  order: 2;
+}
+
+.kf-nav.is-sheet.is-expanded .kf-orrery {
+  inline-size: min(7.5rem, 30vw);
+  margin: 0;
+}
+
+/* More below: the sheet's scrolling part fades at its foot rather than cutting a row in half. */
+.kf-nav.is-sheet .kf-nav-body-wrap.has-more {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.25rem), transparent);
+}
+
+.kf-nav.is-sheet.is-expanded .kf-nav-caption {
+  text-align: start;
+  margin: 0;
+}
+
+/* The bodies' name tags come up with the picture (never over a black screen while it fades in). */
+.kf-universe-open:not(.kf-universe-lit) .kf-hud-labels {
+  opacity: 0;
+}
+
+.kf-universe-open.kf-universe-lit .kf-hud-labels {
+  transition: opacity 1.6s var(--kf-ease) 0.5s;
+}
+
+/* The bodies' name tags in the explorer: a hairline tick and the name with a soft shadow, no panel. */
+.kf-universe-open .kf-hud-tag {
+  background: transparent;
+  text-shadow:
+    0 0 3px rgb(0 0 0 / 0.95),
+    0 0 9px rgb(0 0 0 / 0.75);
+}
+
+/* Phones and small windows: the readout runs as two short lines across the top; notes sit above the sheet. */
+@media (max-width: 899.98px), (max-height: 559.98px) {
+  /* The readout runs across the top here: the credits in full open below it, within the screen. */
+  .kf-universe-credits-panel {
+    inset-block: calc(100% + var(--kf-space-2)) auto;
+    max-block-size: 40vh;
+  }
+
+  .kf-universe {
+    --kf-nav-w: 0rem;
+  }
+
+  .kf-universe-back {
+    inset-inline-start: var(--kf-space-2);
+    min-block-size: 2.25rem;
+    font-size: 0.8125rem;
+  }
+
+  .kf-universe-readout {
+    inset-inline: var(--kf-space-2);
+    inset-block: calc(var(--kf-header-h) + var(--kf-space-2) + 2.75rem) auto;
+    max-inline-size: none;
+    padding-block: var(--kf-space-2);
+    padding-inline: var(--kf-space-3);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    border-radius: 0 var(--kf-radius) var(--kf-radius) 0;
+  }
+
+  .kf-universe-title {
+    display: inline;
+    margin: 0 var(--kf-space-2) 0 0;
+    font-size: 0.9375rem;
+    letter-spacing: 0.1em;
+  }
+
+  .kf-universe-altitude {
+    display: inline;
+    font-size: 0.8125rem;
+  }
+
+  .kf-universe-mode {
+    margin-block: 2px;
+    font-size: 0.75rem;
+  }
+
+  .kf-universe-extra:not(.kf-universe-filter) {
+    display: none;
+  }
+
+  .kf-universe-long {
+    display: none;
+  }
+
+  .kf-universe-short {
+    display: inline;
+  }
+
+  /* The parts of the line run on, each whole (never a break inside one, nor a dot starting a line). */
+  .kf-universe-part {
+    display: inline;
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .kf-universe-part + .kf-universe-part::before {
+    content: " · ";
+  }
+
+  /* The toast attaches below the readout, across the top. */
+  .kf-toast {
+    inset-inline: var(--kf-space-2);
+    inset-block: calc(var(--kf-header-h) + var(--kf-space-2) + 2.75rem + var(--kf-readout-h, 4rem) + var(--kf-space-2)) auto;
+    max-inline-size: none;
+  }
+
+  /* Credits stay, at the end of the scale line, opening below it (the Sources page has them in full). */
+  .kf-universe-imagery {
+    display: inline-block;
+    max-inline-size: 100%;
+    margin: 0 0 0 0.3em;
+    font-size: 0.6875rem;
+    vertical-align: baseline;
+  }
+
+  .kf-universe-credits > summary {
+    gap: 0.4em;
+    min-block-size: 0;
+  }
+
+  .kf-universe-credits > summary::before {
+    content: "·";
+  }
+
+  .kf-universe-imagery-text {
+    margin-block-start: var(--kf-space-1);
+  }
+
+  .kf-universe-hint {
+    inset-inline: var(--kf-space-2);
+    inset-block-start: auto;
+    inset-block-end: calc(var(--kf-sheet-h, 5.5rem) + var(--kf-space-4));
+    border-radius: var(--kf-radius);
+    font-size: 0.75rem;
+  }
+
+  .kf-trip {
+    inset-inline: var(--kf-space-2);
+    inset-block-start: auto;
+    inset-block-end: calc(var(--kf-sheet-h, 5.5rem) + var(--kf-space-4));
+    max-inline-size: none;
+    padding: var(--kf-space-2) var(--kf-space-3);
+  }
+
+  .kf-note-slot {
+    inset-inline: var(--kf-space-2);
+    inset-block: auto calc(var(--kf-sheet-h, 5.5rem) + var(--kf-space-4));
+    max-inline-size: none;
+  }
+
+  .kf-note {
+    inset-block: auto 0;
+    padding: var(--kf-space-2) var(--kf-space-3);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .kf-note-source {
+    margin-block-start: var(--kf-space-1);
+    padding-block-start: var(--kf-space-1);
+  }
+
+  /* The readout already names the trip: here the indicator keeps its scale, its line and Stop. */
+  .kf-trip-title {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .kf-trip {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: var(--kf-space-3);
+  }
+
+  .kf-trip-head {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .kf-trip-scale {
+    grid-column: 1;
+    grid-row: 1;
+    margin-block-start: 0;
+  }
+
+  .kf-trip-line {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 0.75rem;
+  }
+
+  /* The sheet pulled up has the screen's lower part: notes and the hint wait until it folds. */
+  .kf-universe.is-sheet-open :is(.kf-note-slot, .kf-universe-hint) {
+    visibility: hidden;
+  }
+}
+
+/* Landscape phones: a lower sheet, and the readout as a single line. */
+@media (max-height: 500px) {
+  .kf-nav.is-sheet {
+    max-block-size: calc(100vh - var(--kf-header-h) - var(--kf-space-4));
+  }
+
+  .kf-nav.is-sheet:not(.is-expanded) {
+    inset-inline: auto var(--kf-space-2);
+    inline-size: min(26rem, 60vw);
+  }
+
+  /* Folded, the head shrinks to its handle and chevron over the row of worlds. */
+  .kf-nav.is-sheet:not(.is-expanded) .kf-nav-head {
+    padding-block: 2px 0;
+  }
+
+  .kf-nav.is-sheet:not(.is-expanded) .kf-nav-toggle {
+    min-block-size: 1.9rem;
+  }
+
+  .kf-nav.is-sheet.is-expanded {
+    inset-inline: auto var(--kf-space-2);
+    inline-size: min(30rem, 64vw);
+  }
+
+  .kf-universe-readout {
+    inset-inline: var(--kf-space-2) auto;
+    max-inline-size: min(24rem, 52vw);
+  }
+
+  /* Pulled up, the sheet has the right of the screen: the readout keeps to the left of it. */
+  .kf-universe.is-sheet-open .kf-universe-readout {
+    max-inline-size: min(24rem, calc(100vw - min(30rem, 64vw) - 3 * var(--kf-space-2)));
+  }
+
+  .kf-universe-mode,
+  .kf-universe-scale,
+  .kf-universe-illustrative {
+    display: none;
+  }
+
+  /* With the scale line gone, the credits follow the height: no separator before them. */
+  .kf-universe-credits > summary::before {
+    content: none;
+  }
+
+  .kf-universe-hint {
+    display: none;
+  }
+
+  /* One column at the left: the readout, then a note or the trip indicator under it. */
+  .kf-note-slot,
+  .kf-trip {
+    inset-inline: var(--kf-space-2) auto;
+    inset-block: calc(var(--kf-header-h) + var(--kf-space-2) + 2.75rem + var(--kf-readout-h, 3rem) + var(--kf-space-2)) auto;
+    inline-size: min(24rem, 52vw);
+  }
+
+  .kf-note {
+    inset-block: 0 auto;
+    max-block-size: calc(100vh - var(--kf-header-h) - 2.75rem - var(--kf-readout-h, 3rem) - 2.5rem);
+    overflow-y: auto;
+  }
+
+  .kf-nav.is-sheet .kf-nav-map,
+  .kf-nav.is-sheet.is-expanded .kf-nav-map {
+    display: none;
+  }
+}
+
+/* Touch: every control at least 44 px each way (the visual size kept where it was smaller). */
+@media (pointer: coarse) {
+  .kf-universe-back,
+  .kf-universe-orbit,
+  .kf-trip-stop,
+  .kf-nav-detail-button {
+    min-block-size: 2.75rem;
+  }
+
+  .kf-nav-toggle,
+  .kf-nav-detail-close {
+    min-inline-size: 2.75rem;
+    min-block-size: 2.75rem;
+  }
+
+  .kf-nav-body,
+  .kf-nav-seen summary,
+  .kf-nav-keys summary,
+  .kf-nav-detail-option,
+  .kf-note-toggle {
+    min-block-size: 2.75rem;
+  }
+
+  /* The credits' summary sits in a line of text: its touch area grows without growing the line. */
+  .kf-universe-credits > summary {
+    padding-block: 0.7rem;
+    margin-block: -0.7rem;
+  }
+
+  .kf-nav-detail-option {
+    align-items: center;
+  }
+
+  /* The folded sheet's handle is the whole head: its touch area reaches a little past it. */
+  .kf-nav.is-sheet .kf-nav-toggle::after {
+    inset: -0.5rem 0;
+  }
+}
+
+/* Reduced motion (the system's setting or the page's own): fades only, nothing slides. */
+@media (prefers-reduced-motion: reduce) {
+  .kf-trip,
+  .kf-trip.is-active,
+  .kf-note.kf-fade {
+    transform: none;
+  }
+
+  /* The chevron still turns to show the state; it just does not animate. */
+  .kf-nav.is-panel,
+  .kf-nav-toggle .kf-icon {
+    transition-property: opacity, visibility;
+  }
+}
+
+.kf-reduced-motion :is(.kf-trip, .kf-trip.is-active, .kf-note.kf-fade) {
+  transform: none;
+}
+
+.kf-reduced-motion :is(.kf-nav.is-panel, .kf-nav-toggle .kf-icon) {
+  transition-property: opacity, visibility;
+}

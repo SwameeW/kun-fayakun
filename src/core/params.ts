@@ -1,3 +1,4 @@
+import type { ExploreTier } from '../explore/detail';
 import type { QualityTier } from './types';
 
 /** Query parameters that change how the app starts (see docs/CONTRACTS.md). */
@@ -14,9 +15,41 @@ export interface LaunchParams {
   showFps: boolean;
   /** ?profile=1: measure GPU time with timestamp queries (where supported) and hold the render scale at 1. */
   profile: boolean;
+  /**
+   * ?gpuTime=1: measure GPU time with timestamp queries (where supported) without holding anything
+   * still: the solar-system explorer's governor then judges GPU time rather than frame time.
+   */
+  gpuTime: boolean;
+  /**
+   * ?jd=<Julian date>: pins "now" for the sky, so tests and screenshots of astronomy
+   * views do not depend on the day they run. Null (the default) follows the real clock.
+   * The solar-system explorer reads it (as UTC) unless its own route pins a date.
+   */
+  jd: number | null;
+  /**
+   * ?detail=ultra|high|medium|low: a fixed detail tier for the solar-system explorer (tests,
+   * benchmarks, captures); its governor then holds still. Ultra only where the device allows it.
+   */
+  detail: ExploreTier | null;
 }
 
 const TIERS: readonly QualityTier[] = ['high', 'mid', 'low'];
+const DETAILS: readonly ExploreTier[] = ['ultra', 'high', 'medium', 'low'];
+
+/**
+ * Accepted Julian dates: 1 January 1 CE to the end of 9999 CE. Anything outside is
+ * almost certainly a typo (a Unix time, a year), and is ignored rather than trusted.
+ */
+const JD_RANGE = { min: 1_721_423.5, max: 5_373_484.5 } as const;
+
+/** A plain-decimal Julian date from 1 CE to 9999 CE, or null (also used by the universe route's ?jd=). */
+export function parseJulianDate(value: string | null): number | null {
+  const v = value?.trim() ?? '';
+  // Number('') is 0 and Number('0x10') is 16: accept plain decimals only.
+  if (!/^\d+(?:\.\d+)?$/.test(v)) return null;
+  const jd = Number(v);
+  return jd >= JD_RANGE.min && jd <= JD_RANGE.max ? jd : null;
+}
 
 function flag(value: string | null): boolean | null {
   if (value === null) return null;
@@ -40,5 +73,8 @@ export function readLaunchParams(search: string = window.location.search): Launc
     autoplay: flag(q.get('autoplay')) ?? false,
     showFps: flag(q.get('fps')) ?? false,
     profile: flag(q.get('profile')) ?? false,
+    gpuTime: flag(q.get('gpuTime')) ?? false,
+    jd: parseJulianDate(q.get('jd')),
+    detail: DETAILS.find((d) => d === q.get('detail')?.trim().toLowerCase()) ?? null,
   };
 }

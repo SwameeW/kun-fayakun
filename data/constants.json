@@ -629,6 +629,305 @@
         "url": "https://doi.org/10.1038/s41586-021-03393-7",
         "accessed": "2026-10-23"
       }
+    },
+    {
+      "id": "light.speed",
+      "description": "Speed of light in vacuum; the solar-system explorer turns distances into light-times with it",
+      "value": 299792458,
+      "uncertainty": 0,
+      "unit": "m/s",
+      "qualifier": "exact: the SI defines the metre by it",
+      "citation": {
+        "text": "BIPM, The International System of Units (SI Brochure), 9th edition 2019, section 2.3.1: the speed of light in vacuum c is 299 792 458 m/s",
+        "url": "https://www.bipm.org/en/publications/si-brochure",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.atmosphere.scaleHeight",
+      "description": "Scale height of the Earth's atmosphere: the height over which its pressure falls by a factor of e (about 2.7)",
+      "value": 8.5,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "approximate, for the lower atmosphere; it varies with temperature",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet, Terrestrial Atmosphere: scale height 8.5 km",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sun.effectiveTemperature",
+      "description": "The Sun's effective temperature: the temperature of a blackbody that would radiate as much per square metre as the Sun's visible surface",
+      "value": 5772,
+      "uncertainty": 0.8,
+      "unit": "K",
+      "qualifier": "the IAU's nominal value, from the measured total solar irradiance and radius",
+      "citation": {
+        "text": "Prša et al. 2016, AJ 152, 41, \"Nominal Values for Selected Solar and Planetary Quantities: IAU 2015 Resolution B3\" (Teff = 5772.0 ± 0.8 K; nominal 5772 K)",
+        "url": "https://doi.org/10.3847/0004-6256/152/2/41",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.height",
+      "description": "Height of the top of the reference atmosphere above the ground: kTopRadius - kBottomRadius = 6,420,000 m - 6,360,000 m.",
+      "value": 60,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kTopRadius, kBottomRadius)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.wavelength.red",
+      "description": "Wavelength the model uses for red light (kLambdaR).",
+      "value": 680,
+      "uncertainty": null,
+      "unit": "nm",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/model.h (kLambdaR)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/model.h",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.wavelength.green",
+      "description": "Wavelength the model uses for green light (kLambdaG).",
+      "value": 550,
+      "uncertainty": null,
+      "unit": "nm",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/model.h (kLambdaG)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/model.h",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.wavelength.blue",
+      "description": "Wavelength the model uses for blue light (kLambdaB).",
+      "value": 440,
+      "uncertainty": null,
+      "unit": "nm",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/model.h (kLambdaB)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/model.h",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.rayleigh.coefficient",
+      "description": "Rayleigh scattering of the air at the ground: the scattering coefficient is this value times lambda^-4 (lambda in micrometres), kRayleigh = 1.24062e-6 m^-1. Stored in units of 10^-6 m^-1 um^4.",
+      "value": 1.24062,
+      "uncertainty": null,
+      "unit": "10⁻⁶ m⁻¹ µm⁴",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kRayleigh; rayleigh_scattering = kRayleigh * pow(lambda, -4))",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.rayleigh.scaleHeight",
+      "description": "Scale height of the air molecules (Rayleigh scattering) in the reference atmosphere (kRayleighScaleHeight = 8000 m).",
+      "value": 8,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kRayleighScaleHeight)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.mie.angstromBeta",
+      "description": "Angstrom turbidity beta of the aerosols (kMieAngstromBeta = 5.328e-3, with alpha 0): Mie extinction is beta / (Mie scale height) times lambda^-alpha. Stored in units of 10^-3.",
+      "value": 5.328,
+      "uncertainty": null,
+      "unit": "10⁻³",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kMieAngstromBeta, kMieAngstromAlpha)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.mie.scaleHeight",
+      "description": "Scale height of the aerosols (Mie scattering) in the reference atmosphere (kMieScaleHeight = 1200 m).",
+      "value": 1.2,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kMieScaleHeight)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.mie.singleScatteringAlbedo",
+      "description": "Share of the aerosols' extinction that is scattering rather than absorption (kMieSingleScatteringAlbedo).",
+      "value": 0.9,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kMieSingleScatteringAlbedo)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.mie.g",
+      "description": "Asymmetry parameter of the aerosols' Cornette-Shanks phase function (kMiePhaseFunctionG): how strongly they scatter forward.",
+      "value": 0.8,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kMiePhaseFunctionG)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.column",
+      "description": "Total ozone in the reference atmosphere, in Dobson units (kMaxOzoneNumberDensity = 300 DU / 15 km).",
+      "value": 300,
+      "uncertainty": null,
+      "unit": "DU",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kMaxOzoneNumberDensity)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.dobsonUnit",
+      "description": "One Dobson unit as a column of ozone molecules (kDobsonUnit = 2.687e20 m^-2). Stored in units of 10^20 m^-2.",
+      "value": 2.687,
+      "uncertainty": null,
+      "unit": "10²⁰ m⁻²",
+      "qualifier": "a unit definition the model uses",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kDobsonUnit)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.peak",
+      "description": "Height of the ozone layer's peak density: the density rises linearly from 10 km to 25 km and falls to zero at 40 km (the two DensityProfileLayer entries of ozone_density).",
+      "value": 25,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (ozone_density layers)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.halfWidth",
+      "description": "Half width of the ozone layer's triangular density profile (1/15000 m^-1 slopes either side of its 25 km peak).",
+      "value": 15,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (ozone_density layers)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.crossSection.red",
+      "description": "Ozone absorption cross section for the red channel: the mean of kOzoneCrossSection over 600-700 nm (its 11 entries; 680 nm alone gives 1.209e-25 m^2). The Chappuis band is broad and peaks near 600 nm, so each channel uses its band's mean rather than one wavelength. Stored in units of 10^-25 m^2.",
+      "value": 2.491,
+      "uncertainty": null,
+      "unit": "10⁻²⁵ m²",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kOzoneCrossSection, mean over 600-700 nm)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.crossSection.green",
+      "description": "Ozone absorption cross section for the green channel: the mean of kOzoneCrossSection over 500-600 nm (its 11 entries; 550 nm alone gives 3.5e-25 m^2). Stored in units of 10^-25 m^2.",
+      "value": 3.42,
+      "uncertainty": null,
+      "unit": "10⁻²⁵ m²",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kOzoneCrossSection, mean over 500-600 nm)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.air.ozone.crossSection.blue",
+      "description": "Ozone absorption cross section for the blue channel: the mean of kOzoneCrossSection over 400-500 nm (its 11 entries; 440 nm alone gives 1.582e-26 m^2). Stored in units of 10^-25 m^2.",
+      "value": 0.4171,
+      "uncertainty": null,
+      "unit": "10⁻²⁵ m²",
+      "qualifier": "a parameter of Bruneton's reference Earth atmosphere (used for the explorer's sky), not a measurement of today's air",
+      "citation": {
+        "text": "Bruneton 2017, \"Precomputed Atmospheric Scattering: a New Implementation\", atmosphere/demo/demo.cc (kOzoneCrossSection, mean over 400-500 nm)",
+        "url": "https://github.com/ebruneton/precomputed_atmospheric_scattering/blob/master/atmosphere/demo/demo.cc",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sun.limbDarkening.a1",
+      "description": "The Sun's limb darkening at 550 nm, I(psi)/I(0) = a0 + a1 cos(psi) + a2 cos^2(psi) with a0 = 1 - a1 - a2 = 0.3: the linear coefficient a1.",
+      "value": 0.93,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "at 550 nm; the disc's edge is then 30% as bright as its centre",
+      "citation": {
+        "text": "Cox (ed.) 2000, Allen's Astrophysical Quantities, 4th ed., Springer; as given in Wikipedia, \"Limb darkening\", Calculation of limb darkening (a1 = 0.93, a2 = -0.23 at 550 nm)",
+        "url": "https://en.wikipedia.org/wiki/Limb_darkening",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sun.limbDarkening.a2",
+      "description": "The Sun's limb darkening at 550 nm, I(psi)/I(0) = a0 + a1 cos(psi) + a2 cos^2(psi): the quadratic coefficient a2.",
+      "value": -0.23,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "at 550 nm",
+      "citation": {
+        "text": "Cox (ed.) 2000, Allen's Astrophysical Quantities, 4th ed., Springer; as given in Wikipedia, \"Limb darkening\", Calculation of limb darkening (a1 = 0.93, a2 = -0.23 at 550 nm)",
+        "url": "https://en.wikipedia.org/wiki/Limb_darkening",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.airglow.greenLine.height",
+      "description": "Height at which the night sky's green airglow, atomic oxygen's 557.7 nm line, is brightest: about 90 km over 10 to 20 degrees north in May and about 95 km at mid-latitudes in both hemispheres in November (ISUAL and SABER measurements).",
+      "value": 95,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "it varies with latitude and season (about 90 to 95 km in the cited measurements); the explorer draws the night side's airglow as one thin layer at this height",
+      "citation": {
+        "text": "Gao, H., Nee, J.-B. and Xu, J. 2012, \"The emission of oxygen green line and density of O atom determined by using ISUAL and SABER measurements\", Annales Geophysicae 30, 695-701",
+        "url": "https://doi.org/10.5194/angeo-30-695-2012",
+        "accessed": "2026-10-23"
+      }
     }
   ]
 }

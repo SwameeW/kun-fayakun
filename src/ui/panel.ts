@@ -3,7 +3,7 @@ import { externalLink, h, uniqueId } from './dom';
 import { figure } from './figures';
 import { blockCitations, formatProse } from './format';
 import { icon } from './icons';
-import { discoveryBlock } from './discovery';
+import { discoveryBlock, type DiscoveryBlock } from './discovery';
 import { hadithArticle, verseArticle } from './scripture';
 import { readPreference, writePreference } from './preferences';
 import './styles/panel.css';
@@ -53,6 +53,8 @@ export function createPanel(app: App): Panel {
   let dataReady = false;
   let lastReaderActivity = 0;
   const sections = new Map<Section, HTMLElement>();
+  /** The chapter's letter analysis, if it has one: it must close before the panel hides or re-renders it. */
+  let discovery: DiscoveryBlock | null = null;
 
   const title = h('p', { id: titleId, class: 'kf-panel-title' });
   const peek = h('span', { class: 'kf-panel-peek' });
@@ -104,6 +106,7 @@ export function createPanel(app: App): Panel {
   }
 
   function setOpen(next: boolean): void {
+    if (!next) discovery?.close();
     open = next;
     writePreference('panelOpen', open);
     sync();
@@ -170,7 +173,9 @@ export function createPanel(app: App): Panel {
     title.textContent = meta ? `${i18n.t('ui.timeline.chapter', { number: meta.number })} · ${chapterTitle}` : chapterTitle;
     peek.textContent = chapterTitle;
     sections.clear();
+    discovery?.close();
     const { panel } = content;
+    discovery = panel.discovery ? discoveryBlock(app, panel.discovery) : null;
     try {
       body.replaceChildren(
         // The order of the three layers is a core principle: text, then scholars, then science.
@@ -179,7 +184,7 @@ export function createPanel(app: App): Panel {
           layerNote(panel.notes?.scholarly),
           ...subheading('ui.panel.classical', panel.scholarly.classical),
           ...subheading('ui.panel.modern', panel.scholarly.modern),
-          panel.discovery ? discoveryBlock(app, panel.discovery) : null,
+          discovery?.element ?? null,
         ]),
         section('science', [
           ...panel.science.flatMap(scienceBlock),
@@ -200,7 +205,9 @@ export function createPanel(app: App): Panel {
     sections.forEach((el, key) => el.classList.toggle('is-current', key === name));
     peek.textContent = i18n.t('ui.panel.now', { section: i18n.t(SECTION_HEADINGS[name]) });
     const target = sections.get(name);
-    const reading = performance.now() - lastReaderActivity < READING_GRACE_MS || element.contains(document.activeElement);
+    // An open analysis (data-kf-engaged) is never scrolled away, even by the cues a seek replays.
+    const engaged = body.querySelector('[data-kf-engaged]') !== null;
+    const reading = engaged || performance.now() - lastReaderActivity < READING_GRACE_MS || element.contains(document.activeElement);
     if (!target || !open || reading) return;
     body.scrollTo({ top: target.offsetTop - body.offsetTop, behavior: app.reducedMotion ? 'auto' : 'smooth' });
   }
@@ -248,6 +255,7 @@ export function createPanel(app: App): Panel {
       if (routeAllows && hasContent) setOpen(!open);
     },
     setAvailable(next) {
+      if (!next) discovery?.close();
       routeAllows = next;
       sync();
     },

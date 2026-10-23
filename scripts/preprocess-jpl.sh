@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Rebuilds public/assets/jpl/{planets.json,moon.json} and the "jpl-*" entries of data/sources.json
-# from NASA JPL's Solar System Dynamics pages and the Horizons API. Usage: npm run preprocess:jpl
+# Rebuilds public/assets/jpl/{planets.json,moon.json,physical.json} and their entries in
+# data/sources.json from NASA JPL's Solar System Dynamics pages, the Horizons API, NAIF's generic
+# kernels and the PDS Ring-Moon Systems Node. Usage: npm run preprocess:jpl
 #
-# Needs network access to ssd.jpl.nasa.gov (fetched with curl) and the Python environment from
+# Needs network access to ssd.jpl.nasa.gov, naif.jpl.nasa.gov and pds-rings.seti.org (fetched with
+# curl; files already in .cache/jpl are reused, see build.py) and the Python environment from
 # scripts/preprocess-cmb.sh, created on first use.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,4 +1,5 @@
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGPURenderer } from 'three/webgpu';
+import { MIN_RESOLUTION_SCALE } from './resolution';
 
 export type BackendName = 'webgpu' | 'webgl2';
 
@@ -8,6 +9,8 @@ export interface GpuInfo {
   description: string;
   /** A software rasteriser (SwiftShader, llvmpipe, WARP) or WebGPU fallback adapter. */
   software: boolean;
+  /** The largest 2D texture the device takes, px (0 when unknown). */
+  maxTextureSize: number;
 }
 
 export interface RendererHandle {
@@ -42,23 +45,27 @@ const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|microsoft basic ren
 function describeGpu(renderer: WebGPURenderer, backend: BackendName): GpuInfo {
   let description = '';
   let software = false;
+  let maxTextureSize = 0;
   if (backend === 'webgpu') {
     const device = (renderer.backend as { device?: GPUDevice | null }).device;
     // GPUDevice.adapterInfo is recent (Chrome 128+, Safari 26); older browsers leave it undefined.
     const info = (device as { adapterInfo?: GPUAdapterInfo } | null | undefined)?.adapterInfo;
     if (info) {
-      description = [info.vendor, info.architecture, info.device, info.description].join(' ').toLowerCase();
+      description = [info.vendor, info.architecture, info.device, info.description].join(' ').toLowerCase().trim();
       software = (info as { isFallbackAdapter?: boolean }).isFallbackAdapter === true;
     }
+    maxTextureSize = device?.limits.maxTextureDimension2D ?? 0;
   } else {
     const gl = (renderer.backend as { gl?: WebGL2RenderingContext | null }).gl;
     if (gl) {
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
       const raw: unknown = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
       description = typeof raw === 'string' ? raw.toLowerCase() : '';
+      const max: unknown = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      maxTextureSize = typeof max === 'number' ? max : 0;
     }
   }
-  return { description, software: software || SOFTWARE_GPU.test(description) };
+  return { description, software: software || SOFTWARE_GPU.test(description), maxTextureSize };
 }
 
 /**
@@ -163,7 +170,8 @@ export async function createRenderer(
       resize();
     },
     setResolutionScale(scale) {
-      const next = Math.min(1, Math.max(0.5, scale));
+      // Same floor as the governor, so the documented 0.6..1 range holds for any caller.
+      const next = Math.min(1, Math.max(MIN_RESOLUTION_SCALE, scale));
       if (Math.abs(next - resolutionScale) < 1e-3) return;
       resolutionScale = next;
       resize();

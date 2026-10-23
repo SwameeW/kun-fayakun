@@ -15,8 +15,21 @@ export function readPreference(name: string): boolean | null {
 }
 
 export function writePreference(name: string, value: boolean): void {
+  writePreferenceString(name, String(value));
+}
+
+/** A string preference (e.g. the explorer's detail choice), or null when unset or unavailable. */
+export function readPreferenceString(name: string): string | null {
   try {
-    window.localStorage.setItem(PREFIX + name, String(value));
+    return window.localStorage.getItem(PREFIX + name);
+  } catch {
+    return null;
+  }
+}
+
+export function writePreferenceString(name: string, value: string): void {
+  try {
+    window.localStorage.setItem(PREFIX + name, value);
   } catch {
     /* Storage unavailable: the preference lasts for this page only. */
   }

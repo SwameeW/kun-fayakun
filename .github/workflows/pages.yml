@@ -1,7 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Deploys only what CI has passed: after a CI run for a push to main succeeds (validate,
+# typecheck, lint, loading budget and the browser tests), or when started by hand.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -16,9 +20,16 @@ concurrency:
 
 jobs:
   build:
+    # A pull request from a fork's own "main" branch also matches the branch filter: only pushes deploy.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The commit CI tested, not whatever main points at by the time this runs.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -26,6 +37,8 @@ jobs:
       - run: npm ci
       # validate + typecheck + vite build: a scripture mismatch never deploys.
       - run: npm run build
+      # A manual run has no CI run behind it, so the loading budget is checked here too.
+      - run: npx tsx scripts/check-bundle.ts
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
