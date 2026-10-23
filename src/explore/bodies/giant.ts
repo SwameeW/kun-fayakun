@@ -1,114 +1,40 @@
 /**
- * Jupiter and Saturn for the explorer: flattened globes of cloud bands, and Saturn's rings.
+ * Jupiter and Saturn for the explorer, from Hubble's OPAL global maps (Jupiter 2025-12-11, Saturn
+ * 2025-08-29), on flattened globes read at planetographic latitude (the latitude of the ellipsoid's
+ * normal, as OPAL's maps are navigated), and Saturn's rings (./rings).
  *
- * Belts, zones and storms are drawn after the planets' general look, not measured (illustrative,
- * as the interface says, until the mission maps arrive in Stage 7): turbulence stretched east-west
- * by the zonal winds, fading out toward the poles, which turn a smooth muted colour.
+ * Jupiter's bands drift: each latitude is carried east or west at its own speed, so belts slide past
+ * zones. The drift is two-phase (a flow map): two readings of the map, each carried for one period
+ * and then reset, cross-fade so that neither is ever carried further than half a period's drift, so
+ * the map is never smeared, sheared or torn however long one watches. The speeds are schematic (jets
+ * alternating with latitude, sped up so the motion shows), not a measured wind profile: illustrative.
  *
  * Light: Minnaert's law with k = 1.25 (mu0^k mu^(k-1)), so the disc darkens toward its limb as cloud
  * decks under haze do; near the terminator sunlight crosses more of the upper haze and reddens, and a
  * faint warm twilight carries a little past it; the terminator is softened over a pixel. Saturn's
- * globe takes the rings' shadow from their measured optical depth.
+ * globe takes the rings' shadow from the ring strip's measured opacity.
  */
 
-import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Data3DTexture } from 'three/webgpu';
-import { abs, dot, float, max, mix, normalize, positionLocal, pow, smoothstep, texture3D, uniform, vec3 } from 'three/tsl';
-import { band, keepOnSphere, litCosine, noiseIfKept, ripple, sphereFootprint, sunlit, type FloatNode, type Tier, type Vec3Node } from './shading';
-import { createRings, ringShadow, type ExploreRings, type ProfileTexture } from './rings';
+import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Object3D } from 'three/webgpu';
+import { abs, asin, cos, dot, float, fract, max, mix, normalize, positionLocal, pow, smoothstep, uniform, vec3 } from 'three/tsl';
+import type { PlanetTextures } from '../assets/streaming';
+import type { ExploreDetail } from '../detail';
+import { mapCoords, sampleSlot, shiftCoords, type FloatNode, type Vec3Node } from '../render/sampling';
+import { createRings, ringShadow, type ExploreRings, type RingSpan } from './rings';
+import { litCosine, sunlit } from './shading';
 
-const SEGMENTS: Readonly<Record<Tier, readonly [number, number]>> = { high: [192, 128], mid: [160, 112], low: [112, 80] };
 /** Minnaert's exponent for the cloud decks' limb darkening (1 would be Lambert). */
 const MINNAERT_K = 1.25;
-
-type Surface = (n: Vec3Node, footprint: FloatNode, level: Tier) => Vec3Node;
-
-/** 0 at the equator to 1 near the poles: the zonal patterns give way to a smooth polar colour. */
-const polarCap = (y: FloatNode, from: number, to: number): FloatNode => smoothstep(from, to, abs(y));
-
 /**
- * Jupiter: cream zones and rust-brown belts, a pale equatorial zone, east-west streaks within them,
- * and an oval storm in the southern tropics after the Great Red Spot's look.
+ * Jupiter's schematic zonal drift: the fastest jet's speed (turns of longitude per second, sped up
+ * for the eye), the latitude spacing of its alternating jets (radians), and the flow map's period
+ * (seconds): the furthest any reading is carried is half the fastest jet's drift over one period.
  */
-export function jupiterSurface(noise: Data3DTexture): Surface {
-  return (n, footprint, level) => {
-    const T = (p: Vec3Node): FloatNode => texture3D(noise, p).r;
-    const cap = polarCap(n.y, 0.72, 0.9);
-    const zonal = float(1).sub(cap);
-    // Turbulence stretched east-west, as the zonal winds draw it out (long and thin), at four scales,
-    // each kept only while its streaks span a few pixels.
-    const big = T(vec3(n.x.mul(1.6), n.y.mul(6), n.z.mul(1.6)).add(0.37)).sub(0.5);
-    const mid = T(vec3(n.x.mul(3), n.y.mul(24), n.z.mul(3)).add(0.11)).sub(0.5).mul(keepOnSphere(footprint, 80));
-    const fineKept = keepOnSphere(footprint, 220);
-    const finerKept = keepOnSphere(footprint, 520);
-    const fine = level === 'low' ? float(0) : noiseIfKept(noise, vec3(n.x.mul(7), n.y.mul(64), n.z.mul(7)).add(0.71), fineKept).sub(0.5).mul(fineKept);
-    const finer = level === 'high' ? noiseIfKept(noise, vec3(n.x.mul(16), n.y.mul(150), n.z.mul(16)).add(0.29), finerKept).sub(0.5).mul(finerKept) : float(0);
-    const swirl = big.mul(0.05).add(mid.mul(0.03)).add(fine.mul(0.012)).add(finer.mul(0.005));
-    const y = n.y.add(swirl.mul(zonal));
-    const zone = vec3(0.78, 0.73, 0.62);
-    const equator = vec3(0.8, 0.7, 0.55);
-    const belt = vec3(0.58, 0.39, 0.25);
-    const darkBelt = vec3(0.48, 0.31, 0.19);
-    const temperate = vec3(0.6, 0.5, 0.39);
-    const pole = vec3(0.5, 0.47, 0.43);
-    let c: Vec3Node = zone;
-    c = mix(c, equator, band(y, -0.122, 0.122, 0.015));
-    const north = band(y, 0.122, 0.292, 0.018);
-    const south = band(y, -0.342, -0.122, 0.02);
-    // Within the belts, the colour streaks along the flow rather than breaking into blotches.
-    const streaks = mid.mul(0.55).add(fine.mul(0.4)).add(finer.mul(0.3));
-    c = mix(c, belt.mul(streaks.add(1)), north.mul(big.mul(0.4).add(0.95)));
-    c = mix(c, darkBelt.mul(streaks.add(1)), south.mul(big.mul(0.4).add(0.95)));
-    // Dark filaments drawn out by the winds (ridges of the finer turbulence).
-    const filaments = float(1).sub(abs(fine.add(finer.mul(0.7)).mul(3.2))).max(0).mul(north.add(south)).mul(zonal);
-    c = c.mul(float(1).sub(filaments.mul(0.18)));
-    c = mix(c, temperate, band(y, 0.407, 0.515, 0.014).mul(0.85));
-    c = mix(c, temperate, band(y, -0.53, -0.438, 0.014).mul(0.8));
-    c = mix(c, temperate, band(y, 0.574, 0.629, 0.012).mul(0.55));
-    c = mix(c, temperate, band(y, -0.656, -0.602, 0.012).mul(0.5));
-    // Thin streaks within the bands, drawn out by the winds.
-    c = c.mul(ripple(y, 240, big.mul(6)).mul(0.06).mul(zonal).add(1));
-    // The oval storm in the southern tropics.
-    const lat = -22.5 * (Math.PI / 180);
-    const centre = vec3(0, Math.sin(lat), Math.cos(lat));
-    const ex = dot(n, vec3(1, 0, 0)).div(0.125);
-    const ny = dot(n, vec3(0, Math.cos(lat), -Math.sin(lat))).div(0.078);
-    const r2 = ex.mul(ex).add(ny.mul(ny)).add(mid.mul(0.3));
-    const facing = smoothstep(0.5, 0.7, dot(n, centre));
-    const spot = float(1).sub(smoothstep(0.35, 1.05, r2)).mul(facing);
-    const collar = smoothstep(0.85, 1.25, r2).mul(float(1).sub(smoothstep(1.35, 2.4, r2))).mul(facing);
-    c = mix(c, zone, collar.mul(0.6));
-    c = mix(c, vec3(0.74, 0.4, 0.27).mul(fine.mul(0.3).add(1)), spot);
-    c = c.mul(fine.mul(0.08).add(finer.mul(0.06)).add(mid.mul(0.05)).mul(zonal).add(1));
-    // The poles: one smooth muted colour, no streaks.
-    return mix(c, pole.mul(big.mul(0.08).add(1)), cap);
-  };
-}
-
-/** Saturn: pale butterscotch, softly banded, a brighter equatorial zone, a muted hexagon-free pole. */
-export function saturnSurface(noise: Data3DTexture): Surface {
-  return (n, footprint, level) => {
-    const T = (p: Vec3Node): FloatNode => texture3D(noise, p).r;
-    const cap = polarCap(n.y, 0.78, 0.93);
-    const zonal = float(1).sub(cap);
-    const big = T(vec3(n.x.mul(1.2), n.y.mul(7), n.z.mul(1.2)).add(0.13)).sub(0.5);
-    const fineKept = keepOnSphere(footprint, 150);
-    const fine = level === 'low' ? float(0) : noiseIfKept(noise, vec3(n.x.mul(4), n.y.mul(40), n.z.mul(4)).add(0.52), fineKept).sub(0.5).mul(fineKept);
-    const y = n.y.add(big.mul(0.025).mul(zonal));
-    const ay = abs(y);
-    const base = vec3(0.86, 0.77, 0.58);
-    const belt = vec3(0.74, 0.61, 0.42);
-    let c: Vec3Node = base;
-    c = mix(c, vec3(0.9, 0.83, 0.65), band(y, -0.14, 0.14, 0.035));
-    c = mix(c, belt, band(ay, 0.2, 0.34, 0.035).mul(0.75));
-    c = mix(c, belt, band(ay, 0.44, 0.54, 0.025).mul(0.5));
-    c = mix(c, belt, band(ay, 0.62, 0.68, 0.02).mul(0.4));
-    c = c.mul(ripple(y, 160, fine.mul(4)).mul(0.03).mul(zonal).add(1));
-    c = c.mul(fine.mul(0.07).mul(zonal).add(1));
-    return mix(c, vec3(0.62, 0.62, 0.58), cap);
-  };
-}
+const FLOW = { speed: 1 / 2400, jetSpacing: 0.42, period: 16 } as const;
 
 export interface GiantFrame {
+  /** Seconds (the bands' drift). */
+  time: number;
   /** Unit direction to the Sun, render frame. */
   sun: { x: number; y: number; z: number };
   /** Sunlight on the planet (1 at 1 au). */
@@ -117,36 +43,64 @@ export interface GiantFrame {
 
 export interface ExploreGiant {
   readonly object: Group;
+  readonly rings: ExploreRings | null;
   /** Set the object's position, scale and orientation first, and its world matrix current. */
   update(frame: GiantFrame, cameraWorld: Vector3): void;
-  setTier(tier: Tier): void;
+  prepare(detail: ExploreDetail): Object3D[];
+  apply(detail: ExploreDetail): void;
   dispose(): void;
 }
 
 export interface GiantOptions {
   name: string;
+  body: 'jupiter' | 'saturn';
   /** Polar over equatorial radius. */
   polar: number;
-  surface: Surface;
-  /** Saturn: the rings' profile and their inner and outer radius in planet radii. */
-  rings?: { profile: ProfileTexture; inner: number; outer: number };
+  /** The map's u at east longitude 0 (planets.json). */
+  uAtLon0: number;
+  /** Bands drift (Jupiter). */
+  flow: boolean;
+  /** Saturn: the rings' radial span in planet radii, and the geometry the strip's colour was measured in. */
+  rings?: RingSpan & { mosaic: { mu0: number; mu: number; phaseRad: number } };
 }
 
-export function createGiant(options: GiantOptions, tier: Tier): ExploreGiant {
+/** Schematic zonal speed at planetographic latitude `lat` (radians), turns per second. */
+function zonalSpeed(lat: FloatNode): FloatNode {
+  // Alternating jets, strongest near the equator and weakening toward the poles.
+  return cos(lat.mul(Math.PI / FLOW.jetSpacing)).mul(cos(lat).pow(2)).mul(FLOW.speed);
+}
+
+export function createGiant(textures: PlanetTextures, options: GiantOptions, initial: ExploreDetail): ExploreGiant {
   const object = new Group();
   object.name = options.name;
+  const uTime = uniform(0);
   const uLight = uniform(1);
   const uSun = uniform(new Vector3(1, 0, 0));
   const uEye = uniform(new Vector3(0, 0, 3));
   const polar = options.polar;
+  const colourSlot = textures.slot(options.body, 'colour');
+  const ringSlot = options.rings ? textures.slot('saturn', 'rings') : null;
 
-  const build = (level: Tier): MeshBasicNodeMaterial => {
-    const n = normalize(positionLocal);
-    const footprint = sphereFootprint(n);
-    const albedo = options.surface(n, footprint, level);
-    // The flattened globe: its points and normals in the body's frame.
+  const build = (): MeshBasicNodeMaterial => {
+    // The flattened globe: its points and outward normals in the body's frame.
     const point = vec3(positionLocal.x, positionLocal.y.mul(polar), positionLocal.z);
     const normal = normalize(vec3(positionLocal.x, positionLocal.y.div(polar), positionLocal.z));
+    const c = mapCoords(normal, normal.y, options.uAtLon0);
+    let albedo: Vec3Node;
+    if (options.flow) {
+      const lat = asin(normal.y.clamp(-1, 1));
+      const speed = zonalSpeed(lat);
+      const phase = fract(uTime.div(FLOW.period));
+      const phaseB = fract(phase.add(0.5));
+      // Each reading is carried by (phase - 0.5) periods of drift: from -half to +half, then reset.
+      const a = sampleSlot(colourSlot, shiftCoords(c, speed.mul(phase.sub(0.5)).mul(FLOW.period).negate())).rgb;
+      const b = sampleSlot(colourSlot, shiftCoords(c, speed.mul(phaseB.sub(0.5)).mul(FLOW.period).negate())).rgb;
+      // Each reading's weight is greatest when it is carried least.
+      const weightA = float(1).sub(abs(phase.mul(2).sub(1)));
+      albedo = mix(b, a, weightA);
+    } else {
+      albedo = sampleSlot(colourSlot, c).rgb;
+    }
     const view = normalize(uEye.sub(point));
     const nDotL = dot(normal, uSun);
     const mu0 = litCosine(nDotL);
@@ -156,56 +110,54 @@ export function createGiant(options: GiantOptions, tier: Tier): ExploreGiant {
     const warm = mix(vec3(1, 0.6, 0.36), vec3(1, 1, 1), smoothstep(0, 0.3, mu0));
     const twilight = smoothstep(-0.07, 0.01, nDotL).mul(float(1).sub(smoothstep(0, 0.12, nDotL))).mul(0.018);
     let light: Vec3Node = warm.mul(minnaert.mul(sunlit(nDotL, 0.01))).add(vec3(1, 0.55, 0.3).mul(twilight));
-    if (options.rings) light = light.mul(ringShadow(options.rings.profile, point, uSun, options.rings.inner, options.rings.outer));
+    if (options.rings && ringSlot) light = light.mul(ringShadow(ringSlot, point, uSun, options.rings));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = albedo.mul(light).mul(uLight);
     return material;
   };
 
-  const materials = new Map<Tier, MeshBasicNodeMaterial>();
-  const materialFor = (level: Tier): MeshBasicNodeMaterial => {
-    let m = materials.get(level);
-    if (!m) {
-      m = build(level);
-      materials.set(level, m);
+  const material = build();
+  const geometries = new Map<number, SphereGeometry>();
+  const sphere = (segments: number): SphereGeometry => {
+    let g = geometries.get(segments);
+    if (!g) {
+      g = new SphereGeometry(1, segments, Math.max(16, Math.round(segments / 2)));
+      geometries.set(segments, g);
     }
-    return m;
+    return g;
   };
-  let geometry = new SphereGeometry(1, ...SEGMENTS[tier]);
-  const globe = new Mesh(geometry, materialFor(tier));
+  const globe = new Mesh(sphere(initial.sphereSegments), material);
   globe.scale.y = polar;
   globe.name = `${options.name}-globe`;
   object.add(globe);
-  const rings: ExploreRings | null = options.rings ? createRings(options.rings.profile, options.rings.inner, options.rings.outer, polar, tier) : null;
-  if (rings) object.add(rings.mesh);
-  let current = tier;
+  const rings: ExploreRings | null = options.rings && ringSlot ? createRings(ringSlot, options.rings, polar, options.rings.mosaic, initial) : null;
+  if (rings) object.add(rings.object);
   const inverse = new Matrix4();
   const eye = new Vector3();
 
   return {
     object,
+    rings,
     update(frame, cameraWorld) {
+      uTime.value = frame.time;
       uLight.value = frame.light;
       inverse.copy(object.matrixWorld).invert();
       uSun.value.set(frame.sun.x, frame.sun.y, frame.sun.z).transformDirection(inverse);
       eye.copy(cameraWorld).applyMatrix4(inverse);
       uEye.value.copy(eye);
-      rings?.update(uSun.value, eye, frame.light);
+      rings?.update(uSun.value, eye, frame.light, frame.time);
       object.visible = frame.light > 1e-3;
     },
-    setTier(next) {
-      if (next === current) return;
-      current = next;
-      const old = geometry;
-      geometry = new SphereGeometry(1, ...SEGMENTS[next]);
-      globe.geometry = geometry;
-      old.dispose();
-      globe.material = materialFor(next);
-      rings?.setTier(next);
+    prepare(detail) {
+      return rings ? rings.prepare(detail) : [];
+    },
+    apply(detail) {
+      globe.geometry = sphere(detail.sphereSegments);
+      rings?.apply(detail);
     },
     dispose() {
-      geometry.dispose();
-      for (const m of materials.values()) m.dispose();
+      for (const g of geometries.values()) g.dispose();
+      material.dispose();
       rings?.dispose();
     },
   };

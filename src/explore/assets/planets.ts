@@ -49,6 +49,30 @@ export interface PlanetsManifest {
   schema: number;
   tiers: Record<PlanetTier | 'ultra', { width: number; bytes: number; budgetBytes: number; published: boolean }>;
   files: PlanetTexture[];
+  /** Per body: captions and conventions (as written by scripts/planets/manifest.py). */
+  bodies?: Partial<Record<PlanetBody, { caption?: string }>>;
+  facts?: {
+    saturnRings?: {
+      /** The geometry the ring strip's colour was measured in (the PIA11142 mosaic's lit face). */
+      colourModel?: { viewElevationDeg: number; sunElevationDeg: number };
+    };
+  };
+}
+
+/**
+ * The ring strip's colour is a thick ring's lit face as the PIA11142 mosaic shows it, seen from 10
+ * degrees below the rings with the Sun 4 degrees below them, at 28 degrees phase (planets.json
+ * facts.saturnRings.observation.colour gives the phase in words; colourModel the elevations).
+ */
+export const RING_MOSAIC_PHASE_DEG = 28;
+
+/** The geometry the ring strip's colour was measured in: |sin| of the Sun's and the view's elevations and the phase angle. */
+export function ringColourGeometry(manifest: PlanetsManifest): { mu0: number; mu: number; phaseRad: number } {
+  const model = manifest.facts?.saturnRings?.colourModel;
+  const sunDeg = model?.sunElevationDeg ?? -4.04;
+  const viewDeg = model?.viewElevationDeg ?? 10;
+  const rad = Math.PI / 180;
+  return { mu0: Math.abs(Math.sin(sunDeg * rad)), mu: Math.abs(Math.sin(viewDeg * rad)), phaseRad: RING_MOSAIC_PHASE_DEG * rad };
 }
 
 export function findPlanetTexture(manifest: PlanetsManifest, body: PlanetBody, map: PlanetMap, tier: PlanetTier): PlanetTexture | undefined {

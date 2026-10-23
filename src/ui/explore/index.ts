@@ -1,4 +1,5 @@
 import { BODY_IDS, type App, type BodyId, type ChapterId, type UniverseView } from '../../core/types';
+import { PLANETS_MANIFEST_URL, planetCredits, type PlanetsManifest } from '../../explore/assets/planets';
 import { focusLost, h } from '../dom';
 import '../styles/explore.css';
 
@@ -79,8 +80,9 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const sunlight = h('p', { class: 'kf-universe-line kf-universe-extra' });
   const filter = h('p', { class: 'kf-universe-line kf-universe-extra kf-universe-filter', hidden: true }, i18n.t('ui.universe.filter'));
   const date = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-extra' });
-  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative' }, i18n.t('ui.universe.illustrative'));
-  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, scale, sunlight, filter, date, illustrative);
+  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative', hidden: true }, i18n.t('ui.universe.illustrative'));
+  const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true });
+  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, scale, sunlight, filter, date, illustrative, imagery);
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));
 
@@ -154,6 +156,22 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     return i18n.t('ui.universe.sunlight', { percent: `${i18n.number(percent, digits)}%` });
   };
 
+  /** Per body: its maps' credits (and the Earth's caption), once planets.json has loaded. */
+  let credits: Partial<Record<BodyId, string>> = {};
+  void app.assets.json<PlanetsManifest>(PLANETS_MANIFEST_URL).then(
+    (manifest) => {
+      const next: Partial<Record<BodyId, string>> = {};
+      for (const body of ['earth', 'moon', 'jupiter', 'saturn'] as const) {
+        const lines = planetCredits(manifest.files.filter((f) => f.body === body));
+        if (lines.length === 0) continue;
+        const caption = body === 'earth' ? manifest.bodies?.earth?.caption : undefined;
+        next[body] = [caption, i18n.t('ui.universe.imagery', { credits: lines.join('; ') })].filter(Boolean).join(' ');
+      }
+      credits = next;
+    },
+    () => undefined,
+  );
+
   let visible = false;
   let ready = false;
   let shownFocus: BodyId | null = null;
@@ -173,6 +191,11 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     filter.hidden = !view.solarFilter;
     readout.classList.toggle('is-filtered', view.solarFilter);
     write(date, i18n.t('ui.universe.date', { date: dateFormat.format(new Date(view.unixMs)) }));
+    // Whose imagery this is (the focus's maps), or, for the procedural Sun, that it is illustrative.
+    const line = credits[view.focus];
+    imagery.hidden = !line;
+    write(imagery, line ?? '');
+    illustrative.hidden = view.focus !== 'sun';
     if (view.focus !== shownFocus) {
       for (const [id, button] of buttons) button.setAttribute('aria-pressed', String(id === view.focus));
       if (shownFocus !== null) announce(i18n.t('ui.universe.announce.travel', { body: name(view.focus) }));
