@@ -201,6 +201,40 @@
       }
     },
     {
+      "id": "sdss-dr20",
+      "kind": "dataset",
+      "title": "Sloan Digital Sky Survey Data Release 20: spectroscopic galaxy redshifts (SpecObj)",
+      "author": "SDSS Collaboration",
+      "url": "https://www.sdss.org/dr20/",
+      "version": "DR20; 420000 galaxies subsampled from 659661 rows",
+      "license": "SDSS data are public; use requires the SDSS acknowledgements below",
+      "licenseUrl": "https://www.sdss.org/collaboration/citing-sdss/",
+      "credit": "Funding for the SDSS and SDSS-II has been provided by the Alfred P. Sloan Foundation, the Participating Institutions, the National Science Foundation, the U.S. Department of Energy, the National Aeronautics and Space Administration, the Japanese Monbukagakusho, the Max Planck Society, and the Higher Education Funding Council for England. The SDSS Web Site is http://www.sdss.org/ . Funding for SDSS-III has been provided by the Alfred P. Sloan Foundation, the Participating Institutions, the National Science Foundation, and the U.S. Department of Energy Office of Science. The SDSS-III web site is http://www.sdss3.org/. Funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions. SDSS-IV acknowledges support and resources from the Center for High Performance Computing at the University of Utah. The SDSS website is www.sdss4.org. SDSS-IV is managed by the Astrophysical Research Consortium for the Participating Institutions of the SDSS Collaboration including the Brazilian Participation Group, the Carnegie Institution for Science, Carnegie Mellon University, Center for Astrophysics | Harvard \\& Smithsonian, the Chilean Participation Group, the French Participation Group, Instituto de Astrof\\'isica de Canarias, The Johns Hopkins University, Kavli Institute for the Physics and Mathematics of the Universe (IPMU) / University of Tokyo, the Korean Participation Group, Lawrence Berkeley National Laboratory, Leibniz Institut f\\\"ur Astrophysik Potsdam (AIP), Max-Planck-Institut f\\\"ur Astronomie (MPIA Heidelberg), Max-Planck-Institut f\\\"ur Astrophysik (MPA Garching), Max-Planck-Institut f\\\"ur Extraterrestrische Physik (MPE), National Astronomical Observatories of China, New Mexico State University, New York University, University of Notre Dame, Observat\\'ario Nacional / MCTI, The Ohio State University, Pennsylvania State University, Shanghai Astronomical Observatory, United Kingdom Participation Group, Universidad Nacional Aut\\'onoma de M\\'exico, University of Arizona, University of Colorado Boulder, University of Oxford, University of Portsmouth, University of Utah, University of Virginia, University of Washington, University of Wisconsin, Vanderbilt University, and Yale University. Funding for the Sloan Digital Sky Survey V has been provided by the Alfred P. Sloan Foundation, the Heising-Simons Foundation, the National Science Foundation, and the Participating Institutions. SDSS acknowledges support and resources from the Center for High-Performance Computing at the University of Utah. SDSS telescopes are located at Apache Point Observatory, funded by the Astrophysical Research Consortium and operated by New Mexico State University, and at Las Campanas Observatory, operated by the Carnegie Institution for Science. The SDSS web site is \\url{www.sdss.org}. SDSS is managed by the Astrophysical Research Consortium for the Participating Institutions of the SDSS Collaboration, including the Carnegie Institution for Science, Chilean National Time Allocation Committee (CNTAC) ratified researchers, Caltech, the Gotham Participation Group, Harvard University, Heidelberg University, The Flatiron Institute, The Johns Hopkins University, L'Ecole polytechnique f\\'{e}d\\'{e}rale de Lausanne (EPFL), Leibniz-Institut f\\\"{u}r Astrophysik Potsdam (AIP), Max-Planck-Institut f\\\"{u}r Astronomie (MPIA Heidelberg), Max-Planck-Institut f\\\"{u}r Extraterrestrische Physik (MPE), Nanjing University, National Astronomical Observatories of China (NAOC), New Mexico State University, The Ohio State University, Pennsylvania State University, Smithsonian Astrophysical Observatory, Space Telescope Science Institute (STScI), the Stellar Astrophysics Participation Group, Universidad Nacional Aut\\'{o}noma de M\\'{e}xico, University of Arizona, University of Colorado Boulder, University of Illinois at Urbana-Champaign, University of Toronto, University of Utah, University of Virginia, Yale University, and Yunnan University.",
+      "notes": "The sample spans SDSS-I/II, SDSS-III (BOSS) and SDSS-IV (eBOSS) spectra as distributed in DR20, so all four acknowledgements apply; each is copied verbatim by scripts/sdss/build.py from its official page (https://www.sdss.org/collaboration/citing-sdss/, https://www.sdss4.org/collaboration/citing-sdss/, https://www.sdss3.org/collaboration/boiler-plate.php, https://classic.sdss.org/collaboration/credits.html). Cite: Kollmeier et al. 2026, AJ 171, 52 (SDSS-V overview; arXiv:2507.06989). Queries: SELECT specObjID, ra, dec, z FROM SpecObj WHERE class='GALAXY' AND zWarning=0 AND z>0.01 AND z<0.1; SELECT specObjID, ra, dec, z FROM SpecObj WHERE class='GALAXY' AND zWarning=0 AND z>0.01 AND z<0.8 AND (fiberID % 9)=0",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "gott-2005",
+      "kind": "paper",
+      "title": "A Map of the Universe",
+      "author": "Gott et al.",
+      "url": "https://doi.org/10.1086/428890",
+      "version": "ApJ 624, 463-484 (2005)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Gott et al., ApJ 624, 463 (2005)",
+      "notes": null,
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "sunnah-bukhari",
       "kind": "hadith-collection",
       "title": "Sahih al-Bukhari",
@@ -345,6 +379,57 @@
       "licenseUrl": null,
       "credit": "Quran Foundation",
       "notes": "Planned for M4 (recitation through a server-side OAuth2 proxy). Not used at runtime yet. 'npm run validate -- --online' can compare the Tanzil text with GET /content/api/v4/quran/verses/uthmani?verse_key=... (field text_uthmani) when QF_CLIENT_ID and QF_CLIENT_SECRET are set; that text is held in memory only and never written to disk.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hubble-1929",
+      "kind": "paper",
+      "title": "A relation between distance and radial velocity among extra-galactic nebulae",
+      "author": "Edwin Hubble",
+      "url": "https://doi.org/10.1073/pnas.15.3.168",
+      "version": "PNAS 15 (3), 168-173 (1929)",
+      "license": "Cited for a historical statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Edwin Hubble, PNAS 15 (3), 168-173 (1929)",
+      "notes": null,
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "riess-1998",
+      "kind": "paper",
+      "title": "Observational Evidence from Supernovae for an Accelerating Universe and a Cosmological Constant",
+      "author": "Riess et al.",
+      "url": "https://doi.org/10.1086/300499",
+      "version": "AJ 116, 1009 (1998)",
+      "license": "Cited for a historical statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Riess et al., AJ 116, 1009 (1998)",
+      "notes": null,
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "perlmutter-1999",
+      "kind": "paper",
+      "title": "Measurements of Omega and Lambda from 42 High-Redshift Supernovae",
+      "author": "Perlmutter et al.",
+      "url": "https://doi.org/10.1086/307221",
+      "version": "ApJ 517, 565 (1999)",
+      "license": "Cited for a historical statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Perlmutter et al., ApJ 517, 565 (1999)",
+      "notes": null,
       "review": {
         "reviewer": null,
         "role": null,

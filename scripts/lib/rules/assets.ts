@@ -1,9 +1,10 @@
-/** Rule j: M1 assets exist and agree with the data they were generated from. */
+/** Rule j: generated assets exist and agree with the data they were generated from. */
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { arabicWords } from '../arabic';
 import { calligraphyCitations, type CalligraphyCitation } from '../citations';
 import type { ValidationContext } from '../context';
-import { fileExists, loadJson, relPath, rootPath } from '../files';
+import { fileExists, loadJson, readBytes, relPath, rootPath } from '../files';
 import type { RuleLog } from '../report';
 import { checkFields, isRecord } from '../shape';
 import { describeCodePoints, nfc } from '../text';
@@ -11,6 +12,9 @@ import { describeCodePoints, nfc } from '../text';
 const CALLIGRAPHY_OWNER = 'calligraphy builder, npm run preprocess:calligraphy';
 const CMB_OWNER = 'cmb builder, npm run preprocess:cmb';
 const PLANCK_CREDIT = 'ESA and the Planck Collaboration';
+const SDSS_OWNER = 'SDSS builder, npm run preprocess:sdss';
+/** Bytes per galaxy in galaxies.bin: four int16 values (x, y, z, redshift). */
+const SDSS_STRIDE = 8;
 
 /** The word a calligraphy entry must show, from the NFC Tanzil text in quran.json. */
 export function expectedWord(arabic: string, wordIndexFromEnd: number): string | null {
@@ -77,8 +81,45 @@ function checkCmb(log: RuleLog): void {
   else log.pass(`${path}: credit "${PLANCK_CREDIT}", ${files.length} listed texture file(s) present`);
 }
 
+/** The SDSS galaxy sample: its binary matches the manifest (size and hash), and the panel's count matches both. */
+function checkSdss(ctx: ValidationContext, log: RuleLog): void {
+  const dir = rootPath('public', 'assets', 'sdss');
+  const loaded = loadJson<unknown>(join(dir, 'galaxies.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${SDSS_OWNER})`);
+    return;
+  }
+  const meta = loaded.value;
+  const problems = checkFields(
+    meta,
+    { file: 'nonempty', count: 'number', scaleMpc: 'number', redshiftScale: 'number', nearLimit: 'number', sha256: 'nonempty', credit: 'nonempty' },
+    path,
+  );
+  if (!isRecord(meta) || problems.length > 0) {
+    for (const p of problems) log.fail(`${p} (owner: ${SDSS_OWNER})`);
+    return;
+  }
+  const binary = join(dir, String(meta.file));
+  if (!fileExists(binary)) problems.push(`${relPath(binary)} is missing`);
+  else {
+    const bytes = readBytes(binary);
+    if (bytes.byteLength !== Number(meta.count) * SDSS_STRIDE) {
+      problems.push(`${relPath(binary)}: ${bytes.byteLength} bytes, expected ${Number(meta.count) * SDSS_STRIDE} for ${String(meta.count)} galaxies`);
+    }
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    if (hash !== meta.sha256) problems.push(`${relPath(binary)}: sha256 ${hash} does not match the manifest`);
+  }
+  const constant = ctx.constants.status === 'ok' ? ctx.constants.value.constants.find((c) => c.id === 'sdss.sample.count') : undefined;
+  if (!constant) problems.push('data/constants.json: no sdss.sample.count');
+  else if (constant.value !== meta.count) problems.push(`data/constants.json: sdss.sample.count is ${String(constant.value)}, the sample holds ${String(meta.count)}`);
+  if (problems.length > 0) for (const p of problems) log.fail(`${p} (owner: ${SDSS_OWNER})`);
+  else log.pass(`${path}: ${String(meta.count)} galaxies; binary size and sha256 match; sdss.sample.count agrees`);
+}
+
 export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   for (const entry of calligraphyCitations(ctx.citations)) checkCalligraphy(ctx, entry, log);
   checkFont(log);
   checkCmb(log);
+  checkSdss(ctx, log);
 }

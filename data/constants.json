@@ -4,7 +4,7 @@
       "id": "universe.age",
       "description": "Age of the universe for the base-ΛCDM model, 68% interval. From Planck 2018 VI, Table 2, column TT,TE,EE+lowE+lensing+BAO (the 13.787 ± 0.020 Gyr figure). The baseline Planck-only column TT,TE,EE+lowE+lensing gives 13.797 ± 0.023 Gyr.",
       "value": 13.787,
-      "uncertainty": 0.020,
+      "uncertainty": 0.02,
       "unit": "Gyr",
       "qualifier": "assuming the standard ΛCDM model",
       "citation": {
@@ -29,7 +29,7 @@
     {
       "id": "recombination.redshift",
       "description": "Redshift z* of last scattering (photon decoupling at recombination), base-ΛCDM, 68% interval. Planck 2018 VI, Table 2, column TT,TE,EE+lowE+lensing+BAO; the same column as universe.age. The baseline column without BAO gives 1089.92 ± 0.25.",
-      "value": 1089.80,
+      "value": 1089.8,
       "uncertainty": 0.21,
       "unit": "",
       "qualifier": "assuming the standard ΛCDM model",
@@ -120,8 +120,8 @@
     {
       "id": "bbn.deuterium.ratio",
       "description": "Primordial deuterium-to-hydrogen ratio by number, D/H = (25.08 ± 0.29) × 10^-6: the PDG recommended value from quasar absorption systems, eq. (24.2).",
-      "value": 2.508e-5,
-      "uncertainty": 2.9e-7,
+      "value": 2.508e-05,
+      "uncertainty": 2.9e-07,
       "unit": "",
       "qualifier": "by number, relative to hydrogen",
       "citation": {
@@ -167,6 +167,295 @@
         "text": "Fields, Molaro & Sarkar, Big-Bang Nucleosynthesis, Review 24 in PDG 2026, Sec. 24.5",
         "url": "https://pdg.lbl.gov/2026/reviews/rpp2026-rev-bbang-nucleosynthesis.pdf",
         "accessed": "2026-10-22"
+      }
+    },
+    {
+      "id": "firststars.redshift",
+      "description": "Redshift below which the first (Population III) stars form in current models",
+      "value": 30,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "about; model-dependent (Pop III stars form at z ≈ 30 and below)",
+      "citation": {
+        "text": "Klessen & Glover 2023, ARA&A 61, 65, \"The first stars: formation, properties, and impact\", abstract",
+        "url": "https://arxiv.org/abs/2303.12500",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "firststars.age.earliest",
+      "description": "Cosmic age at z = 30 (first stars begin to form)",
+      "value": 99,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "derived from z = 30",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 30",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "firststars.age.latest",
+      "description": "Cosmic age at z = 20 (Population III star formation well under way)",
+      "value": 178,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "derived from z = 20",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 20",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "jwst.momz14.redshift",
+      "description": "Spectroscopic redshift of MoM-z14, the most distant confirmed galaxy (Oct 2026)",
+      "value": 14.44,
+      "uncertainty": 0.02,
+      "unit": "",
+      "qualifier": "JWST NIRSpec/PRISM Lyman-alpha break",
+      "citation": {
+        "text": "Naidu et al. 2025, \"A Cosmic Miracle: A Remarkably Luminous Galaxy at z_spec = 14.44 Confirmed with JWST\", Open Journal of Astrophysics, abstract",
+        "url": "https://arxiv.org/abs/2505.11263",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "jwst.momz14.age",
+      "description": "Cosmic age at the redshift of MoM-z14",
+      "value": 283,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "derived from z = 14.44 (the paper states about 280 million years)",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 14.44",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "jwst.jades14.redshift.nirspec",
+      "description": "Redshift of JADES-GS-z14-0 from its JWST spectrum",
+      "value": 14.32,
+      "uncertainty": {
+        "plus": 0.08,
+        "minus": 0.2
+      },
+      "unit": "",
+      "qualifier": "JWST NIRSpec/PRISM",
+      "citation": {
+        "text": "Carniani et al. 2024, Nature 633, 318, \"Spectroscopic confirmation of two luminous galaxies at z~14\", abstract",
+        "url": "https://arxiv.org/abs/2405.18485",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "jwst.jades14.redshift.alma",
+      "description": "Redshift of JADES-GS-z14-0 refined by ALMA",
+      "value": 14.1793,
+      "uncertainty": 0.0007,
+      "unit": "",
+      "qualifier": "ALMA [O III] 88 µm line",
+      "citation": {
+        "text": "Schouws et al. 2025, ApJ, \"Detection of [O III] 88 µm in JADES-GS-z14-0 at z = 14.1793\", abstract",
+        "url": "https://arxiv.org/abs/2409.20549",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "jwst.jades14.age",
+      "description": "Cosmic age at the redshift of JADES-GS-z14-0",
+      "value": 290,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "derived from z = 14.1793",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 14.1793",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "hubble.planck",
+      "description": "Hubble constant from the Planck CMB, assuming base ΛCDM",
+      "value": 67.4,
+      "uncertainty": 0.5,
+      "unit": "km/s/Mpc",
+      "qualifier": "early-universe inference, base ΛCDM",
+      "citation": {
+        "text": "Planck Collaboration 2020, A&A 641, A6 (Planck 2018 results VI), abstract",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "hubble.act",
+      "description": "Hubble constant from ACT DR6 + Planck + CMB lensing + DESI DR1 BAO",
+      "value": 68.22,
+      "uncertainty": 0.36,
+      "unit": "km/s/Mpc",
+      "qualifier": "early-universe inference, base ΛCDM",
+      "citation": {
+        "text": "Louis et al. 2025, \"The Atacama Cosmology Telescope: DR6 Power Spectra, Likelihoods and ΛCDM Parameters\", abstract",
+        "url": "https://arxiv.org/abs/2503.14452",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "hubble.act.dr2",
+      "description": "Hubble constant from the same combination with DESI DR2 BAO",
+      "value": 68.43,
+      "uncertainty": 0.27,
+      "unit": "km/s/Mpc",
+      "qualifier": "early-universe inference, base ΛCDM",
+      "citation": {
+        "text": "Louis et al. 2025, \"The Atacama Cosmology Telescope: DR6 Power Spectra, Likelihoods and ΛCDM Parameters\", abstract",
+        "url": "https://arxiv.org/abs/2503.14452",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "hubble.shoes",
+      "description": "Hubble constant measured locally by SH0ES (Cepheids and Type Ia supernovae)",
+      "value": 73.04,
+      "uncertainty": 1.04,
+      "unit": "km/s/Mpc",
+      "qualifier": "local distance ladder",
+      "citation": {
+        "text": "Riess et al. 2022, ApJL 934, L7, \"A Comprehensive Measurement of the Local Value of the Hubble Constant...\", abstract",
+        "url": "https://arxiv.org/abs/2112.04510",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "hubble.tension.sigma",
+      "description": "Statistical difference between the SH0ES value and the Planck + ΛCDM prediction",
+      "value": 5,
+      "uncertainty": null,
+      "unit": "σ",
+      "qualifier": "as reported by SH0ES",
+      "citation": {
+        "text": "Riess et al. 2022, ApJL 934, L7, abstract (\"a 5-sigma difference with H0 predicted by Planck+LCDM\")",
+        "url": "https://arxiv.org/abs/2112.04510",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "desi.darkEnergy.sigma.min",
+      "description": "Lowest reported preference for evolving dark energy over a cosmological constant (DESI DR2 + CMB + supernovae)",
+      "value": 2.8,
+      "uncertainty": null,
+      "unit": "σ",
+      "qualifier": "depends on the supernova sample; not a discovery",
+      "citation": {
+        "text": "DESI Collaboration 2025, Phys. Rev. D 112, 083515, \"DESI DR2 Results II\", abstract",
+        "url": "https://arxiv.org/abs/2503.14738",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "desi.darkEnergy.sigma.max",
+      "description": "Highest reported preference for evolving dark energy over a cosmological constant (DESI DR2 + CMB + supernovae)",
+      "value": 4.2,
+      "uncertainty": null,
+      "unit": "σ",
+      "qualifier": "depends on the supernova sample; not a discovery",
+      "citation": {
+        "text": "DESI Collaboration 2025, Phys. Rev. D 112, 083515, \"DESI DR2 Results II\", abstract",
+        "url": "https://arxiv.org/abs/2503.14738",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "nuclear.ni56.halfLife",
+      "description": "Half-life of nickel-56 (decays to cobalt-56)",
+      "value": 6.075,
+      "uncertainty": 0.01,
+      "unit": "days",
+      "qualifier": "evaluated nuclear data",
+      "citation": {
+        "text": "ENSDF evaluation for A = 56 (Huo Junde, Huo Su, Yang Dong), via the IAEA LiveChart of Nuclides API",
+        "url": "https://nds.iaea.org/relnsd/v1/data?fields=ground_states&nuclides=56ni",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "nuclear.co56.halfLife",
+      "description": "Half-life of cobalt-56 (decays to stable iron-56)",
+      "value": 77.236,
+      "uncertainty": 0.026,
+      "unit": "days",
+      "qualifier": "evaluated nuclear data",
+      "citation": {
+        "text": "ENSDF evaluation for A = 56 (Huo Junde, Huo Su, Yang Dong), via the IAEA LiveChart of Nuclides API",
+        "url": "https://nds.iaea.org/relnsd/v1/data?fields=ground_states&nuclides=56co",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "iron.typeIaShare",
+      "description": "Share of the iron in the universe made by Type Ia supernovae",
+      "value": 0.5,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "about half: Type Ia and core-collapse supernovae contributed roughly equally",
+      "citation": {
+        "text": "Maoz & Graur 2017, ApJ 848, 25, \"Star formation, supernovae, iron, and α: consistent cosmic and Galactic histories\", abstract",
+        "url": "https://arxiv.org/abs/1703.04540",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sdss.sample.count",
+      "description": "Galaxies shown in Chapter 5, each at its measured position",
+      "value": 420000,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "a fair random subsample of DR20 galaxies with reliable redshifts (zWarning = 0): 300,000 of the 384,527 at 0.01 < z < 0.1, and 120,000 from a one-in-nine sample at 0.1 ≤ z < 0.8",
+      "citation": {
+        "text": "Sloan Digital Sky Survey DR20 SpecObj; selection in public/assets/sdss/galaxies.json (scripts/sdss/build.py)",
+        "url": "https://www.sdss.org/dr20/",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sdss.sample.maxRedshift",
+      "description": "Largest redshift in the Chapter 5 sample",
+      "value": 0.8,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "selection limit",
+      "citation": {
+        "text": "Sloan Digital Sky Survey DR20 SpecObj; selection in public/assets/sdss/galaxies.json",
+        "url": "https://www.sdss.org/dr20/",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sdss.sample.lookback",
+      "description": "Light-travel time from the farthest galaxies shown (z = 0.8)",
+      "value": 7.03,
+      "uncertainty": null,
+      "unit": "Gyr",
+      "qualifier": "derived from z = 0.8",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 0.8",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "universe.observable.radius",
+      "description": "Comoving radius of the observable universe (particle horizon) today",
+      "value": 46.2,
+      "uncertainty": null,
+      "unit": "billion light-years",
+      "qualifier": "derived; radiation included",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO); integral of c da / (a^2 H(a)) from a = 1e-12 to 1",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-23"
       }
     }
   ]

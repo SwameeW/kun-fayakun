@@ -1,0 +1,251 @@
+{
+  "id": "ch04",
+  "duration": 92,
+  "intro": {
+    "titleKey": "ch04.intro.title",
+    "subtitleKey": "ch04.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "text": [
+      {
+        "type": "verse",
+        "key": "51:47"
+      }
+    ],
+    "scholarly": {
+      "classical": [
+        {
+          "key": "ch04.scholarly.classical.vast"
+        },
+        {
+          "key": "ch04.scholarly.classical.capable"
+        }
+      ],
+      "modern": [
+        {
+          "key": "ch04.scholarly.modern.expanding"
+        }
+      ]
+    },
+    "science": [
+      {
+        "key": "ch04.science.hubble",
+        "cite": [
+          "hubble-1929"
+        ]
+      },
+      {
+        "key": "ch04.science.redshift",
+        "figure": "expansion"
+      },
+      {
+        "key": "ch04.science.accelerating",
+        "cite": [
+          "riess-1998",
+          "perlmutter-1999"
+        ]
+      },
+      {
+        "key": "ch04.science.tension",
+        "figure": "hubble-tension",
+        "values": {
+          "planck": {
+            "constant": "hubble.planck",
+            "field": "value",
+            "digits": 1
+          },
+          "act": {
+            "constant": "hubble.act.dr2",
+            "field": "value",
+            "digits": 1
+          },
+          "shoes": {
+            "constant": "hubble.shoes",
+            "field": "value",
+            "digits": 1
+          }
+        },
+        "cite": [
+          "hubble.planck",
+          "hubble.act.dr2",
+          "hubble.shoes"
+        ]
+      },
+      {
+        "key": "ch04.science.darkEnergy",
+        "values": {
+          "min": {
+            "constant": "desi.darkEnergy.sigma.min",
+            "field": "value",
+            "digits": 1
+          },
+          "max": {
+            "constant": "desi.darkEnergy.sigma.max",
+            "field": "value",
+            "digits": 1
+          }
+        },
+        "cite": [
+          "desi.darkEnergy.sigma.min"
+        ]
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch04.open.tension"
+      },
+      {
+        "key": "ch04.open.darkEnergy"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 0,
+      "type": "scene",
+      "event": "galaxies"
+    },
+    {
+      "t": 3,
+      "type": "caption",
+      "key": "ch04.caption.galaxies",
+      "duration": 7
+    },
+    {
+      "t": 13,
+      "type": "scene",
+      "event": "stretch"
+    },
+    {
+      "t": 15,
+      "type": "caption",
+      "key": "ch04.caption.stretch",
+      "duration": 7
+    },
+    {
+      "t": 27,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 30,
+      "type": "verse",
+      "key": "51:47",
+      "duration": 16
+    },
+    {
+      "t": 48,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 50,
+      "type": "scene",
+      "event": "redshift"
+    },
+    {
+      "t": 52,
+      "type": "caption",
+      "key": "ch04.caption.redshift",
+      "duration": 7
+    },
+    {
+      "t": 62,
+      "type": "panel",
+      "section": "science"
+    },
+    {
+      "t": 63,
+      "type": "scene",
+      "event": "tension"
+    },
+    {
+      "t": 64,
+      "type": "overlay",
+      "id": "hubble-tension",
+      "visible": true
+    },
+    {
+      "t": 65,
+      "type": "caption",
+      "key": "ch04.caption.tension",
+      "duration": 8
+    },
+    {
+      "t": 76,
+      "type": "caption",
+      "key": "ch04.caption.sideBySide",
+      "duration": 6
+    },
+    {
+      "t": 86,
+      "type": "overlay",
+      "id": "hubble-tension",
+      "visible": false
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        1.5,
+        10
+      ],
+      "target": [
+        0,
+        0,
+        -20
+      ]
+    },
+    {
+      "t": 27,
+      "position": [
+        -2,
+        2,
+        14
+      ],
+      "target": [
+        0,
+        0,
+        -20
+      ]
+    },
+    {
+      "t": 48,
+      "position": [
+        -3,
+        3,
+        18
+      ],
+      "target": [
+        0,
+        0,
+        -10
+      ]
+    },
+    {
+      "t": 92,
+      "position": [
+        8,
+        8,
+        52
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 4,
+    "maxDistance": 180
+  }
+}

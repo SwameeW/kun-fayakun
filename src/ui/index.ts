@@ -12,6 +12,7 @@ import { createPanel } from './panel';
 import { chapterHash, parseHash } from './route';
 import { createSourcesPage } from './sources-page';
 import { createStageCards } from './stage-cards';
+import { createHud } from './hud';
 import { createStatus } from './status';
 import { createTimeline } from './timeline';
 import './styles/base.css';
@@ -45,6 +46,7 @@ export function mountUI(app: App, root: HTMLElement): void {
     announcer.announce(text);
   });
   const cards = createStageCards(app);
+  const hud = createHud(app);
   const status = createStatus(app);
   const sources = createSourcesPage(app);
 
@@ -146,11 +148,13 @@ export function mountUI(app: App, root: HTMLElement): void {
   const main = h(
     'main',
     { id: 'kf-main', class: 'kf-main', tabindex: '-1' },
+    // The HUD (scene tags, scale bar) belongs to the stage's landmark; it is fixed to the viewport.
+    hud.element,
     intro.element,
     h(
       'div',
       { class: 'kf-stage' },
-      h('div', { class: 'kf-stage-top' }, cards.cmbOverlay, cards.exploreHint),
+      h('div', { class: 'kf-stage-top' }, cards.cmbOverlay, ...cards.figureOverlays, cards.exploreHint),
       cards.titleCard,
       h('div', { class: 'kf-stage-text' }, cueText.verseOverlay, cueText.captions),
       cards.outro,

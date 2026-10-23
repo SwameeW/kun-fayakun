@@ -172,3 +172,114 @@
     font-size: 0.75rem;
   }
 }
+
+/* Hubble tension ------------------------------------------------------ */
+.kf-hubble-plot {
+  inline-size: 100%;
+}
+
+.kf-hubble-chart {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
+
+.kf-hubble-grid {
+  stroke: var(--kf-line);
+  stroke-width: 1;
+}
+
+.kf-hubble-tick {
+  fill: var(--kf-text-muted);
+  font: 10px var(--kf-font-ui);
+}
+
+.kf-hubble-bar {
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.kf-hubble-bar.kf-hubble-early,
+.kf-hubble-dot.kf-hubble-early {
+  stroke: #9aa8ff;
+  fill: #9aa8ff;
+}
+
+.kf-hubble-bar.kf-hubble-local,
+.kf-hubble-dot.kf-hubble-local {
+  stroke: var(--kf-gold-strong);
+  fill: var(--kf-gold-strong);
+}
+
+.kf-hubble-values {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: var(--kf-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.kf-hubble-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  padding-inline-start: var(--kf-space-2);
+  border-inline-start: 3px solid #9aa8ff;
+}
+
+.kf-hubble-item.kf-hubble-local {
+  border-inline-start-color: var(--kf-gold-strong);
+}
+
+.kf-hubble-value {
+  color: var(--kf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Decay chain ---------------------------------------------------------- */
+.kf-decay-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kf-decay-step {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius);
+}
+
+.kf-decay-nuclide {
+  font-weight: 600;
+}
+
+.kf-decay-life {
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-decay-arrow {
+  color: var(--kf-gold);
+}
+
+/* Stretching space ----------------------------------------------------- */
+.kf-stretch-input {
+  inline-size: 100%;
+  accent-color: var(--kf-gold);
+}
+
+.kf-stretch-readout {
+  display: block;
+  margin-block: var(--kf-space-2);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}

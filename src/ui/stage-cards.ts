@@ -2,7 +2,7 @@ import { isPlayable } from '../chapters/index';
 import type { App, ChapterContent, ChapterId, FigureId, TimelineState } from '../core/types';
 import { commitStyles, h } from './dom';
 import { createFadeSlot } from './fade';
-import { cmbLegend } from './figures';
+import { cmbLegend, decayChain, hubbleTension } from './figures';
 import './styles/stage.css';
 
 const TITLE_FADE_MS = 1000;
@@ -38,6 +38,8 @@ export interface StageCards {
   readonly outro: HTMLElement;
   readonly exploreHint: HTMLElement;
   readonly cmbOverlay: HTMLElement;
+  /** Further overlay figures ('overlay' cues), stacked beside the CMB legend. */
+  readonly figureOverlays: readonly HTMLElement[];
 }
 
 export function createStageCards(app: App): StageCards {
@@ -107,6 +109,18 @@ export function createStageCards(app: App): StageCards {
   cmbOverlay.classList.add('kf-overlay-figure');
   const showCmb = fader(cmbOverlay, 800);
 
+  /* Other overlay figures, also driven by 'overlay' cues (built once, shown and hidden by fading). */
+  const overlayFigures = new Map<FigureId, { el: HTMLElement; show: (visible: boolean) => void }>();
+  for (const [id, build] of [
+    ['hubble-tension', () => hubbleTension(app)],
+    ['decay-chain', () => decayChain(app)],
+  ] as const) {
+    const el = build();
+    el.classList.add('kf-overlay-figure');
+    el.dataset.testid = `overlay-${id}`;
+    overlayFigures.set(id, { el, show: fader(el, 800) });
+  }
+
   function sync(): void {
     const active = onChapterRoute && chapter !== null && state !== 'loading' && state !== 'idle';
     if (active && state === 'intro' && chapter && content) {
@@ -119,6 +133,7 @@ export function createStageCards(app: App): StageCards {
     showOutro(active && state === 'outro');
     showExploreHint(active && app.mode === 'explore');
     showCmb(active && overlays.get('cmb-legend') === true);
+    for (const [id, figure] of overlayFigures) figure.show(active && overlays.get(id) === true);
   }
 
   app.events.on('chapter', (e) => {
@@ -149,5 +164,5 @@ export function createStageCards(app: App): StageCards {
   });
 
   sync();
-  return { titleCard, outro, exploreHint, cmbOverlay };
+  return { titleCard, outro, exploreHint, cmbOverlay, figureOverlays: [...overlayFigures.values()].map((f) => f.el) };
 }

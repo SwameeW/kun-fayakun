@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Scene } from 'three/webgpu';
+import { MathUtils, PerspectiveCamera, Scene, Vector3 } from 'three/webgpu';
 import { CHAPTERS, isPlayable } from '../chapters/index';
 import { createAudioEngine } from './audio';
 import { CameraDirector, DEFAULT_FOV, FAR, NEAR } from './camera';
@@ -28,6 +28,8 @@ import type {
   QualityProfile,
   Route,
   TimelineState,
+  HudState,
+  ScreenLabel,
 } from './types';
 
 export interface AppOptions {
@@ -59,6 +61,9 @@ interface NavOptions {
 
 /** Frame steps longer than this are clamped so a hitch never skips content. */
 const MAX_FRAME_DT = 0.1;
+const EMPTY_HUD: HudState = { labels: [], metresPerPixel: null };
+const projected = new Vector3();
+
 /** Longest a chapter waits for its GPU pipelines to compile before playing anyway. */
 const WARM_UP_TIMEOUT_MS = 4000;
 /** Wait before prefetching the next chapter, so it does not compete with the intro. */
@@ -579,6 +584,37 @@ class Engine implements KunFayakunApp {
 
   setMode(mode: 'cinematic' | 'explore'): void {
     this.timeline.setMode(mode);
+  }
+
+  interact(id: string, value: number | null): void {
+    this.timeline.module?.onInteract?.(id, value);
+  }
+
+  hud(): HudState {
+    const module = this.timeline.module;
+    if (!module || (!module.labels && !module.scale)) return EMPTY_HUD;
+    const rect = this.canvas.getBoundingClientRect();
+    const labels: ScreenLabel[] = [];
+    for (const label of module.labels?.() ?? []) {
+      if (label.opacity <= 0.001) continue;
+      projected.set(...label.position).project(this.camera);
+      // Behind the camera or beyond the far plane: not shown.
+      if (projected.z < -1 || projected.z > 1) continue;
+      labels.push({
+        id: label.id,
+        textKey: label.textKey,
+        x: rect.left + ((projected.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - projected.y) / 2) * rect.height,
+        opacity: label.opacity,
+        ...(label.offset ? { offset: label.offset } : {}),
+      });
+    }
+    const scale = module.scale?.() ?? null;
+    const metresPerPixel =
+      scale && rect.height > 0
+        ? (scale.metresPerUnit * 2 * scale.distance * Math.tan(MathUtils.degToRad(this.camera.fov / 2))) / rect.height
+        : null;
+    return { labels, metresPerPixel };
   }
 
   /* ---------------------------------------------------------------- */

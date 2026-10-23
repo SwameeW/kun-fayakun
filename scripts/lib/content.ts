@@ -127,6 +127,9 @@ export function collectRefs(chapter: LoadedChapter): ContentRefs {
   const at = (where: string): string => `${dir} ${where}`;
 
   refs.i18n.push({ value: content.intro.titleKey, where: at('intro.titleKey') });
+  for (const [layer, key] of Object.entries(content.panel.notes ?? {})) {
+    refs.i18n.push({ value: key, where: at(`panel.notes.${layer}`) });
+  }
   if (content.intro.subtitleKey !== undefined) {
     refs.i18n.push({ value: content.intro.subtitleKey, where: at('intro.subtitleKey') });
   }

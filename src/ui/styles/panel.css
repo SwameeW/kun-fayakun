@@ -356,3 +356,10 @@
     transition: none;
   }
 }
+
+/* A plain note at the top of a layer (a chapter that pairs no text with its science). */
+.kf-layer-note {
+  margin-block: 0 var(--kf-space-3);
+  font-style: italic;
+  color: var(--kf-text-muted);
+}

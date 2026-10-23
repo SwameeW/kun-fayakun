@@ -102,9 +102,21 @@ Names are fixed; times live in content.json.
 | ch00 | calligraphy quad ~4 units wide at origin; camera on +z, ~6–9 units away | `kun-reveal`, `kun-hold`, `kun-fade` | Opens in total darkness and silence for several seconds. Reveal is a slow ≥ 4 s fade of light. |
 | ch01 | point at origin; endless comoving dust around the camera | `ignite`, `expand`, `cool` | Point of light grows softly (no flash); as it envelops the viewer the shared plasma medium condenses (deep-orange embers that warm to gold), its pattern fixed in comoving space so it grows as space stretches; it thickens into Chapter 2's opening state, and the final camera key equals Chapter 2's first. |
 | ch02 | camera starts at (0, 0, 0.6) inside the same plasma; CMB sphere radius 10 at origin | `plasma`, `recombination`, `cmb-reveal`, `cmb-hold` | Photons random-walk in the plasma and stream free at recombination (nearest first), then redden and fade; the real Planck sky appears around the viewer (inside view, as seen from Earth) and the camera draws back out through the shell to see it whole (outside view, mirrored as a celestial globe is). Fog is never captioned "smoke". |
+| ch03 | periodic box 48 units at origin (the web's region is a soft sphere); camera inside, drawing back to ~50 | `dark`, `web`, `stars`, `galaxies` | Dark matter in false colour grows into a web by the Zel'dovich approximation (one FFT-built 3D field moves every particle and star); first stars swell softly in the densest knots, highest peaks first, never a flash. |
+| ch04 | comoving field radius 40 around the camera; scale factor stretches it | `galaxies`, `stretch`, `redshift`, `tension` | Space stretches with no centre: galaxies recede and redden with distance from wherever the camera is. The panel's slider (`app.interact('stretch', a)`) takes over the scale factor; `null` returns it to the film. |
+| ch05 | resized world: 5 kpc per unit (our galaxy) to 800 Mpc per unit (the survey) and on to the observable universe; camera ~6–12 units out | `milky-way`, `pull-back`, `survey` | An artist's model of the Milky Way (tagged as such) gives way, by a logarithmic pull-back, to the real SDSS galaxies at their measured positions, coloured by measured redshift; the equatorial slice brightens to show the web (Sloan Great Wall tagged); the HUD scale bar is true throughout. Reduced motion: the pull-back is a dissolve. No layers or "seven heavens" are depicted. |
+| ch06 | massive star radius 4 at origin; Type Ia pair at (24, 1.5, -6) | `star`, `collapse`, `white-dwarf`, `type-ia` | A cutaway star banded by element (schematic, tagged "not to scale"); core collapse, shock and neutrinos; element-coloured debris with tags that fade before the verse; then a white dwarf and companion, and a Type Ia whose light fades with the nickel-56 decay chain. Each brightening is one eased swell, with an exposure dip. |
 
 The `cmb-legend` overlay cue (`{type:'overlay', id:'cmb-legend', visible}`) shows the DOM colour
 scale + credit while the map is visible. The `bbn-abundances` figure lives in the ch02 science layer.
+ch04 shows `hubble-tension` (overlay and science layer) and the `expansion` slider; ch06 shows
+`decay-chain` (overlay and science layer).
+
+**HUD.** A chapter may implement `labels()` (scene-anchored tags: `SceneLabel` with a world position,
+an eased opacity and an optional `offset` in CSS pixels that turns the tag into a callout with a
+leader line) and `scale()` (`metresPerUnit` and the camera distance it applies at, or null when the
+picture is schematic). `app.hud()` projects them each frame; `src/ui/hud.ts` draws the tags
+(decorative, `aria-hidden`: the panel carries the same facts) and a round-number scale bar.
 
 **Continuity.** A registry entry may declare `continuesFrom` (src/chapters/index.ts): when it follows
 that chapter in sequence play, the engine swaps chapters without fading to black (the previous one
@@ -114,7 +126,15 @@ must end exactly in the next one's opening state. ch02 continues ch01.
 **Shared visual modules** (src/chapters/shared): `plasma-medium.ts` (the volumetric plasma: comoving
 scale, coverage, heat; dimmer always means redder, never a plain dimmer), `streaks.ts` (instanced
 screen-space light streaks, one draw call, vertex-stage motion on both backends), `noise-volume.ts`,
-and the MSDF calligraphy (`msdf-*`; the glow field's alpha carries precomputed light rays).
+the MSDF calligraphy (`msdf-*`; the glow field's alpha carries precomputed light rays), and
+`galaxy-sprites.ts` (one draw call of galaxies as tiny elliptical discs; comoving positions times a
+scale factor; reddening from distance to the camera or from each galaxy's measured redshift; optional
+redshift bands and a slice emphasis).
+
+**SDSS sample.** `assets/sdss/galaxies.bin` holds int16 (x, y, z, redshift) per galaxy in the galactic
+frame (+x toward the Galactic centre, +y the north galactic pole), units in galaxies.json (`scaleMpc`,
+`redshiftScale`); any prefix is a fair random subsample, so lower tiers draw a prefix. Below
+`nearLimit` every galaxy is kept; beyond it a one-in-nine subsample (brightness is evened per part).
 
 **CMB texture.** `assets/cmb/cmb-temperature-2048.ktx2` holds the temperature itself (R8, lossless
 zstd, mip chain, rows bottom-up, ±300 µK → 0..255); the scene colours it through a half-float lookup
@@ -132,7 +152,7 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - ICU MessageFormat via `intl-messageformat`, flat dotted keys.
 - `src/i18n/en.json` (ui builder): `ui.*`, `timeline.chNN.{title,stop,epoch}` for ALL 11 chapters,
   `ui.disclaimer` = the spec's disclaimer, verbatim.
-- `src/i18n/en.chapters.json` (content builder): `ch00.*`, `ch01.*`, `ch02.*`.
+- `src/i18n/en.chapters.json` (content builder): `ch00.*` to `ch06.*`.
 - `createI18n(locale)` in `src/i18n/index.ts` merges both and throws on a duplicate key.
 - Honorifics per spec §1.5. Hadith summaries (if any) are labelled as summaries, never quotes.
 

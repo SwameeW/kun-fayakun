@@ -1,0 +1,230 @@
+{
+  "id": "ch03",
+  "duration": 84,
+  "intro": {
+    "titleKey": "ch03.intro.title",
+    "subtitleKey": "ch03.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "notes": {
+      "text": "ch03.note.text",
+      "scholarly": "ch03.note.scholarly"
+    },
+    "text": [],
+    "scholarly": {
+      "classical": [],
+      "modern": []
+    },
+    "science": [
+      {
+        "key": "ch03.science.dark"
+      },
+      {
+        "key": "ch03.science.web"
+      },
+      {
+        "key": "ch03.science.method"
+      },
+      {
+        "key": "ch03.science.firstStars",
+        "values": {
+          "earliest": {
+            "constant": "firststars.age.earliest",
+            "field": "value",
+            "digits": 0
+          },
+          "latest": {
+            "constant": "firststars.age.latest",
+            "field": "value",
+            "digits": 0
+          },
+          "z": {
+            "constant": "firststars.redshift",
+            "field": "value",
+            "digits": 0
+          }
+        },
+        "cite": [
+          "firststars.redshift",
+          "firststars.age.earliest"
+        ]
+      },
+      {
+        "key": "ch03.science.jwst",
+        "values": {
+          "momZ": {
+            "constant": "jwst.momz14.redshift",
+            "field": "value",
+            "digits": 2
+          },
+          "momAge": {
+            "constant": "jwst.momz14.age",
+            "field": "value",
+            "digits": 0
+          },
+          "jadesNir": {
+            "constant": "jwst.jades14.redshift.nirspec",
+            "field": "value",
+            "digits": 2
+          },
+          "jadesAlma": {
+            "constant": "jwst.jades14.redshift.alma",
+            "field": "value",
+            "digits": 2
+          },
+          "jadesAge": {
+            "constant": "jwst.jades14.age",
+            "field": "value",
+            "digits": 0
+          }
+        },
+        "cite": [
+          "jwst.momz14.redshift",
+          "jwst.jades14.redshift.nirspec",
+          "jwst.jades14.redshift.alma"
+        ]
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch03.open.bright"
+      },
+      {
+        "key": "ch03.open.popIII"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 0,
+      "type": "scene",
+      "event": "dark"
+    },
+    {
+      "t": 3,
+      "type": "caption",
+      "key": "ch03.caption.dark",
+      "duration": 6
+    },
+    {
+      "t": 11,
+      "type": "scene",
+      "event": "web"
+    },
+    {
+      "t": 13,
+      "type": "caption",
+      "key": "ch03.caption.web",
+      "duration": 7
+    },
+    {
+      "t": 22,
+      "type": "panel",
+      "section": "science"
+    },
+    {
+      "t": 24,
+      "type": "caption",
+      "key": "ch03.caption.method",
+      "duration": 7
+    },
+    {
+      "t": 36,
+      "type": "scene",
+      "event": "stars"
+    },
+    {
+      "t": 38,
+      "type": "caption",
+      "key": "ch03.caption.stars",
+      "duration": 7
+    },
+    {
+      "t": 50,
+      "type": "caption",
+      "key": "ch03.caption.webb",
+      "duration": 8
+    },
+    {
+      "t": 60,
+      "type": "scene",
+      "event": "galaxies"
+    },
+    {
+      "t": 62,
+      "type": "caption",
+      "key": "ch03.caption.galaxies",
+      "duration": 7
+    },
+    {
+      "t": 74,
+      "type": "caption",
+      "key": "ch03.caption.open",
+      "duration": 7
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        0,
+        9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 22,
+      "position": [
+        5,
+        3,
+        19
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 48,
+      "position": [
+        13,
+        7,
+        27
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 84,
+      "position": [
+        27,
+        13,
+        46
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 6,
+    "maxDistance": 110
+  }
+}

@@ -1,0 +1,245 @@
+{
+  "id": "ch05",
+  "duration": 104,
+  "intro": {
+    "titleKey": "ch05.intro.title",
+    "subtitleKey": "ch05.intro.subtitle",
+    "seconds": 4
+  },
+  "panel": {
+    "text": [
+      {
+        "type": "verse",
+        "key": "67:3"
+      },
+      {
+        "type": "verse",
+        "key": "41:12"
+      },
+      {
+        "type": "verse",
+        "key": "65:12"
+      }
+    ],
+    "scholarly": {
+      "classical": [
+        {
+          "key": "ch05.scholarly.classical.seven"
+        }
+      ],
+      "modern": [
+        {
+          "key": "ch05.scholarly.modern.notIdentified"
+        }
+      ]
+    },
+    "science": [
+      {
+        "key": "ch05.science.galaxies"
+      },
+      {
+        "key": "ch05.science.sdss",
+        "values": {
+          "count": {
+            "constant": "sdss.sample.count",
+            "field": "value",
+            "digits": 0
+          },
+          "z": {
+            "constant": "sdss.sample.maxRedshift",
+            "field": "value",
+            "digits": 1
+          },
+          "lookback": {
+            "constant": "sdss.sample.lookback",
+            "field": "value",
+            "digits": 0
+          }
+        },
+        "cite": [
+          "sdss-dr20",
+          "sdss.sample.lookback"
+        ]
+      },
+      {
+        "key": "ch05.science.web",
+        "cite": [
+          "gott-2005"
+        ]
+      },
+      {
+        "key": "ch05.science.observable",
+        "values": {
+          "radius": {
+            "constant": "universe.observable.radius",
+            "field": "value",
+            "digits": 0
+          }
+        },
+        "cite": [
+          "universe.observable.radius"
+        ]
+      }
+    ],
+    "openQuestions": [
+      {
+        "key": "ch05.open.darkMatter"
+      },
+      {
+        "key": "ch05.open.beyond"
+      }
+    ]
+  },
+  "cues": [
+    {
+      "t": 0,
+      "type": "scene",
+      "event": "milky-way"
+    },
+    {
+      "t": 3,
+      "type": "caption",
+      "key": "ch05.caption.milkyWay",
+      "duration": 7
+    },
+    {
+      "t": 12,
+      "type": "scene",
+      "event": "pull-back"
+    },
+    {
+      "t": 14,
+      "type": "caption",
+      "key": "ch05.caption.pullBack",
+      "duration": 7
+    },
+    {
+      "t": 24,
+      "type": "scene",
+      "event": "survey"
+    },
+    {
+      "t": 26,
+      "type": "caption",
+      "key": "ch05.caption.survey",
+      "duration": 8
+    },
+    {
+      "t": 38,
+      "type": "panel",
+      "section": "text"
+    },
+    {
+      "t": 40,
+      "type": "verse",
+      "key": "67:3",
+      "duration": 22
+    },
+    {
+      "t": 64,
+      "type": "verse",
+      "key": "65:12",
+      "duration": 30
+    },
+    {
+      "t": 95,
+      "type": "panel",
+      "section": "scholarly"
+    },
+    {
+      "t": 96,
+      "type": "caption",
+      "key": "ch05.caption.observable",
+      "duration": 7
+    }
+  ],
+  "camera": [
+    {
+      "t": 0,
+      "position": [
+        0,
+        2.7,
+        5.4
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 12,
+      "position": [
+        -0.8,
+        2.9,
+        5.9
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "t": 36,
+      "position": [
+        -5.4,
+        1.6,
+        8.4
+      ],
+      "target": [
+        -0.3,
+        0.6,
+        -0.3
+      ]
+    },
+    {
+      "t": 56,
+      "position": [
+        3.35,
+        -3.55,
+        8.58
+      ],
+      "target": [
+        0.157,
+        1.058,
+        0.544
+      ]
+    },
+    {
+      "t": 90,
+      "position": [
+        6.3,
+        -3.14,
+        6.93
+      ],
+      "target": [
+        0.157,
+        1.058,
+        0.544
+      ]
+    },
+    {
+      "t": 104,
+      "position": [
+        6.4,
+        3.4,
+        9.6
+      ],
+      "target": [
+        0,
+        0.2,
+        0
+      ]
+    }
+  ],
+  "explore": {
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "minDistance": 2,
+    "maxDistance": 40
+  }
+}

@@ -20,7 +20,8 @@
     "test": "playwright test",
     "check": "npm run validate && npm run typecheck && npm run lint && npm run build && npm test",
     "fetch:font": "tsx scripts/fetch-font.ts",
-    "check:bundle": "tsx scripts/check-bundle.ts"
+    "check:bundle": "tsx scripts/check-bundle.ts",
+    "preprocess:sdss": "bash scripts/preprocess-sdss.sh"
   },
   "dependencies": {
     "intl-messageformat": "12.1.4",

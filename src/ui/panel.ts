@@ -141,6 +141,11 @@ export function createPanel(app: App): Panel {
     });
   }
 
+  /** A plain note at the top of a layer (e.g. a chapter that pairs no text with the science). */
+  function layerNote(key: string | undefined): HTMLElement | null {
+    return key ? h('p', { class: 'kf-layer-note' }, i18n.t(key)) : null;
+  }
+
   function subheading(key: string, blocks: readonly ProseBlock[]): HTMLElement[] {
     if (blocks.length === 0) return [];
     return [h('h3', { class: 'kf-subheading' }, i18n.t(key)), ...blocks.flatMap(prose)];
@@ -168,8 +173,9 @@ export function createPanel(app: App): Panel {
     try {
       body.replaceChildren(
         // The order of the three layers is a core principle: text, then scholars, then science.
-        section('text', panel.text.map(textBlock)),
+        section('text', [layerNote(panel.notes?.text), ...panel.text.map(textBlock)]),
         section('scholarly', [
+          layerNote(panel.notes?.scholarly),
           ...subheading('ui.panel.classical', panel.scholarly.classical),
           ...subheading('ui.panel.modern', panel.scholarly.modern),
         ]),

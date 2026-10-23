@@ -190,7 +190,7 @@ export type TextBlock =
   | { type: 'verse'; key: VerseKey; noteKey?: I18nKey }
   | { type: 'hadith'; id: HadithId; summaryKey?: I18nKey; noteKey?: I18nKey };
 
-export type FigureId = 'bbn-abundances' | 'cmb-legend';
+export type FigureId = 'bbn-abundances' | 'cmb-legend' | 'hubble-tension' | 'decay-chain' | 'expansion';
 
 export interface ScienceBlock extends ProseBlock {
   figure?: FigureId;
@@ -205,6 +205,12 @@ export interface PanelContent {
   science: ScienceBlock[];
   /** Layer 3 (continued) — open questions. */
   openQuestions: ProseBlock[];
+  /**
+   * A short note shown at the top of a layer. Used when a chapter pairs no text (the
+   * science stands alone): the layers stay in their order and say so plainly, rather than
+   * forcing a pairing the sources do not make.
+   */
+  notes?: Partial<Record<'text' | 'scholarly', I18nKey>>;
 }
 
 /**
@@ -342,6 +348,12 @@ export interface ChapterModule {
   onSceneEvent?(event: string, t: number): void;
   /** Quality tier dropped by the governor while this chapter is active. */
   setQuality?(profile: QualityProfile): void;
+  /** A panel control changed (e.g. the expansion slider); null hands control back to the film. */
+  onInteract?(id: string, value: number | null): void;
+  /** World-anchored HUD tags (DOM text, positioned by the engine each frame). */
+  labels?(): readonly SceneLabel[];
+  /** True physical scale of the view, for the HUD scale bar; null when it has none. */
+  scale?(): SceneScale | null;
   /** Remove from scene; keep GPU resources for a possible re-enter. */
   exit(): void;
   /** Free all GPU resources. */
@@ -349,6 +361,44 @@ export interface ChapterModule {
 }
 
 export type ChapterFactory = () => ChapterModule;
+
+/** A HUD tag anchored to a point in the scene (e.g. an element in a supernova remnant). */
+export interface SceneLabel {
+  id: string;
+  /** ICU message key of the tag's text. */
+  textKey: I18nKey;
+  position: Vec3;
+  /** 0..1, eased by the chapter (tags fade, they never pop). */
+  opacity: number;
+  /**
+   * Optional callout: the tag sits this far from its point (CSS pixels, x right, y down),
+   * joined to it by a thin leader line, so tags on crowded small features never overlap.
+   */
+  offset?: readonly [number, number];
+}
+
+/** How big the view really is: world units in metres, at a depth of interest. */
+export interface SceneScale {
+  metresPerUnit: number;
+  /** Distance (world units) from the camera to the plane the scale bar describes. */
+  distance: number;
+}
+
+/** A SceneLabel projected to the viewport (CSS pixels). */
+export interface ScreenLabel {
+  id: string;
+  textKey: I18nKey;
+  x: number;
+  y: number;
+  opacity: number;
+  offset?: readonly [number, number];
+}
+
+export interface HudState {
+  labels: readonly ScreenLabel[];
+  /** Metres covered by one CSS pixel at the chapter's depth of interest. */
+  metresPerPixel: number | null;
+}
 
 /* ------------------------------------------------------------------ */
 /* App events and commands (core ⇄ ui)                                   */
@@ -389,6 +439,8 @@ export interface AppCommands {
   next(): void;
   prev(): void;
   setMode(mode: 'cinematic' | 'explore'): void;
+  /** Forwards a panel control to the active chapter (null: give control back to the film). */
+  interact(id: string, value: number | null): void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -450,4 +502,6 @@ export interface App extends AppCommands {
   readonly backend: 'webgpu' | 'webgl2';
   readonly reducedMotion: boolean;
   readonly assets: AssetLoader;
+  /** HUD tags and scale for this frame (cheap; the UI polls it once per animation frame). */
+  hud(): HudState;
 }

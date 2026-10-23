@@ -1,6 +1,6 @@
 import type { App, FigureId, I18n, ScienceConstant } from '../core/types';
-import { h, srOnly } from './dom';
-import { constantField, scientificNode, tryConstant } from './format';
+import { h, srOnly, svg, uniqueId } from './dom';
+import { constantField, formatConstant, scientificNode, tryConstant } from './format';
 import './styles/figures.css';
 
 /* ------------------------------------------------------------------ */
@@ -220,6 +220,180 @@ export function bbnAbundances(app: App): HTMLElement {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Hubble tension: early-universe inferences against the local ladder   */
+/* ------------------------------------------------------------------ */
+
+interface Measurement {
+  constant: string;
+  labelKey: string;
+  group: 'early' | 'local';
+}
+
+const HUBBLE_MEASUREMENTS: readonly Measurement[] = [
+  { constant: 'hubble.planck', labelKey: 'ui.hubble.planck', group: 'early' },
+  { constant: 'hubble.act', labelKey: 'ui.hubble.act', group: 'early' },
+  { constant: 'hubble.act.dr2', labelKey: 'ui.hubble.actDr2', group: 'early' },
+  { constant: 'hubble.shoes', labelKey: 'ui.hubble.shoes', group: 'local' },
+];
+/** Axis range in km/s/Mpc. */
+const HUBBLE_AXIS: readonly [number, number] = [64, 76];
+
+/**
+ * Two families of measurement that disagree: values with 1-sigma bars on one axis.
+ * The text values are listed too, so the chart is never the only way to read them.
+ */
+export function hubbleTension(app: App): HTMLElement {
+  const { i18n } = app;
+  const [lo, hi] = HUBBLE_AXIS;
+  const width = 320;
+  const rowHeight = 26;
+  const pad = { left: 8, right: 8, top: 8, bottom: 26 };
+  const x = (v: number): number => pad.left + ((v - lo) / (hi - lo)) * (width - pad.left - pad.right);
+  const rows = HUBBLE_MEASUREMENTS.map((m) => ({ m, c: tryConstant(app.data, m.constant) })).filter(
+    (r): r is { m: Measurement; c: ScienceConstant } => r.c !== null,
+  );
+  const height = pad.top + rows.length * rowHeight + pad.bottom;
+  const chart = svg('svg', {
+    class: 'kf-hubble-chart',
+    viewBox: `0 0 ${width} ${height}`,
+    'aria-hidden': 'true',
+    focusable: 'false',
+  });
+  for (let v = lo; v <= hi; v += 2) {
+    chart.append(svg('line', { class: 'kf-hubble-grid', x1: x(v), x2: x(v), y1: pad.top, y2: height - pad.bottom }));
+    const label = svg('text', { class: 'kf-hubble-tick', x: x(v), y: height - 8, 'text-anchor': 'middle' });
+    label.textContent = i18n.number(v, 0);
+    chart.append(label);
+  }
+  rows.forEach(({ c, m }, i) => {
+    const y = pad.top + i * rowHeight + rowHeight / 2;
+    const sigma = constantField(c, 'uncertainty') ?? 0;
+    chart.append(
+      svg('line', { class: `kf-hubble-bar kf-hubble-${m.group}`, x1: x(c.value - sigma), x2: x(c.value + sigma), y1: y, y2: y }),
+      svg('circle', { class: `kf-hubble-dot kf-hubble-${m.group}`, cx: x(c.value), cy: y, r: 4 }),
+    );
+  });
+  const list = h(
+    'ul',
+    { class: 'kf-hubble-values' },
+    ...rows.map(({ c, m }) =>
+      h(
+        'li',
+        { class: `kf-hubble-item kf-hubble-${m.group}` },
+        h('span', { class: 'kf-hubble-name' }, i18n.t(m.labelKey)),
+        h('span', { class: 'kf-hubble-value' }, i18n.t('ui.hubble.value', { value: formatConstant(c, i18n, 2) })),
+      ),
+    ),
+  );
+  const sigma = tryConstant(app.data, 'hubble.tension.sigma');
+  return h(
+    'figure',
+    { class: 'kf-figure kf-hubble', 'data-figure': 'hubble-tension' },
+    h('figcaption', { class: 'kf-figure-title' }, i18n.t('ui.hubble.title')),
+    h('div', { class: 'kf-hubble-plot', dir: 'ltr' }, chart),
+    list,
+    h(
+      'p',
+      { class: 'kf-figure-note' },
+      sigma ? i18n.t('ui.hubble.note', { sigma: i18n.number(sigma.value, 0) }) : i18n.t('ui.hubble.noteNoValue'),
+    ),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Nickel-56 to iron-56                                                */
+/* ------------------------------------------------------------------ */
+
+/** The decay chain behind supernova iron, with evaluated half-lives. */
+export function decayChain(app: App): HTMLElement {
+  const { i18n } = app;
+  const ni = tryConstant(app.data, 'nuclear.ni56.halfLife');
+  const co = tryConstant(app.data, 'nuclear.co56.halfLife');
+  const step = (nameKey: string, life: string): HTMLElement =>
+    h('li', { class: 'kf-decay-step' }, h('span', { class: 'kf-decay-nuclide' }, i18n.t(nameKey)), h('span', { class: 'kf-decay-life' }, life));
+  const arrow = (): HTMLElement => h('li', { class: 'kf-decay-arrow', 'aria-hidden': 'true' }, '→');
+  return h(
+    'figure',
+    { class: 'kf-figure kf-decay', 'data-figure': 'decay-chain' },
+    h('figcaption', { class: 'kf-figure-title' }, i18n.t('ui.decay.title')),
+    h(
+      'ol',
+      { class: 'kf-decay-chain', dir: 'ltr' },
+      step('ui.decay.ni56', ni ? i18n.t('ui.decay.halfLife', { days: formatConstant(ni, i18n, 3) }) : i18n.t('ui.value.unavailable')),
+      arrow(),
+      step('ui.decay.co56', co ? i18n.t('ui.decay.halfLife', { days: formatConstant(co, i18n, 3) }) : i18n.t('ui.value.unavailable')),
+      arrow(),
+      step('ui.decay.fe56', i18n.t('ui.decay.stable')),
+    ),
+    h('p', { class: 'kf-figure-note' }, i18n.t('ui.decay.note')),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Stretching space (an interactive control for the scene)              */
+/* ------------------------------------------------------------------ */
+
+const STRETCH = { min: 1, max: 3, step: 0.01 } as const;
+
+/**
+ * A slider that stretches space in the scene (the chapter receives it through
+ * app.interact): galaxies recede and their light reddens by the same factor, so the
+ * redshift is z = a - 1. "Back to the film" returns control to the cinematic.
+ */
+export function expansionControl(app: App): HTMLElement {
+  const { i18n } = app;
+  const id = uniqueId('kf-stretch');
+  const input = h('input', {
+    id,
+    class: 'kf-stretch-input',
+    type: 'range',
+    min: String(STRETCH.min),
+    max: String(STRETCH.max),
+    step: String(STRETCH.step),
+    value: String(STRETCH.min),
+  });
+  const readout = h('output', { class: 'kf-stretch-readout', for: id, 'aria-live': 'polite' });
+  const reset = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet' }, i18n.t('ui.stretch.back'));
+  const describe = (a: number): string =>
+    i18n.t('ui.stretch.readout', { factor: i18n.number(a, 2), redshift: i18n.number(a - 1, 2) });
+  const show = (a: number): void => {
+    readout.textContent = describe(a);
+    input.setAttribute('aria-valuetext', describe(a));
+  };
+  input.addEventListener('input', () => {
+    const a = Number(input.value);
+    show(a);
+    app.interact('stretch', a);
+  });
+  reset.addEventListener('click', () => {
+    input.value = String(STRETCH.min);
+    show(STRETCH.min);
+    app.interact('stretch', null);
+  });
+  show(STRETCH.min);
+  return h(
+    'figure',
+    { class: 'kf-figure kf-stretch', 'data-figure': 'expansion' },
+    h('figcaption', { class: 'kf-figure-title' }, h('label', { for: id }, i18n.t('ui.stretch.title'))),
+    input,
+    readout,
+    h('p', { class: 'kf-figure-note' }, i18n.t('ui.stretch.note')),
+    reset,
+  );
+}
+
 export function figure(app: App, id: FigureId): HTMLElement {
-  return id === 'bbn-abundances' ? bbnAbundances(app) : cmbLegend(app, { 'data-figure': 'cmb-legend' });
+  switch (id) {
+    case 'bbn-abundances':
+      return bbnAbundances(app);
+    case 'cmb-legend':
+      return cmbLegend(app, { 'data-figure': 'cmb-legend' });
+    case 'hubble-tension':
+      return hubbleTension(app);
+    case 'decay-chain':
+      return decayChain(app);
+    case 'expansion':
+      return expansionControl(app);
+  }
 }
