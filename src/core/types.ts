@@ -6,6 +6,7 @@
  * validator all depend on the exact shapes below.
  */
 import type { PerspectiveCamera, Scene, Texture, WebGPURenderer } from 'three/webgpu';
+import type { ExploreDetail, ExploreTier } from '../explore/detail';
 
 /* ------------------------------------------------------------------ */
 /* Identifiers                                                         */
@@ -471,6 +472,84 @@ export interface UniverseView {
   /** The date shown: TDB Julian date, and the same instant as a Unix time (ms) for display. */
   jdTdb: number;
   unixMs: number;
+  /** 'orbit': circling the focus; 'flight': flying freely near it (carried along with it). */
+  mode: 'orbit' | 'flight';
+  /** Camera speed, km/s (free flight and trips; 0 while orbiting). */
+  speedKmS: number;
+  /** During a trip: its progress (0 to 1), and the camera's height above the destination's surface now, at the start and on arrival, km. */
+  trip: { progress: number; remainingKm: number; startKm: number; endKm: number } | null;
+  /** Every body, in BODY_IDS order: where it is and how the camera sees it. */
+  bodies: readonly UniverseBodyView[];
+  /** The camera's heliocentric ecliptic position, km, and its heading in the ecliptic (radians from +x toward +y). */
+  camera: { x: number; y: number; z: number; heading: number };
+  /** A note about what the camera is near (science only, every number from cited data), or null. */
+  discovery: { id: string; values: Readonly<Record<string, number>> } | null;
+  /** Phenomena seen on this visit, in the order first seen (no scores or counts). */
+  witnessed: readonly string[];
+  /** The detail tier running, how it was chosen, and what may be chosen. */
+  detail: UniverseDetail;
+  /** km per astronomical unit, from the explorer's data (DE440), for displaying distances. */
+  auKm: number;
+  /** The speed of light, km/s (data/constants.json; 0 if it did not load), for light-times and speeds. */
+  lightKmS: number;
+}
+
+/** One body as the explorer's camera sees it (live from the ephemeris). */
+export interface UniverseBodyView {
+  id: BodyId;
+  /** From the camera to the surface (cloud tops, photosphere), km. */
+  distanceKm: number;
+  /** Light-time from the body's centre to the camera, s. */
+  lightSeconds: number;
+  /** As the camera sees it: lit share of the disc (0 to 1) and the bright limb's direction on screen (radians from screen right, counterclockwise). */
+  lit: number;
+  limbAngle: number;
+  /** Saturn: its rings' opening as the camera sees them (radians, signed; 0 edge-on); 0 for the rest. */
+  ringOpening: number;
+  /** Where its centre is on the canvas (CSS px from its top left), its disc's radius there, and whether it is in view. */
+  screen: { x: number; y: number; radiusPx: number; inView: boolean };
+  /** Heliocentric ecliptic position, km (x to the vernal equinox, z to ecliptic north). */
+  ecliptic: { x: number; y: number; z: number };
+}
+
+/** The explorer's detail: the tier running and the visitor's choice (src/explore/detail.ts is the ladder). */
+export interface UniverseDetail {
+  tier: ExploreTier;
+  choice: 'auto' | ExploreTier;
+  /** Tiers this device may run, highest first (Ultra only where it is allowed). */
+  available: readonly ExploreTier[];
+  /** The scene's internal render scale now (dynamic resolution; the canvas keeps its size). */
+  renderScale: number;
+  /** Held still by the address (?detail=, ?tier=, ?profile=1): nothing adapts on its own. */
+  fixed: boolean;
+}
+
+/** What the device says about itself, for the explorer's starting detail. */
+export interface UniverseDevice {
+  backend: 'webgpu' | 'webgl2';
+  /** Lower-case adapter description; '' when the browser hides it. */
+  description: string;
+  software: boolean;
+  mobile: boolean;
+  /** Largest 2D texture, px (0 when unknown). */
+  maxTextureSize: number;
+}
+
+/**
+ * What the explorer may change about the picture while it owns the screen. The host gives the film
+ * its own settings back when the explorer leaves, so none of this ever reaches a chapter.
+ */
+export interface UniverseGraphics {
+  readonly device: UniverseDevice;
+  /** A tier fixed by the address (?detail=, or ?tier= mapped onto the ladder), or null. */
+  readonly fixedDetail: ExploreTier | null;
+  /** False when the address holds the picture still (?detail=, ?tier=, ?profile=1). */
+  readonly adaptive: boolean;
+  /** The scene's internal render scale (dynamic resolution; post-processing and the canvas keep full size), 0.5 to 1. */
+  setRenderScale(scale: number): void;
+  /** The canvas's device-pixel-ratio ceiling. */
+  setDprCap(cap: number): void;
+  setBloom(on: boolean): void;
 }
 
 /**
@@ -488,16 +567,22 @@ export interface UniverseExposure extends ExposureControl {
   jump(): void;
 }
 
-/** The services the explorer is built with: a chapter's, with its own exposure. */
+/** The services the explorer is built with: a chapter's, with its own exposure and control of the picture. */
 export interface UniverseContext extends ChapterContext {
   exposure: UniverseExposure;
+  graphics: UniverseGraphics;
 }
 
-/** CSS pixels at the top and bottom of the view that the interface covers. */
+/** CSS pixels at the edges of the view that the interface covers (left and right: a side panel). */
 export interface ViewInsets {
   top: number;
   bottom: number;
+  left?: number;
+  right?: number;
 }
+
+/** The explorer's steering commands from its interface: stop a trip, or orbit the body the camera is near. */
+export type UniverseSteer = 'stop' | 'orbit';
 
 /** The explorer as the engine hosts it: the experience plus what its UI and route need. */
 export interface UniverseModule extends ExperienceModule {
@@ -513,6 +598,18 @@ export interface UniverseModule extends ExperienceModule {
   setInsets(insets: ViewInsets): void;
   /** Test and capture hook: puts the camera at a pose at once, with no flight (and the exposure adapted). */
   place(pose: UniversePose): void;
+  /** Applies a detail level: what the bodies draw and stream, the stars, bloom and the canvas's pixel ratio. */
+  setDetail(detail: ExploreDetail): void;
+  /** The visitor's detail choice: 'auto' (the governor decides) or a tier to keep. */
+  setDetailChoice(choice: 'auto' | ExploreTier): void;
+  /**
+   * One frame's real duration (s), its GPU time (ms) when the renderer measures it, and the
+   * display's frame interval (s) as the engine has learned it since the page opened: the quality
+   * governor's input.
+   */
+  sampleFrame(frameSeconds: number, gpuMs: number | null, intervalSeconds: number): void;
+  /** Stops a trip (the camera coasts to rest in free flight) or orbits the body the camera is near; false when there was nothing to do. */
+  steer(command: UniverseSteer): boolean;
 }
 
 /** A camera pose around a body, for tests and frame captures. */
@@ -593,6 +690,10 @@ export interface AppCommands {
   focusBody(body: BodyId): void;
   /** The explorer's interface reports what it covers, so bodies are framed in the clear part of the view. */
   setViewInsets(insets: ViewInsets): void;
+  /** The explorer's detail: 'auto', or a tier the visitor chose (kept until they choose again). */
+  setUniverseDetail(choice: 'auto' | ExploreTier): void;
+  /** In the explorer: stop a trip, or orbit the body the camera is near. False when there was nothing to do. */
+  steerUniverse(command: UniverseSteer): boolean;
 }
 
 /* ------------------------------------------------------------------ */

@@ -4,9 +4,9 @@
  * Loaded on demand as its own chunk and hosted by src/core/universe-host.ts.
  *
  * Each frame: the date moves on in real time; the bodies are placed from the ephemeris (float64
- * km); the camera orbits or flies (./navigation); then everything is rebased so the camera sits at
- * the origin (./space/origin), the depth range follows the altitude (./space/lens), and bodies
- * beyond it are drawn in scaled space at their exact angular size (./space/scaled-space).
+ * km); the camera orbits, flies or travels (./navigation); then everything is rebased so the camera
+ * sits at the origin (./space/origin), the depth range follows the altitude (./space/lens), and
+ * bodies beyond it are drawn in scaled space at their exact angular size (./space/scaled-space).
  *
  * Light is physical in its falloff: a body's sunlight goes as 1/r^2, so Saturn's clouds get about
  * 1.1% of the Earth's. The exposure adapts to the body in view, slowly and slew-limited by the
@@ -17,6 +17,12 @@
  * points and rings marking distant bodies, the Sun's glare) keep their brightness on screen
  * whatever the exposure. The Sun's disc is held at a fixed brightness on screen: brilliant when
  * small, and as through a solar filter when it fills the view.
+ *
+ * Detail (./detail, ./quality): the explorer runs one rung of the Ultra/High/Medium/Low ladder,
+ * chosen from what the device says about itself (or by the visitor), and its governor trades the
+ * scene's internal resolution, then whole rungs, for smooth frames. The rung reaches the bodies
+ * through one call (applyDetail, bodies.setDetail) along with the stars, bloom and the canvas's
+ * pixel-ratio cap. Notes about what the camera is near come from ./discoveries.
  */
 
 import { Group, MathUtils, Matrix4, Mesh, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
@@ -27,26 +33,31 @@ import { createNoiseVolume } from '../chapters/shared/noise-volume';
 import { blackbodyRgb } from '../chapters/shared/blackbody';
 import { createStarfield, type Starfield } from '../chapters/shared/starfield';
 import { DEFAULT_FOV } from '../core/camera';
+import { setHook } from '../core/hooks';
 import { createExposureControl, type EngineExposure } from '../core/post';
 import {
   BODY_IDS,
   type BodyId,
-  type QualityTier,
   type SceneLabel,
+  type UniverseBodyView,
   type UniverseContext,
   type UniverseModule,
   type UniversePose,
+  type UniverseSteer,
   type UniverseView,
   type ViewInsets,
 } from '../core/types';
 import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
+import { DETAIL, EXPLORE_TIERS, FILM_TIER, type ExploreDetail, type ExploreTier } from './detail';
+import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
 import { createInput, type ExploreInput } from './input';
-import { Navigator, type NavBody, type NavOutput, type NavWorld } from './navigation';
+import { Navigator, navOutput, type NavBody, type NavWorld } from './navigation';
 import { createOrbits, moonOrbit, planetOrbit, type Orbits, type OrbitPath } from './orbits';
+import { availableTiers, createDetailGovernor, initialTier, type DetailChoice, type DetailGovernor, type GovernorDecision } from './quality';
 import { lensFor, LENS, nearestAltitude, type Lens, type Sphere } from './space/lens';
-import { FloatingOrigin, km, type Km } from './space/origin';
+import { FloatingOrigin, km, renderToEcliptic, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import { createSolarSystem, type SolarSystem } from './system';
 
@@ -72,8 +83,8 @@ const SUN_FILTER = { fromPx: 12, toPx: 110, color: [1, 0.5, 0.12], white: 5, fil
 const MOON_EXPOSURE = 1.1;
 /** The starfield's light, and how much of the exposure's adaptation it shows (0 none, 1 all of it). */
 const STARS = { light: 0.85, follow: 0.2 } as const;
-/** Stars drawn per quality tier (a prefix of the same random field: a fair subsample). */
-const STAR_COUNT: Readonly<Record<QualityTier, number>> = { high: 7000, mid: 5000, low: 3000 };
+/** The starfield holds the most stars any rung draws; each rung draws a prefix (a fair subsample of one random field). */
+const STAR_MAX = Math.max(...EXPLORE_TIERS.map((t) => DETAIL[t].starCount));
 
 /** Points of light for distant bodies: colour (display terms) and size. Visual constants, not measurements. */
 const DOT: Readonly<Record<BodyId, { tint: readonly [number, number, number]; albedo: number; sizePx: number }>> = {
@@ -109,6 +120,10 @@ const ORBIT_NEAR_BODY = { from: 0.05, to: 0.25 } as const;
 const ORBIT_INSIDE = { from: 0.35, to: 0.7 } as const;
 /** How quickly the view follows a change in what the interface covers, seconds. */
 const INSET_SECONDS = 0.4;
+/** A tap within this many CSS px of a body's disc (or its point) picks it. */
+const PICK_PX = 22;
+/** How much brighter the orbit lines are during a trip (eased in and out with the lines' own weights). */
+const TRIP_ORBIT_GLOW = 0.8;
 
 const smoothstep = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -132,6 +147,10 @@ interface Placed {
   distance: number;
   k: number;
   radiusPx: number;
+  /** Where its centre falls on the canvas (CSS px from its top left), and whether it is in front of the camera. */
+  screenX: number;
+  screenY: number;
+  inView: boolean;
 }
 
 const unit = (out: Km, from: Km, to: Km): Km => {
@@ -144,6 +163,7 @@ const unit = (out: Km, from: Km, to: Km): Km => {
   out.z = z / l;
   return out;
 };
+const dot3 = (a: Km, b: Km): number => a.x * b.x + a.y * b.y + a.z * b.z;
 
 export default function create(): UniverseModule {
   const root = new Group();
@@ -169,13 +189,32 @@ export default function create(): UniverseModule {
   let range = { startJd: 0, endJd: Infinity };
   let timeConstants: PhysicalFile['time'] | null = null;
   let noise: Data3DTexture | null = null;
-  let tier: QualityTier = 'high';
-  let insets: ViewInsets = { top: 0, bottom: 0 };
+  let insets: Required<ViewInsets> = { top: 0, bottom: 0, left: 0, right: 0 };
   /** The clear part's offset from the middle of the view, CSS px, eased so a readout growing a line never jolts the view. */
   let offsetPx = 0;
+  let offsetXPx = 0;
+
+  /* Detail: the rung running, the governor, what the device allows, and the visitor's wish. */
+  let detail: ExploreDetail = DETAIL.high;
+  let governor: DetailGovernor | null = null;
+  let available: readonly ExploreTier[] = EXPLORE_TIERS;
+  let fixed = false;
+  let pendingChoice: DetailChoice | null = null;
+  let renderScale = 1;
+
+  /* Discoveries: facts from cited data, the note now, and the log. */
+  let discoveries: Discoveries | null = null;
+  let discovery: Discovery | null = null;
+  let lightKmS = 0;
+
+  /* Trips, for the data-travel hook: whether one was under way, and whether Esc stopped it; and the orbits' glow. */
+  let tripGlow = 0;
+  let wasTravelling = false;
+  let stopped = false;
+  let tripStartKm = 0;
 
   const nav = new Navigator(DEFAULT_BODY);
-  const navOut: NavOutput = { position: km(), target: km(), dim: 1, cut: false, progress: 1, from: null };
+  const navOut = navOutput();
   const origin = new FloatingOrigin();
   const lens: Lens = { near: 1, far: 2e4 };
   /** The engine's limiter, mirrored without the fade: how far the exposure has adapted right now. */
@@ -190,25 +229,42 @@ export default function create(): UniverseModule {
   let jdUtc = 0;
   let elapsed = 0;
 
-  const placed = Object.fromEntries(BODY_IDS.map((id) => [id, { rel: km(), drawn: km(), distance: 0, k: 1, radiusPx: 0 }])) as Record<BodyId, Placed>;
+  const placed = Object.fromEntries(
+    BODY_IDS.map((id) => [id, { rel: km(), drawn: km(), distance: 0, k: 1, radiusPx: 0, screenX: 0, screenY: 0, inView: false }]),
+  ) as Record<BodyId, Placed>;
   const labelOpacity = new Map<BodyId, number>(BODY_IDS.map((id) => [id, 0]));
   let labels: SceneLabel[] = [];
   const dotList: ImpostorDot[] = BODY_IDS.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: 6, marker: 0 }));
   /** Saturn's rings' span and pole, for the lens (set from physical.json on load, the pole each frame). */
   const ringSphere = { pole: km(0, 1, 0), innerKm: 0, outerKm: 0 };
   const spheres: Sphere[] = BODY_IDS.map((id) => (id === 'saturn' ? { centre: km(), radius: 0, ring: ringSphere } : { centre: km(), radius: 0 }));
+  /** Each body as the camera sees it (for the navigator), refreshed every frame. */
+  const bodyViews: UniverseBodyView[] = BODY_IDS.map((id) => ({
+    id,
+    distanceKm: 0,
+    lightSeconds: 0,
+    lit: 1,
+    limbAngle: 0,
+    ringOpening: 0,
+    screen: { x: 0, y: 0, radiusPx: 0, inView: false },
+    ecliptic: { x: 0, y: 0, z: 0 },
+  }));
+  const phaseAngles = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
+  const cameraEcliptic = { x: 0, y: 0, z: 0, heading: 0 };
 
   const look = new Matrix4();
-  const eye = new Vector3();
   const target = new Vector3();
   const up = new Vector3(0, 1, 0);
+  const eye = new Vector3();
   const basis = new Matrix4();
   const right = new Vector3();
+  const camUp = new Vector3();
   const projected = new Vector3();
   const origin3 = new Vector3();
   const sunDir = km();
   const toEarth = km();
   const scratch = km();
+  const scratch2 = km();
   const forward = km();
 
   const setDate = (utc: number | null): void => {
@@ -245,7 +301,7 @@ export default function create(): UniverseModule {
   };
 
   /**
-   * The view's exposure: the focus's, and during a flight the log blend of where it left and where
+   * The view's exposure: the focus's, and during a trip the log blend of where it left and where
    * it goes. A reduced-motion cut keeps the old body's until it cuts (then the exposure jumps).
    */
   const exposureTarget = (): number => {
@@ -257,6 +313,14 @@ export default function create(): UniverseModule {
     return Math.exp(Math.log(from) + (Math.log(to) - Math.log(from)) * w);
   };
 
+  const detailState = (): UniverseView['detail'] => ({
+    tier: detail.tier,
+    choice: governor?.choice ?? 'auto',
+    available,
+    renderScale,
+    fixed,
+  });
+
   const view = (): UniverseView => {
     const cam = origin.camera;
     const focus = nav.focus;
@@ -265,17 +329,29 @@ export default function create(): UniverseModule {
     const distanceKm = Math.hypot(cam.x - p.x, cam.y - p.y, cam.z - p.z);
     const auKm = system?.auKm ?? 1;
     const fromSun = Math.max(1, Math.hypot(cam.x, cam.y, cam.z));
+    const altitudeKm = distanceKm - (spec?.radiusKm ?? 0);
+    const trip = nav.tripState;
     return {
       focus,
       travelling: nav.travelling,
       from: navOut.from,
       moving: nav.moving,
       distanceKm,
-      altitudeKm: distanceKm - (spec?.radiusKm ?? 0),
+      altitudeKm,
       sunlight: (auKm / fromSun) ** 2,
       solarFilter: filterAmount > 0.5,
       jdTdb,
       unixMs: (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000,
+      mode: navOut.mode,
+      speedKmS: navOut.speedKmS,
+      trip: trip ? { progress: trip.progress, remainingKm: Math.max(0, altitudeKm), startKm: tripStartKm, endKm: trip.endKm } : null,
+      bodies: bodyViews,
+      camera: cameraEcliptic,
+      discovery: discovery ? { id: discovery.id, values: discovery.values } : null,
+      witnessed: discoveries?.witnessed ?? [],
+      detail: detailState(),
+      auKm,
+      lightKmS,
     };
   };
 
@@ -287,6 +363,55 @@ export default function create(): UniverseModule {
         if (o instanceof Mesh) o.frustumCulled = on;
       });
     }
+  };
+
+  /**
+   * The one place a detail rung reaches the scene: the bodies (what they draw and stream), the
+   * stars, bloom and the canvas's pixel-ratio cap. The governor, the visitor's menu and tests all
+   * come through here.
+   */
+  const applyDetail = (next: ExploreDetail): void => {
+    detail = next;
+    if (bodies) {
+      bodies.setDetail(detail);
+    }
+    if (stars) stars.object.count = Math.min(STAR_MAX, detail.starCount);
+    if (entered && ctx) {
+      ctx.graphics.setBloom(detail.bloom);
+      ctx.graphics.setDprCap(detail.dprCap);
+    }
+    setHook('data-detail', entered ? detail.tier : null);
+  };
+
+  const applyDecision = (decision: GovernorDecision | null): void => {
+    if (!decision) return;
+    if (decision.tier && decision.tier !== detail.tier) applyDetail(DETAIL[decision.tier]);
+    if (decision.scale !== undefined) {
+      renderScale = decision.scale;
+      if (entered) ctx?.graphics.setRenderScale(renderScale);
+    }
+  };
+
+  /** The body under a point of the canvas (client px), nearest the camera when discs overlap. */
+  const pick = (clientX: number, clientY: number): BodyId | null => {
+    const c = ctx;
+    if (!c) return null;
+    const rect = c.renderer.domElement.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    let best: BodyId | null = null;
+    let bestDistance = Infinity;
+    for (const id of BODY_IDS) {
+      const p = placed[id];
+      if (!p.inView) continue;
+      const reach = Math.max(PICK_PX, p.radiusPx * 1.04);
+      if (Math.hypot(p.screenX - x, p.screenY - y) > reach) continue;
+      if (p.distance < bestDistance) {
+        bestDistance = p.distance;
+        best = id;
+      }
+    }
+    return best;
   };
 
   const frame = (dt: number): void => {
@@ -301,12 +426,22 @@ export default function create(): UniverseModule {
     sys.update(jdTdb);
     for (const path of orbitPaths) path.setDate(jdTdb);
 
-    // The view the bodies are framed in: the camera's lens and what the interface covers.
+    // The view the bodies are framed in: the camera's resting lens and what the interface covers.
     const camera = c.camera;
     const viewportPx = c.renderer.domElement.clientHeight || 1;
     const widthPx = c.renderer.domElement.clientWidth || 1;
-    const tanHalf = Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2));
-    nav.setView({ tanHalfFov: tanHalf, aspect: widthPx / viewportPx, top: insets.top / viewportPx, bottom: insets.bottom / viewportPx });
+    nav.viewportPx = viewportPx;
+    nav.setView(
+      {
+        tanHalfFov: Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)),
+        aspect: widthPx / viewportPx,
+        top: insets.top / viewportPx,
+        bottom: insets.bottom / viewportPx,
+        left: insets.left / widthPx,
+        right: insets.right / widthPx,
+      },
+      DEFAULT_FOV,
+    );
 
     // The camera, in doubles; then everything relative to it.
     nav.update(world, dt, navOut);
@@ -328,24 +463,29 @@ export default function create(): UniverseModule {
     ringSphere.pole.z = pole[5] ?? 0;
     lensFor(nearestAltitude(spheres), lens);
 
-    // The camera: at the origin, looking where the navigator looks, tilted so the body sits in the
-    // middle of the part of the view the interface leaves clear, with this frame's depth range.
+    // The camera: at the origin, along the navigator's gaze and "up" (its bank included), turned so
+    // the body sits in the middle of the part of the view the interface leaves clear, with this
+    // frame's lens and depth range.
     camera.position.set(0, 0, 0);
-    eye.set(0, 0, 0);
-    target.set(navOut.target.x - navOut.position.x, navOut.target.y - navOut.position.y, navOut.target.z - navOut.position.z);
+    target.set(navOut.forward.x, navOut.forward.y, navOut.forward.z);
+    up.set(navOut.up.x, navOut.up.y, navOut.up.z);
     if (target.lengthSq() > 0) {
       // Matrix4.lookAt from the eye toward the target is a camera's orientation (it looks down -z).
-      look.lookAt(eye, target.normalize(), up);
+      look.lookAt(eye, target, up);
       camera.quaternion.setFromRotationMatrix(look);
     }
+    const fov = navOut.fov;
+    const tanHalf = Math.tan(MathUtils.degToRad(fov / 2));
     const pxPerTan = viewportPx / (2 * tanHalf);
-    const wantOffset = (insets.bottom - insets.top) / 2;
-    offsetPx = entering ? wantOffset : offsetPx + (wantOffset - offsetPx) * (1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS));
+    const settle = entering ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS);
+    offsetPx += ((insets.bottom - insets.top) / 2 - offsetPx) * settle;
+    offsetXPx += ((insets.right - insets.left) / 2 - offsetXPx) * settle;
     camera.rotateX(-Math.atan(offsetPx / pxPerTan));
+    camera.rotateY(-Math.atan(offsetXPx / pxPerTan));
     camera.up.copy(up);
     camera.near = lens.near;
     camera.far = lens.far;
-    camera.fov = DEFAULT_FOV;
+    camera.fov = fov;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     projected.set(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -380,6 +520,11 @@ export default function create(): UniverseModule {
       basis.set(b[0] ?? 1, b[3] ?? 0, b[6] ?? 0, 0, b[1] ?? 0, b[4] ?? 1, b[7] ?? 0, 0, b[2] ?? 0, b[5] ?? 0, b[8] ?? 1, 0, 0, 0, 0, 1);
       object.quaternion.setFromRotationMatrix(basis);
       object.updateMatrixWorld();
+      // On screen: where its centre falls, for picking and the navigator.
+      projected.set(p.drawn.x, p.drawn.y, p.drawn.z).project(camera);
+      p.inView = projected.z > -1 && projected.z < 1 && Math.abs(projected.x) <= 1.1 && Math.abs(projected.y) <= 1.1;
+      p.screenX = ((projected.x + 1) / 2) * widthPx;
+      p.screenY = ((1 - projected.y) / 2) * viewportPx;
     }
     const lightAt = (id: BodyId): number => {
       const q = sys.bodies[id].position;
@@ -417,7 +562,7 @@ export default function create(): UniverseModule {
     const wide = nav.focus === 'sun' ? SUN_ORBITS_WIDE : ORBITS_WIDE;
     const bound = sys.specs[nav.focus].boundKm;
     const wideness = smoothstep(Math.log(wide.from * bound), Math.log(wide.to * bound), Math.log(Math.max(focus.distance, 1)));
-    const settle = dt > 0 ? 1 - Math.exp(-dt / ORBITS_WIDE.seconds) : 0;
+    const orbitSettle = dt > 0 ? 1 - Math.exp(-dt / ORBITS_WIDE.seconds) : 0;
     orbitPaths.forEach((path, i) => {
       const own = path.body === nav.focus || (path.body === 'moon' && nav.focus === 'earth');
       const size = path.sizeKm;
@@ -426,8 +571,10 @@ export default function create(): UniverseModule {
       const outside = smoothstep(ORBIT_INSIDE.from * size, ORBIT_INSIDE.to * size, fromCentre);
       const want = (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
       const current = orbitWeights[i] ?? 0;
-      orbitWeights[i] = current + (want - current) * (entering ? 1 : settle);
+      orbitWeights[i] = current + (want - current) * (entering ? 1 : orbitSettle);
     });
+    // On a trip the orbit lines come up a little (eased): sweeping past, they are what shows the motion.
+    tripGlow += ((nav.travelling && !c.reducedMotion ? 1 : 0) - tripGlow) * (entering ? 1 : orbitSettle);
     orbits.update({
       weights: orbitWeights,
       camera: origin.camera,
@@ -438,7 +585,7 @@ export default function create(): UniverseModule {
       focusRadius: sys.specs[nav.focus].radiusKm,
       focusDistance: focus.distance,
       compensation: adapted,
-      light: 1,
+      light: 1 + TRIP_ORBIT_GLOW * tripGlow,
     });
 
     // Labels first: the ring markers of small bodies come and go with their tags.
@@ -488,7 +635,111 @@ export default function create(): UniverseModule {
       compensation: adapted,
       filtered: filterAmount,
     });
+
+    describe(camera);
+    trackTrips();
     entering = false;
+  };
+
+  /**
+   * Every body as the camera sees it, for the navigator (distance, light-time, phase and the bright
+   * limb's direction, Saturn's ring opening, place in the ecliptic), and the note and log of discoveries.
+   */
+  const describe = (camera: UniverseContext['camera']): void => {
+    if (!system) return;
+    const sys = system;
+    const sun = sys.bodies.sun.position;
+    right.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    BODY_IDS.forEach((id, i) => {
+      const v = bodyViews[i];
+      if (!v) return;
+      const p = placed[id];
+      const body = sys.bodies[id].position;
+      v.distanceKm = Math.max(0, p.distance - sys.specs[id].radiusKm);
+      v.lightSeconds = lightKmS > 0 ? p.distance / lightKmS : 0;
+      v.screen.x = p.screenX;
+      v.screen.y = p.screenY;
+      v.screen.radiusPx = p.radiusPx;
+      v.screen.inView = p.inView;
+      renderToEcliptic({ x: body.x - sun.x, y: body.y - sun.y, z: body.z - sun.z }, v.ecliptic);
+      if (id === 'sun') {
+        v.lit = 1;
+        v.limbAngle = 0;
+        phaseAngles[id] = 0;
+        return;
+      }
+      // Phase angle at the body between the Sun and the camera; the Sun's direction on screen.
+      unit(sunDir, body, sun);
+      const toCamera = scratch2;
+      toCamera.x = -p.rel.x / Math.max(1e-9, p.distance);
+      toCamera.y = -p.rel.y / Math.max(1e-9, p.distance);
+      toCamera.z = -p.rel.z / Math.max(1e-9, p.distance);
+      const cos = Math.min(1, Math.max(-1, dot3(sunDir, toCamera)));
+      phaseAngles[id] = Math.acos(cos);
+      v.lit = (1 + cos) / 2;
+      v.limbAngle = Math.atan2(sunDir.x * camUp.x + sunDir.y * camUp.y + sunDir.z * camUp.z, sunDir.x * right.x + sunDir.y * right.y + sunDir.z * right.z);
+      if (id === 'saturn') {
+        const b = sys.bodies.saturn.basis;
+        v.ringOpening = Math.asin(Math.min(1, Math.max(-1, (b[3] ?? 0) * toCamera.x + (b[4] ?? 1) * toCamera.y + (b[5] ?? 0) * toCamera.z)));
+      }
+    });
+    renderToEcliptic(origin.camera, cameraEcliptic);
+    renderToEcliptic(forward, scratch);
+    cameraEcliptic.heading = Math.atan2(scratch.y, scratch.x);
+
+    if (!discoveries) return;
+    const earth = sys.bodies.earth.position;
+    const moon = sys.bodies.moon.position;
+    // The Moon from the Earth: lit share, and waxing while it is east of the Sun (counterclockwise seen from ecliptic north).
+    unit(sunDir, moon, sun);
+    unit(toEarth, moon, earth);
+    const moonCos = dot3(sunDir, toEarth);
+    const geoSun = { x: sun.x - earth.x, y: sun.y - earth.y, z: sun.z - earth.z };
+    const geoMoon = { x: moon.x - earth.x, y: moon.y - earth.y, z: moon.z - earth.z };
+    // Ecliptic north is +y in the render frame.
+    const waxing = geoSun.z * geoMoon.x - geoSun.x * geoMoon.z > 0;
+    unit(scratch, earth, sun);
+    unit(scratch2, earth, moon);
+    const earthFromMoon = (1 + dot3(scratch, scratch2)) / 2;
+    const saturnBasis = sys.bodies.saturn.basis;
+    unit(scratch, sys.bodies.saturn.position, sun);
+    const ringTilt = Math.asin(Math.min(1, Math.max(-1, (saturnBasis[3] ?? 0) * scratch.x + (saturnBasis[4] ?? 1) * scratch.y + (saturnBasis[5] ?? 0) * scratch.z)));
+    const v = view();
+    const input: DiscoveryInput = {
+      focus: nav.focus,
+      travelling: nav.travelling,
+      altitudeKm: v.altitudeKm,
+      radiusKm: sys.specs[nav.focus].radiusKm,
+      framedAltitudeKm: world ? nav.framingKm(world.body(nav.focus)) - sys.specs[nav.focus].radiusKm : 0,
+      phaseAngle: phaseAngles,
+      discPx: Object.fromEntries(BODY_IDS.map((id) => [id, placed[id].radiusPx])) as Record<BodyId, number>,
+      inView: Object.fromEntries(BODY_IDS.map((id) => [id, placed[id].inView])) as Record<BodyId, boolean>,
+      moonLit: (1 + moonCos) / 2,
+      moonWaxing: waxing,
+      earthLitFromMoon: earthFromMoon,
+      ringTiltDeg: (ringTilt * 180) / Math.PI,
+      sunEarthKm: Math.hypot(earth.x - sun.x, earth.y - sun.y, earth.z - sun.z),
+      sunCameraKm: Math.hypot(origin.camera.x - sun.x, origin.camera.y - sun.y, origin.camera.z - sun.z),
+      sunlight: v.sunlight,
+      solarFilter: v.solarFilter,
+    };
+    discovery = discoveries.update(input);
+  };
+
+  /** The data-travel hook: "flying" while a trip is under way, then "arrived" or "stopped". */
+  const trackTrips = (): void => {
+    const travelling = nav.travelling;
+    if (travelling && !wasTravelling) {
+      stopped = false;
+      const to = system?.specs[nav.focus];
+      const p = system?.bodies[nav.focus].position;
+      tripStartKm = to && p ? Math.max(0, Math.hypot(origin.camera.x - p.x, origin.camera.y - p.y, origin.camera.z - p.z) - to.radiusKm) : 0;
+      setHook('data-travel', 'flying');
+    } else if (!travelling && wasTravelling) {
+      setHook('data-travel', stopped ? 'stopped' : 'arrived');
+    }
+    wasTravelling = travelling;
   };
 
   /** Names beside the bodies: eased, hidden behind other bodies, and never on top of each other. */
@@ -572,13 +823,24 @@ export default function create(): UniverseModule {
     };
   };
 
+  const steer = (command: UniverseSteer): boolean => {
+    if (!world || !entered) return false;
+    if (command === 'stop') {
+      const did = nav.cancelTravel(world);
+      if (did) stopped = true;
+      return did;
+    }
+    const was = nav.mode;
+    nav.orbitNearest(world);
+    return was === 'flight';
+  };
+
   return {
     id: 'universe',
 
     async load(c) {
       ctx = c;
       if (system) return;
-      tier = c.quality.tier;
       const [planets, moon, physical, volume] = await Promise.all([
         c.assets.json<PlanetsFile>('assets/jpl/planets.json'),
         c.assets.json<MoonFile>('assets/jpl/moon.json'),
@@ -593,9 +855,29 @@ export default function create(): UniverseModule {
       world = navBodies(system);
       ringSphere.innerKm = physical.saturnRings.innerKm;
       ringSphere.outerKm = physical.saturnRings.outerKm;
-      bodies = createBodies(volume, system.specs, { innerKm: ringSphere.innerKm, outerKm: ringSphere.outerKm, transmission: ringTransmission(physical.saturnRings) }, tier);
-      stars = createStarfield(STAR_COUNT.high, 400, 7_101, { depthTest: true, dynamicRadius: true });
-      stars.object.count = STAR_COUNT[tier];
+
+      // The rung to start on: the address's, else the device's own (never Ultra on its own).
+      const device = c.graphics.device;
+      available = availableTiers(device);
+      const fixedDetail = c.graphics.fixedDetail;
+      fixed = !c.graphics.adaptive;
+      const start: ExploreTier = fixedDetail ? (available.includes(fixedDetail) ? fixedDetail : 'high') : initialTier(device);
+      const minScale = Object.fromEntries(EXPLORE_TIERS.map((t) => [t, DETAIL[t].minRenderScale])) as Record<ExploreTier, number>;
+      governor = createDetailGovernor({ tier: start, choice: 'auto', enabled: c.graphics.adaptive, available, minScale, mobile: device.mobile });
+      detail = DETAIL[start];
+      if (pendingChoice) {
+        const choice = pendingChoice;
+        pendingChoice = null;
+        if (!fixedDetail) {
+          const decision = governor.choose(choice);
+          if (decision?.tier) detail = DETAIL[decision.tier];
+        }
+      }
+
+      const rings = { innerKm: ringSphere.innerKm, outerKm: ringSphere.outerKm, transmission: ringTransmission(physical.saturnRings) };
+      bodies = createBodies(volume, system.specs, rings, FILM_TIER[detail.tier]);
+      stars = createStarfield(STAR_MAX, 400, 7_101, { depthTest: true, dynamicRadius: true });
+      applyDetail(detail);
       const body = (name: string): PlanetsFile['bodies'][number] => {
         const found = planets.bodies.find((b) => b.name === name);
         if (!found) throw new Error(`planets.json has no ${name}`);
@@ -612,7 +894,45 @@ export default function create(): UniverseModule {
       dots = createImpostors(BODY_IDS.length);
       glare = createSunGlare(blackbodyRgb(SUN_KELVIN));
       root.add(stars.object, orbits.mesh, dots.object, glare.object, ...BODY_IDS.map((id) => bodies?.objects[id]).filter((o): o is Group => o !== undefined));
-      input = createInput(c.renderer.domElement, nav);
+
+      // Notes from cited data: without the constants file they are left out, never guessed.
+      try {
+        await c.data.ready;
+        const facts = deriveFacts(physical, planets, (id) => c.data.constant(id).value);
+        lightKmS = facts.lightKmS;
+        discoveries = new Discoveries(facts);
+      } catch (err) {
+        console.warn('[explore] Notes and light-times are unavailable: data/constants.json did not load', err);
+      }
+
+      const w = world;
+      input = createInput(c.renderer.domElement, {
+        drag: (dx, dy) => {
+          nav.drag(w, dx, dy);
+        },
+        pan: (dx, dy) => {
+          nav.pan(w, dx, dy);
+        },
+        zoom: (dLn) => {
+          nav.zoom(w, dLn);
+        },
+        orbitKeys: (azimuth, elevation, zoom) => {
+          nav.setOrbitKeys(azimuth, elevation, zoom);
+        },
+        flightKeys: (move, roll, boost) => {
+          nav.setFlightKeys(w, move, roll, boost);
+        },
+        stop: () => steer('stop'),
+        orbit: () => {
+          steer('orbit');
+        },
+        pick,
+        travel: (id) => {
+          nav.flyTo(w, id);
+          // The interface keeps the address in step (app.focusBody), as for a choice from its list.
+          c.renderer.domElement.dispatchEvent(new CustomEvent('kf-universe-focus', { detail: id, bubbles: true }));
+        },
+      });
     },
 
     configure(options) {
@@ -634,12 +954,18 @@ export default function create(): UniverseModule {
       nav.reducedMotion = c.reducedMotion;
       // Framing needs the view before the first pose is chosen.
       const viewportPx = c.renderer.domElement.clientHeight || 1;
-      nav.setView({
-        tanHalfFov: Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)),
-        aspect: (c.renderer.domElement.clientWidth || 1) / viewportPx,
-        top: insets.top / viewportPx,
-        bottom: insets.bottom / viewportPx,
-      });
+      const widthPx = c.renderer.domElement.clientWidth || 1;
+      nav.setView(
+        {
+          tanHalfFov: Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)),
+          aspect: widthPx / viewportPx,
+          top: insets.top / viewportPx,
+          bottom: insets.bottom / viewportPx,
+          left: insets.left / widthPx,
+          right: insets.right / widthPx,
+        },
+        DEFAULT_FOV,
+      );
       nav.begin(world, wantBody ?? DEFAULT_BODY, true);
       wantBody = null;
       // A fresh mirror of the limiter, already adapted, so guides are steady from the first frame.
@@ -648,6 +974,14 @@ export default function create(): UniverseModule {
       adaptation.setTarget(exposureFor(nav.focus));
       adaptation.jump();
       for (const id of BODY_IDS) labelOpacity.set(id, 0);
+      // The rung's picture settings (bloom, pixel ratio), the full internal resolution, and a hold-off while it all settles.
+      applyDetail(detail);
+      renderScale = governor?.scale ?? 1;
+      c.graphics.setRenderScale(renderScale);
+      governor?.holdOff();
+      wasTravelling = false;
+      // The log of what was seen lasts the whole visit to the page; the note starts afresh.
+      discovery = null;
       input?.attach();
       // Place everything once, then let the warm-up compile every material, in view or not.
       entering = true;
@@ -666,11 +1000,31 @@ export default function create(): UniverseModule {
       frame(dt);
     },
 
-    setQuality(profile) {
-      tier = profile.tier;
-      bodies?.setTier(tier);
-      if (stars) stars.object.count = STAR_COUNT[tier];
+    setQuality() {
+      // The film's tiers do not reach the explorer: it runs its own ladder (./detail) and governor.
     },
+
+    setDetail(next) {
+      applyDetail(next);
+      governor?.holdOff();
+    },
+
+    setDetailChoice(choice) {
+      if (!governor) {
+        pendingChoice = choice;
+        return;
+      }
+      // A tier fixed by the address holds until the visitor chooses in the explorer itself.
+      if (fixed && !entered) return;
+      applyDecision(governor.choose(choice));
+    },
+
+    sampleFrame(frameSeconds, gpuMs, intervalSeconds) {
+      if (!entered || !governor) return;
+      applyDecision(governor.sample(frameSeconds, gpuMs, intervalSeconds));
+    },
+
+    steer,
 
     focus(body) {
       if (!world || !entered) {
@@ -683,7 +1037,7 @@ export default function create(): UniverseModule {
     view,
 
     setInsets(next) {
-      insets = { top: next.top, bottom: next.bottom };
+      insets = { top: next.top, bottom: next.bottom, left: next.left ?? 0, right: next.right ?? 0 };
     },
 
     place(pose: UniversePose) {

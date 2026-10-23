@@ -34,6 +34,9 @@ const WEBGPU_ARGS = [
 const BRAVE_PATH = env('BRAVE_PATH') ?? '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
 const HAS_BRAVE = existsSync(BRAVE_PATH);
 
+/** Specs that run only on the emulated phone (the "mobile" project). */
+const MOBILE_SPECS = /explore\/mobile\.spec\.ts/u;
+
 const desktopChromium = {
   ...devices['Desktop Chrome'],
   channel: 'chromium',
@@ -70,13 +73,20 @@ export default defineConfig<KfOptions>({
     { name: 'unit', testMatch: /unit\//u },
     {
       name: 'webgpu',
-      testIgnore: /unit\//u,
+      testIgnore: [/unit\//u, MOBILE_SPECS],
       use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS } },
     },
     {
       name: 'webgl2',
-      testIgnore: /unit\//u,
+      testIgnore: [/unit\//u, MOBILE_SPECS],
       use: { ...desktopChromium, forceWebGL: true },
+    },
+    // A phone (Pixel 7: 412 x 839 CSS px at DPR 2.625, touch, Android Chrome's user agent) for the
+    // explorer's touch controls and layouts. Emulation, not a real phone: the GPU is this machine's.
+    {
+      name: 'mobile',
+      testMatch: MOBILE_SPECS,
+      use: { ...devices['Pixel 7'], channel: 'chromium', launchOptions: { args: WEBGPU_ARGS } },
     },
     ...(HAS_BRAVE
       ? [

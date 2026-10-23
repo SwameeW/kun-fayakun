@@ -1,3 +1,4 @@
+import type { ExploreTier } from '../explore/detail';
 import type { QualityTier } from './types';
 
 /** Query parameters that change how the app starts (see docs/CONTRACTS.md). */
@@ -20,9 +21,15 @@ export interface LaunchParams {
    * The solar-system explorer reads it (as UTC) unless its own route pins a date.
    */
   jd: number | null;
+  /**
+   * ?detail=ultra|high|medium|low: a fixed detail tier for the solar-system explorer (tests,
+   * benchmarks, captures); its governor then holds still. Ultra only where the device allows it.
+   */
+  detail: ExploreTier | null;
 }
 
 const TIERS: readonly QualityTier[] = ['high', 'mid', 'low'];
+const DETAILS: readonly ExploreTier[] = ['ultra', 'high', 'medium', 'low'];
 
 /**
  * Accepted Julian dates: 1 January 1 CE to the end of 9999 CE. Anything outside is
@@ -62,5 +69,6 @@ export function readLaunchParams(search: string = window.location.search): Launc
     showFps: flag(q.get('fps')) ?? false,
     profile: flag(q.get('profile')) ?? false,
     jd: parseJulianDate(q.get('jd')),
+    detail: DETAILS.find((d) => d === q.get('detail')?.trim().toLowerCase()) ?? null,
   };
 }

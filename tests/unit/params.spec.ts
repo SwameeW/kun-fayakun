@@ -11,7 +11,15 @@ test('defaults when nothing is set', () => {
     showFps: false,
     profile: false,
     jd: null,
+    detail: null,
   });
+});
+
+test('?detail fixes the explorer detail tier (and only to a tier of its ladder)', () => {
+  expect(readLaunchParams('?detail=Ultra').detail).toBe('ultra');
+  expect(readLaunchParams('?detail=medium').detail).toBe('medium');
+  expect(readLaunchParams('?detail=mid').detail).toBeNull();
+  expect(readLaunchParams('?detail=').detail).toBeNull();
 });
 
 test('?jd pins a Julian date', () => {

@@ -11,6 +11,7 @@
 
 import type { Data3DTexture, Group } from 'three/webgpu';
 import type { BodyId } from '../../core/types';
+import { FILM_TIER, type ExploreDetail } from '../detail';
 import type { BodySpec } from '../system';
 import { createEarth, type ExploreEarth } from './earth';
 import { createGiant, jupiterSurface, saturnSurface, type ExploreGiant } from './giant';
@@ -31,6 +32,11 @@ export interface Bodies {
   /** Every body's root object, by id. */
   readonly objects: Readonly<Record<BodyId, Group>>;
   setTier(tier: Tier): void;
+  /**
+   * Applies an explorer detail level (../detail). Until the bodies read the whole ExploreDetail
+   * (meshes, maps, atmosphere steps), this maps it onto their three shader tiers (FILM_TIER).
+   */
+  setDetail(detail: ExploreDetail): void;
   dispose(): void;
 }
 
@@ -61,6 +67,9 @@ export function createBodies(noise: Data3DTexture, specs: Readonly<Record<BodyId
     objects: { sun: sun.object, earth: earth.object, moon: moon.object, jupiter: jupiter.object, saturn: saturn.object },
     setTier(next) {
       for (const body of all) body.setTier(next);
+    },
+    setDetail(detail) {
+      for (const body of all) body.setTier(FILM_TIER[detail.tier]);
     },
     dispose() {
       for (const body of all) body.dispose();

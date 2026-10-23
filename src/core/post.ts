@@ -33,6 +33,11 @@ export interface PostPipeline {
    */
   setBloomExposure(exposure: number): void;
   /**
+   * The scene pass's share of the canvas resolution (default 1). The solar-system explorer lowers it
+   * when frames run slow (dynamic resolution without resizing the canvas); the film never sets it.
+   */
+  setSceneScale(scale: number): void;
+  /**
    * Film grain changes each frame only while the film plays; paused or with reduced
    * motion it holds still (WCAG 2.2.2: nothing moves on its own while paused).
    */
@@ -124,6 +129,10 @@ export function createPostPipeline(renderer: WebGPURenderer, scene: Scene, camer
       if (next === bloomExposure) return;
       bloomExposure = next;
       if (bloomNode) bloomNode.threshold.value = threshold();
+    },
+    setSceneScale(scale) {
+      const next = Number.isFinite(scale) ? Math.min(1, Math.max(0.5, scale)) : 1;
+      if (next !== scenePass.getResolutionScale()) scenePass.setResolutionScale(next);
     },
     advanceGrain() {
       // Wraps long before float precision matters; the pattern has no visible period.

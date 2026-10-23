@@ -256,6 +256,10 @@ test('the welcome screen offers the explorer, and leaving it goes back to the st
   await page.getByRole('button', { name: 'Jupiter', exact: true }).click();
   await expect.poll(async () => (await view(page))?.focus).toBe('jupiter');
   expect((await view(page))?.travelling).toBe(true);
+  // Esc first stops the trip (the explorer stays), then a second Esc goes back.
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await view(page))?.travelling).toBe(false);
+  await expect(html(page)).toHaveAttribute('data-experience', 'universe');
   await page.keyboard.press('Escape');
   await expect(html(page)).toHaveAttribute('data-experience', 'film', { timeout: UNIVERSE_TIMEOUT });
   await expect(page.getByTestId('intro')).toBeVisible();

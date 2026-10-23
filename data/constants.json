@@ -629,6 +629,45 @@
         "url": "https://doi.org/10.1038/s41586-021-03393-7",
         "accessed": "2026-10-23"
       }
+    },
+    {
+      "id": "light.speed",
+      "description": "Speed of light in vacuum; the solar-system explorer turns distances into light-times with it",
+      "value": 299792458,
+      "uncertainty": 0,
+      "unit": "m/s",
+      "qualifier": "exact: the SI defines the metre by it",
+      "citation": {
+        "text": "BIPM, The International System of Units (SI Brochure), 9th edition 2019, section 2.3.1: the speed of light in vacuum c is 299 792 458 m/s",
+        "url": "https://www.bipm.org/en/publications/si-brochure",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "earth.atmosphere.scaleHeight",
+      "description": "Scale height of the Earth's atmosphere: the height over which its pressure falls by a factor of e (about 2.7)",
+      "value": 8.5,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "approximate, for the lower atmosphere; it varies with temperature",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet, Terrestrial Atmosphere: scale height 8.5 km",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-23"
+      }
+    },
+    {
+      "id": "sun.effectiveTemperature",
+      "description": "The Sun's effective temperature: the temperature of a blackbody that would radiate as much per square metre as the Sun's visible surface",
+      "value": 5772,
+      "uncertainty": 0.8,
+      "unit": "K",
+      "qualifier": "the IAU's nominal value, from the measured total solar irradiance and radius",
+      "citation": {
+        "text": "Prša et al. 2016, AJ 152, 41, \"Nominal Values for Selected Solar and Planetary Quantities: IAU 2015 Resolution B3\" (Teff = 5772.0 ± 0.8 K; nominal 5772 K)",
+        "url": "https://doi.org/10.3847/0004-6256/152/2/41",
+        "accessed": "2026-10-23"
+      }
     }
   ]
 }

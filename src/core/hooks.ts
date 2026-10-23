@@ -13,7 +13,11 @@ export type HookAttribute =
   /** "film" or "universe": which experience owns the screen (set as soon as a switch starts). */
   | 'data-experience'
   /** "true" once the explorer has rendered a frame after loading; removed while it is not on screen. */
-  | 'data-universe-ready';
+  | 'data-universe-ready'
+  /** The explorer's trips: "flying" while one is under way, then "arrived" (or "stopped" by Esc); removed when it leaves. */
+  | 'data-travel'
+  /** The explorer's detail tier running (ultra, high, medium, low); removed when it leaves. */
+  | 'data-detail';
 
 export function setHook(name: HookAttribute, value: string | null): void {
   const root = document.documentElement;

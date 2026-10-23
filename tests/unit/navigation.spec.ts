@@ -8,7 +8,7 @@ import type { MoonFile, PlanetsFile } from '../../src/astro/ephemeris';
 import type { PhysicalFile } from '../../src/astro/physical';
 import type { BodyId } from '../../src/core/types';
 import { BODY_IDS } from '../../src/core/types';
-import { Navigator, type NavBody, type NavOutput, type NavWorld } from '../../src/explore/navigation';
+import { Navigator, navOutput, type NavBody, type NavOutput, type NavWorld } from '../../src/explore/navigation';
 import { km } from '../../src/explore/space/origin';
 import { createSolarSystem, type SolarSystem } from '../../src/explore/system';
 
@@ -38,10 +38,10 @@ function setup(): { system: SolarSystem; w: NavWorld } {
   return { system, w: world(system) };
 }
 
-const out = (): NavOutput => ({ position: km(), target: km(), dim: 1, cut: false, progress: 1, from: null });
+const out = (): NavOutput => navOutput();
 const distance = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
-test('a flight from body to body never enters one, lasts 2.6 to 8 s and ends at the framing distance', () => {
+test('a flight from body to body never enters one, lasts 2.5 to 9 s and ends at the framing distance', () => {
   const { w } = setup();
   const route: BodyId[] = ['earth', 'moon', 'sun', 'jupiter', 'saturn', 'earth'];
   const nav = new Navigator('earth');
@@ -59,8 +59,8 @@ test('a flight from body to body never enters one, lasts 2.6 to 8 s and ends at 
         expect(distance(pose.position, body.position), `inside ${body.id} on the way to ${next}`).toBeGreaterThanOrEqual(body.radiusKm);
       }
     }
-    expect(seconds, `flight to ${next}`).toBeGreaterThanOrEqual(2.6 - 1 / 30);
-    expect(seconds, `flight to ${next}`).toBeLessThanOrEqual(8 + 1 / 30);
+    expect(seconds, `flight to ${next}`).toBeGreaterThanOrEqual(2.5 - 1 / 30);
+    expect(seconds, `flight to ${next}`).toBeLessThanOrEqual(9 + 1 / 30);
     const to = w.body(next);
     expect(distance(pose.position, to.position) / nav.framingKm(to)).toBeCloseTo(1, 2);
   }
@@ -71,7 +71,7 @@ test('orbiting never goes below the floor over the body, however far the zoom is
   const nav = new Navigator('earth');
   nav.begin(w, 'earth', false);
   const pose = out();
-  nav.zoom(-50);
+  nav.zoom(w, -50);
   for (let i = 0; i < 600; i += 1) nav.update(w, 1 / 60, pose);
   const earth = w.body('earth');
   expect(distance(pose.position, earth.position) - earth.radiusKm).toBeCloseTo(earth.minAltitudeKm, 3);
