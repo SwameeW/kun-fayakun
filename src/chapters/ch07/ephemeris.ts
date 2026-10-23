@@ -1,45 +1,32 @@
 import { Vector3 } from 'three/webgpu';
+import {
+  elementsAt,
+  moonLinearKm,
+  positionFromElements,
+  type Elements,
+  type MoonFile,
+  type PlanetBody,
+  type PlanetsFile,
+  type Vec3,
+} from '../../astro/ephemeris';
+import { julianDateUtc } from '../../astro/time';
 import type { ChapterContext } from '../../core/types';
 
 /**
  * Where the planets and the Moon are on a given date, from NASA JPL data
- * (public/assets/jpl, built by scripts/jpl/build.py).
+ * (public/assets/jpl, built by scripts/jpl/build.py), in this chapter's scene axes.
  *
- * Planets: Keplerian elements and their rates (Standish and Williams, Table 1, valid 1800 to
- * 2050 AD), solved for the date with Kepler's equation, in the ecliptic of J2000. Moon: its
- * geocentric position from Horizons, one row a day for 2026 to 2035, interpolated; outside
- * that range its phase falls back to the mean synodic month.
+ * A thin wrapper over src/astro/ephemeris that keeps Chapter 7's numbers bit for bit as they were
+ * (tests/unit/ephemeris.spec.ts). The planets are held at the edges of Table 1's 1800 to 2050 fit,
+ * the Earth is the Earth-Moon barycentre, and the Moon is interpolated linearly. The chapter
+ * shows only the Moon's direction, so the linear sag between daily rows does not show. Outside
+ * the Moon table, its phase falls back to the mean synodic month.
  *
  * Scene axes: x = ecliptic x (toward the vernal equinox), y = ecliptic north, z = -ecliptic y.
  */
 
-export interface Elements {
-  a: number;
-  e: number;
-  I: number;
-  L: number;
-  varpi: number;
-  Omega: number;
-}
-
-export interface Body {
-  name: string;
-  elements: Elements;
-  ratesPerCentury: Elements;
-  meanRadiusKm: number;
-}
-
-interface PlanetsFile {
-  epochJd: number;
-  bodies: Body[];
-}
-
-interface MoonFile {
-  startJdTdb: number;
-  stepDays: number;
-  count: number;
-  positionsKm: Array<[number, number, number]>;
-}
+export type { Elements };
+export type Body = PlanetBody;
 
 export interface Ephemeris {
   readonly bodies: readonly Body[];
@@ -51,71 +38,32 @@ export interface Ephemeris {
   moonElongation(jd: number): number;
 }
 
-const DEG = Math.PI / 180;
-const J2000 = 2451545.0;
 /** Mean synodic month, days (for dates outside the Horizons table). */
 const SYNODIC_MONTH = 29.530589;
-/** Unix epoch as a Julian date. */
-const UNIX_EPOCH_JD = 2440587.5;
 
-export const julianDateNow = (): number => Date.now() / 86_400_000 + UNIX_EPOCH_JD;
+/** The visitor's clock as a Julian date. It is UTC, which the chapter takes as TDB (69 s apart, which does not show here). */
+export const julianDateNow = (): number => julianDateUtc(Date.now());
 
-function solveKepler(meanAnomaly: number, e: number): number {
-  let E = meanAnomaly + e * Math.sin(meanAnomaly);
-  for (let i = 0; i < 8; i += 1) E -= (E - e * Math.sin(E) - meanAnomaly) / (1 - e * Math.cos(E));
-  return E;
-}
-
-export async function loadEphemeris(ctx: ChapterContext): Promise<Ephemeris> {
-  const [planets, moon] = await Promise.all([
-    ctx.assets.json<PlanetsFile>('assets/jpl/planets.json'),
-    ctx.assets.json<MoonFile>('assets/jpl/moon.json'),
-  ]);
+/** The chapter's ephemeris from the two JPL files (separate from loading so tests can build it from disk). */
+export function chapterEphemeris(planets: PlanetsFile, moon: MoonFile): Ephemeris {
   const earthIndex = planets.bodies.findIndex((b) => b.name === 'Earth');
   const sun = new Vector3();
   const moonScratch = new Vector3();
+  const elements: Elements = { a: 0, e: 0, I: 0, L: 0, varpi: 0, Omega: 0 };
+  const ecliptic: Vec3 = { x: 0, y: 0, z: 0 };
+  // Ecliptic to scene axes.
+  const toScene = (out: Vector3): Vector3 => out.set(ecliptic.x, ecliptic.z, -ecliptic.y);
 
   const planetAu = (index: number, jd: number, out: Vector3): Vector3 => {
     const body = planets.bodies[index];
     if (!body) return out.set(0, 0, 0);
-    // Table 1 is valid for 1800 to 2050 AD; dates beyond are held at its edge.
-    const T = Math.min(0.5, Math.max(-2, (jd - J2000) / 36525));
-    const el = body.elements;
-    const rate = body.ratesPerCentury;
-    const a = el.a + rate.a * T;
-    const e = el.e + rate.e * T;
-    const I = (el.I + rate.I * T) * DEG;
-    const L = el.L + rate.L * T;
-    const varpi = el.varpi + rate.varpi * T;
-    const Omega = (el.Omega + rate.Omega * T) * DEG;
-    const omega = varpi * DEG - Omega;
-    let M = (L - varpi) % 360;
-    if (M > 180) M -= 360;
-    if (M < -180) M += 360;
-    const E = solveKepler(M * DEG, e);
-    const xp = a * (Math.cos(E) - e);
-    const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-    const cw = Math.cos(omega);
-    const sw = Math.sin(omega);
-    const cO = Math.cos(Omega);
-    const sO = Math.sin(Omega);
-    const cI = Math.cos(I);
-    const sI = Math.sin(I);
-    const x = (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp;
-    const y = (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp;
-    const z = sw * sI * xp + cw * sI * yp;
-    return out.set(x, z, -y);
+    positionFromElements(elementsAt(body, jd, elements), ecliptic);
+    return toScene(out);
   };
 
   const moonKm = (jd: number, out: Vector3): Vector3 => {
-    const f = (jd - moon.startJdTdb) / moon.stepDays;
-    const i = Math.floor(f);
-    const a = moon.positionsKm[Math.min(moon.count - 1, Math.max(0, i))];
-    const b = moon.positionsKm[Math.min(moon.count - 1, Math.max(0, i + 1))];
-    if (!a || !b) return out.set(384_400, 0, 0);
-    const t = Math.min(1, Math.max(0, f - i));
-    // Ecliptic km to scene axes.
-    return out.set(a[0] + (b[0] - a[0]) * t, a[2] + (b[2] - a[2]) * t, -(a[1] + (b[1] - a[1]) * t));
+    moonLinearKm(moon, jd, ecliptic);
+    return toScene(out);
   };
 
   const inTable = (jd: number): boolean => jd >= moon.startJdTdb && jd <= moon.startJdTdb + (moon.count - 1) * moon.stepDays;
@@ -149,6 +97,14 @@ export async function loadEphemeris(ctx: ChapterContext): Promise<Ephemeris> {
       return cross < 0 ? angle : -angle;
     },
   };
+}
+
+export async function loadEphemeris(ctx: ChapterContext): Promise<Ephemeris> {
+  const [planets, moon] = await Promise.all([
+    ctx.assets.json<PlanetsFile>('assets/jpl/planets.json'),
+    ctx.assets.json<MoonFile>('assets/jpl/moon.json'),
+  ]);
+  return chapterEphemeris(planets, moon);
 }
 
 /** Compressed distance for display: the square root of the distance in au, so every orbit fits (not to scale). */

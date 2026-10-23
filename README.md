@@ -118,7 +118,7 @@ sources. Nothing is typed from memory or generated.
 | Validation | `npm run validate` | Fails on any verse that does not match Tanzil byte for byte after NFC, any hadith without collection, number and grading, any verse key missing from `data/sources.json`, and any Arabic text in `src/` |
 | Planck CMB | `npm run preprocess:cmb` | `public/assets/cmb/`: PR3 SMICA HEALPix map to equirectangular KTX2 textures plus `cmb.json` |
 | Calligraphy | `npm run preprocess:calligraphy` | `public/assets/calligraphy/`: MSDF atlas of the word kun, set in Amiri Quran from the text in `data/quran.json` |
-| JPL solar system | `npm run preprocess:jpl` | `public/assets/jpl/`: planet elements (Standish and Williams, Table 1) with JPL radii, and the Moon's daily geocentric positions for 2026 to 2035 from Horizons |
+| JPL solar system | `npm run preprocess:jpl` | `public/assets/jpl/`: planet elements (Standish and Williams, Table 1) with JPL radii, and the Moon's daily geocentric positions for 2026 to 2035 from Horizons; `physical.json`: IAU rotation models and radii (NAIF pck00011), EMRAT and the au (DE440 header), leap seconds (NAIF naif0012) and the Saturn ring span (Cassini RSS), each with its source URL and sha256 |
 | Letter analysis | `npm run preprocess:analysis` | `public/assets/analysis/kullun-fi-falak.json`: the base letters of kullun fi falakin derived from data/quran.json (21:33 and 36:40), checked to read the same both ways |
 | SDSS galaxies | `npm run preprocess:sdss` | `public/assets/sdss/`: 420,000 DR20 galaxies (every one below z = 0.1, a one-in-nine sample beyond) at their comoving positions, `galaxies.bin` plus `galaxies.json`, and the SDSS acknowledgements in `data/sources.json` |
 
