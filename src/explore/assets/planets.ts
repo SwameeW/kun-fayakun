@@ -49,6 +49,30 @@ export interface PlanetsManifest {
   schema: number;
   tiers: Record<PlanetTier | 'ultra', { width: number; bytes: number; budgetBytes: number; published: boolean }>;
   files: PlanetTexture[];
+  /** Per body: captions and conventions (as written by scripts/planets/manifest.py). */
+  bodies?: Partial<Record<PlanetBody, { caption?: string }>>;
+  facts?: {
+    saturnRings?: {
+      /** The geometry the ring strip's colour was measured in (the PIA11142 mosaic's lit face). */
+      colourModel?: { viewElevationDeg: number; sunElevationDeg: number };
+    };
+  };
+}
+
+/**
+ * The ring strip's colour is a thick ring's lit face as the PIA11142 mosaic shows it, seen from 10
+ * degrees below the rings with the Sun 4 degrees below them, at 28 degrees phase (planets.json
+ * facts.saturnRings.observation.colour gives the phase in words; colourModel the elevations).
+ */
+export const RING_MOSAIC_PHASE_DEG = 28;
+
+/** The geometry the ring strip's colour was measured in: |sin| of the Sun's and the view's elevations and the phase angle. */
+export function ringColourGeometry(manifest: PlanetsManifest): { mu0: number; mu: number; phaseRad: number } {
+  const model = manifest.facts?.saturnRings?.colourModel;
+  const sunDeg = model?.sunElevationDeg ?? -4.04;
+  const viewDeg = model?.viewElevationDeg ?? 10;
+  const rad = Math.PI / 180;
+  return { mu0: Math.abs(Math.sin(sunDeg * rad)), mu: Math.abs(Math.sin(viewDeg * rad)), phaseRad: RING_MOSAIC_PHASE_DEG * rad };
 }
 
 export function findPlanetTexture(manifest: PlanetsManifest, body: PlanetBody, map: PlanetMap, tier: PlanetTier): PlanetTexture | undefined {
@@ -72,11 +96,13 @@ export function ringU(texture: PlanetTexture, radiusKm: number): number {
 
 /**
  * Loads one texture and sets what planets.json asks for: longitude wraps, latitude (and the
- * ring radius) clamps, trilinear filtering. Raw r8/rgba8 files arrive from KTX2Loader as
- * DataTextures with nearest filtering, so the filters are always set here.
+ * ring radius) clamps, trilinear filtering. Raw r8/rgba8 files arrive as DataTextures with nearest
+ * filtering, so the filters are always set here. With `raw`, those raw files are inflated in a worker
+ * (./raw-ktx2) instead of by KTX2Loader on the main thread.
  */
-export async function loadPlanetTexture(assets: AssetLoader, texture: PlanetTexture): Promise<Texture> {
-  const loaded = await assets.ktx2(texture.path);
+export async function loadPlanetTexture(assets: AssetLoader, texture: PlanetTexture, raw?: { load(assets: AssetLoader, path: string): Promise<Texture> }): Promise<Texture> {
+  const isRaw = texture.codec === 'r8' || texture.codec === 'rgba8';
+  const loaded = raw && isRaw ? await raw.load(assets, texture.path) : await assets.ktx2(texture.path);
   loaded.wrapS = texture.map === 'rings' ? ClampToEdgeWrapping : RepeatWrapping;
   loaded.wrapT = ClampToEdgeWrapping;
   loaded.minFilter = texture.levels > 1 ? LinearMipmapLinearFilter : LinearFilter;

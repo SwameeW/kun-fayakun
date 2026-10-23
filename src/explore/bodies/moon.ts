@@ -1,46 +1,82 @@
 /**
- * The Moon, for the explorer: dark maria gathered on the near side, bright cratered highlands,
- * and relief. Illustrative until the mission maps arrive (Stage 7): no real crater or sea is placed.
+ * The Moon, for the explorer, from NASA's CGI Moon Kit: LROC WAC colour (albedo with no shading in
+ * it) and LOLA relief as a normal map.
  *
- * Craters are drawn at several scales (src/explore/bodies/shading.ts), each with an analytic
- * slope, so near the terminator their walls fall into shadow and their rims catch the light, and
- * each scale fades out before its craters would be smaller than a few pixels. Light is
- * Lommel-Seeliger, as airless regolith reflects it (a full Moon is as bright at its limb as at its
- * centre), softened over a pixel at the terminator so a thin crescent never breaks into dashes.
+ * The Low and Medium colour files are ETC1S, whose 4 x 4 blocks carry colour errors (magenta and green
+ * blocks) that show as soon as the map is magnified. The Moon is nearly grey, so its colour is read
+ * as the fine map's brightness over the colour of a much coarser level (where the blocks average
+ * out); at Low, where the 1024 maps are magnified most, both maps are read through a cubic B-spline
+ * so neither shows its texels.
  *
- * The night side gets earthshine: sunlight the Earth sends back, from the Earth's direction and as
- * much of it as the Earth's lit face turned toward the Moon. Real earthshine is about 10^-4 of
- * sunlight, far below what a camera exposed for the day side records; it is shown a few hundred
- * times stronger, as the eye sees it, so the dark disc reads (a visual aid, like the points of light).
+ * Light is Lommel-Seeliger, as airless regolith reflects it (a full Moon is as bright at its limb as
+ * at its centre), with a Hapke-like shadow-hiding opposition surge, the steep brightening as the
+ * Sun comes to stand behind the viewer, and a gentle darkening with phase. Their shapes follow
+ * Hapke's model; their widths and strengths are illustrative, not fitted. The map is normalised to
+ * a standard geometry (incidence 30 degrees, emission 0, phase 30), so the law is divided by its
+ * value there: the map shows as published where the light is as it was measured.
+ *
+ * Near the terminator the relief casts shadows: each pixel looks along the ground toward the Sun,
+ * adding up the LOLA slopes it crosses (the normal map read at coarser levels further out), and is in
+ * shadow while the ground ahead stands above the sunlight's ray (the Moon's curvature included),
+ * softened over the Sun's angular size. Crater floors fill with shadow and the rims facing the Sun
+ * stand bright, as in a telescope at first quarter. The shadows are cast by the relief as drawn,
+ * which planets.json records as exaggerated (reliefExaggeration).
+ *
+ * Close up, where even the relief map is magnified, illustrative small craters (the analytic layers of
+ * ./shading, no real crater placed) fill in below its resolution, each scale fading in only once its
+ * craters span a few pixels and staying out of view from afar; the interface says they are illustrative.
+ *
+ * The night side gets earthshine: sunlight the Earth sends back, from its direction and as much of it
+ * as the Earth's lit face turned toward the Moon. Real earthshine is about 10^-4 of sunlight, far below
+ * what a camera exposed for the day side records; it is shown a few hundred times stronger, as the eye
+ * sees it, so the dark disc reads (a visual aid, like the points of light).
  */
 
-import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Data3DTexture } from 'three/webgpu';
-import { dot, float, max, mix, normalize, positionLocal, smoothstep, texture3D, uniform, vec3 } from 'three/tsl';
-import { bumpGradient, craters, keepOnSphere, litCosine, noiseIfKept, sphereFootprint, sunlit, tiltNormal, type FloatNode, type Tier, type Vec3Node } from './shading';
+import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Node, type Object3D } from 'three/webgpu';
+import { atan, dot, float, Fn, If, int, Loop, max, mix, normalize, positionLocal, smoothstep, sqrt, tan, uniform, vec2, vec3 } from 'three/tsl';
+import type { PlanetTextures } from '../assets/streaming';
+import type { ExploreDetail } from '../detail';
+import { decodeNormal, mapCoords, mipLevel, sampleSlot, sampleSlotLevel, sampleSlotSmooth, tangentFrame, type FloatNode, type Vec3Node } from '../render/sampling';
+import { bumpGradient, craters, keepOnSphere, litCosine, sphereFootprint, sunlit, tiltNormal } from './shading';
+import { textureTier } from '../detail';
 
-const SEGMENTS: Readonly<Record<Tier, readonly [number, number]>> = { high: [192, 128], mid: [160, 112], low: [112, 80] };
-/**
- * Crater scales: cells per unit on the unit sphere (the largest about 250 km across, the smallest
- * about 4 km), the share of cells that hold one, and depth over diameter (large craters are
- * shallower for their size). More scales on higher tiers.
- */
-const CRATER_SCALES = [
-  { cells: 2.6, density: 0.55, ratio: 0.05 },
-  { cells: 6.5, density: 0.7, ratio: 0.08 },
-  { cells: 16, density: 0.8, ratio: 0.1 },
-  { cells: 40, density: 0.85, ratio: 0.12 },
-  { cells: 100, density: 0.85, ratio: 0.12 },
-] as const;
-const CRATER_COUNT: Readonly<Record<Tier, number>> = { high: 5, mid: 4, low: 3 };
-
-const HIGHLAND = vec3(0.36, 0.347, 0.326);
-const MARE = vec3(0.16, 0.155, 0.149);
-/** Hummocky ground between the craters: its height (radii) at two scales, for the terminator's texture. */
-const ROUGH = 0.0012;
+/** The kit's maps put the near side's centre (east longitude 0) at u = 0.5 (planets.json bodies.moon.uAtLon0). */
+const U_AT_LON0 = 0.5;
 /** Earthlight is bluer than sunlight (the Earth's oceans and sky). */
 const EARTHLIGHT = vec3(0.72, 0.84, 1);
 /** Earthshine shown on the night side, as a share of full sunlight from a full Earth (about 300 times the true share). */
 export const EARTHSHINE = 0.03;
+/** Opposition surge (Hapke's shadow-hiding form): amplitude and angular width (radians); phase darkening per radian. Illustrative shapes. */
+const SURGE = { amplitude: 0.7, width: 0.06 } as const;
+const PHASE_DARKENING = 0.4;
+/** The map's standard geometry: incidence 30 degrees, emission 0, phase 30 degrees. */
+const STANDARD = { mu0: Math.cos(Math.PI / 6), mu: 1, phase: Math.PI / 6 } as const;
+/** Shadow march: steps per detail tier, and the farthest it looks (radii: about 100 km, the reach of the longest shadows it draws). */
+const SHADOW_STEPS: Readonly<Record<ExploreDetail['tier'], number>> = { ultra: 14, high: 12, medium: 7, low: 4 };
+/** Mip levels coarser than the colour's own that its colour (not its brightness) is read at, for the block-compressed files. */
+const CHROMA_BLUR = 3;
+/**
+ * Illustrative small craters: a crater cell spans this many texels of the streamed map (so the craters
+ * are just below what it resolves), the second scale's cells are this much smaller, the craters' depth
+ * over diameter, and how much of each cell holds a crater.
+ */
+const CRATERS = { cellTexels: 3, second: 2.8, ratio: 0.14, density: 0.62 } as const;
+
+/** Width of the files streamed at a detail level. */
+const mapWidth = (detail: ExploreDetail): number => ({ low: 1024, medium: 2048, high: 4096 })[textureTier(detail)];
+/** Crater cells per radian for a detail level's first scale. */
+const crateredCells = (detail: ExploreDetail): number => mapWidth(detail) / (2 * Math.PI * CRATERS.cellTexels);
+
+/**
+ * True while the illustrative craters show: the first scale is kept straight below a camera
+ * `altitudeRadii` up, with `pxPerRadian` device pixels per radian (the readout then says so).
+ */
+export function craterDetailShown(detail: ExploreDetail, altitudeRadii: number, pxPerRadian: number): boolean {
+  return (Math.max(0, altitudeRadii) / Math.max(pxPerRadian, 1)) * crateredCells(detail) * 3 < 0.55;
+}
+const SHADOW_REACH = 0.06;
+/** Without a relief map: height (radii) per unit of the colour map's local contrast (illustrative). */
+const ALBEDO_RELIEF = 0.006;
 
 export interface MoonFrame {
   time: number;
@@ -57,11 +93,16 @@ export interface ExploreMoon {
   readonly object: Group;
   /** Set the object's position, scale and orientation first, and its world matrix current. */
   update(frame: MoonFrame, cameraWorld: Vector3): void;
-  setTier(tier: Tier): void;
+  prepare(detail: ExploreDetail): Object3D[];
+  apply(detail: ExploreDetail): void;
   dispose(): void;
 }
 
-export function createMoon(noise: Data3DTexture, tier: Tier): ExploreMoon {
+const node = (x: FloatNode | number): FloatNode => (typeof x === 'number' ? float(x) : x);
+const surge = (phase: FloatNode | number): FloatNode => float(1).add(float(SURGE.amplitude).div(float(1).add(tan(node(phase).mul(0.5)).div(SURGE.width))));
+const lommel = (mu0: FloatNode | number, mu: FloatNode | number): FloatNode => node(mu0).mul(2).div(node(mu0).add(node(mu)).add(1e-3));
+
+export function createMoon(textures: PlanetTextures, sunAngularRadius: number, initial: ExploreDetail): ExploreMoon {
   const object = new Group();
   object.name = 'explore-moon';
   const uLight = uniform(1);
@@ -70,81 +111,135 @@ export function createMoon(noise: Data3DTexture, tier: Tier): ExploreMoon {
   const uEarth = uniform(new Vector3(-1, 0, 0));
   const uEarthshine = uniform(0);
   const uEye = uniform(new Vector3(0, 0, 3));
+  const colourSlot = textures.slot('moon', 'colour');
+  const normalSlot = textures.slot('moon', 'normal');
+  const standard = lommel(STANDARD.mu0, STANDARD.mu).mul(surge(STANDARD.phase)).mul(Math.exp(-PHASE_DARKENING * STANDARD.phase));
 
-  const T = (p: Vec3Node): FloatNode => texture3D(noise, p).r;
-
-  const build = (level: Tier): MeshBasicNodeMaterial => {
+  const build = (detail: ExploreDetail): MeshBasicNodeMaterial => {
     const n = normalize(positionLocal);
+    const c = mapCoords(n, n.y, U_AT_LON0);
+    const smooth = detail.tier === 'low';
+    const read = smooth ? sampleSlotSmooth : sampleSlot;
+    const luma = (v: Vec3Node): FloatNode => dot(v, vec3(0.2126, 0.7152, 0.0722));
+    let albedo: Vec3Node = read(colourSlot, c).rgb;
+    if (detail.tier === 'low' || detail.tier === 'medium') {
+      // The fine map's brightness over a coarse level's colour: ETC1S's colour blocks average out there
+      // (and at Low the colour a little desaturated: the Moon is nearly grey, its blocks' tints are not).
+      const coarse = sampleSlot(colourSlot, c, CHROMA_BLUR).rgb;
+      const brightness = luma(albedo);
+      albedo = coarse.mul(brightness.div(max(luma(coarse), 1e-3)));
+      if (smooth) albedo = mix(vec3(brightness), albedo, 0.55);
+    }
+    const { east, north } = tangentFrame(n);
+    let relief: Vec3Node;
+    if (detail.normalMaps) {
+      const t = decodeNormal(read(normalSlot, c));
+      relief = normalize(east.mul(t.x).add(north.mul(t.y)).add(n.mul(t.z)));
+    } else {
+      // No relief map at this detail: a hint of relief from the colour map's local contrast (crater
+      // rims and young ejecta are bright), so the terminator is not flat. Illustrative.
+      const contrast = luma(albedo).sub(luma(sampleSlot(colourSlot, c, 2.5).rgb));
+      relief = tiltNormal(n, bumpGradient(positionLocal, n, contrast.mul(ALBEDO_RELIEF)), 1);
+    }
+    // Illustrative small craters below the map's resolution, each scale only once it spans a few pixels.
     const footprint = sphereFootprint(n);
-    // Basins: large and rounded, filled where the near side's bias lifts them over the threshold
-    // (local +x faces the Earth in the IAU model); dark lava plains with soft shores.
-    // A gentle warp bends the basins' shores, so no trace of the noise's grid shows in them.
-    const bend = vec3(T(n.mul(3.1).add(0.12)), T(n.mul(3.1).add(0.52)), T(n.mul(3.1).add(0.92))).sub(0.5).mul(0.16);
-    const shore = n.add(bend);
-    const basins = T(shore.mul(1.1).add(0.83)).mul(0.7).add(T(shore.mul(2.3).add(0.4)).mul(0.3));
-    const nearSide = smoothstep(-0.2, 0.7, n.x);
-    const mare = smoothstep(0.54, 0.7, basins.add(nearSide.mul(0.2)).sub(0.06));
-    const rough = T(n.mul(4.4).add(0.21));
-    const toneKept = keepOnSphere(footprint, 100);
-    const tone = noiseIfKept(noise, n.mul(13).add(0.57), toneKept).sub(0.5).mul(toneKept);
-    const flow = T(n.mul(7).add(0.66)).sub(0.5);
-    const highland = HIGHLAND.mul(rough.mul(0.24).add(tone.mul(0.18)).add(0.86));
-    const sea = MARE.mul(flow.mul(0.3).add(tone.mul(0.14)).add(1)).mul(vec3(1, 0.99, 1.02));
-    let albedo: Vec3Node = mix(highland, sea, mare);
-
-    // Relief: craters at every scale the pixels can hold; the seas are younger and smoother.
-    let gradient: Vec3Node = vec3(0, 0, 0);
-    let rims: FloatNode = float(0);
-    let floors: FloatNode = float(0);
-    let ejecta: FloatNode = float(0);
-    CRATER_SCALES.slice(0, CRATER_COUNT[level]).forEach((layer, i) => {
-      const c = craters(n, layer.cells, i, layer.density, layer.ratio);
-      const kept = keepOnSphere(footprint, layer.cells * 3);
-      const smooth = float(1).sub(mare.mul(i < 2 ? 0.85 : 0.5));
-      gradient = gradient.add(c.gradient.mul(kept).mul(smooth));
-      rims = rims.add(c.rim.mul(kept).mul(smooth).mul(0.5));
-      floors = floors.add(c.inside.mul(kept).mul(smooth));
-      ejecta = ejecta.add(c.ejecta.mul(kept));
-    });
-    // Young craters' bright ejecta, the speckle of a full Moon; rims a little brighter, floors darker.
-    albedo = albedo.mul(rims.mul(0.12).add(ejecta.mul(0.3)).add(1)).mul(float(1).sub(floors.mul(0.04)));
-    // Rolling, hummocky ground: the screen-space change of a rough height, tilting the normal.
-    const roughKept = keepOnSphere(footprint, 88);
-    const fineKept = keepOnSphere(footprint, 250);
-    const hummocks = noiseIfKept(noise, n.mul(11).add(0.13), roughKept).mul(roughKept).add(noiseIfKept(noise, n.mul(31).add(0.47), fineKept).mul(0.5).mul(fineKept));
-    const tilt = bumpGradient(positionLocal, n, hummocks.mul(ROUGH).mul(float(1).sub(mare.mul(0.6))));
-    // Foreshortened toward the limb, relief would only break the edge into specks: it fades there.
+    const cells = crateredCells(detail);
+    const small = craters(n, cells, 1, CRATERS.density, CRATERS.ratio);
+    const smaller = craters(n, cells * CRATERS.second, 2, CRATERS.density, CRATERS.ratio);
+    const keepSmall = keepOnSphere(footprint, cells * 3);
+    const keepSmaller = keepOnSphere(footprint, cells * CRATERS.second * 3);
+    relief = tiltNormal(relief, small.gradient.mul(keepSmall).add(smaller.gradient.mul(keepSmaller)), 1);
+    // Fresh rims a little brighter, floors a little darker.
+    const marks = small.rim.mul(0.12).sub(small.inside.mul(0.06)).mul(keepSmall).add(smaller.rim.mul(0.1).sub(smaller.inside.mul(0.05)).mul(keepSmaller));
+    albedo = albedo.mul(marks.add(1));
     const view = normalize(uEye.sub(n));
-    const edgeOn = smoothstep(0.03, 0.22, max(dot(n, view), 0));
-    const relief = tiltNormal(n, gradient.add(tilt).mul(edgeOn), 1);
-
-    // Lommel-Seeliger on the relief; the disc's own terminator softened over a pixel, a little
-    // past it so rims just beyond still catch the light.
+    const nDotL = dot(n, uSun);
     const mu0 = litCosine(dot(relief, uSun));
     const mu = max(dot(relief, view), 0);
-    const lommel = mu0.mul(2).div(mu0.add(mu).add(1e-3)).mul(0.9);
-    const terminator = sunlit(dot(n, uSun).add(0.02), 0.03);
+    const phase = atan(max(sqrt(max(float(1).sub(dot(uSun, view).pow(2)), 0)), 1e-5), dot(uSun, view));
+    const law = lommel(mu0, mu).mul(surge(phase)).mul(phase.mul(-PHASE_DARKENING).exp()).div(standard);
+
+    // Cast shadows near the terminator: march toward the Sun over the relief.
+    const steps = detail.normalMaps ? SHADOW_STEPS[detail.tier] : 0;
+    let lit: FloatNode = float(1);
+    if (steps > 0) {
+      const width = float((normalSlot.node.size(int(0)) as unknown as Node<'ivec2'>).x);
+      const footprint = mipLevel(c, width);
+      lit = Fn(() => {
+        // Built here, before any branch: the footprint comes from screen-space derivatives.
+        const level = footprint.toVar();
+        const texelsPerRadian = width.div(2 * Math.PI).toVar();
+        const result = float(1).toVar();
+        const sinE = nDotL;
+        If(sinE.greaterThan(-0.03).and(sinE.lessThan(0.4)), () => {
+          const cosE = sqrt(max(float(1).sub(sinE.mul(sinE)), 1e-4));
+          const tanE = sinE.div(cosE);
+          const se = dot(uSun, east);
+          const sn = dot(uSun, north);
+          const flat = max(sqrt(se.mul(se).add(sn.mul(sn))), 1e-4);
+          const dirE = se.div(flat);
+          const dirN = sn.div(flat);
+          const cosLat = max(sqrt(n.x.mul(n.x).add(n.z.mul(n.z))), 0.05);
+          // Steps grow geometrically from about a texel of the 2048 map to SHADOW_REACH.
+          const first = 0.0016;
+          const growth = (SHADOW_REACH / first) ** (1 / Math.max(1, steps - 1));
+          const height = float(0).toVar();
+          const travelled = float(0).toVar();
+          const worst = float(-1).toVar();
+          Loop(steps, ({ i }) => {
+            const s = float(first).mul(float(growth).pow(float(i)));
+            const ds = s.sub(travelled);
+            const mid = travelled.add(ds.mul(0.5));
+            const uv = c.uv.add(vec2(dirE.mul(mid).div(cosLat.mul(2 * Math.PI)), dirN.mul(mid).div(Math.PI)));
+            // Coarser levels further out: each tap spans about its step.
+            const tapLevel = max(level, texelsPerRadian.mul(ds).max(1e-6).log2());
+            const t = decodeNormal(sampleSlotLevel(normalSlot, uv, tapLevel));
+            const slope = t.x.mul(dirE).add(t.y.mul(dirN)).negate().div(max(t.z, 0.2));
+            height.addAssign(slope.mul(ds));
+            travelled.assign(s);
+            // Ground ahead above the sunlight's ray (the sphere falls away as s^2 / 2), in units of the Sun's spread there.
+            const above = height.sub(s.mul(s).mul(0.5)).sub(s.mul(tanE));
+            worst.assign(max(worst, above.div(max(s.mul(sunAngularRadius * 2), 1e-6))));
+          });
+          result.assign(float(1).sub(smoothstep(-0.5, 0.5, worst)));
+        });
+        If(sinE.lessThanEqual(-0.03), () => {
+          result.assign(0);
+        });
+        return result;
+      })();
+    }
+    const terminator = sunlit(nDotL.add(0.015), 0.012);
     const earthshine = max(dot(relief, uEarth), 0).mul(uEarthshine);
-    const light = vec3(lommel.mul(terminator)).add(EARTHLIGHT.mul(earthshine));
+    const light = vec3(law.mul(terminator).mul(lit)).add(EARTHLIGHT.mul(earthshine));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = albedo.mul(light).mul(uLight);
     return material;
   };
 
-  const materials = new Map<Tier, MeshBasicNodeMaterial>();
-  const materialFor = (level: Tier): MeshBasicNodeMaterial => {
-    let m = materials.get(level);
+  const materials = new Map<string, MeshBasicNodeMaterial>();
+  const keyOf = (d: ExploreDetail): string => `${d.tier}|${d.normalMaps}`;
+  const materialFor = (d: ExploreDetail): MeshBasicNodeMaterial => {
+    const key = keyOf(d);
+    let m = materials.get(key);
     if (!m) {
-      m = build(level);
-      materials.set(level, m);
+      m = build(d);
+      materials.set(key, m);
     }
     return m;
   };
-  let geometry = new SphereGeometry(1, ...SEGMENTS[tier]);
-  const mesh = new Mesh(geometry, materialFor(tier));
+  const geometries = new Map<number, SphereGeometry>();
+  const sphere = (segments: number): SphereGeometry => {
+    let g = geometries.get(segments);
+    if (!g) {
+      g = new SphereGeometry(1, segments, Math.max(16, Math.round(segments / 2)));
+      geometries.set(segments, g);
+    }
+    return g;
+  };
+  const mesh = new Mesh(sphere(initial.sphereSegments), materialFor(initial));
   mesh.name = 'explore-moon-surface';
   object.add(mesh);
-  let current = tier;
   const inverse = new Matrix4();
   const scratch = new Vector3();
 
@@ -154,26 +249,36 @@ export function createMoon(noise: Data3DTexture, tier: Tier): ExploreMoon {
       uLight.value = frame.light;
       inverse.copy(object.matrixWorld).invert();
       // Directions turn with the body only (no translation, no scale).
-      const turn = (v: { x: number; y: number; z: number }, out: Vector3): void => {
-        out.set(v.x, v.y, v.z).transformDirection(inverse);
-      };
-      turn(frame.sun, uSun.value);
-      turn(frame.earth, uEarth.value);
+      uSun.value.set(frame.sun.x, frame.sun.y, frame.sun.z).transformDirection(inverse);
+      uEarth.value.set(frame.earth.x, frame.earth.y, frame.earth.z).transformDirection(inverse);
       uEarthshine.value = EARTHSHINE * frame.earthLit;
       uEye.value.copy(scratch.copy(cameraWorld).applyMatrix4(inverse));
       object.visible = frame.light > 1e-3;
     },
-    setTier(next) {
-      if (next === current) return;
-      current = next;
-      const old = geometry;
-      geometry = new SphereGeometry(1, ...SEGMENTS[next]);
-      mesh.geometry = geometry;
-      old.dispose();
-      mesh.material = materialFor(next);
+    prepare(detail) {
+      const m = materialFor(detail);
+      if (mesh.material === m) return [];
+      const warm = new Mesh(sphere(detail.sphereSegments), m);
+      warm.frustumCulled = false;
+      return [warm];
+    },
+    apply(detail) {
+      mesh.material = materialFor(detail);
+      mesh.geometry = sphere(detail.sphereSegments);
+      // Only what this detail level uses is kept.
+      for (const [key, m] of materials) {
+        if (key === keyOf(detail)) continue;
+        m.dispose();
+        materials.delete(key);
+      }
+      for (const [segments, g] of geometries) {
+        if (segments === detail.sphereSegments) continue;
+        g.dispose();
+        geometries.delete(segments);
+      }
     },
     dispose() {
-      geometry.dispose();
+      for (const g of geometries.values()) g.dispose();
       for (const m of materials.values()) m.dispose();
     },
   };

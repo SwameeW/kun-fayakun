@@ -4,12 +4,14 @@
  * small disc, a halo that falls off steeply (as a real lens's point-spread function does, so it reads
  * as a blinding star and not as a hazy ball), faint diffraction spikes, and a wide, very faint veil
  * just warmer than the core. All of it is dimmed by the share of the disc another body covers (no
- * glare from a Sun hidden behind a planet), held in display terms like the other guides, capped, and
- * all but gone once the Sun is shown through its solar filter. One draw call.
+ * glare from a Sun hidden behind a planet), coloured by the air it shines through (a Sun rising
+ * behind the Earth's limb turns orange and fades instead of popping out as a white point), held in
+ * display terms like the other guides, capped, and all but gone once the Sun is shown through its
+ * solar filter. One draw call.
  */
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, PointsNodeMaterial, Sprite, Vector3 } from 'three/webgpu';
-import { abs, exp, float, length, max, mix, pow, uniform, uv, vec3 } from 'three/tsl';
+import { abs, exp, float, length, max, mix, pow, smoothstep as smoothstepNode, uniform, uv, vec3 } from 'three/tsl';
 import type { Km } from '../space/origin';
 
 export interface GlareFrame {
@@ -25,6 +27,8 @@ export interface GlareFrame {
   compensation: number;
   /** How far the Sun is shown through its solar filter, 0 to 1. */
   filtered: number;
+  /** What the air between the Sun and the camera lets through, per colour (white when none is in the way). */
+  tint?: readonly [number, number, number];
 }
 
 export interface SunGlare {
@@ -47,10 +51,13 @@ export function createSunGlare(tint: readonly [number, number, number]): SunGlar
   const uStrength = uniform(0);
   /** The core only while the disc is small (a large disc carries its own light). */
   const uCore = uniform(1);
-  /** Where the disc's edge falls in the sprite (0 to 1 from its centre). */
+  /** The core's scale: half the disc's radius in the sprite's units (the core is a small hot centre). */
   const uDisc = uniform(0.02);
+  /** Where the disc's edge falls in the sprite (0 at its centre, 1 at its edge). */
+  const uEdge = uniform(0.04);
   /** The spikes belong to a blinding point; a filtered Sun has none. */
   const uSpikes = uniform(1);
+  const uTint = uniform(new Vector3(1, 1, 1));
   const material = new PointsNodeMaterial({
     transparent: true,
     blending: AdditiveBlending,
@@ -63,12 +70,14 @@ export function createSunGlare(tint: readonly [number, number, number]): SunGlar
   material.sizeNode = uSize;
   const c = uv().sub(0.5).mul(2);
   const r = length(c);
-  // Distance outside the disc, in sprite units: the halo starts at the disc's edge.
-  const outside = max(r.sub(uDisc), 0);
+  // Distance outside the disc, in sprite units: the halo starts at the disc's edge and adds nothing
+  // over the disc itself (which carries its own light).
+  const outside = max(r.sub(uEdge), 0);
+  const offDisc = smoothstepNode(uEdge.mul(0.92), uEdge, r);
   const edge = max(float(1).sub(r.mul(r)), 0);
   const core = exp(r.mul(r).div(max(uDisc.mul(uDisc).mul(4), 1e-5)).negate()).mul(GLARE.core).mul(uCore);
   // A steep power-law halo (a lens's scattered light falls as about the cube of the angle).
-  const halo = float(1).div(pow(float(1).add(outside.div(0.028)), 3)).mul(GLARE.halo);
+  const halo = float(1).div(pow(float(1).add(outside.div(0.028)), 3)).mul(GLARE.halo).mul(offDisc);
   // Four spikes, as a reflector's vanes diffract: thin along two axes, fading with distance.
   const spikeX = exp(abs(c.y).mul(-420)).mul(exp(abs(c.x).mul(-4.5)));
   const spikeY = exp(abs(c.x).mul(-420)).mul(exp(abs(c.y).mul(-4.5)));
@@ -76,7 +85,7 @@ export function createSunGlare(tint: readonly [number, number, number]): SunGlar
   const veil = exp(r.mul(-3.2)).mul(GLARE.veil);
   // White at the core, only just warmer outward (scattered light reddens a little; it is not brown).
   const colour = mix(vec3(...tint), vec3(1, 0.9, 0.78), pow(r, 0.7).mul(0.5));
-  material.colorNode = colour.mul(core.add(halo).add(spikes.mul(uSpikes)).add(veil).mul(edge)).mul(uStrength);
+  material.colorNode = colour.mul(uTint).mul(core.add(halo).add(spikes.mul(uSpikes)).add(veil).mul(edge)).mul(uStrength);
   material.opacityNode = float(1);
   const geometry = new BufferGeometry();
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
@@ -100,10 +109,14 @@ export function createSunGlare(tint: readonly [number, number, number]): SunGlar
       const reachPx = Math.max(140, Math.min(2.2 * frame.viewportPx, frame.radiusPx * (18 + (2.6 - 18) * smoothstep(10, 200, frame.radiusPx))));
       uSize.value = reachPx;
       uDisc.value = Math.min(0.9, frame.radiusPx / reachPx);
+      // The sprite's coordinates run from -1 to 1 across its diameter (reachPx).
+      uEdge.value = Math.min(0.95, (2 * frame.radiusPx) / reachPx);
       const grow = 0.7 + 0.5 * smoothstep(1, 40, frame.radiusPx);
       uStrength.value = (grow * frame.visible * (1 - 0.92 * frame.filtered)) / Math.max(frame.compensation, 1e-6);
       uCore.value = 1 - smoothstep(6, 40, frame.radiusPx);
       uSpikes.value = (1 - frame.filtered) ** 3;
+      const [tr, tg, tb] = frame.tint ?? [1, 1, 1];
+      uTint.value.set(tr, tg, tb);
       sprite.visible = frame.visible > 1e-3 && frame.filtered < 0.999;
     },
     dispose() {

@@ -471,7 +471,20 @@ export interface UniverseView {
   /** The date shown: TDB Julian date, and the same instant as a Unix time (ms) for display. */
   jdTdb: number;
   unixMs: number;
+  /**
+   * What the view draws now that is illustrative rather than measured, for the readout to name
+   * (optional: an explorer that leaves it out shows no such note).
+   */
+  illustrative?: readonly UniverseIllustration[];
 }
+
+/**
+ * Illustrative elements the explorer can draw: the Sun's surface detail, prominences and corona; the
+ * Earth's fine detail below its maps' texels up close, the clouds' drift, and its night side (city
+ * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
+ * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still.
+ */
+export type UniverseIllustration = 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
 
 /**
  * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
