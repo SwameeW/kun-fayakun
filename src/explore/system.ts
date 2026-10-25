@@ -12,7 +12,7 @@
 import { createEphemeris, type Ephemeris, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { obliquityRad, type PhysicalFile } from '../astro/physical';
 import { bodyToEcliptic, orientationAt, type Orientation, type RotatingBody } from '../astro/rotation';
-import type { BodyId } from '../core/types';
+import { BODY_IDS, type BodyId } from '../core/types';
 import type { ViewPreference } from './navigation';
 import { eclipticToRender, km, type Km } from './space/origin';
 
@@ -38,6 +38,11 @@ const ROTATING: Readonly<Record<BodyId, RotatingBody>> = {
   earth: 'Earth',
   moon: 'Moon',
   jupiter: 'Jupiter',
+  mercury: 'Mercury',
+  venus: 'Venus',
+  mars: 'Mars',
+  uranus: 'Uranus',
+  neptune: 'Neptune',
   saturn: 'Saturn',
 };
 
@@ -46,6 +51,11 @@ const NAME_KEYS: Readonly<Record<BodyId, string>> = {
   earth: 'ui.hud.earth',
   moon: 'ui.hud.moon',
   jupiter: 'ui.hud.planet.jupiter',
+  mercury: 'ui.hud.planet.mercury',
+  venus: 'ui.hud.planet.venus',
+  mars: 'ui.hud.planet.mars',
+  uranus: 'ui.hud.planet.uranus',
+  neptune: 'ui.hud.planet.neptune',
   saturn: 'ui.hud.planet.saturn',
 };
 
@@ -68,6 +78,11 @@ const FRAMING: Readonly<Record<BodyId, { fill: number; view: ViewPreference }>> 
   earth: { fill: 0.6, view: { azimuth: 0.9, latitude: 0.2, litFace: false } },
   moon: { fill: 0.6, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
   jupiter: { fill: 0.62, view: { azimuth: 0.78, latitude: 0.06, litFace: false } },
+  mercury: { fill: 0.62, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
+  venus: { fill: 0.62, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
+  mars: { fill: 0.62, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
+  uranus: { fill: 0.62, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
+  neptune: { fill: 0.62, view: { azimuth: 0.85, latitude: 0.12, litFace: false } },
   saturn: { fill: 0.78, view: { azimuth: 0.7, latitude: 0.3, litFace: true } },
 };
 
@@ -85,6 +100,11 @@ export function bodySpecs(physical: PhysicalFile): Readonly<Record<BodyId, BodyS
     };
   };
   return {
+    mercury: spec('mercury'),
+    venus: spec('venus'),
+    mars: spec('mars'),
+    uranus: spec('uranus'),
+    neptune: spec('neptune'),
     sun: spec('sun'),
     earth: spec('earth'),
     moon: spec('moon'),
@@ -123,10 +143,15 @@ export function createSolarSystem(planets: PlanetsFile, moon: MoonFile, physical
     if (i < 0) throw new Error(`planets.json has no ${name}`);
     return i;
   };
+  const mercury = index('Mercury');
+  const venus = index('Venus');
+  const mars = index('Mars');
+  const uranus = index('Uranus');
+  const neptune = index('Neptune');
   const jupiter = index('Jupiter');
   const saturn = index('Saturn');
   const state = (): BodyState => ({ position: km(), basis: new Array<number>(9).fill(0) });
-  const bodies: Record<BodyId, BodyState> = { sun: state(), earth: state(), moon: state(), jupiter: state(), saturn: state() };
+  const bodies: Record<BodyId, BodyState> = { mercury: state(), venus: state(), mars: state(), uranus: state(), neptune: state(), sun: state(), earth: state(), moon: state(), jupiter: state(), saturn: state() };
   const ecl = km();
   const orientation: Orientation = { ra: 0, dec: 0, w: 0 };
   const toEcliptic = new Array<number>(9).fill(0);
@@ -166,9 +191,14 @@ export function createSolarSystem(planets: PlanetsFile, moon: MoonFile, physical
       sun.z = 0;
       eclipticToRender(ephemeris.earthKm(jd, ecl), bodies.earth.position);
       eclipticToRender(ephemeris.moonHelioKm(jd, ecl), bodies.moon.position);
+      eclipticToRender(ephemeris.planetKm(mercury, jd, ecl), bodies.mercury.position);
+      eclipticToRender(ephemeris.planetKm(venus, jd, ecl), bodies.venus.position);
+      eclipticToRender(ephemeris.planetKm(mars, jd, ecl), bodies.mars.position);
+      eclipticToRender(ephemeris.planetKm(uranus, jd, ecl), bodies.uranus.position);
+      eclipticToRender(ephemeris.planetKm(neptune, jd, ecl), bodies.neptune.position);
       eclipticToRender(ephemeris.planetKm(jupiter, jd, ecl), bodies.jupiter.position);
       eclipticToRender(ephemeris.planetKm(saturn, jd, ecl), bodies.saturn.position);
-      for (const id of ['sun', 'earth', 'moon', 'jupiter', 'saturn'] as const) orient(id, jd);
+      for (const id of BODY_IDS) orient(id, jd);
     },
   };
 }

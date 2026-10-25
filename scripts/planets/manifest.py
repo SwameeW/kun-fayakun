@@ -146,6 +146,18 @@ def facts() -> dict[str, Any]:
     }
     earth = read_json(config.REPORTS / "build-earth.json")["maps"]
     out["earth"] = {"nightLandFloorCode": earth["night"]["landFloorCode"], "reliefExaggeration": config.RELIEF_EXAGGERATION["earth"]}
+    import landmarks
+    rocky = {}
+    for name in ('mercury', 'mars'):
+        rocky[name] = {}
+        for kind in ('colour', 'normal'):
+            reference = read_json(config.REPORTS / f'probes-{name}-{kind}.json')
+            rocky[name][kind] = [
+                {'name':p.name, 'lon':p.lon, 'lat':p.lat, 'radius':p.radius, 'channels':reference[p.name]}
+                for p in landmarks.ROCK_PLACES[name]
+            ]
+    out['rockyProbes'] = rocky
+    out['cloudColours'] = {name:read_json(config.REPORTS / f'build-{name}.json')['maps']['colour']['displayRgb'] for name in ('venus','uranus','neptune')}
     return out
 
 

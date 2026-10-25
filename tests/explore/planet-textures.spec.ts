@@ -39,6 +39,8 @@ interface ProbeMeans {
   luma: number;
   redness: number;
   tilt: number;
+  channels: number[];
+  blackFraction: number;
 }
 
 /** The Basis Universal transcoder's KTX2 API, as three's KTX2Loader worker calls it. */
@@ -110,6 +112,29 @@ const COMPRESSED: Record<string, { probes: Probe[]; check: (m: ProbeMeans[]) => 
     check: ([south, north]) => ['70 S minus 70 N, blue - red', (north?.redness ?? 0) - (south?.redness ?? 0), 15],
   },
 };
+
+// Mission-source probes are saved by the pipeline before compression, with named landmarks.
+const extraFacts = manifest.facts as unknown as {
+  rockyProbes: Record<string, Record<string, Array<Probe & { channels: number[] }>>>;
+  cloudColours: Record<string, number[]>;
+};
+for (const [body, maps] of Object.entries(extraFacts.rockyProbes)) {
+  for (const [kind, probes] of Object.entries(maps)) {
+    COMPRESSED[`${body}/${kind}`] = {
+      probes,
+      check: (means) => {
+        const errors = probes.flatMap((p, i) => p.channels.map((expected, ch) => Math.abs((means[i]?.channels[kind === 'normal' && ch === 1 ? 3 : ch] ?? 0) - expected)));
+        return ['landmark channel error below 12 codes', 12 - Math.max(...errors), 0];
+      },
+    };
+  }
+}
+for (const [body, rgb] of Object.entries(extraFacts.cloudColours)) {
+  COMPRESSED[`${body}/colour`] = {
+    probes: [{lon:0,lat:0,radius:3},{lon:90,lat:60,radius:3}],
+    check: (means) => ['uniform illustrative cloud colour error below 4 codes', 4 - Math.max(...means.flatMap((m) => rgb.map((c, i) => Math.abs((m.channels[i] ?? 0) - c)))), 0],
+  };
+}
 
 test.beforeEach(async ({ page, kf }) => {
   await kf.open('/');
@@ -206,7 +231,7 @@ test('compressed maps put the Sahara, Tycho, the Great Red Spot and Saturn\'s se
     const spec = COMPRESSED[`${entry.body}/${entry.map}`];
     if (!spec) throw new Error(`no landmark check for ${entry.body}/${entry.map}`);
     const means = await page.evaluate(
-      async ({ path, uAtLon0, sign, probes }) => {
+      async ({ path, uAtLon0, sign, probes, rejectBlank }) => {
         const assets = (window as unknown as KfHook).__kf.app.assets;
         const scope = window as unknown as { BASIS?: (module: { wasmBinary: ArrayBuffer }) => Promise<BasisModule>; kfBasis?: Promise<BasisModule> };
         scope.kfBasis ??= (async () => {
@@ -239,6 +264,9 @@ test('compressed maps put the Sahara, Tycho, the Great Red Spot and Saturn\'s se
           const height = file.getHeight();
           const texels = new Uint8Array(file.getImageTranscodedSizeInBytes(0, 0, 0, RGBA32));
           if (!file.transcodeImage(texels, 0, 0, 0, RGBA32, 0, -1, -1)) throw new Error(`${path}: transcoding failed`);
+          let black = 0;
+          if (rejectBlank) for (let i = 0; i < texels.length; i += 4) if ((texels[i] ?? 0) < 3 && (texels[i + 1] ?? 0) < 3 && (texels[i + 2] ?? 0) < 3) black += 1;
+          const blackFraction = black / (width * height);
           return probes.map((p) => {
             // Rows within the probe's latitudes (row k is centred on latitude (k + 0.5) / height * 180 - 90).
             const rows: number[] = [];
@@ -255,6 +283,7 @@ test('compressed maps put the Sahara, Tycho, the Great Red Spot and Saturn\'s se
             let luma = 0;
             let redness = 0;
             let tilt = 0;
+            const channels = [0, 0, 0, 0];
             for (const k of rows) {
               for (const i of cols) {
                 const at = (k * width + i) * 4;
@@ -262,6 +291,10 @@ test('compressed maps put the Sahara, Tycho, the Great Red Spot and Saturn\'s se
                 const g = texels[at + 1] ?? 0;
                 const b = texels[at + 2] ?? 0;
                 const a = texels[at + 3] ?? 0;
+                channels[0] = (channels[0] ?? 0) + r;
+                channels[1] = (channels[1] ?? 0) + g;
+                channels[2] = (channels[2] ?? 0) + b;
+                channels[3] = (channels[3] ?? 0) + a;
                 luma += 0.2126 * r + 0.7152 * g + 0.0722 * b;
                 redness += r - b;
                 // UASTC normal mode: x in r (and g, b), y in a.
@@ -269,15 +302,16 @@ test('compressed maps put the Sahara, Tycho, the Great Red Spot and Saturn\'s se
               }
             }
             const n = rows.length * cols.length;
-            return { luma: luma / n, redness: redness / n, tilt: tilt / n };
+            return { luma: luma / n, redness: redness / n, tilt: tilt / n, channels: channels.map((c) => c / n), blackFraction };
           });
         } finally {
           file.close();
           file.delete();
         }
       },
-      { path: entry.path, uAtLon0: entry.uAtLon0 ?? 0, sign: entry.lonIncreases === 'left' ? -1 : 1, probes: spec.probes },
+      { path: entry.path, uAtLon0: entry.uAtLon0 ?? 0, sign: entry.lonIncreases === 'left' ? -1 : 1, probes: spec.probes, rejectBlank: entry.body === 'mercury' && entry.map === 'colour' },
     );
+    if (entry.body === 'mercury' && entry.map === 'colour') expect(means[0]?.blackFraction, `${entry.path}: no blank imaging patches`).toBeLessThan(0.00001);
     const [what, value, bound] = spec.check(means);
     expect(value, `${entry.path}: ${what}`).toBeGreaterThan(bound);
   }

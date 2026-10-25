@@ -19,7 +19,7 @@ import type { BodyId } from '../core/types';
 /** Chapter 7's display, in its scene units: distance = distanceScale * sqrt(r / 1 au); radii; the Moon's orbit around the Earth. */
 const FILM = {
   distanceScale: 1.25,
-  radii: { sun: 0.32, earth: 0.05, moon: 0.014, jupiter: 0.13, saturn: 0.11 },
+  radii: { mercury: 0.026, venus: 0.046, mars: 0.034, uranus: 0.075, neptune: 0.072, sun: 0.32, earth: 0.05, moon: 0.014, jupiter: 0.13, saturn: 0.11 },
   moonOrbit: 0.16,
 } as const satisfies { distanceScale: number; radii: Record<BodyId, number>; moonOrbit: number };
 

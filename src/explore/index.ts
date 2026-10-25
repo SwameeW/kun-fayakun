@@ -103,6 +103,11 @@ const DOT: Readonly<Record<BodyId, { tint: readonly [number, number, number]; al
   earth: { tint: [0.62, 0.78, 1], albedo: 0.42, sizePx: 7 },
   moon: { tint: [0.86, 0.84, 0.8], albedo: 0.16, sizePx: 6 },
   jupiter: { tint: [1, 0.93, 0.82], albedo: 0.52, sizePx: 8 },
+  mercury: { tint: [0.8, 0.78, 0.75], albedo: 0.4, sizePx: 7 },
+  venus: { tint: [1, 0.96, 0.84], albedo: 0.4, sizePx: 7 },
+  mars: { tint: [1, 0.6, 0.4], albedo: 0.4, sizePx: 7 },
+  uranus: { tint: [0.65, 0.86, 0.84], albedo: 0.4, sizePx: 7 },
+  neptune: { tint: [0.6, 0.8, 0.86], albedo: 0.4, sizePx: 7 },
   saturn: { tint: [1, 0.9, 0.72], albedo: 0.47, sizePx: 8 },
 };
 /** The Sun as a point: its blackbody colour, brilliant (display terms). */
@@ -824,6 +829,16 @@ export default function create(): UniverseModule {
     unit(sunDir, sys.bodies.earth.position, sun);
     unit(toMoon, sys.bodies.earth.position, moonAt);
     bodies.earth.update({ time: ambient, sun: sunDir, light: lightAt('earth'), moon: toMoon, moonLit }, origin3);
+    unit(sunDir, sys.bodies.mercury.position, sun);
+    bodies.mercury.update({ time: ambient, sun: sunDir, light: lightAt('mercury'), earth: toEarth, earthLit: 0 }, origin3);
+    unit(sunDir, sys.bodies.venus.position, sun);
+    bodies.venus.update({ time: ambient, sun: sunDir, light: lightAt('venus') }, origin3);
+    unit(sunDir, sys.bodies.mars.position, sun);
+    bodies.mars.update({ time: ambient, sun: sunDir, light: lightAt('mars'), earth: toEarth, earthLit: 0 }, origin3);
+    unit(sunDir, sys.bodies.uranus.position, sun);
+    bodies.uranus.update({ time: ambient, sun: sunDir, light: lightAt('uranus') }, origin3);
+    unit(sunDir, sys.bodies.neptune.position, sun);
+    bodies.neptune.update({ time: ambient, sun: sunDir, light: lightAt('neptune') }, origin3);
     unit(sunDir, sys.bodies.jupiter.position, sun);
     bodies.jupiter.update({ time: ambient, sun: sunDir, light: lightAt('jupiter') }, origin3);
     unit(sunDir, sys.bodies.saturn.position, sun);
@@ -1052,6 +1067,14 @@ export default function create(): UniverseModule {
       }
       case 'jupiter':
         return ['band-drift'];
+      case 'mercury':
+        return ['monochrome', 'map-gaps'];
+      case 'mars':
+        return ['dust-haze'];
+      case 'venus':
+      case 'uranus':
+      case 'neptune':
+        return ['colour-model'];
       case 'saturn':
         return bodies.saturn.rings?.particles?.object.visible ? ['ring-particles'] : [];
     }
@@ -1449,6 +1472,11 @@ export default function create(): UniverseModule {
       };
       const sunAt = system.bodies.sun.position;
       orbitPaths = [
+        planetOrbit('mercury', body('Mercury'), sunAt, physical.auKm, ORBIT_COLOR),
+        planetOrbit('venus', body('Venus'), sunAt, physical.auKm, ORBIT_COLOR),
+        planetOrbit('mars', body('Mars'), sunAt, physical.auKm, ORBIT_COLOR),
+        planetOrbit('uranus', body('Uranus'), sunAt, physical.auKm, ORBIT_COLOR),
+        planetOrbit('neptune', body('Neptune'), sunAt, physical.auKm, ORBIT_COLOR),
         planetOrbit('earth', body('Earth'), sunAt, physical.auKm, ORBIT_COLOR),
         planetOrbit('jupiter', body('Jupiter'), sunAt, physical.auKm, ORBIT_COLOR),
         planetOrbit('saturn', body('Saturn'), sunAt, physical.auKm, ORBIT_COLOR),
@@ -1539,6 +1567,7 @@ export default function create(): UniverseModule {
       // From Chapter 7 the film's compressed system first stretches out to true scale (./stretch), seen
       // from above with the Sun in the middle; otherwise the explorer opens on the body at true scale.
       for (const path of orbitPaths) path.setDate(jdTdb);
+      const neptuneOrbitKm = orbitPaths.find((path) => path.body === 'neptune')?.sizeKm ?? 0;
       const saturnOrbitKm = orbitPaths.find((path) => path.body === 'saturn')?.sizeKm ?? 0;
       const then = wantBody ?? DEFAULT_BODY;
       Object.assign(stretch, { active: false, t: 0, amount: 1, rush: false, steered: false, then });
@@ -1549,7 +1578,7 @@ export default function create(): UniverseModule {
         const azimuth = Math.atan2(e.x, e.z) + MathUtils.degToRad(STRETCH.azimuthDeg);
         const elevation = MathUtils.degToRad(STRETCH.elevationDeg);
         const cosE = Math.cos(elevation);
-        nav.place('sun', km(cosE * Math.sin(azimuth), Math.sin(elevation), cosE * Math.cos(azimuth)), STRETCH.framing * saturnOrbitKm, world);
+        nav.place('sun', km(cosE * Math.sin(azimuth), Math.sin(elevation), cosE * Math.cos(azimuth)), STRETCH.framing * stretchedDistance(neptuneOrbitKm, 0, filmUnit, system.auKm), world);
       } else {
         nav.begin(world, then, true);
       }

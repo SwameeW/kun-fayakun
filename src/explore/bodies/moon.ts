@@ -33,12 +33,13 @@
  */
 
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Node, type Object3D } from 'three/webgpu';
-import { atan, dot, float, Fn, If, int, Loop, max, mix, normalize, positionLocal, smoothstep, sqrt, tan, uniform, vec2, vec3 } from 'three/tsl';
+import { atan, dot, exp, length, float, Fn, If, int, Loop, max, mix, normalize, positionLocal, smoothstep, sqrt, tan, uniform, vec2, vec3 } from 'three/tsl';
 import type { PlanetTextures } from '../assets/streaming';
 import type { ExploreDetail } from '../detail';
 import { decodeNormal, mapCoords, mipLevel, sampleSlot, sampleSlotLevel, sampleSlotSmooth, tangentFrame, type FloatNode, type Vec3Node } from '../render/sampling';
 import { bumpGradient, craters, keepOnSphere, litCosine, sphereFootprint, sunlit, tiltNormal } from './shading';
 import { textureTier } from '../detail';
+import { blendAdditive } from '../render/blending';
 
 /** The kit's maps put the near side's centre (east longitude 0) at u = 0.5 (planets.json bodies.moon.uAtLon0). */
 const U_AT_LON0 = 0.5;
@@ -102,27 +103,36 @@ const node = (x: FloatNode | number): FloatNode => (typeof x === 'number' ? floa
 const surge = (phase: FloatNode | number): FloatNode => float(1).add(float(SURGE.amplitude).div(float(1).add(tan(node(phase).mul(0.5)).div(SURGE.width))));
 const lommel = (mu0: FloatNode | number, mu: FloatNode | number): FloatNode => node(mu0).mul(2).div(node(mu0).add(node(mu)).add(1e-3));
 
-export function createMoon(textures: PlanetTextures, sunAngularRadius: number, initial: ExploreDetail): ExploreMoon {
+export interface RockOptions {
+  body: 'moon' | 'mercury' | 'mars';
+  uAtLon0: number;
+  polar: number;
+}
+
+export function createMoon(textures: PlanetTextures, sunAngularRadius: number, initial: ExploreDetail, options: RockOptions = { body: 'moon', uAtLon0: U_AT_LON0, polar: 1 }): ExploreMoon {
   const object = new Group();
-  object.name = 'explore-moon';
+  object.name = `explore-${options.body}`;
   const uLight = uniform(1);
+  const uSunAngularRadius = uniform(sunAngularRadius);
   // Light, the Earth and the eye in the Moon's own frame (set on the CPU), so the relief is lit there.
   const uSun = uniform(new Vector3(1, 0, 0));
   const uEarth = uniform(new Vector3(-1, 0, 0));
   const uEarthshine = uniform(0);
   const uEye = uniform(new Vector3(0, 0, 3));
-  const colourSlot = textures.slot('moon', 'colour');
-  const normalSlot = textures.slot('moon', 'normal');
+  const colourSlot = textures.slot(options.body, 'colour');
+  const normalSlot = textures.slot(options.body, 'normal');
   const standard = lommel(STANDARD.mu0, STANDARD.mu).mul(surge(STANDARD.phase)).mul(Math.exp(-PHASE_DARKENING * STANDARD.phase));
 
   const build = (detail: ExploreDetail): MeshBasicNodeMaterial => {
-    const n = normalize(positionLocal);
-    const c = mapCoords(n, n.y, U_AT_LON0);
+    const point = options.body === 'moon' ? positionLocal : vec3(positionLocal.x, positionLocal.y.mul(options.polar), positionLocal.z);
+    const n = normalize(point);
+    const surfaceNormal = options.body === 'moon' ? n : normalize(vec3(positionLocal.x, positionLocal.y.div(options.polar), positionLocal.z));
+    const c = mapCoords(n, n.y, options.uAtLon0);
     const smooth = detail.tier === 'low';
     const read = smooth ? sampleSlotSmooth : sampleSlot;
     const luma = (v: Vec3Node): FloatNode => dot(v, vec3(0.2126, 0.7152, 0.0722));
     let albedo: Vec3Node = read(colourSlot, c).rgb;
-    if (detail.tier === 'low' || detail.tier === 'medium') {
+    if (options.body !== 'mars' && (detail.tier === 'low' || detail.tier === 'medium')) {
       // The fine map's brightness over a coarse level's colour: ETC1S's colour blocks average out there
       // (and at Low the colour a little desaturated: the Moon is nearly grey, its blocks' tints are not).
       const coarse = sampleSlot(colourSlot, c, CHROMA_BLUR).rgb;
@@ -130,29 +140,29 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
       albedo = coarse.mul(brightness.div(max(luma(coarse), 1e-3)));
       if (smooth) albedo = mix(vec3(brightness), albedo, 0.55);
     }
-    const { east, north } = tangentFrame(n);
+    const { east, north } = tangentFrame(surfaceNormal);
     let relief: Vec3Node;
     if (detail.normalMaps) {
       const t = decodeNormal(read(normalSlot, c));
-      relief = normalize(east.mul(t.x).add(north.mul(t.y)).add(n.mul(t.z)));
+      relief = normalize(east.mul(t.x).add(north.mul(t.y)).add(surfaceNormal.mul(t.z)));
     } else {
       // No relief map at this detail: a hint of relief from the colour map's local contrast (crater
       // rims and young ejecta are bright), so the terminator is not flat. Illustrative.
       const contrast = luma(albedo).sub(luma(sampleSlot(colourSlot, c, 2.5).rgb));
-      relief = tiltNormal(n, bumpGradient(positionLocal, n, contrast.mul(ALBEDO_RELIEF)), 1);
+      relief = tiltNormal(surfaceNormal, bumpGradient(positionLocal, surfaceNormal, contrast.mul(ALBEDO_RELIEF)), 1);
     }
     // Illustrative small craters below the map's resolution, each scale only once it spans a few pixels.
     const footprint = sphereFootprint(n);
     const cells = crateredCells(detail);
     const small = craters(n, cells, 1, CRATERS.density, CRATERS.ratio);
     const smaller = craters(n, cells * CRATERS.second, 2, CRATERS.density, CRATERS.ratio);
-    const keepSmall = keepOnSphere(footprint, cells * 3);
-    const keepSmaller = keepOnSphere(footprint, cells * CRATERS.second * 3);
+    const keepSmall = options.body === 'moon' ? keepOnSphere(footprint, cells * 3) : float(0);
+    const keepSmaller = options.body === 'moon' ? keepOnSphere(footprint, cells * CRATERS.second * 3) : float(0);
     relief = tiltNormal(relief, small.gradient.mul(keepSmall).add(smaller.gradient.mul(keepSmaller)), 1);
     // Fresh rims a little brighter, floors a little darker.
     const marks = small.rim.mul(0.12).sub(small.inside.mul(0.06)).mul(keepSmall).add(smaller.rim.mul(0.1).sub(smaller.inside.mul(0.05)).mul(keepSmaller));
     albedo = albedo.mul(marks.add(1));
-    const view = normalize(uEye.sub(n));
+    const view = normalize(uEye.sub(options.body === 'moon' ? n : point));
     const nDotL = dot(n, uSun);
     const mu0 = litCosine(dot(relief, uSun));
     const mu = max(dot(relief, view), 0);
@@ -199,7 +209,7 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
             travelled.assign(s);
             // Ground ahead above the sunlight's ray (the sphere falls away as s^2 / 2), in units of the Sun's spread there.
             const above = height.sub(s.mul(s).mul(0.5)).sub(s.mul(tanE));
-            worst.assign(max(worst, above.div(max(s.mul(sunAngularRadius * 2), 1e-6))));
+            worst.assign(max(worst, above.div(max(s.mul(options.body === 'moon' ? sunAngularRadius * 2 : uSunAngularRadius.mul(2)), 1e-6))));
           });
           result.assign(float(1).sub(smoothstep(-0.5, 0.5, worst)));
         });
@@ -214,6 +224,7 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     const light = vec3(law.mul(terminator).mul(lit)).add(EARTHLIGHT.mul(earthshine));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = albedo.mul(light).mul(uLight);
+    if (options.polar !== 1) material.positionNode = point;
     return material;
   };
 
@@ -240,6 +251,29 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
   const mesh = new Mesh(sphere(initial.sphereSegments), materialFor(initial));
   mesh.name = 'explore-moon-surface';
   object.add(mesh);
+  // Mars only: a faint, explicitly labelled dust-haze limb. Height and strength are visual
+  // choices, not an atmospheric measurement. The shader changes continuously with phase.
+  let haze: Mesh<SphereGeometry, MeshBasicNodeMaterial> | null = null;
+  if (options.body === 'mars') {
+    const eye = vec3(uEye.x, uEye.y.div(options.polar), uEye.z);
+    const ray = normalize(positionLocal.sub(eye));
+    const along = dot(eye, ray);
+    const closest = eye.sub(ray.mul(along));
+    const tangent = length(closest);
+    const height = tangent.sub(1);
+    const up = closest.div(max(tangent, 1e-6));
+    const column = exp(max(height, 0).div(-0.002)).mul(smoothstep(-0.002, 0, height));
+    const lit = smoothstep(-0.1, 0.15, dot(up, uSun));
+    const ahead = smoothstep(0, 0.02, along.negate());
+    const m = blendAdditive(new MeshBasicNodeMaterial({ side: FrontSide, transparent: true, depthWrite: false, fog: false }));
+    m.colorNode = vec3(1, 0.55, 0.3).mul(column.mul(lit).mul(ahead).mul(0.12)).mul(uLight);
+    m.opacityNode = float(1);
+    haze = new Mesh(new SphereGeometry(1.012, 96, 48), m);
+    haze.scale.y = options.polar;
+    haze.name = 'explore-mars-dust-haze';
+    haze.renderOrder = 2;
+    object.add(haze);
+  }
   const inverse = new Matrix4();
   const scratch = new Vector3();
 
@@ -247,11 +281,12 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     object,
     update(frame, cameraWorld) {
       uLight.value = frame.light;
+      uSunAngularRadius.value = Math.asin(Math.min(1, Math.sin(sunAngularRadius) * Math.sqrt(frame.light)));
       inverse.copy(object.matrixWorld).invert();
       // Directions turn with the body only (no translation, no scale).
       uSun.value.set(frame.sun.x, frame.sun.y, frame.sun.z).transformDirection(inverse);
       uEarth.value.set(frame.earth.x, frame.earth.y, frame.earth.z).transformDirection(inverse);
-      uEarthshine.value = EARTHSHINE * frame.earthLit;
+      uEarthshine.value = options.body === 'moon' ? EARTHSHINE * frame.earthLit : 0;
       uEye.value.copy(scratch.copy(cameraWorld).applyMatrix4(inverse));
       object.visible = frame.light > 1e-3;
     },
@@ -278,6 +313,8 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
       }
     },
     dispose() {
+      haze?.geometry.dispose();
+      haze?.material.dispose();
       for (const g of geometries.values()) g.dispose();
       for (const m of materials.values()) m.dispose();
     },

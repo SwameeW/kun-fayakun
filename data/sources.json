@@ -530,7 +530,7 @@
       "version": "pck00011, retrieved 2026-10-23",
       "license": "Public information from NASA/JPL",
       "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
-      "credit": "Rotation and size of the Sun, Earth, Moon, Jupiter and Saturn: IAU WGCCRE (Archinal et al. 2018), via NASA/JPL NAIF",
+      "credit": "Rotation and size of the Sun, all eight planets and the Moon: IAU WGCCRE (Archinal et al. 2018), via NASA/JPL NAIF",
       "notes": "Pole, prime meridian and radii for src/astro/rotation.ts. The kernel carries the 2009 IAU values for the Earth and the Moon, because the 2015 report gives none for them. public/assets/jpl/physical.json records the file's sha256.",
       "review": {
         "reviewer": null,
@@ -719,6 +719,108 @@
       "licenseUrl": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
       "credit": "NASA/JPL/Space Science Institute",
       "notes": "The colour of Saturn's rings in exploration (the RGB channels of public/assets/planets/saturn/rings-8192-rgba8.ktx2): the lit face seen from 10 degrees below it at 28 degrees phase, averaged across the arcs near the mosaic's apex and placed on ring radius by matching its gaps to the Cassini RSS optical-depth profile. Where the rings are thin the mosaic's brightness is divided by the share of a thick ring's light they return in its geometry (single scattering), so the strip holds the ring material's own colour; gaps and empty space take the nearest ring material's colour (straight alpha).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-viking-mars",
+      "kind": "dataset",
+      "title": "Mars Viking Global Color Mosaic 925m",
+      "author": "Viking Team, USGS Astrogeology",
+      "url": "https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m",
+      "version": "accessed 2026-10-24, retrieved 2026-10-24",
+      "license": "Public domain (U.S. Government data)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "NASA/USGS, Viking",
+      "notes": "Viking visible colour mosaic; reduced in linear light; longitude and latitude retained.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-mola-mars",
+      "kind": "dataset",
+      "title": "Mars MGS MOLA DEM 463m",
+      "author": "MOLA Team, NASA GSFC, USGS Astrogeology",
+      "url": "https://astrogeology.usgs.gov/search/map/mars_mgs_mola_dem_463m",
+      "version": "accessed 2026-10-24, retrieved 2026-10-24",
+      "license": "Public domain (U.S. Government data)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "NASA/GSFC/USGS, MOLA",
+      "notes": "MOLA elevations reduced to 4096 pixels and converted to tangent-space relief normals; relief exaggerated as recorded in the manifest.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-mdis-mercury",
+      "kind": "dataset",
+      "title": "Mercury MESSENGER MDIS Global Color Mosaic 665m v3",
+      "author": "MESSENGER Team, Arizona State University, USGS Astrogeology",
+      "url": "https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_global_color_mosaic_665m",
+      "version": "accessed 2026-10-24, retrieved 2026-10-24",
+      "license": "Public domain (U.S. Government data)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER MDIS",
+      "notes": "Only the visible 430 nm band is used, its published linear I/F contrast stretch undone and displayed as neutral monochrome. Missing image patches are interpolated from adjacent observed pixels, not invented terrain. The 1000/750/430 nm RGB composite is not presented as natural colour.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-dem-mercury",
+      "kind": "dataset",
+      "title": "Mercury MESSENGER Global DEM 665m v2",
+      "author": "USGS Astrogeology, MESSENGER Team",
+      "url": "https://astrogeology.usgs.gov/search/map/mercury_messenger_global_dem_665m",
+      "version": "accessed 2026-10-24, retrieved 2026-10-24",
+      "license": "Public domain (U.S. Government data)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER DEM",
+      "notes": "Stereo DEM reduced to 4096 pixels and converted to tangent-space relief normals; relief exaggerated as recorded in the manifest.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "irwin-ice-giant-colours",
+      "kind": "dataset",
+      "title": "Uniform cloud-colour model informed by Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune",
+      "author": "Kun Fayakun contributors (display model); P. G. J. Irwin et al.",
+      "url": "https://doi.org/10.1093/mnras/stad3761",
+      "version": "accessed 2026-10-24, retrieved 2026-10-24",
+      "license": "CC0 (original uniform display model only; no source imagery reproduced)",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "notes": "Uniform, illustrative display swatches of pale greenish-blue, Neptune slightly bluer. These are qualitative approximations, not measured RGB values, albedos, or mapped atmospheric features. No published figure is reproduced. The cited publication retains its own terms; CC0 applies only to the original uniform display map.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "nasa-venus-visible",
+      "kind": "dataset",
+      "title": "Uniform cloud-colour model informed by Venus in visible light: a yellowish-white cloud deck",
+      "author": "Kun Fayakun contributors (display model); NASA Science",
+      "url": "https://science.nasa.gov/earth/10-things-tour-of-storms-across-the-solar-system/",
+      "version": "accessed 2026-10-24, retrieved 2026-10-24",
+      "license": "CC0 (original uniform display model only; no source imagery reproduced)",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "credit": "Cloud colour model informed by NASA",
+      "notes": "Uniform pale yellowish-white cloud-top display model. No radar surface or ultraviolet cloud structures are shown; RGB values are illustrative display choices, not measurements. The cited publication retains its own terms; CC0 applies only to the original uniform display map.",
       "review": {
         "reviewer": null,
         "role": null,

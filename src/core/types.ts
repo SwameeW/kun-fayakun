@@ -424,9 +424,9 @@ export type TimelineState = 'idle' | 'loading' | 'intro' | 'playing' | 'explore'
 export type ExperienceId = 'film' | 'universe';
 
 /** Bodies the explorer can focus, in the order its body list shows them. */
-export type BodyId = 'sun' | 'earth' | 'moon' | 'jupiter' | 'saturn';
+export type BodyId = 'sun' | 'mercury' | 'venus' | 'earth' | 'moon' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune';
 
-export const BODY_IDS: readonly BodyId[] = ['sun', 'earth', 'moon', 'jupiter', 'saturn'];
+export const BODY_IDS: readonly BodyId[] = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 /**
  * A non-chapter experience: the chapter lifecycle minus content and cues (no film clock).
@@ -565,7 +565,7 @@ export interface UniverseGraphics {
  * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
  * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still.
  */
-export type UniverseIllustration = 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
+export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
 
 /**
  * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its

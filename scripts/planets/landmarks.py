@@ -254,3 +254,58 @@ def band_mean(array: NDArray[np.generic], lat0: float, lat1: float) -> float:
     lat_rows = 90.0 - (np.arange(h) + 0.5) * 180.0 / h
     rows = np.nonzero((lat_rows >= lat0) & (lat_rows <= lat1))[0]
     return float(np.asarray(array[rows], dtype=np.float64).mean())
+
+# IAU/USGS Gazetteer: Olympus Mons (18.65 N, 226.20 E), Caloris Planitia
+# (31.65 N, 198.02 E): https://planetarynames.wr.usgs.gov/Feature/979.
+# Hellas test patch lies in the basin mapped by USGS I-2694 (70 E, 42 S).
+ROCK_PLACES = {
+    'mars': [Place('Olympus Mons', 18.65, 226.20, 1.0), Place('Hellas basin', -42.0, 70.0, 2.0)],
+    'mercury': [Place('Caloris Planitia', 31.65, 198.02, 2.0), Place('Caloris southern rim', 15.0, 198.02, 2.0)],
+}
+
+
+def rock_heights(array, body, label):
+    c = Checks(label, body)
+    if body == 'mars':
+        c.expect('Olympus Mons elevation (m)', mean(array, ROCK_PLACES[body][0], body), '>', 14000)
+        c.expect('Hellas basin elevation (m)', mean(array, ROCK_PLACES[body][1], body), '<', -4000)
+    else:
+        # Both probes are tied to the DEM georeferencing and saved alongside the image probes.
+        for place in ROCK_PLACES[body]:
+            c.expect(place.name + ' finite elevation', float(np.isfinite(patch(array, place, body)).mean()), '>', 0.999)
+    return c.report()
+
+
+def rock_colour(array, body, label):
+    import json
+    c = Checks(label, body)
+    measured = {p.name: patch(array, p, body).mean(axis=(0,1)).tolist() for p in ROCK_PLACES[body]}
+    reference = config.REPORTS / f'probes-{body}-colour.json'
+    if label.endswith('imaging source'):
+        config.REPORTS.mkdir(parents=True, exist_ok=True)
+        reference.write_text(json.dumps(measured, indent=2) + '\n')
+    else:
+        expected = json.loads(reference.read_text())
+        for name, rgb in measured.items():
+            c.expect(name + ' RGB error from source', float(np.max(np.abs(np.array(rgb) - expected[name]))), '<', 12)
+    if body == 'mars':
+        c.expect('Viking reddish appearance', float(array[...,0].mean()-array[...,2].mean()), '>', 10)
+    else:
+        c.expect('unfilled black image pixels', float((array[..., :3].max(axis=-1) < 3).mean()), '<', 0.00001)
+        c.expect('MDIS monochrome channel error', float(np.abs(array[...,0].astype(float)-array[...,2]).mean()), '<', 3)
+    return c.report()
+
+
+def rock_normals(array, body, label):
+    import json
+    c = Checks(label, body)
+    measured = {p.name: patch(array, p, body).mean(axis=(0,1)).tolist() for p in ROCK_PLACES[body]}
+    reference = config.REPORTS / f'probes-{body}-normal.json'
+    if label.endswith('normal source'):
+        config.REPORTS.mkdir(parents=True, exist_ok=True)
+        reference.write_text(json.dumps(measured, indent=2) + '\n')
+    else:
+        expected = json.loads(reference.read_text())
+        for name, xy in measured.items():
+            c.expect(name + ' XY error from source', float(np.max(np.abs(np.array(xy)-expected[name]))), '<', 12)
+    return c.report()

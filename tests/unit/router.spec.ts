@@ -66,7 +66,7 @@ test('the solar-system explorer: #/universe, an optional body and an optional ?j
 });
 
 test('every explorer route round-trips through formatRoute', () => {
-  for (const body of [null, 'sun', 'earth', 'moon', 'jupiter', 'saturn'] as const) {
+  for (const body of [null, 'sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'] as const) {
     for (const jd of [null, 2461336.75]) {
       expect(parseHash(formatRoute({ name: 'universe', body, jd }))).toEqual({ name: 'universe', body, jd });
     }

@@ -138,7 +138,7 @@ export const PHENOMENA = [
 export type Phenomenon = (typeof PHENOMENA)[number];
 
 /** A note shows within this many radii of the focus's surface, and goes beyond the second (no flicker at the edge). */
-const NOTE_RADII: Readonly<Record<BodyId, readonly [number, number]>> = {
+const NOTE_RADII: Readonly<Partial<Record<BodyId, readonly [number, number]>>> = {
   sun: [25, 30],
   earth: [10, 12],
   moon: [12, 14],
@@ -197,7 +197,8 @@ export class Discoveries {
     const radii = input.altitudeKm / Math.max(1, input.radiusKm);
     // Within so many radii, or not far beyond the height the view frames the world from.
     const framed = input.framedAltitudeKm / Math.max(1, input.radiusKm);
-    const [show, hide] = NOTE_RADII[input.focus];
+    if (input.focus === 'mercury' || input.focus === 'venus' || input.focus === 'mars' || input.focus === 'uranus' || input.focus === 'neptune') return null;
+    const [show, hide] = NOTE_RADII[input.focus] ?? [0, 0];
     const current = this.shown;
     const showing = current !== null && (current === input.focus || (current === 'earth-air' && input.focus === 'earth'));
     if (radii > (showing ? Math.max(hide, FRAMED_NOTE[1] * framed) : Math.max(show, FRAMED_NOTE[0] * framed))) return null;

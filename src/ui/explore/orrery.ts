@@ -28,6 +28,11 @@ const DOT: Readonly<Record<BodyId, { r: number; fill: string }>> = {
   earth: { r: 2.6, fill: '#8fc1ff' },
   moon: { r: 1.5, fill: '#d9d4ca' },
   jupiter: { r: 3.4, fill: '#e8cfa6' },
+  mercury: { r: 2.2, fill: '#c5c1b9' },
+  venus: { r: 2.2, fill: '#fff5d6' },
+  mars: { r: 2.2, fill: '#e7a47b' },
+  uranus: { r: 2.2, fill: '#b9dedb' },
+  neptune: { r: 2.2, fill: '#b4d5dd' },
   saturn: { r: 3, fill: '#ecd9a8' },
 };
 

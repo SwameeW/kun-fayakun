@@ -130,7 +130,7 @@ test('portrait: a bottom sheet of worlds that pulls up (Esc folds it), nothing w
   await settled(page, ['universe-readout', 'universe-bodies']);
   const nav = page.getByTestId('universe-bodies');
   await expect(nav).toHaveClass(/is-sheet/);
-  for (const name of ['Sun', 'Earth', 'Moon', 'Jupiter', 'Saturn']) await expect(nav.getByRole('button', { name, exact: true })).toBeVisible();
+  for (const name of ['Sun', 'Mercury', 'Venus', 'Earth', 'Moon', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune']) await expect(nav.getByRole('button', { name, exact: true })).toBeVisible();
   const folded = await overflow(page);
   expect(folded.scroll).toBeLessThanOrEqual(folded.client);
   expect(folded.offenders).toEqual([]);
@@ -280,3 +280,35 @@ async function between(page: Page, id: string): Promise<boolean> {
   const clearOfSheet = sheet.x > size.width / 4 ? x > 0 && x < sheet.x : y < sheet.y;
   return belowReadout && clearOfSheet;
 }
+
+for (const body of ['mercury', 'venus', 'mars', 'uranus', 'neptune'] as const) {
+  test(`phone: ${body} opens, renders and keeps ten usable navigator targets`, async ({ page, kf, pageErrors }) => {
+    await kf.open(`/universe/${body}`, { query: { jd: JD, detail: 'low' } });
+    await waitForUniverse(page);
+    await settled(page, ['universe-readout', 'universe-bodies']);
+    await expect(page.locator('.kf-nav-row')).toHaveCount(10);
+    await expect.poll(async () => (await view(page))?.focus).toBe(body);
+    const layout = await overflow(page);
+    expect(layout.scroll).toBeLessThanOrEqual(layout.client);
+    expect(layout.offenders).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+test('short landscape: the detail menu and its close control stay within the viewport', async ({ page, kf }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await kf.open('/universe/saturn', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('universe-nav-toggle').click();
+  await page.getByTestId('universe-detail').click();
+  const close = page.getByTestId('universe-detail-close');
+  await expect(close).toBeVisible();
+  const box = await close.boundingBox();
+  expect(box?.y).toBeGreaterThanOrEqual(0);
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(390);
+  await page.getByTestId('universe-detail-low').scrollIntoViewIfNeeded();
+  const after = await close.boundingBox();
+  expect(after?.y).toBeGreaterThanOrEqual(0);
+  await close.click();
+  await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
+});

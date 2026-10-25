@@ -17,6 +17,8 @@ const manifest = JSON.parse(readFileSync(new URL('assets/planets/planets.json', 
 };
 const TIERS = ['low', 'medium', 'high', 'ultra'] as const;
 const MAPS: Record<string, PlanetMap[]> = {
+  mercury: ['colour', 'normal'], mars: ['colour', 'normal'],
+  venus: ['colour'], uranus: ['colour'], neptune: ['colour'],
   earth: ['day', 'night', 'clouds', 'water', 'normal'],
   moon: ['colour', 'normal'],
   jupiter: ['colour'],

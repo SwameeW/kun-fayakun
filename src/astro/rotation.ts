@@ -1,12 +1,12 @@
 /**
- * How the Sun, Earth, Moon, Jupiter and Saturn are turned on a date: the IAU WGCCRE rotation
+ * How the Sun, all eight planets and the Moon are turned on a date: the IAU WGCCRE rotation
  * models (pole right ascension and declination, prime meridian W) as NAIF's pck00011.tpc gives
  * them, read from public/assets/jpl/physical.json. Pure, like ./ephemeris.
  *
  *   RA  = ra0 + ra1 T + ra2 T^2 + sum ra_i sin(theta_i)
  *   Dec = dec0 + dec1 T + dec2 T^2 + sum dec_i cos(theta_i)
  *   W   = w0 + w1 d + w2 d^2 + sum pm_i sin(theta_i)
- *   theta_i = angle_i0 + angle_i1 T
+ *   theta_i = angle_i0 + angle_i1 T + angle_i2 T^2 (quadratic coefficient optional)
  *
  * d is in TDB days and T in Julian centuries from J2000, and all angles are in degrees. The
  * pole is given in the ICRF. The positions in ./ephemeris use the ecliptic of J2000, which is the
@@ -20,8 +20,8 @@ export interface NutationPrecession {
   ra: number[];
   dec: number[];
   pm: number[];
-  /** [degrees, degrees per century] for each angle theta_i. */
-  angles: Array<[number, number]>;
+  /** Polynomial in Julian centuries: degrees, degrees/century, optional degrees/century squared. */
+  angles: Array<[number, number, number?]>;
 }
 
 /** One body of physical.json "bodies". */
@@ -35,7 +35,7 @@ export interface RotationModel {
   nutPrec: NutationPrecession | null;
 }
 
-export type RotatingBody = 'Sun' | 'Earth' | 'Moon' | 'Jupiter' | 'Saturn';
+export type RotatingBody = 'Sun' | 'Mercury' | 'Venus' | 'Earth' | 'Moon' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune';
 
 /** In radians; w is reduced to [0, 2 pi). */
 export interface Orientation {
@@ -56,8 +56,8 @@ export function orientationAt(model: RotationModel, jdTdb: number, out: Orientat
   let w = model.pm[0] + model.pm[1] * d + model.pm[2] * d * d;
   const np = model.nutPrec;
   if (np) {
-    np.angles.forEach(([a0, a1], i) => {
-      const theta = (a0 + a1 * T) * DEG;
+    np.angles.forEach(([a0, a1, a2 = 0], i) => {
+      const theta = (a0 + a1 * T + a2 * T * T) * DEG;
       const s = Math.sin(theta);
       ra += (np.ra[i] ?? 0) * s;
       dec += (np.dec[i] ?? 0) * Math.cos(theta);

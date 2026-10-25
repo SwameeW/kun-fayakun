@@ -75,7 +75,7 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   void app.assets.json<PlanetsManifest>(PLANETS_MANIFEST_URL).then(
     (manifest) => {
       const next: Partial<Record<BodyId, { short: string; full: string[] }>> = {};
-      for (const body of ['earth', 'moon', 'jupiter', 'saturn'] as const) {
+      for (const body of ['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'] as const) {
         const files = manifest.files.filter((file) => file.body === body);
         const lines = planetCredits(files);
         if (lines.length === 0) continue;

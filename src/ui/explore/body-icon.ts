@@ -22,6 +22,11 @@ const STYLE: Readonly<Record<BodyId, { lit: [string, string]; night: string }>> 
   earth: { lit: ['#bfe0ff', '#2e68a8'], night: '#1c3150' },
   moon: { lit: ['#f1ede4', '#9d988e'], night: '#34332f' },
   jupiter: { lit: ['#f6e6cc', '#c49a6c'], night: '#3a2d20' },
+  mercury: { lit: ['#c5c1b9', '#68655e'], night: '#292826' },
+  venus: { lit: ['#fff5d6', '#ded5bd'], night: '#49453d' },
+  mars: { lit: ['#e7a47b', '#ac6041'], night: '#3f251c' },
+  uranus: { lit: ['#b9dedb', '#78afac'], night: '#203b3c' },
+  neptune: { lit: ['#b4d5dd', '#70a4b7'], night: '#20353e' },
   saturn: { lit: ['#f6e7c1', '#c9a96a'], night: '#383022' },
 };
 const RIM = 'rgb(237 231 218 / 0.32)';

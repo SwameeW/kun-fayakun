@@ -145,6 +145,15 @@ def check_decoded(spec: config.MapSpec, decoded: NDArray[np.uint8], label: str) 
     if spec.kind == "grey" and north_up.ndim == 3:
         north_up = north_up[..., 0]  # R8 comes back as R, G = B = 0
     key = f"{spec.body}/{spec.map}"
+    if spec.body in ("mercury", "mars"):
+        return landmarks.rock_normals(normal_xy(north_up), spec.body, label) if spec.kind == "normal" else landmarks.rock_colour(north_up[..., :3], spec.body, label)
+    if spec.body in ("venus", "uranus", "neptune"):
+        import json
+        constants = {c["id"]:c["value"] for c in json.loads((config.ROOT / "data/constants.json").read_text())["constants"]}
+        rgb = np.array([constants[f"{spec.body}.displayColour.{ch}"] for ch in "rgb"])
+        c = landmarks.Checks(label, spec.body)
+        c.expect("display colour error", float(np.abs(north_up[..., :3].astype(float)-rgb).max()), "<", 4)
+        return c.report()
     if key == "earth/day":
         return landmarks.earth_day(north_up[..., :3], label)
     if key == "earth/night":
@@ -226,6 +235,9 @@ def encode_file(spec: config.MapSpec, width: int, codec: str, out: Path) -> dict
     seconds = round(time.monotonic() - started, 1)
     decoded = decode(out, codec)
     source = read_png(levels[0])
+    # Lossless PNG optimisers may emit a single channel for neutral monochrome imagery.
+    if spec.kind == "colour" and decoded.ndim == 2:
+        decoded = np.repeat(decoded[..., None], 3, axis=-1)
     q = quality(spec, codec, source, decoded)
     marks = check_decoded(spec, decoded, f"{out.name} decoded")
     height = 1 if spec.kind == "strip" else width // 2

@@ -77,7 +77,7 @@ export interface ExploreGiant {
 
 export interface GiantOptions {
   name: string;
-  body: 'jupiter' | 'saturn';
+  body: 'jupiter' | 'saturn' | 'venus' | 'uranus' | 'neptune';
   /** Polar over equatorial radius. */
   polar: number;
   /** The map's u at east longitude 0 (planets.json). */

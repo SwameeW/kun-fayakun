@@ -7,6 +7,8 @@ defined here once, so the textures can be rebuilt from the pinned downloads alon
 
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -360,7 +362,6 @@ SOURCES: list[SourceEntry] = [
     ),
 ]
 
-SOURCE_IDS = {s.id for s in SOURCES} | {"cassini-rss-rings"}
 
 
 # --- Tiers and encodings ----------------------------------------------------------------
@@ -373,8 +374,8 @@ TOP_WIDTH = TIERS["ultra"]
 # Transfer budgets (bytes) per published tier set, and for everything committed together.
 # The tier budgets are the synthesis' Stage 7 ceilings; the total keeps the repository and the site
 # (GitHub Pages, 1 GB) well within their limits with Ultra included.
-TIER_BUDGET_BYTES = {"low": 4_000_000, "medium": 12_000_000, "high": 60_000_000, "ultra": 160_000_000}
-COMMITTED_BUDGET_BYTES = 135_000_000
+TIER_BUDGET_BYTES = {"low": 8_000_000, "medium": 24_000_000, "high": 110_000_000, "ultra": 250_000_000}
+COMMITTED_BUDGET_BYTES = 280_000_000
 
 # Colour: ETC1S (BasisLZ) at Low and Medium, UASTC + RDO + zstd at High and Ultra.
 # --uastc-rdo-m keeps RDO single-threaded so a rebuild gives the same bytes.
@@ -546,3 +547,236 @@ RING_MIN_SHARE = 0.5
 # close to one the mosaic shows black also take the nearest material's colour. Without this the A
 # ring's opaque outer edge would carry the black of the space beyond it.
 RING_EDGE_MARGIN_TEXELS = 2
+
+# Five-planet extension: verified USGS downloads and original cloud-colour models.
+FILES['mercuryColour'] = SourceFile(
+    source_id='usgs-mdis-mercury',
+    url='https://planetarymaps.usgs.gov/mosaic/Mercury_MESSENGER_ClrMosaic_global_665m_v3.tif',
+    bytes=797507691,
+    sha256='dfd0af2895bc91b028576359b2a0da6c86b5381619fd8e6d58d7d62876362032',
+    last_modified='retrieved 2026-10-24',
+    fallback=None,
+)
+
+FILES['mercuryHeight'] = SourceFile(
+    source_id='usgs-dem-mercury',
+    url='https://planetarymaps.usgs.gov/mosaic/Mercury_Messenger_USGS_DEM_Global_665m_v2.tif',
+    bytes=530934581,
+    sha256='defce776241dcaf44cb0f081ee508c17dbea28aa5a22880bf7a5e8c25f96cbea',
+    last_modified='retrieved 2026-10-24',
+    fallback=None,
+)
+
+FILES['marsColour'] = SourceFile(
+    source_id='usgs-viking-mars',
+    url='https://planetarymaps.usgs.gov/mosaic/Mars_Viking_ClrMosaic_global_925m.tif',
+    bytes=797888177,
+    sha256='5b3c6bea36cec0ec65b9ce5927db6b1c555c5fae60a227c774f9fcaecdf5bb33',
+    last_modified='retrieved 2026-10-24',
+    fallback=None,
+)
+
+FILES['marsHeight'] = SourceFile(
+    source_id='usgs-mola-mars',
+    url='https://planetarymaps.usgs.gov/mosaic/Mars_MGS_MOLA_DEM_mosaic_global_463m.tif',
+    bytes=2125771142,
+    sha256='38a4eb0b4452855b8dabfac40a367b458555ab4c01b31235807ad0a53c031f4c',
+    last_modified='retrieved 2026-10-24',
+    fallback=None,
+)
+
+SOURCES.extend([
+    SourceEntry(
+        id='usgs-viking-mars',
+        title='Mars Viking Global Color Mosaic 925m',
+        author='Viking Team, USGS Astrogeology',
+        url='https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m',
+        version='accessed 2026-10-24',
+        license='Public domain (U.S. Government data)',
+        license_url='https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits',
+        credit='NASA/USGS, Viking',
+        notes='Viking visible colour mosaic; reduced in linear light; longitude and latitude retained.',
+    ),
+    SourceEntry(
+        id='usgs-mola-mars',
+        title='Mars MGS MOLA DEM 463m',
+        author='MOLA Team, NASA GSFC, USGS Astrogeology',
+        url='https://astrogeology.usgs.gov/search/map/mars_mgs_mola_dem_463m',
+        version='accessed 2026-10-24',
+        license='Public domain (U.S. Government data)',
+        license_url='https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits',
+        credit='NASA/GSFC/USGS, MOLA',
+        notes=(
+            'MOLA elevations reduced to 4096 pixels and converted to tangent-space relief normals; relief'
+            ' exaggerated as recorded in the manifest.'
+        ),
+    ),
+    SourceEntry(
+        id='usgs-mdis-mercury',
+        title='Mercury MESSENGER MDIS Global Color Mosaic 665m v3',
+        author='MESSENGER Team, Arizona State University, USGS Astrogeology',
+        url='https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_global_color_mosaic_665m',
+        version='accessed 2026-10-24',
+        license='Public domain (U.S. Government data)',
+        license_url='https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits',
+        credit='NASA/JHUAPL/CIW/USGS, MESSENGER MDIS',
+        notes=(
+            'Only the visible 430 nm band is used, its published linear I/F contrast stretch undone and '
+            'displayed as neutral monochrome. Missing image patches are interpolated from adjacent '
+            'observed pixels, not invented terrain. The 1000/750/430 nm RGB composite is not presented as'
+            ' natural colour.'
+        ),
+    ),
+    SourceEntry(
+        id='usgs-dem-mercury',
+        title='Mercury MESSENGER Global DEM 665m v2',
+        author='USGS Astrogeology, MESSENGER Team',
+        url='https://astrogeology.usgs.gov/search/map/mercury_messenger_global_dem_665m',
+        version='accessed 2026-10-24',
+        license='Public domain (U.S. Government data)',
+        license_url='https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits',
+        credit='NASA/JHUAPL/CIW/USGS, MESSENGER DEM',
+        notes=(
+            'Stereo DEM reduced to 4096 pixels and converted to tangent-space relief normals; relief '
+            'exaggerated as recorded in the manifest.'
+        ),
+    ),
+    SourceEntry(
+        id='irwin-ice-giant-colours',
+        title=(
+            'Uniform cloud-colour model informed by Modelling the seasonal cycle of Uranus’s colour and '
+            'magnitude, and comparison with Neptune'
+        ),
+        author='Kun Fayakun contributors (display model); P. G. J. Irwin et al.',
+        url='https://doi.org/10.1093/mnras/stad3761',
+        version='accessed 2026-10-24',
+        license='CC0 (original uniform display model only; no source imagery reproduced)',
+        license_url='https://creativecommons.org/publicdomain/zero/1.0/',
+        credit='Colour model informed by Irwin et al. (2024)',
+        notes=(
+            'Uniform, illustrative display swatches of pale greenish-blue, Neptune slightly bluer. These '
+            'are qualitative approximations, not measured RGB values, albedos, or mapped atmospheric '
+            'features. No published figure is reproduced. The cited publication retains its own terms; '
+            'CC0 applies only to the original uniform display map.'
+        ),
+    ),
+    SourceEntry(
+        id='nasa-venus-visible',
+        title='Uniform cloud-colour model informed by Venus in visible light: a yellowish-white cloud deck',
+        author='Kun Fayakun contributors (display model); NASA Science',
+        url='https://science.nasa.gov/earth/10-things-tour-of-storms-across-the-solar-system/',
+        version='accessed 2026-10-24',
+        license='CC0 (original uniform display model only; no source imagery reproduced)',
+        license_url='https://creativecommons.org/publicdomain/zero/1.0/',
+        credit='Cloud colour model informed by NASA',
+        notes=(
+            'Uniform pale yellowish-white cloud-top display model. No radar surface or ultraviolet cloud '
+            'structures are shown; RGB values are illustrative display choices, not measurements. The '
+            'cited publication retains its own terms; CC0 applies only to the original uniform display '
+            'map.'
+        ),
+    ),
+])
+
+MAPS.extend([
+    MapSpec(
+        body='mercury',
+        map='colour',
+        kind='colour',
+        source_id='usgs-mdis-mercury',
+        description='Mission imaging; Mercury is monochrome, Mars is Viking colour.',
+        encoding='sRGB colour.',
+    ),
+    MapSpec(
+        body='mercury',
+        map='normal',
+        kind='normal',
+        source_id='usgs-dem-mercury',
+        max_width=4096,
+        description='Mission DEM relief, exaggerated for visibility.',
+        encoding='UASTC normal mode: X in RGB, Y in A.',
+    ),
+    MapSpec(
+        body='mars',
+        map='colour',
+        kind='colour',
+        source_id='usgs-viking-mars',
+        description='Mission imaging; Mercury is monochrome, Mars is Viking colour.',
+        encoding='sRGB colour.',
+    ),
+    MapSpec(
+        body='mars',
+        map='normal',
+        kind='normal',
+        source_id='usgs-mola-mars',
+        max_width=4096,
+        description='Mission DEM relief, exaggerated for visibility.',
+        encoding='UASTC normal mode: X in RGB, Y in A.',
+    ),
+    MapSpec(
+        body='venus',
+        map='colour',
+        kind='colour',
+        source_id='nasa-venus-visible',
+        max_width=1024,
+        description='Uniform illustrative cloud-top colour model; not a mission texture map.',
+        encoding='sRGB colour.',
+    ),
+    MapSpec(
+        body='uranus',
+        map='colour',
+        kind='colour',
+        source_id='irwin-ice-giant-colours',
+        max_width=1024,
+        description='Uniform illustrative cloud-top colour model; not a mission texture map.',
+        encoding='sRGB colour.',
+    ),
+    MapSpec(
+        body='neptune',
+        map='colour',
+        kind='colour',
+        source_id='irwin-ice-giant-colours',
+        max_width=1024,
+        description='Uniform illustrative cloud-top colour model; not a mission texture map.',
+        encoding='sRGB colour.',
+    ),
+])
+
+BODIES.update({'mercury': {'longitude': 'east longitude, -180 to 180 from the left edge',
+             'latitude': 'planetocentric',
+             'uAtLon0': 0.5,
+             'lonIncreases': 'right',
+             'caption': 'MDIS visible-band monochrome, published I/F stretch undone. Unobserved '
+                        'imaging patches interpolated; not natural-colour photography.'},
+ 'venus': {'longitude': 'uniform display model, no mapped longitude features',
+           'latitude': 'planetographic',
+           'uAtLon0': 0.5,
+           'lonIncreases': 'right',
+           'caption': 'Illustrative uniform cloud-colour model informed by cited observations; no '
+                      'mapped cloud structure or rings.'},
+ 'mars': {'longitude': 'east longitude, -180 to 180 from the left edge',
+          'latitude': 'planetocentric',
+          'uAtLon0': 0.5,
+          'lonIncreases': 'right',
+          'caption': 'Viking global colour mosaic with MOLA relief.'},
+ 'uranus': {'longitude': 'uniform display model, no mapped longitude features',
+            'latitude': 'planetographic',
+            'uAtLon0': 0.5,
+            'lonIncreases': 'right',
+            'caption': 'Illustrative uniform cloud-colour model informed by cited observations; no '
+                       'mapped cloud structure or rings.'},
+ 'neptune': {'longitude': 'uniform display model, no mapped longitude features',
+             'latitude': 'planetographic',
+             'uAtLon0': 0.5,
+             'lonIncreases': 'right',
+             'caption': 'Illustrative uniform cloud-colour model informed by cited observations; '
+                        'no mapped cloud structure or rings.'}})
+
+RELIEF_EXAGGERATION.update({'mercury': 2.5, 'mars': 2.5})
+# Slopes use the same cited radii the runtime reads; no second set of physical constants.
+MEAN_RADIUS_KM.update({
+    body['name'].lower(): body['meanRadiusKm']
+    for body in json.loads((JPL_PUBLIC / 'planets.json').read_text())['bodies']
+    if body['name'] in ('Mercury', 'Mars')
+})
+SOURCE_IDS = {source.id for source in SOURCES} | {'cassini-rss-rings'}

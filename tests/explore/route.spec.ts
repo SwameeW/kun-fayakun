@@ -159,7 +159,7 @@ test('five round trips ch07 -> universe -> ch07 resume the film where it was and
     // sight (pipelines, buffers for bodies first seen later) exists before memory is compared.
     await page.waitForTimeout(FADE_IN_MS);
     await expectCanvasNotBlank(page);
-    for (const body of ['sun', 'jupiter', 'saturn', 'moon'] as const) {
+    for (const body of ['sun', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'moon'] as const) {
       await page.evaluate((b) => {
         (window as unknown as KfHook).__kf.universe.place({ body: b, distanceKm: b === 'sun' ? 3e6 : b === 'moon' ? 9_000 : 4e5, azimuthDeg: 30 });
       }, body);

@@ -16,7 +16,7 @@ test('every world is listed with its distance and light-time, live from the ephe
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   const nav = page.getByTestId('universe-bodies');
-  for (const name of ['Sun', 'Earth', 'Moon', 'Jupiter', 'Saturn']) await expect(nav.getByRole('button', { name, exact: true })).toBeVisible();
+  for (const name of ['Sun', 'Mercury', 'Venus', 'Earth', 'Moon', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune']) await expect(nav.getByRole('button', { name, exact: true })).toBeVisible();
   const row = (body: string) => nav.locator(`.kf-nav-row[data-body="${body}"]`);
   // The Sun is about 1 au away, its light about 8 minutes old; Saturn's over an hour.
   await expect(row('sun')).toContainText(/0\.9\d\sAU|1\.0\d\sAU/);
