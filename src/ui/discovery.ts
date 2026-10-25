@@ -34,6 +34,10 @@ export interface DiscoveryBlock {
   readonly element: HTMLElement;
   /** Closes the analysis if open (releases the film). Focus returns to the opener when asked, or when it was inside. */
   close(options?: { restoreFocus?: boolean }): void;
+  /** Opens it as its own button does (once the panel holding it shows); nothing if it is open. */
+  open(): void;
+  /** The verses the analysis reads (loading its asset): where the panel invites the visitor to it. */
+  verses(): Promise<string[]>;
 }
 
 /** Dwell of the reading light on each letter. */
@@ -535,5 +539,12 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
     );
   });
 
-  return { element: wrapper, close };
+  return {
+    element: wrapper,
+    close,
+    open() {
+      if (!open) opener.click();
+    },
+    verses: () => load().then(() => asset?.verses.map((v) => v.key) ?? []),
+  };
 }

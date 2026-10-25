@@ -22,6 +22,10 @@
  *   of noise scaled to the bound map's texel, each fading in only once its features span a few
  *   pixels (never seen from afar, never shimmering), and the maps' own texel-scale contrast is
  *   sharpened as they magnify. The interface says this detail is illustrative.
+ * - Close in, the streamed imagery (../earth-tiles): Sentinel-2 cloudless or the day's NASA VIIRS
+ *   mosaic replaces the day map wherever the view needs more detail than it holds, read at the exact
+ *   point of the sphere under each pixel; the illustrative fine detail gives way to it, and the cloud
+ *   shell fades so the ground shows.
  * - The air over all of it (./atmosphere).
  *
  * Every map is streamed (../assets/streaming): the first frames show each map's mean, the 1024 maps
@@ -31,6 +35,7 @@
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Data3DTexture, type Object3D, type Texture } from 'three/webgpu';
 import { clamp, dot, exp, float, max, min, mix, normalize, positionLocal, pow, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import type { PlanetTextures } from '../assets/streaming';
+import { exactSurface, type EarthTiles } from '../earth-tiles';
 import { textureTier, type ExploreDetail } from '../detail';
 import { sunTransmittance, transmittanceToTop, type AirModel } from '../render/air';
 import { blendPremultiplied } from '../render/blending';
@@ -122,7 +127,7 @@ export function fineDetailShown(detail: ExploreDetail, altitudeRadii: number, px
   return (Math.max(0, altitudeRadii) / Math.max(pxPerRadian, 1)) * 16 * f < 0.55;
 }
 
-export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air: AirModel, table: { texture: Texture } | null, initial: ExploreDetail): ExploreEarth {
+export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air: AirModel, table: { texture: Texture } | null, initial: ExploreDetail, tiles: EarthTiles | null = null): ExploreEarth {
   const object = new Group();
   object.name = 'explore-earth';
   const uTime = uniform(0);
@@ -239,9 +244,15 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     // The day map, its texel-scale contrast sharpened where it is magnified (land only: the sea is smooth).
     const albedoMap = sampleSlot(slot.day, c).rgb;
     const blurred = sampleSlot(slot.day, c, 1.6).rgb;
-    const sharpened = max(albedoMap.add(albedoMap.sub(blurred).mul(magnified.mul(land).mul(FINE.sharpen))), 0);
+    const sharpenedMap = max(albedoMap.add(albedoMap.sub(blurred).mul(magnified.mul(land).mul(FINE.sharpen))), 0);
+    // Streamed imagery where the view needs it, read at the exact point of the sphere under the pixel
+    // (the mesh is flat between its vertices); the illustrative fine detail gives way to real detail.
+    const streamed = tiles ? tiles.imagery(exactSurface(uEye, positionLocal), footprint, sharpenedMap) : null;
+    const real: FloatNode = streamed ? streamed.weight : float(0);
+    const sharpened: Vec3Node = streamed ? streamed.colour : sharpenedMap;
     const frequencies = octavesFor(detail, OCTAVES[detail.tier]);
-    const ground = fine(n, footprint, frequencies, FINE.land, 0.11);
+    const groundFine = fine(n, footprint, frequencies, FINE.land, 0.11);
+    const ground = { value: groundFine.value.mul(float(1).sub(real)), shown: groundFine.shown };
     let normal: Vec3Node = n;
     let rough: FloatNode = float(0.35);
     if (detail.normalMaps) {
@@ -261,12 +272,13 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
 
     // Cloud shadows: the cloud the sunlight crossed on its way down, CLOUD_HEIGHT up, with the same eroded edges.
     let shade: FloatNode = float(1);
+    const cloudsShown: FloatNode = tiles ? tiles.clouds : float(1);
     const cc = detail.clouds ? cloudCoords(plain) : null;
     if (detail.cloudShadows && cc) {
       const slant = float(CLOUD_HEIGHT).mul(sqrt(max(float(1).sub(nDotL.mul(nDotL)), 0)).div(max(nDotL, 0.08)));
       const under = towardSun(cc, n, slant);
       const shadow = cloudCover(under.coords, under.direction, footprint, frequencies.slice(0, 1));
-      shade = float(1).sub(coverOpacity(shadow.cover, shadow.shown).mul(CLOUD_SHADOW));
+      shade = float(1).sub(coverOpacity(shadow.cover, shadow.shown).mul(CLOUD_SHADOW).mul(cloudsShown));
     }
     let colour: Vec3Node = albedo.mul(sunColour.mul(lambert).mul(shade).add(skyFill(nDotL)));
 
@@ -283,11 +295,12 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     const k = GLINT.alpha / 2;
     const geometry = nv.div(nv.mul(1 - k).add(k)).mul(nl.div(nl.mul(1 - k).add(k)));
     const specular = distribution.mul(fresnel).mul(geometry).div(nv.mul(4)).mul(nl).mul(Math.PI);
-    const glint = min(specular, GLINT.ceiling).mul(smoothstep(0.5, 0.95, water)).mul(shade);
+    // Close in, the global water mask is far coarser than the imagery: the glint keeps off the shore it blurs.
+    const glint = min(specular, GLINT.ceiling).mul(smoothstep(0.5, 0.95, water)).mul(shade).mul(float(1).sub(real.mul(0.6)));
     colour = colour.add(sunColour.mul(glint));
 
     // The night side: moonlight and the sky's glow on the ground, and the city lights, dimmed where cloud covers them.
-    const cover = cc ? sampleSlot(slot.clouds, cc).r : float(0);
+    const cover = cc ? sampleSlot(slot.clouds, cc).r.mul(cloudsShown) : float(0);
     colour = colour.add(albedo.mul(nightLight(normal, nDotL, 0)).mul(float(1).sub(cover.mul(0.7))));
     if (detail.nightLights) {
       const lights = srgbToLinear(sampleSlot(slot.night, c).r);
@@ -330,8 +343,10 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       colour = colour.mul(min(aboveCloud.div(max(fromGround, 1e-3)), 3));
     }
     const material = blendPremultiplied(new MeshBasicNodeMaterial({ side: FrontSide, transparent: true, depthWrite: false, fog: false }));
-    material.colorNode = colour.mul(opacity);
-    material.opacityNode = opacity;
+    // Close in the shell fades, so the ground the view zoomed to shows; with the day's mosaic its clouds are the real ones.
+    const kept = tiles ? opacity.mul(tiles.clouds) : opacity;
+    material.colorNode = colour.mul(kept);
+    material.opacityNode = kept;
     return material;
   };
 

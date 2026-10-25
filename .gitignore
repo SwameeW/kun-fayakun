@@ -9,3 +9,5 @@ playwright-report/
 .venv/
 .claude/
 __pycache__/
+# The satellite catalogue snapshot each deploy fetches (never committed)
+public/assets/live/

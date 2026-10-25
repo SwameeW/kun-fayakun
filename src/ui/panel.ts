@@ -34,7 +34,15 @@ export interface Panel {
   toggle(): void;
   /** Hidden on the home and sources routes, where there is no chapter. */
   setAvailable(available: boolean): void;
+  /**
+   * The invitation to the chapter's letter analysis, shown on the stage under the verse it reads
+   * while that verse's cue plays (so it is found without scrolling the notes, or opening them on a phone).
+   */
+  readonly invite: HTMLElement;
 }
+
+/** How long the stage invitation stays after its verse's cue ends (ms). */
+const INVITE_LINGER_MS = 6000;
 
 export function createPanel(app: App): Panel {
   const { i18n } = app;
@@ -111,6 +119,32 @@ export function createPanel(app: App): Panel {
     writePreference('panelOpen', open);
     sync();
   }
+
+  /*
+   * Finding the letter analysis: besides its quiet button at the end of the scholarly layer, a
+   * button right under the verse it reads (in the text layer, where the reader is), and on the stage,
+   * while that verse's cue plays, an invitation under the verse itself. Either opens the notes if
+   * they are closed and then the analysis, scrolled into view.
+   */
+  let inviteKeys: string[] = [];
+  let inviteTimer = 0;
+  const invite = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-invite', 'data-testid': 'discovery-invite', 'aria-hidden': 'true', tabindex: '-1' }, i18n.t('ui.discovery.invite'));
+  const showInvite = (shown: boolean): void => {
+    window.clearTimeout(inviteTimer);
+    invite.classList.toggle('is-shown', shown);
+    invite.setAttribute('aria-hidden', String(!shown));
+    invite.tabIndex = shown ? 0 : -1;
+  };
+  const openAnalysis = (): void => {
+    showInvite(false);
+    if (!open && routeAllows && hasContent) setOpen(true);
+    // The notes take a frame to show (they are inert while closed): the analysis opens after.
+    requestAnimationFrame(() => {
+      discovery?.open();
+      discovery?.element.scrollIntoView({ block: 'nearest', behavior: app.reducedMotion ? 'auto' : 'smooth' });
+    });
+  };
+  invite.addEventListener('click', openAnalysis);
 
   toggleButton.addEventListener('click', () => {
     setOpen(!open);
@@ -193,6 +227,24 @@ export function createPanel(app: App): Panel {
       );
       body.scrollTop = 0;
       renderedChapter = chapter;
+      showInvite(false);
+      inviteKeys = [];
+      const analysis = discovery;
+      // Once its asset says which verses it reads: a button under the last of them, and the stage invitation's keys.
+      analysis?.verses().then(
+        (keys) => {
+          if (discovery !== analysis) return;
+          inviteKeys = keys;
+          // The last of them as the notes order them (not as the asset lists them).
+          const articles = [...body.querySelectorAll('[data-verse]')].filter((a) => keys.includes(a.getAttribute('data-verse') ?? ''));
+          const last = articles[articles.length - 1];
+          if (!last) return;
+          const inline = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-inline', 'data-testid': 'discovery-inline' }, i18n.t('ui.discovery.inline'));
+          inline.addEventListener('click', openAnalysis);
+          last.after(inline);
+        },
+        () => undefined,
+      );
       if (pendingSection?.chapter === chapter) focusSection(pendingSection.section);
       pendingSection = null;
     } catch (err) {
@@ -240,6 +292,15 @@ export function createPanel(app: App): Panel {
     show(chapter, content);
   });
   app.events.on('cue', ({ chapter, cue, active }) => {
+    // The stage invitation follows the cue of a verse the analysis reads, lingering a little after it.
+    if (cue.type === 'verse' && chapter === renderedChapter && inviteKeys.includes(cue.key)) {
+      if (active) showInvite(true);
+      else
+        inviteTimer = window.setTimeout(() => {
+          showInvite(false);
+        }, INVITE_LINGER_MS);
+      return;
+    }
     if (!active || cue.type !== 'panel') return;
     if (chapter === renderedChapter) focusSection(cue.section);
     else pendingSection = { chapter, section: cue.section };
@@ -251,6 +312,7 @@ export function createPanel(app: App): Panel {
   return {
     element,
     toggleButton,
+    invite,
     toggle() {
       if (routeAllows && hasContent) setOpen(!open);
     },

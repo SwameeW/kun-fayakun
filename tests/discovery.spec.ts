@@ -192,6 +192,29 @@ test('the letter analysis opens by keyboard, reads both ways and closes with Esc
   await expect(opener).toHaveAttribute('aria-expanded', 'false');
 });
 
+test('while verse 21:33 plays, an invitation under it opens the analysis; so does a button under that verse in the notes', async ({ page, kf }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.openChapter('ch07', { autoplay: true, t: 123 });
+  // Through the verse's cue (t 126) on the manual clock, so it holds on any machine.
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.step(300, 1 / 60);
+  });
+  const invite = page.getByTestId('discovery-invite');
+  await expect(invite).toHaveClass(/is-shown/);
+  await invite.click();
+  const region = page.getByTestId('discovery');
+  await expect(region).toHaveClass(/is-open/);
+  await page.keyboard.press('Escape');
+  await expect(region).not.toHaveClass(/is-open/);
+  // In the notes, a button right under 21:33 (the last verse it reads, as the notes order them).
+  const inline = page.getByTestId('discovery-inline');
+  await expect(inline).toHaveCount(1);
+  expect(await inline.evaluate((el) => el.previousElementSibling?.getAttribute('data-verse'))).toBe('21:33');
+  await inline.scrollIntoViewIfNeeded();
+  await inline.click();
+  await expect(region).toHaveClass(/is-open/);
+});
+
 test('the letter analysis has no accessibility violations', async ({ page, kf }) => {
   await openAnalysis(page, kf, 150);
   const results = await new AxeBuilder({ page }).include('[data-testid="discovery"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();

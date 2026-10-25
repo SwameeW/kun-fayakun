@@ -35,6 +35,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # The satellite catalogue's snapshot for this deploy (the explorer's fallback when CelesTrak
+      # declines a visitor's download); never committed. A failed fetch only leaves it out.
+      - name: Snapshot the satellite catalogue
+        run: |
+          mkdir -p public/assets/live
+          if curl -sf --max-time 60 -o "$RUNNER_TEMP/active.tle" "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"; then
+            { echo "#fetched $(date -u +%Y-%m-%dT%H:%M:%SZ)"; cat "$RUNNER_TEMP/active.tle"; } > public/assets/live/active.tle
+          else
+            echo "No catalogue snapshot this deploy."
+          fi
       # validate + typecheck + vite build: a scripture mismatch never deploys.
       - run: npm run build
       # A manual run has no CI run behind it, so the loading budget is checked here too.

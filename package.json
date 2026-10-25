@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "intl-messageformat": "12.1.4",
+    "satellite.js": "7.1.0",
     "three": "0.186.1"
   },
   "devDependencies": {

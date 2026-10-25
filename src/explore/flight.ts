@@ -140,6 +140,11 @@ export function direction(azimuth: number, elevation: number, out: Km): Km {
   return set(out, c * Math.sin(azimuth), Math.sin(elevation), c * Math.cos(azimuth));
 }
 
+/** An angle brought into (-pi, pi]. */
+export function wrapAngle(a: number): number {
+  return a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+}
+
 export function angles(dir: Km): { azimuth: number; elevation: number } {
   return { azimuth: Math.atan2(dir.x, dir.z), elevation: Math.asin(clamp(dir.y, -1, 1)) };
 }
@@ -159,14 +164,15 @@ const lookScratch = km();
 /**
  * The unit direction to look from `position` at a body (centre `centre`, radius `radius`): at the
  * centre, or, once the horizon would climb past HORIZON_VIEW above the middle of the view, that
- * much lower than the horizon, lifted toward `up` (square to the line of sight).
+ * much lower than the horizon, lifted toward `up` (square to the line of sight). `lift` scales that
+ * lift (0: straight down at the centre, as a view held over a place looks).
  */
-export function lookDirection(position: Km, centre: Km, radius: number, up: Km, out: Km): Km {
+export function lookDirection(position: Km, centre: Km, radius: number, up: Km, out: Km, lift = 1): Km {
   set(out, centre.x - position.x, centre.y - position.y, centre.z - position.z);
   const r = len(out);
   if (!(r > 0)) return set(out, 0, 0, -1);
   set(out, out.x / r, out.y / r, out.z / r);
-  const tilt = Math.max(0, Math.asin(Math.min(1, radius / r)) - HORIZON_VIEW);
+  const tilt = Math.max(0, Math.asin(Math.min(1, radius / r)) - HORIZON_VIEW) * lift;
   if (tilt <= 0) return out;
   const u = squareUp(out, up, lookScratch);
   const c = Math.cos(tilt);
@@ -276,6 +282,46 @@ export class OrbitRig {
     }
   }
 
+  /**
+   * Turns the rig, now and its goals, about an axis through the body (the Earth's pole as it spins),
+   * so the ground below keeps its place in the view. Velocities are kept: a turn under way carries on.
+   */
+  spin(axis: Km, angle: number): void {
+    if (angle === 0) return;
+    const turn = (azimuth: number, elevation: number): { azimuth: number; elevation: number } => {
+      direction(azimuth, elevation, this.dir);
+      rotateAbout(this.dir, axis, angle, this.dir);
+      const next = angles(this.dir);
+      // The same way round as before (no jump of a whole turn in the spring).
+      return { azimuth: azimuth + wrapAngle(next.azimuth - azimuth), elevation: clamp(next.elevation, -MAX_ELEVATION, MAX_ELEVATION) };
+    };
+    const now = turn(this.azimuth.x, this.elevation.x);
+    this.azimuth.x = now.azimuth;
+    this.elevation.x = now.elevation;
+    const goal = turn(this.goal.azimuth, this.goal.elevation);
+    this.goal.azimuth = goal.azimuth;
+    this.goal.elevation = goal.elevation;
+  }
+
+  /** Sets the rig exactly over a direction and height, keeping the azimuth on the side it was (for glides). */
+  hold(dir: Km, altitudeKm: number): void {
+    const { azimuth, elevation } = angles(dir);
+    const a = this.azimuth.x + wrapAngle(azimuth - this.azimuth.x);
+    this.azimuth.x = this.goal.azimuth = a;
+    this.elevation.x = this.goal.elevation = clamp(elevation, -MAX_ELEVATION, MAX_ELEVATION);
+    this.lnAltitude.x = this.goal.lnAltitude = Math.log(Math.max(altitudeKm, 1e-6));
+    this.azimuth.v = this.elevation.v = this.lnAltitude.v = 0;
+    for (const axis of ['x', 'y', 'z'] as const) {
+      this.pan[axis].x = this.pan[axis].v = 0;
+      this.goal.pan[axis] = 0;
+    }
+  }
+
+  /** The direction from the body the rig is at now (render frame). */
+  directionNow(out: Km): Km {
+    return direction(this.azimuth.x, this.elevation.x, out);
+  }
+
   /** The height above the surface now and at rest, km. */
   get altitudeKm(): number {
     return Math.exp(this.lnAltitude.x);
@@ -327,13 +373,13 @@ export class OrbitRig {
     stepSpring(this.pan.z, this.goal.pan.z, pan, dt);
   }
 
-  /** The rig's pose now around `body`. */
-  pose(body: RigBody, out: { position: Km; forward: Km; up: Km }): void {
+  /** The rig's pose now around `body`; `lift` scales the gaze's lift toward the horizon low over it (0: straight down). */
+  pose(body: RigBody, out: { position: Km; forward: Km; up: Km }, lift = 1): void {
     direction(this.azimuth.x, this.elevation.x, this.dir);
     const r = body.radiusKm + Math.exp(this.lnAltitude.x);
     set(this.centre, body.position.x + this.pan.x.x, body.position.y + this.pan.y.x, body.position.z + this.pan.z.x);
     set(out.position, this.centre.x + this.dir.x * r, this.centre.y + this.dir.y * r, this.centre.z + this.dir.z * r);
-    lookDirection(out.position, this.centre, body.radiusKm, UP, out.forward);
+    lookDirection(out.position, this.centre, body.radiusKm, UP, out.forward, lift);
     squareUp(out.forward, UP, out.up);
   }
 }
