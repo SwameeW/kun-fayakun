@@ -25,7 +25,7 @@ import {
 import { levelBytes, type Uploader } from '../../src/explore/assets/upload';
 
 const manifest = JSON.parse(readFileSync(new URL('../../public/assets/planets/planets.json', import.meta.url), 'utf8')) as PlanetsManifest;
-const BODIES = ['earth', 'moon', 'jupiter', 'saturn'] as const;
+const BODIES = ['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'] as const;
 /** The stand-in uploader's smallest write (a band of rows). */
 const BAND = 64 * 1024;
 

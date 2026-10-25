@@ -1,6 +1,6 @@
 {
   "$comment": "Written by scripts/jpl/build.py reference. Geometric Horizons vectors that tests/unit/ephemeris.spec.ts checks src/astro/ephemeris.ts against.",
-  "retrieved": "2026-10-23",
+  "retrieved": "2026-10-24",
   "horizonsVersion": "1.2",
   "frame": "ecliptic and mean equinox of J2000 (REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF)",
   "timeScale": "TDB",
@@ -15,6 +15,121 @@
     2464693.5
   ],
   "queries": {
+    "mercuryHelio": {
+      "target": "199",
+      "center": "500@10",
+      "what": "Mercury relative to the Sun",
+      "ephemeris": "DE441",
+      "params": {
+        "format": "json",
+        "COMMAND": "'199'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27199%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "venusHelio": {
+      "target": "299",
+      "center": "500@10",
+      "what": "Venus relative to the Sun",
+      "ephemeris": "DE441",
+      "params": {
+        "format": "json",
+        "COMMAND": "'299'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27299%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "marsHelio": {
+      "target": "499",
+      "center": "500@10",
+      "what": "Mars relative to the Sun",
+      "ephemeris": "mar099",
+      "params": {
+        "format": "json",
+        "COMMAND": "'499'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27499%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "uranusHelio": {
+      "target": "799",
+      "center": "500@10",
+      "what": "Uranus relative to the Sun",
+      "ephemeris": "ura184_merged",
+      "params": {
+        "format": "json",
+        "COMMAND": "'799'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27799%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
+    "neptuneHelio": {
+      "target": "899",
+      "center": "500@10",
+      "what": "Neptune relative to the Sun",
+      "ephemeris": "nep098_merged",
+      "params": {
+        "format": "json",
+        "COMMAND": "'899'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@10'",
+        "REF_PLANE": "'ECLIPTIC'",
+        "REF_SYSTEM": "'ICRF'",
+        "VEC_TABLE": "'1'",
+        "CSV_FORMAT": "'YES'",
+        "OUT_UNITS": "'KM-S'",
+        "TLIST": "'2461041.5' '2461042.0' '2461115.0' '2462322.0' '2463922.0' '2464693.0' '2464693.5'",
+        "TLIST_TYPE": "'JD'",
+        "TIME_TYPE": "'TDB'"
+      },
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27899%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461041.5%27+%272461042.0%27+%272461115.0%27+%272462322.0%27+%272463922.0%27+%272464693.0%27+%272464693.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27"
+    },
     "moonGeo": {
       "target": "301",
       "center": "500@399",
@@ -109,6 +224,191 @@
     }
   },
   "vectors": {
+    "mercuryHelio": [
+      [
+        -32193656.90676167,
+        -61216587.9829846,
+        -2049979.952579837
+      ],
+      [
+        -30743300.55348391,
+        -62071598.01292022,
+        -2252878.853650983
+      ],
+      [
+        -58737037.28566761,
+        -19129287.32863705,
+        3823924.046797385
+      ],
+      [
+        12625899.66717944,
+        44179929.42914169,
+        2452828.491339607
+      ],
+      [
+        -53443901.35546617,
+        12698102.62120269,
+        5938541.33968439
+      ],
+      [
+        31353332.27767447,
+        35052285.84265895,
+        -9827.144119212404
+      ],
+      [
+        29331176.17971937,
+        36500262.48013017,
+        293942.9999880586
+      ]
+    ],
+    "venusHelio": [
+      [
+        13295847.29627933,
+        -107974115.5459946,
+        -2250558.830319598
+      ],
+      [
+        14785904.71789367,
+        -107784198.8976318,
+        -2333925.546632491
+      ],
+      [
+        90086601.82251549,
+        59960476.36511037,
+        -4374180.160877492
+      ],
+      [
+        -105315109.7934004,
+        21218805.63351544,
+        6368305.743884776
+      ],
+      [
+        -91215105.0512122,
+        -57816269.69408058,
+        4466823.741200227
+      ],
+      [
+        107824734.1274385,
+        11701167.95805641,
+        -6059688.638664045
+      ],
+      [
+        107645184.0296056,
+        13197214.89230214,
+        -6028733.458167096
+      ]
+    ],
+    "marsHelio": [
+      [
+        50949994.46228143,
+        -207492548.2420174,
+        -5597537.454939082
+      ],
+      [
+        52005460.51621608,
+        -207150314.5678459,
+        -5616247.267326385
+      ],
+      [
+        177608811.0692024,
+        -105647675.1919682,
+        -6569096.259179287
+      ],
+      [
+        -141026698.8374425,
+        -183095693.0609331,
+        -380043.3242150918
+      ],
+      [
+        207675912.5967669,
+        23722674.96063675,
+        -4591670.304059676
+      ],
+      [
+        124871770.2709473,
+        183782400.0475643,
+        792730.8489703983
+      ],
+      [
+        124044148.0188076,
+        184457862.8543853,
+        827167.6158284098
+      ]
+    ],
+    "uranusHelio": [
+      [
+        1478073476.913783,
+        2513246041.395467,
+        -9831518.091484904
+      ],
+      [
+        1477817176.411148,
+        2513381444.855312,
+        -9827680.661899567
+      ],
+      [
+        1440241025.540914,
+        2532875442.233858,
+        -9267948.995170355
+      ],
+      [
+        780941901.5844362,
+        2772471123.542319,
+        171493.1566858292
+      ],
+      [
+        -156486435.2911468,
+        2831980442.806341,
+        12525530.32980025
+      ],
+      [
+        -609161173.3494143,
+        2749683238.294745,
+        18082590.90818298
+      ],
+      [
+        -609451100.4691068,
+        2749606023.603869,
+        18086065.2219559
+      ]
+    ],
+    "neptuneHelio": [
+      [
+        4468805898.19067,
+        77632071.26367633,
+        -104579007.5770329
+      ],
+      [
+        4468799754.679491,
+        77868187.57492706,
+        -104583744.7968271
+      ],
+      [
+        4467773275.816386,
+        112339364.1601248,
+        -105270254.6613645
+      ],
+      [
+        4413293200.991197,
+        679148362.6322701,
+        -115701756.0073273
+      ],
+      [
+        4232847869.05069,
+        1413297044.85396,
+        -126652847.3749083
+      ],
+      [
+        4101569241.159333,
+        1754543625.491837,
+        -130639736.5572265
+      ],
+      [
+        4101474893.561806,
+        1754761250.946187,
+        -130642006.6618707
+      ]
+    ],
     "moonGeo": [
       [
         144325.7274919273,

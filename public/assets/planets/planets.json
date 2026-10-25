@@ -12,30 +12,30 @@
   "tiers": {
     "low": {
       "width": 1024,
-      "bytes": 1932953,
-      "budgetBytes": 4000000,
+      "bytes": 3076615,
+      "budgetBytes": 8000000,
       "published": true
     },
     "medium": {
       "width": 2048,
-      "bytes": 6825803,
-      "budgetBytes": 12000000,
+      "bytes": 11281080,
+      "budgetBytes": 24000000,
       "published": true
     },
     "high": {
       "width": 4096,
-      "bytes": 35830728,
-      "budgetBytes": 60000000,
+      "bytes": 60783941,
+      "budgetBytes": 110000000,
       "published": true
     },
     "ultra": {
       "width": 8192,
-      "bytes": 96088484,
-      "budgetBytes": 160000000,
+      "bytes": 147329837,
+      "budgetBytes": 250000000,
       "published": true
     }
   },
-  "committedBytes": 126446306,
+  "committedBytes": 193030292,
   "bodies": {
     "earth": {
       "longitude": "east longitude (Greenwich at u = 0.5), as in the source maps (-180 to 180 from the left edge)",
@@ -158,6 +158,113 @@
           },
           "alpha": "straight",
           "sourceId": "cassini-rss-rings"
+        }
+      }
+    },
+    "mercury": {
+      "longitude": "east longitude, -180 to 180 from the left edge",
+      "latitude": "planetocentric",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "caption": "MDIS visible-band monochrome, published I/F stretch undone. Unobserved imaging patches interpolated; not natural-colour photography.",
+      "maps": {
+        "colour": {
+          "kind": "colour",
+          "description": "Mission imaging; Mercury is monochrome, Mars is Viking colour.",
+          "channels": {
+            "rgb": "sRGB colour."
+          },
+          "sourceId": "usgs-mdis-mercury"
+        },
+        "normal": {
+          "kind": "normal",
+          "description": "Mission DEM relief, exaggerated for visibility.",
+          "channels": {
+            "x": "east slope component, in r (and g, b): UASTC normal mode stores X in RGB and Y in alpha",
+            "y": "north slope component, in a",
+            "z": "z = sqrt(1 - x^2 - y^2), outward",
+            "decode": "n.xy = texel.ga * 2 - 1 (or .ra); tangent frame at the surface point: x toward local east (increasing u), y toward local north (increasing v), z outward"
+          },
+          "sourceId": "usgs-dem-mercury"
+        }
+      }
+    },
+    "venus": {
+      "longitude": "uniform display model, no mapped longitude features",
+      "latitude": "planetographic",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "caption": "Illustrative uniform cloud-colour model informed by cited observations; no mapped cloud structure or rings.",
+      "maps": {
+        "colour": {
+          "kind": "colour",
+          "description": "Uniform illustrative cloud-top colour model; not a mission texture map.",
+          "channels": {
+            "rgb": "sRGB colour."
+          },
+          "sourceId": "nasa-venus-visible"
+        }
+      }
+    },
+    "mars": {
+      "longitude": "east longitude, -180 to 180 from the left edge",
+      "latitude": "planetocentric",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "caption": "Viking global colour mosaic with MOLA relief.",
+      "maps": {
+        "colour": {
+          "kind": "colour",
+          "description": "Mission imaging; Mercury is monochrome, Mars is Viking colour.",
+          "channels": {
+            "rgb": "sRGB colour."
+          },
+          "sourceId": "usgs-viking-mars"
+        },
+        "normal": {
+          "kind": "normal",
+          "description": "Mission DEM relief, exaggerated for visibility.",
+          "channels": {
+            "x": "east slope component, in r (and g, b): UASTC normal mode stores X in RGB and Y in alpha",
+            "y": "north slope component, in a",
+            "z": "z = sqrt(1 - x^2 - y^2), outward",
+            "decode": "n.xy = texel.ga * 2 - 1 (or .ra); tangent frame at the surface point: x toward local east (increasing u), y toward local north (increasing v), z outward"
+          },
+          "sourceId": "usgs-mola-mars"
+        }
+      }
+    },
+    "uranus": {
+      "longitude": "uniform display model, no mapped longitude features",
+      "latitude": "planetographic",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "caption": "Illustrative uniform cloud-colour model informed by cited observations; no mapped cloud structure or rings.",
+      "maps": {
+        "colour": {
+          "kind": "colour",
+          "description": "Uniform illustrative cloud-top colour model; not a mission texture map.",
+          "channels": {
+            "rgb": "sRGB colour."
+          },
+          "sourceId": "irwin-ice-giant-colours"
+        }
+      }
+    },
+    "neptune": {
+      "longitude": "uniform display model, no mapped longitude features",
+      "latitude": "planetographic",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "caption": "Illustrative uniform cloud-colour model informed by cited observations; no mapped cloud structure or rings.",
+      "maps": {
+        "colour": {
+          "kind": "colour",
+          "description": "Uniform illustrative cloud-top colour model; not a mission texture map.",
+          "channels": {
+            "rgb": "sRGB colour."
+          },
+          "sourceId": "irwin-ice-giant-colours"
         }
       }
     }
@@ -1190,6 +1297,714 @@
         "psnrRgb": 99.0,
         "psnrA": 99.0
       }
+    },
+    {
+      "body": "mercury",
+      "map": "colour",
+      "tier": "low",
+      "path": "assets/planets/mercury/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 98909,
+      "sha256": "47aa93240c7cd850274ce2a7cc811b00602e36f70da4c6a4f257ea4349a69405",
+      "sourceId": "usgs-mdis-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER MDIS",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 43.83,
+        "psnrR": 43.83,
+        "psnrG": 43.83,
+        "psnrB": 43.83
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "colour",
+      "tier": "medium",
+      "path": "assets/planets/mercury/colour-2048-etc1s.ktx2",
+      "width": 2048,
+      "height": 1024,
+      "levels": 12,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 307492,
+      "sha256": "52f58055dda8084853be9692a5d157ddd1a1a875a92d1d556eeef35696ca87ef",
+      "sourceId": "usgs-mdis-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER MDIS",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 43.05,
+        "psnrR": 43.05,
+        "psnrG": 43.05,
+        "psnrB": 43.05
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "colour",
+      "tier": "high",
+      "path": "assets/planets/mercury/colour-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 5038449,
+      "sha256": "332efae028b6a4a44a981fd4c22cf2e53d44cc824a4e88bed1fbc78e55c54218",
+      "sourceId": "usgs-mdis-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER MDIS",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 45.82,
+        "psnrR": 45.8,
+        "psnrG": 45.83,
+        "psnrB": 45.84
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/mercury/colour-8192-uastc.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 19611829,
+      "sha256": "64b867b287c2bd06b83d7f617d143e5028eb2df9fbb5ad73a391c498ac35fc76",
+      "sourceId": "usgs-mdis-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER MDIS",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 46.2,
+        "psnrR": 46.18,
+        "psnrG": 46.21,
+        "psnrB": 46.22
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "normal",
+      "tier": "low",
+      "path": "assets/planets/mercury/normal-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 587464,
+      "sha256": "681b14bbc87b199223e4835d96336b3f222de607867ec6ca8598f0dbb54edbce",
+      "sourceId": "usgs-dem-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER DEM",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 39.47,
+        "psnrY": 40.43,
+        "meanAngleErrorDeg": 1.282,
+        "p99AngleErrorDeg": 4.963
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "normal",
+      "tier": "medium",
+      "path": "assets/planets/mercury/normal-2048-uastc.ktx2",
+      "width": 2048,
+      "height": 1024,
+      "levels": 12,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 2367614,
+      "sha256": "0670e3a7be3b5e44852a3277aed6a12c2009faf4a41f7a0deaa2ee7957a1cf0f",
+      "sourceId": "usgs-dem-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER DEM",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 38.38,
+        "psnrY": 39.15,
+        "meanAngleErrorDeg": 1.46,
+        "p99AngleErrorDeg": 6.051
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "normal",
+      "tier": "high",
+      "path": "assets/planets/mercury/normal-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 9185015,
+      "sha256": "7c6f13213a9448e78b9d7320955d3968b5272ecbe87f01dd2b52e9c92f71a607",
+      "sourceId": "usgs-dem-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER DEM",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 38.81,
+        "psnrY": 39.34,
+        "meanAngleErrorDeg": 1.423,
+        "p99AngleErrorDeg": 6.119
+      }
+    },
+    {
+      "body": "mercury",
+      "map": "normal",
+      "tier": "ultra",
+      "path": "assets/planets/mercury/normal-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 9185015,
+      "sha256": "7c6f13213a9448e78b9d7320955d3968b5272ecbe87f01dd2b52e9c92f71a607",
+      "sourceId": "usgs-dem-mercury",
+      "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER DEM",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 38.81,
+        "psnrY": 39.34,
+        "meanAngleErrorDeg": 1.423,
+        "p99AngleErrorDeg": 6.119
+      }
+    },
+    {
+      "body": "mars",
+      "map": "colour",
+      "tier": "low",
+      "path": "assets/planets/mars/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 125634,
+      "sha256": "a39faee57995d6e4a26f680718522f08ac7078914dadf700d10fb968d6d056bd",
+      "sourceId": "usgs-viking-mars",
+      "credit": "NASA/USGS, Viking",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 36.52,
+        "psnrR": 35.43,
+        "psnrG": 41.11,
+        "psnrB": 35.16
+      }
+    },
+    {
+      "body": "mars",
+      "map": "colour",
+      "tier": "medium",
+      "path": "assets/planets/mars/colour-2048-etc1s.ktx2",
+      "width": 2048,
+      "height": 1024,
+      "levels": 12,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 361452,
+      "sha256": "11811dfb1bd8e090f0a6bfc74a3e3c59c1470ceb8dd7594ec548e5212d0f30ae",
+      "sourceId": "usgs-viking-mars",
+      "credit": "NASA/USGS, Viking",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 37.2,
+        "psnrR": 36.21,
+        "psnrG": 41.71,
+        "psnrB": 35.77
+      }
+    },
+    {
+      "body": "mars",
+      "map": "colour",
+      "tier": "high",
+      "path": "assets/planets/mars/colour-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 4708585,
+      "sha256": "518704ebb32b5a8070cf517c2dbceeba7bb3bead67fa3be37a9c4c84e57d2770",
+      "sourceId": "usgs-viking-mars",
+      "credit": "NASA/USGS, Viking",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 43.38,
+        "psnrR": 41.03,
+        "psnrG": 45.14,
+        "psnrB": 45.5
+      }
+    },
+    {
+      "body": "mars",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/mars/colour-8192-uastc.ktx2",
+      "width": 8192,
+      "height": 4096,
+      "levels": 14,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 16423345,
+      "sha256": "d2385ae25552769f57ef3d974cd670968713a4bc118b406f3f327564490d1c5d",
+      "sourceId": "usgs-viking-mars",
+      "credit": "NASA/USGS, Viking",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 44.4,
+        "psnrR": 42.22,
+        "psnrG": 46.13,
+        "psnrB": 46.11
+      }
+    },
+    {
+      "body": "mars",
+      "map": "normal",
+      "tier": "low",
+      "path": "assets/planets/mars/normal-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 328315,
+      "sha256": "7a2f7dd68d556c09caf16857d668d0fa8f710f87df3814d8baae155969693d65",
+      "sourceId": "usgs-mola-mars",
+      "credit": "NASA/GSFC/USGS, MOLA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 47.37,
+        "psnrY": 47.46,
+        "meanAngleErrorDeg": 0.502,
+        "p99AngleErrorDeg": 2.013
+      }
+    },
+    {
+      "body": "mars",
+      "map": "normal",
+      "tier": "medium",
+      "path": "assets/planets/mars/normal-2048-uastc.ktx2",
+      "width": 2048,
+      "height": 1024,
+      "levels": 12,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 1415379,
+      "sha256": "cec85c23ed7dab59ad4b012d35ac3466ddeb5c8dd11f11aad48cc99515b4d33e",
+      "sourceId": "usgs-mola-mars",
+      "credit": "NASA/GSFC/USGS, MOLA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 45.86,
+        "psnrY": 45.97,
+        "meanAngleErrorDeg": 0.587,
+        "p99AngleErrorDeg": 2.64
+      }
+    },
+    {
+      "body": "mars",
+      "map": "normal",
+      "tier": "high",
+      "path": "assets/planets/mars/normal-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 6018407,
+      "sha256": "2703067de263f5a8e4f123fb997464e38c4de9cef6958fdbf9b783dc13fe4266",
+      "sourceId": "usgs-mola-mars",
+      "credit": "NASA/GSFC/USGS, MOLA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 44.44,
+        "psnrY": 44.52,
+        "meanAngleErrorDeg": 0.68,
+        "p99AngleErrorDeg": 3.326
+      }
+    },
+    {
+      "body": "mars",
+      "map": "normal",
+      "tier": "ultra",
+      "path": "assets/planets/mars/normal-4096-uastc.ktx2",
+      "width": 4096,
+      "height": 2048,
+      "levels": 13,
+      "codec": "uastc",
+      "colorSpace": "linear",
+      "bytes": 6018407,
+      "sha256": "2703067de263f5a8e4f123fb997464e38c4de9cef6958fdbf9b783dc13fe4266",
+      "sourceId": "usgs-mola-mars",
+      "credit": "NASA/GSFC/USGS, MOLA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetocentric",
+      "rowsBottomUp": true,
+      "reliefExaggeration": 2.5,
+      "quality": {
+        "psnrX": 44.44,
+        "psnrY": 44.52,
+        "meanAngleErrorDeg": 0.68,
+        "p99AngleErrorDeg": 3.326
+      }
+    },
+    {
+      "body": "venus",
+      "map": "colour",
+      "tier": "low",
+      "path": "assets/planets/venus/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 1114,
+      "sha256": "f34501c43ceebdd02f0c4a3bc04541cc732e2f0976ec6152e47d252386509a09",
+      "sourceId": "nasa-venus-visible",
+      "credit": "Cloud colour model informed by NASA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 45.12,
+        "psnrR": 42.11,
+        "psnrG": 48.13,
+        "psnrB": 48.13
+      }
+    },
+    {
+      "body": "venus",
+      "map": "colour",
+      "tier": "medium",
+      "path": "assets/planets/venus/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 1114,
+      "sha256": "f34501c43ceebdd02f0c4a3bc04541cc732e2f0976ec6152e47d252386509a09",
+      "sourceId": "nasa-venus-visible",
+      "credit": "Cloud colour model informed by NASA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 45.12,
+        "psnrR": 42.11,
+        "psnrG": 48.13,
+        "psnrB": 48.13
+      }
+    },
+    {
+      "body": "venus",
+      "map": "colour",
+      "tier": "high",
+      "path": "assets/planets/venus/colour-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 919,
+      "sha256": "3570de914a39f228d7aa5d8689d41df122e96b1c811890e39595472042e90ddb",
+      "sourceId": "nasa-venus-visible",
+      "credit": "Cloud colour model informed by NASA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrR": 99.0,
+        "psnrG": 99.0,
+        "psnrB": 99.0
+      }
+    },
+    {
+      "body": "venus",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/venus/colour-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 919,
+      "sha256": "3570de914a39f228d7aa5d8689d41df122e96b1c811890e39595472042e90ddb",
+      "sourceId": "nasa-venus-visible",
+      "credit": "Cloud colour model informed by NASA",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrR": 99.0,
+        "psnrG": 99.0,
+        "psnrB": 99.0
+      }
+    },
+    {
+      "body": "uranus",
+      "map": "colour",
+      "tier": "low",
+      "path": "assets/planets/uranus/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 1113,
+      "sha256": "75833a39794c888937286ff8393e4e496bc3ad0abba1d079ec5117b6268cccdb",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 42.9,
+        "psnrR": 48.13,
+        "psnrG": 99.0,
+        "psnrB": 38.59
+      }
+    },
+    {
+      "body": "uranus",
+      "map": "colour",
+      "tier": "medium",
+      "path": "assets/planets/uranus/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 1113,
+      "sha256": "75833a39794c888937286ff8393e4e496bc3ad0abba1d079ec5117b6268cccdb",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 42.9,
+        "psnrR": 48.13,
+        "psnrG": 99.0,
+        "psnrB": 38.59
+      }
+    },
+    {
+      "body": "uranus",
+      "map": "colour",
+      "tier": "high",
+      "path": "assets/planets/uranus/colour-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 919,
+      "sha256": "b278932e930e68cac2f6416a03652a0bcd66d7cf57ba671e7204e561c2772ad5",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrR": 99.0,
+        "psnrG": 99.0,
+        "psnrB": 99.0
+      }
+    },
+    {
+      "body": "uranus",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/uranus/colour-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 919,
+      "sha256": "b278932e930e68cac2f6416a03652a0bcd66d7cf57ba671e7204e561c2772ad5",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrR": 99.0,
+        "psnrG": 99.0,
+        "psnrB": 99.0
+      }
+    },
+    {
+      "body": "neptune",
+      "map": "colour",
+      "tier": "low",
+      "path": "assets/planets/neptune/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 1113,
+      "sha256": "b94b073a02218555144f0b32e4fd87efeb55ab7310edbddf712e411f2c6f5a4d",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 49.89,
+        "psnrR": 99.0,
+        "psnrG": 48.13,
+        "psnrB": 48.13
+      }
+    },
+    {
+      "body": "neptune",
+      "map": "colour",
+      "tier": "medium",
+      "path": "assets/planets/neptune/colour-1024-etc1s.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "etc1s",
+      "colorSpace": "srgb",
+      "bytes": 1113,
+      "sha256": "b94b073a02218555144f0b32e4fd87efeb55ab7310edbddf712e411f2c6f5a4d",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 49.89,
+        "psnrR": 99.0,
+        "psnrG": 48.13,
+        "psnrB": 48.13
+      }
+    },
+    {
+      "body": "neptune",
+      "map": "colour",
+      "tier": "high",
+      "path": "assets/planets/neptune/colour-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 919,
+      "sha256": "d12faee64a7cfbc583e8bd8ee42c0a735d6e764668bdfc0f00489873c2be485e",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrR": 99.0,
+        "psnrG": 99.0,
+        "psnrB": 99.0
+      }
+    },
+    {
+      "body": "neptune",
+      "map": "colour",
+      "tier": "ultra",
+      "path": "assets/planets/neptune/colour-1024-uastc.ktx2",
+      "width": 1024,
+      "height": 512,
+      "levels": 11,
+      "codec": "uastc",
+      "colorSpace": "srgb",
+      "bytes": 919,
+      "sha256": "d12faee64a7cfbc583e8bd8ee42c0a735d6e764668bdfc0f00489873c2be485e",
+      "sourceId": "irwin-ice-giant-colours",
+      "credit": "Colour model informed by Irwin et al. (2024)",
+      "uAtLon0": 0.5,
+      "lonIncreases": "right",
+      "latitude": "planetographic",
+      "rowsBottomUp": true,
+      "quality": {
+        "psnrRgb": 99.0,
+        "psnrR": 99.0,
+        "psnrG": 99.0,
+        "psnrB": 99.0
+      }
     }
   ],
   "facts": {
@@ -1355,6 +2170,121 @@
     "earth": {
       "nightLandFloorCode": 1.0,
       "reliefExaggeration": 12.0
+    },
+    "rockyProbes": {
+      "mercury": {
+        "colour": [
+          {
+            "name": "Caloris Planitia",
+            "lon": 198.02,
+            "lat": 31.65,
+            "radius": 2.0,
+            "channels": [
+              57.69518332135154,
+              57.69518332135154,
+              57.69518332135154
+            ]
+          },
+          {
+            "name": "Caloris southern rim",
+            "lon": 198.02,
+            "lat": 15.0,
+            "radius": 2.0,
+            "channels": [
+              57.55576338555062,
+              57.55576338555062,
+              57.55576338555062
+            ]
+          }
+        ],
+        "normal": [
+          {
+            "name": "Caloris Planitia",
+            "lon": 198.02,
+            "lat": 31.65,
+            "radius": 2.0,
+            "channels": [
+              128.47705314009661,
+              128.32045088566827
+            ]
+          },
+          {
+            "name": "Caloris southern rim",
+            "lon": 198.02,
+            "lat": 15.0,
+            "radius": 2.0,
+            "channels": [
+              131.10416666666666,
+              126.41944444444445
+            ]
+          }
+        ]
+      },
+      "mars": {
+        "colour": [
+          {
+            "name": "Olympus Mons",
+            "lon": 226.2,
+            "lat": 18.65,
+            "radius": 1.0,
+            "channels": [
+              164.40972222222223,
+              94.7388888888889,
+              67.53703703703704
+            ]
+          },
+          {
+            "name": "Hellas basin",
+            "lon": 70.0,
+            "lat": -42.0,
+            "radius": 2.0,
+            "channels": [
+              169.63132768870474,
+              97.53386777157269,
+              68.47108629075842
+            ]
+          }
+        ],
+        "normal": [
+          {
+            "name": "Olympus Mons",
+            "lon": 226.2,
+            "lat": 18.65,
+            "radius": 1.0,
+            "channels": [
+              120.85507246376811,
+              139.3804347826087
+            ]
+          },
+          {
+            "name": "Hellas basin",
+            "lon": 70.0,
+            "lat": -42.0,
+            "radius": 2.0,
+            "channels": [
+              126.96756949394155,
+              127.72344975053457
+            ]
+          }
+        ]
+      }
+    },
+    "cloudColours": {
+      "venus": [
+        240,
+        235,
+        217
+      ],
+      "uranus": [
+        173,
+        207,
+        204
+      ],
+      "neptune": [
+        167,
+        199,
+        207
+      ]
     }
   },
   "tool": {

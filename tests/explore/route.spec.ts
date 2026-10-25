@@ -68,7 +68,7 @@ test('a deep link to a body opens on it, at the date it pins', async ({ page, kf
 
 test('a chapter that offers the explorer fetches its code ahead of a visit, and only its code', async ({ page, kf, pageErrors }) => {
   await kf.openChapter('ch07', { t: 150, query: { jd: JD } });
-  await expect(page.locator('html')).toHaveAttribute('data-universe-prefetched', 'true', { timeout: 30_000 });
+  await expect(page.locator('html')).toHaveAttribute('data-universe-prefetched', 'true', { timeout: 30_000 * SLOW });
   // Nothing of the explorer is built or fetched beyond its code: no planet maps while the film plays.
   const maps = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/assets/planets/')).length);
   expect(maps).toBe(0);
@@ -98,7 +98,7 @@ test('from Chapter 7 the film’s compressed system stretches out to true scale,
         if (v && earth) samples.push({ scale: v.trueScale, earthPx: earth.screen.radiusPx, earthKm: Math.hypot(earth.ecliptic.x, earth.ecliptic.y, earth.ecliptic.z), altitudeKm: v.altitudeKm });
         return v?.trueScale;
       },
-      { timeout: 60_000, intervals: [250] },
+      { timeout: 60_000 * SLOW, intervals: [250] },
     )
     .toBe(1);
   expect(samples.length).toBeGreaterThan(4);
@@ -118,8 +118,8 @@ test('from Chapter 7 the film’s compressed system stretches out to true scale,
   expect((end?.earthKm ?? 0) / 1.496e8).toBeCloseTo(1, 1);
   await expect(page.getByTestId('universe-scale')).toContainText(/True scale/);
   // Then it flies on to the Earth.
-  await expect.poll(async () => (await view(page))?.focus, { timeout: 30_000 }).toBe('earth');
-  await expect(html(page)).toHaveAttribute('data-travel', 'arrived', { timeout: 60_000 });
+  await expect.poll(async () => (await view(page))?.focus, { timeout: 30_000 * SLOW }).toBe('earth');
+  await expect(html(page)).toHaveAttribute('data-travel', 'arrived', { timeout: 60_000 * SLOW });
   expect(pageErrors).toEqual([]);
 });
 
@@ -159,7 +159,7 @@ test('five round trips ch07 -> universe -> ch07 resume the film where it was and
     // sight (pipelines, buffers for bodies first seen later) exists before memory is compared.
     await page.waitForTimeout(FADE_IN_MS);
     await expectCanvasNotBlank(page);
-    for (const body of ['sun', 'jupiter', 'saturn', 'moon'] as const) {
+    for (const body of ['sun', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'moon'] as const) {
       await page.evaluate((b) => {
         (window as unknown as KfHook).__kf.universe.place({ body: b, distanceKm: b === 'sun' ? 3e6 : b === 'moon' ? 9_000 : 4e5, azimuthDeg: 30 });
       }, body);

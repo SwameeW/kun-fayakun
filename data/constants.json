@@ -928,6 +928,149 @@
         "url": "https://doi.org/10.5194/angeo-30-695-2012",
         "accessed": "2026-10-23"
       }
+    },
+    {
+      "id": "venus.displayColour.r",
+      "description": "Illustrative uniform sRGB display swatch for Venus, r channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 240,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Venus in visible light: a yellowish-white cloud deck; qualitative appearance only",
+        "url": "https://science.nasa.gov/earth/10-things-tour-of-storms-across-the-solar-system/",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "venus.displayColour.g",
+      "description": "Illustrative uniform sRGB display swatch for Venus, g channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 235,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Venus in visible light: a yellowish-white cloud deck; qualitative appearance only",
+        "url": "https://science.nasa.gov/earth/10-things-tour-of-storms-across-the-solar-system/",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "venus.displayColour.b",
+      "description": "Illustrative uniform sRGB display swatch for Venus, b channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 217,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Venus in visible light: a yellowish-white cloud deck; qualitative appearance only",
+        "url": "https://science.nasa.gov/earth/10-things-tour-of-storms-across-the-solar-system/",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "uranus.displayColour.r",
+      "description": "Illustrative uniform sRGB display swatch for Uranus, r channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 173,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune; qualitative appearance only",
+        "url": "https://doi.org/10.1093/mnras/stad3761",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "uranus.displayColour.g",
+      "description": "Illustrative uniform sRGB display swatch for Uranus, g channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 207,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune; qualitative appearance only",
+        "url": "https://doi.org/10.1093/mnras/stad3761",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "uranus.displayColour.b",
+      "description": "Illustrative uniform sRGB display swatch for Uranus, b channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 204,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune; qualitative appearance only",
+        "url": "https://doi.org/10.1093/mnras/stad3761",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "neptune.displayColour.r",
+      "description": "Illustrative uniform sRGB display swatch for Neptune, r channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 167,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune; qualitative appearance only",
+        "url": "https://doi.org/10.1093/mnras/stad3761",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "neptune.displayColour.g",
+      "description": "Illustrative uniform sRGB display swatch for Neptune, g channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 199,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune; qualitative appearance only",
+        "url": "https://doi.org/10.1093/mnras/stad3761",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "neptune.displayColour.b",
+      "description": "Illustrative uniform sRGB display swatch for Neptune, b channel. Chosen to represent the cited qualitative colour description; the source does not publish this RGB value. Not a physical albedo or a mapped cloud feature.",
+      "value": 207,
+      "uncertainty": null,
+      "unit": "sRGB8",
+      "qualifier": "illustrative display choice, not measured",
+      "citation": {
+        "text": "Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune; qualitative appearance only",
+        "url": "https://doi.org/10.1093/mnras/stad3761",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "mercury.mdis430.stretch.lower",
+      "description": "Published lower endpoint of the linear reflectance contrast stretch for the MDIS 430 nm band (blue channel of the USGS 1000/750/430 nm composite). Used to undo the display stretch before neutral monochrome rendering; not a Bond albedo.",
+      "value": 0.00517048,
+      "uncertainty": null,
+      "unit": "I/F",
+      "qualifier": "publisher contrast-stretch endpoint",
+      "citation": {
+        "text": "USGS Mercury MESSENGER MDIS Global Color Mosaic 665m, Process Description, blue-band stretch",
+        "url": "https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_global_color_mosaic_665m",
+        "accessed": "2026-10-24"
+      }
+    },
+    {
+      "id": "mercury.mdis430.stretch.upper",
+      "description": "Published upper endpoint of the linear reflectance contrast stretch for the MDIS 430 nm band (blue channel of the USGS 1000/750/430 nm composite). Used to undo the display stretch before neutral monochrome rendering; not a Bond albedo.",
+      "value": 0.0979371,
+      "uncertainty": null,
+      "unit": "I/F",
+      "qualifier": "publisher contrast-stretch endpoint",
+      "citation": {
+        "text": "USGS Mercury MESSENGER MDIS Global Color Mosaic 665m, Process Description, blue-band stretch",
+        "url": "https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_global_color_mosaic_665m",
+        "accessed": "2026-10-24"
+      }
     }
   ]
 }

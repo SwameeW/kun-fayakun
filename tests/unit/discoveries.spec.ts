@@ -21,7 +21,7 @@ const constant = (id: string): number => {
 };
 const facts = deriveFacts(physical, planets, constant);
 
-const each = <T>(value: T): Record<BodyId, T> => ({ sun: value, earth: value, moon: value, jupiter: value, saturn: value });
+const each = <T>(value: T): Record<BodyId, T> => ({ mercury: value, venus: value, mars: value, uranus: value, neptune: value, sun: value, earth: value, moon: value, jupiter: value, saturn: value });
 function input(patch: Partial<DiscoveryInput>): DiscoveryInput {
   return {
     focus: 'earth',

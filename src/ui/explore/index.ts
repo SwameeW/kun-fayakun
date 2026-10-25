@@ -35,6 +35,11 @@ const SURFACE_KEYS: Readonly<Record<BodyId, string>> = {
   earth: 'ui.universe.surface',
   moon: 'ui.universe.surface',
   jupiter: 'ui.universe.clouds',
+  mercury: 'ui.universe.surface',
+  venus: 'ui.universe.referenceRadius',
+  mars: 'ui.universe.surface',
+  uranus: 'ui.universe.clouds',
+  neptune: 'ui.universe.clouds',
   saturn: 'ui.universe.clouds',
 };
 /**

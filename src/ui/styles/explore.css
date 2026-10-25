@@ -493,7 +493,7 @@
     visibility 0s linear 250ms;
 }
 
-.kf-note {
+.kf-universe .kf-note {
   position: absolute;
   inset-inline: 0;
   inset-block-start: 0;
@@ -505,7 +505,7 @@
   line-height: 1.5;
 }
 
-.kf-note.kf-fade {
+.kf-universe .kf-note.kf-fade {
   opacity: 0;
   transform: translateY(-4px);
   transition:
@@ -513,7 +513,7 @@
     transform var(--kf-fade-ms, 900ms) var(--kf-ease);
 }
 
-.kf-note.kf-fade.is-visible {
+.kf-universe .kf-note.kf-fade.is-visible {
   opacity: 1;
   transform: none;
 }
@@ -544,15 +544,15 @@
   transition: transform 250ms var(--kf-ease);
 }
 
-.kf-note.is-folded .kf-note-toggle {
+.kf-universe .kf-note.is-folded .kf-note-toggle {
   margin-block-end: 0;
 }
 
-.kf-note.is-folded .kf-note-toggle .kf-icon {
+.kf-universe .kf-note.is-folded .kf-note-toggle .kf-icon {
   transform: rotate(180deg);
 }
 
-.kf-note.is-folded .kf-note-body {
+.kf-universe .kf-note.is-folded .kf-note-body {
   display: none;
 }
 
@@ -1007,6 +1007,9 @@
   z-index: 1;
   inset-inline: 0;
   inset-block-end: calc(100% + var(--kf-space-2));
+  max-block-size: calc(100dvh - var(--kf-header-h) - 6rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--kf-space-2) var(--kf-space-3);
   border: 1px solid var(--kf-hairline-strong);
   border-radius: var(--kf-radius);
@@ -1015,6 +1018,10 @@
 }
 
 .kf-nav-detail-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--kf-surface-2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1145,7 +1152,7 @@
   transform: rotate(-90deg);
 }
 
-.kf-nav.is-panel.is-expanded .kf-nav-toggle .kf-icon {
+  .kf-nav.is-panel.is-expanded .kf-nav-toggle .kf-icon {
   transform: rotate(90deg);
 }
 
@@ -1174,7 +1181,7 @@
   border-block-start: 0;
 }
 
-/* The bottom sheet (phones, small windows): a row of portraits, pulled up for the rest. */
+/* The bottom sheet: ten portraits in two rows, pulled up for distances and the log. */
 .kf-nav.is-sheet {
   inset-inline: var(--kf-space-2);
   inset-block-end: var(--kf-space-2);
@@ -1223,7 +1230,8 @@
 }
 
 .kf-nav.is-sheet:not(.is-expanded) .kf-nav-list {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   justify-content: space-between;
   gap: var(--kf-space-1);
   padding: 0 var(--kf-space-2) var(--kf-space-2);
@@ -1363,11 +1371,15 @@
     display: inline;
   }
 
-  /* The parts of the line run on, each whole (never a break inside one, nor a dot starting a line). */
+  /* Compact facts stay whole; longer illustrative notes can wrap within the readout. */
   .kf-universe-part {
     display: inline;
     font-size: 0.6875rem;
     white-space: nowrap;
+  }
+
+  .kf-universe-illustrative {
+    white-space: normal;
   }
 
   .kf-universe-part + .kf-universe-part::before {
@@ -1425,7 +1437,7 @@
     max-inline-size: none;
   }
 
-  .kf-note {
+  .kf-universe .kf-note {
     inset-block: auto 0;
     padding: var(--kf-space-2) var(--kf-space-3);
     font-size: 0.75rem;
@@ -1535,7 +1547,7 @@
     inline-size: min(24rem, 52vw);
   }
 
-  .kf-note {
+  .kf-universe .kf-note {
     inset-block: 0 auto;
     max-block-size: calc(100vh - var(--kf-header-h) - 2.75rem - var(--kf-readout-h, 3rem) - 2.5rem);
     overflow-y: auto;
@@ -1546,7 +1558,7 @@
     display: none;
   }
 
-  /* Pulled up on a phone held sideways, the worlds sit in two columns: all five fit without scrolling. */
+  /* Pulled up on a phone held sideways, the worlds sit in two columns: ten worlds remain reachable in a scrolling list. */
   .kf-nav.is-sheet.is-expanded .kf-nav-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1597,7 +1609,7 @@
 @media (prefers-reduced-motion: reduce) {
   .kf-trip,
   .kf-trip.is-active,
-  .kf-note.kf-fade {
+  .kf-universe .kf-note.kf-fade {
     transform: none;
   }
 
@@ -1614,4 +1626,40 @@
 
 .kf-reduced-motion :is(.kf-nav.is-panel, .kf-nav-toggle .kf-icon) {
   transition-property: opacity, visibility;
+}
+
+@media (max-width: 600px) and (min-height: 501px) {
+  .kf-nav.is-sheet.is-expanded .kf-nav-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px var(--kf-space-1);
+  }
+  .kf-nav.is-sheet.is-expanded .kf-nav-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding-block: 2px;
+  }
+  .kf-nav.is-sheet.is-expanded .kf-nav-body {
+    gap: var(--kf-space-2);
+    min-block-size: 2rem;
+  }
+  .kf-nav.is-sheet.is-expanded .kf-nav-name { font-size: 0.875rem; }
+  .kf-nav.is-sheet.is-expanded .kf-nav-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 2px;
+    font-size: 0.6875rem;
+  }
+  .kf-nav.is-sheet.is-expanded .kf-nav-light { font-size: 0.625rem; }
+}
+
+/* Ten worlds fit a mouse-driven desktop panel; touch keeps its larger targets and scroller. */
+@media (pointer: fine) {
+  .kf-nav.is-panel.is-expanded .kf-orrery { max-inline-size: 8rem; }
+  .kf-nav.is-panel.is-expanded .kf-nav-body { min-block-size: 1.75rem; }
+  .kf-nav.is-panel.is-expanded .kf-body-icon { inline-size: 1.75rem; block-size: 1.75rem; }
+  .kf-nav.is-panel.is-expanded .kf-body-icon--saturn { inline-size: 2.5rem; margin-inline: -0.375rem; }
+
+  .kf-nav.is-panel.is-expanded .kf-nav-distance { font-size: 0.75rem; line-height: 1.25; }
+  .kf-nav.is-panel.is-expanded .kf-nav-light { font-size: 0.625rem; line-height: 1.25; }
 }

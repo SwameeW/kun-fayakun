@@ -122,7 +122,7 @@ function checkSdss(ctx: ValidationContext, log: RuleLog): void {
 }
 
 const JPL_OWNER = 'JPL builder, npm run preprocess:jpl';
-const JPL_BODIES = ['Sun', 'Earth', 'Moon', 'Jupiter', 'Saturn'] as const;
+const JPL_BODIES = ['Sun', 'Mercury', 'Venus', 'Earth', 'Moon', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'] as const;
 /** physical.json "sources" key -> the data/sources.json entry that credits that file. */
 const JPL_SOURCE_IDS: Record<string, string> = {
   pck: 'naif-pck00011',
@@ -200,7 +200,7 @@ function physicalProblems(ctx: ValidationContext, path: string, physical: unknow
     if (np !== null) {
       const angles: unknown[] = isRecord(np) && Array.isArray(np.angles) ? np.angles : [];
       const termsOk = isRecord(np) && ['ra', 'dec', 'pm'].every((k) => isNumberList(np[k]) && np[k].length <= angles.length);
-      if (!termsOk || angles.length === 0 || !angles.every((a) => isNumberList(a, 2))) {
+      if (!termsOk || angles.length === 0 || !angles.every((a) => isNumberList(a, 2) || isNumberList(a, 3))) {
         problems.push(`${path}: bodies.${name}.nutPrec must be null or ra/dec/pm terms with no more entries than its [degrees, rate] angles`);
       }
     }
@@ -287,8 +287,8 @@ const PLANETS_OWNER = 'planets builder, bash scripts/preprocess-planets.sh';
 const PLANET_TIERS = ['low', 'medium', 'high', 'ultra'] as const;
 type PlanetTier = (typeof PLANET_TIERS)[number];
 /** Transfer per tier (every body's set) and for all committed files; mirrors scripts/planets/config.py. */
-const PLANET_TIER_BUDGET: Record<PlanetTier, number> = { low: 4_000_000, medium: 12_000_000, high: 60_000_000, ultra: 160_000_000 };
-const PLANET_COMMITTED_BUDGET = 135_000_000;
+const PLANET_TIER_BUDGET: Record<PlanetTier, number> = { low: 8_000_000, medium: 24_000_000, high: 110_000_000, ultra: 250_000_000 };
+const PLANET_COMMITTED_BUDGET = 280_000_000;
 /** WebGPU's default maxTextureDimension2D: the renderer requests no larger limit. */
 const PLANET_MAX_SIZE = 8192;
 /**
@@ -296,6 +296,8 @@ const PLANET_MAX_SIZE = 8192;
  * a map dropped from planets.json together with its files cannot pass unnoticed.
  */
 const PLANET_MAPS = [
+  'mercury/colour', 'mercury/normal', 'mars/colour', 'mars/normal',
+  'venus/colour', 'uranus/colour', 'neptune/colour',
   'earth/day',
   'earth/night',
   'earth/clouds',

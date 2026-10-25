@@ -793,7 +793,14 @@ def build_rings() -> dict[str, Any]:
     }
 
 
+from rocky import build_rock, build_cloud
+
 BUILDERS = {
+    "mercury": lambda: build_rock("mercury"),
+    "mars": lambda: build_rock("mars"),
+    "venus": lambda: build_cloud("venus"),
+    "uranus": lambda: build_cloud("uranus"),
+    "neptune": lambda: build_cloud("neptune"),
     "earth": build_earth,
     "moon": build_moon,
     "jupiter": lambda: build_giant("jupiter", "jupiter"),

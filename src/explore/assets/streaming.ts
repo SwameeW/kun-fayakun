@@ -67,6 +67,13 @@ export const UPLOAD_BYTES_PER_FRAME = 2 * MIB;
  * average. Normal maps are flat (x in green, y in alpha, both zero). Unlisted maps are black.
  */
 const PLACEHOLDER: Readonly<Partial<Record<MapKey, readonly [number, number, number, number]>>> = {
+  'mercury/colour': [62, 62, 62, 255],
+  'mercury/normal': [128, 128, 128, 128],
+  'venus/colour': [240, 235, 217, 255],
+  'mars/colour': [124, 83, 76, 255],
+  'mars/normal': [128, 128, 128, 128],
+  'uranus/colour': [173, 207, 204, 255],
+  'neptune/colour': [167, 199, 207, 255],
   'earth/day': [64, 64, 61, 255],
   'earth/night': [0, 0, 0, 255],
   'earth/clouds': [75, 75, 75, 255],
@@ -202,8 +209,13 @@ export function mapsFor(body: PlanetBody, detail: ExploreDetail): PlanetMap[] {
       if (detail.nightLights) maps.push('night');
       return maps;
     }
+    case 'mercury':
+    case 'mars':
     case 'moon':
       return detail.normalMaps ? ['colour', 'normal'] : ['colour'];
+    case 'venus':
+    case 'uranus':
+    case 'neptune':
     case 'jupiter':
       return ['colour'];
     case 'saturn':
@@ -211,7 +223,7 @@ export function mapsFor(body: PlanetBody, detail: ExploreDetail): PlanetMap[] {
   }
 }
 
-const BODIES: readonly PlanetBody[] = ['earth', 'moon', 'jupiter', 'saturn'];
+const BODIES: readonly PlanetBody[] = ['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 export function createPlanetTextures(options: StreamerOptions): PlanetTextures {
   const { assets, manifest, upload } = options;

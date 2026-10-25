@@ -81,7 +81,7 @@ narrower reuses its widest file for the higher tiers):
   "bytes": 90480, "sha256": "…", "sourceId": "nasa-bmng-2004", "credit": "<data/sources.json credit>",
   "uAtLon0": 0.5, "lonIncreases": "right", "latitude": "…", "rowsBottomUp": true }
 ```
-Maps: earth `day` `night` `clouds` `water` `normal`, moon `colour` `normal`, jupiter `colour`, saturn
+Maps: mercury and mars `colour` `normal`; venus, uranus and neptune `colour` (uniform, labelled display models); earth `day` `night` `clouds` `water` `normal`, moon `colour` `normal`, jupiter `colour`, saturn
 `colour` `rings`. `path` goes straight to `assets.ktx2()`. Every equirectangular file is 2:1 with a full
 mip chain, `u = (uAtLon0 + east longitude / 360) mod 1`, `v = 0.5 + latitude / 180` (v = 0 south), rows
 stored bottom-up (`KTXorientation` "ru"), so use the textures as loaded; wrap S, clamp T. Raw `r8`/`rgba8`
@@ -94,7 +94,7 @@ colour, not multiplied by a, and a its normal opacity, so blend
 `mix(background, rgb * light, 1 - (1 - a)^(1/mu))`. `bodies` and `facts` (the Great Red Spot's position
 on 2025-12-11; the ring strip's radius span, colour registration, colour model and opacity noise floor)
 say the rest. All four tiers are published and served with the site (GitHub Pages, same origin):
-the `ultra` tier (8192, about 96 MB for every body's set) lists maps narrower than 8192 at source with
+the `ultra` tier (8192, about 147 MB for every body's set) lists maps narrower than 8192 at source with
 their High file. Only a visitor who chooses Ultra in the explorer's menu fetches it (Auto never does).
 
 ### `assets/calligraphy/<id>.json`
@@ -294,7 +294,7 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   built or fetched besides), so the way in waits only on its warm-up. From Chapter 7, with no body or
   date asked for (`UniverseOpenOptions.stretch`), the explorer opens on the film's compressed system
   (Chapter 7's square-root distances and enlarged sizes, every world lit alike, seen from 2.35 x
-  Saturn's orbit, 32 degrees above the ecliptic) and stretches it out to true distances, sizes and
+  Neptune's compressed orbit (the stretch unit still anchored to Saturn), 32 degrees above the ecliptic) and stretches it out to true distances, sizes and
   sunlight over 6.5 s after a 2.6 s hold (`src/explore/stretch.ts`, log-space blends, eased), then
   flies on to the Earth unless the visitor has steered; a trip asked for meanwhile finishes it in
   0.9 s. The readout says it is not to scale until it is (`UniverseView.trueScale` < 1), then
@@ -363,7 +363,7 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   orrery to fly by (directions true for the date, distances compressed), the log of what was seen
   (its summary says how many entries it holds, with no total, score or achievement; each new entry
   gets a quiet toast, a polite live region) and the detail menu; a side panel on wide screens (the
-  menu opening beside it), a bottom sheet on phones (the list first, the log, then the orrery as a
+  menu opening beside it), a bottom sheet on phones (ten portraits in two rows when folded; the list first, the log, then the orrery as a
   small strip, none held sideways; sized to what it holds, fading where it scrolls; held sideways,
   pulled up at the right, the world framed beside it). The world in view is marked `aria-current`.
   Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
@@ -391,7 +391,7 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   the film keeps 1). Guides (orbit lines, points and ring markers of bodies under a few px, the Sun's
   glare) keep their brightness on screen; the Sun's disc is brilliant white when small and, as it
   fills the view, shown as through a solar filter (amber, limb-darkened, mottled), which the readout
-  says. The engine's exposure cap is 128 (chapters ask for 1 or less).
+  says. The engine's exposure cap is 1024 (chapters ask for 1 or less).
 - **Bodies and detail.** The explorer draws its bodies with its own shaders (`src/explore/bodies`),
   never the chapters': the Earth from Blue Marble (day), Black Marble (city lights, night side only:
   today's Earth only), ETOPO relief and Natural Earth's water mask (an ocean-only glint), clouds on
@@ -451,3 +451,28 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   `webgpu_instance_points` example (check node_modules/three/examples). Must also run on WebGL2.
 - No compute shaders in M1 unless there is a non-compute WebGL2 path; prefer analytic
   vertex-stage animation (positions as a function of time) which runs on both backends.
+
+### Five-planet extension
+
+`BodyId` / `BODY_IDS` include the Sun, Mercury, Venus, Earth, Moon, Mars, Jupiter,
+Saturn, Uranus and Neptune, in that order. `PhysicalFile.bodies` includes all ten IAU
+models. Nutation-precession angle polynomials have two coefficients, or three when
+the PCK declares quadratic phases (Mars); omission of the third means zero.
+
+Mercury and Mars reuse the regolith renderer with their own texture slots, true polar
+flattening and phase-dependent solar angular size; neither gets the Moon's earthshine
+or synthetic microcraters. Mars has an explicitly labelled schematic dust haze.
+Venus and the ice giants use cloud-deck shading and uniform illustrative colour maps.
+Optional Uranus/Neptune rings and additional moons are not drawn.
+
+The pipeline registers USGS GeoTIFFs using their metadata, including Mercury's DEM
+central meridian, and preserves source pins, landmark probes and decoded-file checks.
+The new metadata `facts.rockyProbes` holds named imaging/normal-channel reference
+probes; `facts.cloudColours` holds the original uniform display swatches. Cloud-colour
+constants are explicitly qualitative display choices, not physical measurements.
+The full transfer set is 193,030,292 bytes. Tier byte ceilings are 8/24/110/250 MB;
+the complete committed texture budget is 280 MB. Resident GPU budgets are unchanged.
+
+Explorer note rules are scoped below `.kf-universe`; `.kf-note` in scripture panels
+must stay in normal flow after an explorer visit. The graphics-detail menu has a
+viewport-limited scrolling panel and a sticky header.

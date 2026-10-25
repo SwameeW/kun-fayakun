@@ -10,7 +10,7 @@ export const PLANETS_MANIFEST_URL = 'assets/planets/planets.json';
 
 /** Published detail tiers (Ultra: maps narrower than 8192 at source serve their High file). */
 export type PlanetTier = 'low' | 'medium' | 'high' | 'ultra';
-export type PlanetBody = 'earth' | 'moon' | 'jupiter' | 'saturn';
+export type PlanetBody = 'mercury' | 'venus' | 'earth' | 'moon' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune';
 export type PlanetMap = 'day' | 'night' | 'clouds' | 'water' | 'normal' | 'colour' | 'rings';
 
 export interface PlanetCredit {

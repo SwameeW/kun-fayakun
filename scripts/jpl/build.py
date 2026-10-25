@@ -21,7 +21,7 @@ one for the visitor's date. Positions are rounded to 1 km.
 
 Physical constants (physical.json). Each one is parsed from the file that defines it and never
 typed in:
-- The IAU rotation models and triaxial radii of the Sun, Earth, Moon, Jupiter and Saturn come
+- The IAU rotation models and triaxial radii of the Sun, all eight planets and the Moon come
   from NAIF's generic PCK pck00011.tpc (IAU WGCCRE 2015 report). A model is the pole's right
   ascension and declination, the prime meridian W(t), and their nutation-precession terms.
 - EMRAT (the Earth/Moon mass ratio) and the astronomical unit come from the DE440 header.
@@ -114,13 +114,18 @@ URLS = {
 RETRIEVED = CACHE / "retrieved.json"
 
 # The bodies whose rotation and shape go into physical.json, by NAIF id.
-PHYSICAL_BODIES = {"Sun": 10, "Earth": 399, "Moon": 301, "Jupiter": 599, "Saturn": 699}
+PHYSICAL_BODIES = {"Sun": 10, "Mercury": 199, "Venus": 299, "Earth": 399, "Moon": 301, "Mars": 499, "Jupiter": 599, "Saturn": 699, "Uranus": 799, "Neptune": 899}
 
 REFERENCE = ROOT / "tests" / "support" / "astro" / "horizons-reference.json"
 # Julian dates (TDB): the Moon table's first row and first mid-day; three mid-days inside it
 # (12:00 on 2026-03-15, 2029-07-04 and 2033-11-20); its last mid-day and its last row.
 REFERENCE_EPOCHS = ["2461041.5", "2461042.0", "2461115.0", "2462322.0", "2463922.0", "2464693.0", "2464693.5"]
 REFERENCE_VECTORS = {
+    "mercuryHelio": ("199", "500@10", "Mercury relative to the Sun"),
+    "venusHelio": ("299", "500@10", "Venus relative to the Sun"),
+    "marsHelio": ("499", "500@10", "Mars relative to the Sun"),
+    "uranusHelio": ("799", "500@10", "Uranus relative to the Sun"),
+    "neptuneHelio": ("899", "500@10", "Neptune relative to the Sun"),
     "moonGeo": ("301", "500@399", "the Moon relative to the Earth's centre"),
     "earthFromEmb": ("399", "500@3", "the Earth's centre relative to the Earth-Moon barycentre"),
     "embHelio": ("3", "500@10", "the Earth-Moon barycentre relative to the Sun's centre"),
@@ -268,12 +273,13 @@ def parse_pck() -> dict[str, Any]:
             system = naif // 100
             key = f"BODY{system}_MAX_PHASE_DEGREE"
             degree = _numbers(kernel, key, 1)[0] if key in kernel else 1
-            if degree != 1:
+            if degree not in (1, 2):
                 raise SystemExit(f"pck00011: BODY{system} phase angles of degree {degree} are not supported")
             flat = _numbers(kernel, f"BODY{system}_NUT_PREC_ANGLES")
-            if len(flat) % 2:
-                raise SystemExit(f"pck00011: BODY{system}_NUT_PREC_ANGLES has an odd count")
-            angles = [flat[i : i + 2] for i in range(0, len(flat), 2)]
+            stride = int(degree) + 1
+            if len(flat) % stride:
+                raise SystemExit(f"pck00011: BODY{system}_NUT_PREC_ANGLES has a count not divisible by the polynomial stride")
+            angles = [flat[i : i + stride] for i in range(0, len(flat), stride)]
             ra, dec, pm = (_numbers(kernel, t) for t in terms)
             if max(len(ra), len(dec), len(pm)) > len(angles):
                 raise SystemExit(f"pck00011: {name} has more nutation-precession terms than BODY{system} has angles")
@@ -432,7 +438,7 @@ def step_build() -> None:
         "units": {
             "poleRa, poleDec": "degrees, degrees per Julian century, degrees per century squared (T = TDB centuries from J2000)",
             "pm": "W, the prime meridian: degrees, degrees per day, degrees per day squared (d = TDB days from J2000)",
-            "nutPrec": "ra and pm terms multiply sin(angle), dec terms cos(angle); each angle is [degrees, degrees per century]",
+            "nutPrec": "ra and pm terms multiply sin(angle), dec terms cos(angle); each angle is [degrees, degrees per century, optional degrees per century squared]",
             "radiiKm": "triaxial ellipsoid a, b, c in km (c along the pole)",
             "time": "TDB - TAI = deltaTA + k sin(E), E = M + eb sin(M), M = m0 + m1 t (t = seconds from J2000); taiMinusUtc in seconds from jdUtc on",
         },
@@ -533,7 +539,7 @@ def step_sources() -> None:
             "version": f"pck00011, retrieved {retrieved('naif-pck00011', 'pck')}",
             "license": "Public information from NASA/JPL",
             "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
-            "credit": "Rotation and size of the Sun, Earth, Moon, Jupiter and Saturn: IAU WGCCRE (Archinal et al. 2018), via NASA/JPL NAIF",
+            "credit": "Rotation and size of the Sun, all eight planets and the Moon: IAU WGCCRE (Archinal et al. 2018), via NASA/JPL NAIF",
             "notes": "Pole, prime meridian and radii for src/astro/rotation.ts. The kernel carries the 2009 IAU values for the Earth and the Moon, because the 2015 report gives none for them. public/assets/jpl/physical.json records the file's sha256.",
             "review": {"reviewer": None, "role": None, "date": None},
         },

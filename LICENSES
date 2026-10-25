@@ -675,3 +675,36 @@ Terms:    Public domain: NASA Planetary Data System archive data, and NASA/JPL
 Credits:  Marouf, E., CASSINI ORBITER SATURN RSS RING RADIO OCCULTATIONS 2.0,
           CO-SR-RSS-4/5-OCC-V2.0, NASA Planetary Data System, 2018 |
           NASA/JPL/Space Science Institute
+
+Mercury and Mars (NASA mission data distributed by USGS Astrogeology)
+          Mercury MESSENGER MDIS Global Color Mosaic 665m v3 and Global DEM
+          665m v2; Mars Viking Global Color Mosaic 925m and MGS MOLA DEM 463m.
+Terms:    Public-domain U.S. Government data; the USGS records identify public
+          domain/CC0 or request author credit. See the product records linked
+          from data/sources.json and
+          https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits
+Changes:  GeoTIFF projection metadata used to register exact global grids;
+          Mercury DEM rotated from its 180 E central meridian. Mercury uses
+          only MDIS's visible 430 nm band as neutral monochrome, with its
+          published I/F contrast stretch undone and missing patches
+          interpolated (labelled in the readout), not the
+          infrared false-colour composite. Mars retains Viking colour. DEMs
+          become 4K tangent-space normals with 2.5x relief exaggeration;
+          imaging reduced to 1K/2K/4K/8K in linear light, mip-mapped and KTX2
+          encoded. Source byte counts and SHA256 pins are in config.py.
+Credits:  NASA/JHUAPL/CIW/USGS, MESSENGER MDIS and MESSENGER DEM |
+          NASA/USGS, Viking | NASA/GSFC/USGS, MOLA
+
+Venus, Uranus and Neptune (original uniform cloud-colour display models)
+          No third-party images or maps are reproduced. Venus is pale
+          yellowish-white as described by NASA Science. Uranus and Neptune
+          are similar pale greenish-blues, Neptune slightly bluer, following
+          Irwin et al. (2024), doi:10.1093/mnras/stad3761.
+Licence:  CC0 for the project's original uniform display maps only:
+          https://creativecommons.org/publicdomain/zero/1.0/
+          This does not license the cited paper or NASA publications.
+Changes:  Uniform sRGB swatches are illustrative choices (data/constants.json),
+          not measured RGB values, physical albedos, or observed cloud maps.
+          No ultraviolet clouds, radar surface, storms or rings are invented.
+Credits:  Cloud colour model informed by NASA |
+          Colour model informed by Irwin et al. (2024)

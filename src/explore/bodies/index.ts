@@ -37,6 +37,11 @@ export interface Bodies {
   readonly moon: ExploreMoon;
   readonly jupiter: ExploreGiant;
   readonly saturn: ExploreGiant;
+  readonly mercury: ExploreMoon;
+  readonly mars: ExploreMoon;
+  readonly venus: ExploreGiant;
+  readonly uranus: ExploreGiant;
+  readonly neptune: ExploreGiant;
   /** Every body's root object, by id. */
   readonly objects: Readonly<Record<BodyId, Group>>;
   /** Objects drawn in the render frame itself rather than a body's (Saturn's ring particles): add them to the scene's root. */
@@ -73,7 +78,7 @@ export interface BodiesOptions {
   compile(objects: Object3D[]): Promise<void>;
 }
 
-const PLANETS: readonly PlanetBody[] = ['earth', 'moon', 'jupiter', 'saturn'];
+const PLANETS: readonly PlanetBody[] = ['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 const isPlanet = (id: BodyId): id is PlanetBody => (PLANETS as readonly string[]).includes(id);
 
 export function createBodies(options: BodiesOptions): Bodies {
@@ -99,7 +104,12 @@ export function createBodies(options: BodiesOptions): Bodies {
     },
     detail,
   );
-  const all = [sun, earth, moon, jupiter, saturn];
+  const mercury = createMoon(textures, options.sunAngularRadius, detail, { body: 'mercury', uAtLon0: uAt('mercury', 'colour'), polar: polar(specs.mercury) });
+  const venus = createGiant(textures, { name: 'explore-venus', body: 'venus', polar: polar(specs.venus), uAtLon0: uAt('venus', 'colour'), flow: false }, detail);
+  const mars = createMoon(textures, options.sunAngularRadius, detail, { body: 'mars', uAtLon0: uAt('mars', 'colour'), polar: polar(specs.mars) });
+  const uranus = createGiant(textures, { name: 'explore-uranus', body: 'uranus', polar: polar(specs.uranus), uAtLon0: uAt('uranus', 'colour'), flow: false }, detail);
+  const neptune = createGiant(textures, { name: 'explore-neptune', body: 'neptune', polar: polar(specs.neptune), uAtLon0: uAt('neptune', 'colour'), flow: false }, detail);
+  const all = [sun, earth, moon, jupiter, saturn, mercury, venus, mars, uranus, neptune];
   let generation = 0;
 
   return {
@@ -108,7 +118,8 @@ export function createBodies(options: BodiesOptions): Bodies {
     moon,
     jupiter,
     saturn,
-    objects: { sun: sun.object, earth: earth.object, moon: moon.object, jupiter: jupiter.object, saturn: saturn.object },
+    mercury, venus, mars, uranus, neptune,
+    objects: { mercury: mercury.object, venus: venus.object, mars: mars.object, uranus: uranus.object, neptune: neptune.object, sun: sun.object, earth: earth.object, moon: moon.object, jupiter: jupiter.object, saturn: saturn.object },
     extras: saturn.rings?.particles ? [saturn.rings.particles.object] : [],
     get detail() {
       return detail;

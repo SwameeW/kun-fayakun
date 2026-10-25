@@ -28,7 +28,7 @@ export interface PostPipeline {
   setBloom(enabled: boolean): void;
   /**
    * The exposure the bloom threshold is judged at (default 1: the threshold applies to the scene's
-   * own values, as the chapters have it). The solar-system explorer's exposure spans seven stops,
+   * own values, as the chapters have it). The solar-system explorer's exposure spans ten stops,
    * so it passes its exposure here and only what is bright on screen blooms, wherever the camera is.
    */
   setBloomExposure(exposure: number): void;
@@ -192,10 +192,10 @@ const SMOOTHING_SECONDS = 0.35;
  */
 const FLOOR_STOPS = -8;
 /**
- * Seven stops above neutral: room for the solar-system explorer's adaptation to sunlight (Saturn gets
- * about 1.1% of the Earth's), which it asks for gradually like any target. Chapters ask for 1 or less.
+ * Ten stops above neutral: room for adaptation out to Neptune, with its roughly 30-au orbit.
+ * Targets still pass through the same slew limiter; the film's targets (1 or less) are unchanged.
  */
-const MAX_EXPOSURE = 128;
+const MAX_EXPOSURE = 1024;
 /** Dark enough to swap chapters unseen. */
 const DARK_STOPS = -6;
 const SNAP_STOPS = 0.005;

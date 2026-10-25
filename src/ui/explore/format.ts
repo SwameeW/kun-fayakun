@@ -6,6 +6,11 @@ export const NAME_KEYS: Readonly<Record<BodyId, string>> = {
   earth: 'ui.hud.earth',
   moon: 'ui.hud.moon',
   jupiter: 'ui.hud.planet.jupiter',
+  mercury: 'ui.hud.planet.mercury',
+  venus: 'ui.hud.planet.venus',
+  mars: 'ui.hud.planet.mars',
+  uranus: 'ui.hud.planet.uranus',
+  neptune: 'ui.hud.planet.neptune',
   saturn: 'ui.hud.planet.saturn',
 };
 
