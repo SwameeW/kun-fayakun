@@ -1656,9 +1656,9 @@
 /* Ten worlds fit a mouse-driven desktop panel; touch keeps its larger targets and scroller. */
 @media (pointer: fine) {
   .kf-nav.is-panel.is-expanded .kf-orrery { max-inline-size: 8rem; }
-  .kf-nav.is-panel.is-expanded .kf-nav-body { min-block-size: 1.75rem; gap: var(--kf-space-2); }
+  .kf-nav.is-panel.is-expanded .kf-nav-body { min-block-size: 1.75rem; }
   .kf-nav.is-panel.is-expanded .kf-body-icon { inline-size: 1.75rem; block-size: 1.75rem; }
-  .kf-nav.is-panel.is-expanded .kf-body-icon--saturn { inline-size: 2.5rem; }
+  .kf-nav.is-panel.is-expanded .kf-body-icon--saturn { inline-size: 2.5rem; margin-inline: -0.375rem; }
 
   .kf-nav.is-panel.is-expanded .kf-nav-distance { font-size: 0.75rem; line-height: 1.25; }
   .kf-nav.is-panel.is-expanded .kf-nav-light { font-size: 0.625rem; line-height: 1.25; }
