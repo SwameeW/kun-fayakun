@@ -1152,7 +1152,7 @@
   transform: rotate(-90deg);
 }
 
-.kf-nav.is-panel.is-expanded .kf-nav-toggle .kf-icon {
+  .kf-nav.is-panel.is-expanded .kf-nav-toggle .kf-icon {
   transform: rotate(90deg);
 }
 
@@ -1371,11 +1371,15 @@
     display: inline;
   }
 
-  /* The parts of the line run on, each whole (never a break inside one, nor a dot starting a line). */
+  /* Compact facts stay whole; longer illustrative notes can wrap within the readout. */
   .kf-universe-part {
     display: inline;
     font-size: 0.6875rem;
     white-space: nowrap;
+  }
+
+  .kf-universe-illustrative {
+    white-space: normal;
   }
 
   .kf-universe-part + .kf-universe-part::before {
@@ -1651,10 +1655,10 @@
 
 /* Ten worlds fit a mouse-driven desktop panel; touch keeps its larger targets and scroller. */
 @media (pointer: fine) {
-.kf-nav.is-panel.is-expanded .kf-orrery { max-inline-size: 8rem; }
-.kf-nav.is-panel.is-expanded .kf-nav-body { min-block-size: 1.75rem; gap: var(--kf-space-2); }
-.kf-nav.is-panel.is-expanded .kf-body-icon { inline-size: 1.75rem; block-size: 1.75rem; }
-.kf-nav.is-panel.is-expanded .kf-body-icon--saturn { inline-size: 2.5rem; }
+  .kf-nav.is-panel.is-expanded .kf-orrery { max-inline-size: 8rem; }
+  .kf-nav.is-panel.is-expanded .kf-nav-body { min-block-size: 1.75rem; gap: var(--kf-space-2); }
+  .kf-nav.is-panel.is-expanded .kf-body-icon { inline-size: 1.75rem; block-size: 1.75rem; }
+  .kf-nav.is-panel.is-expanded .kf-body-icon--saturn { inline-size: 2.5rem; }
 
   .kf-nav.is-panel.is-expanded .kf-nav-distance { font-size: 0.75rem; line-height: 1.25; }
   .kf-nav.is-panel.is-expanded .kf-nav-light { font-size: 0.625rem; line-height: 1.25; }
