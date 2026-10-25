@@ -57,6 +57,12 @@ const SHADOW_STEPS: Readonly<Record<ExploreDetail['tier'], number>> = { ultra: 1
 /** Mip levels coarser than the colour's own that its colour (not its brightness) is read at, for the block-compressed files. */
 const CHROMA_BLUR = 3;
 /**
+ * Mars: how much of each texel's own hue is kept against the map's mean hue (brightness untouched).
+ * The Viking mosaic's colour was built from red- and violet-filter images (USGS), which pushes the
+ * dark albedo regions toward blue; halfway to the mean they read grey-brown, as in true-colour views.
+ */
+const MARS_HUE_KEEP = 0.5;
+/**
  * Illustrative small craters: a crater cell spans this many texels of the streamed map (so the craters
  * are just below what it resolves), the second scale's cells are this much smaller, the craters' depth
  * over diameter, and how much of each cell holds a crater.
@@ -139,6 +145,13 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
       const brightness = luma(albedo);
       albedo = coarse.mul(brightness.div(max(luma(coarse), 1e-3)));
       if (smooth) albedo = mix(vec3(brightness), albedo, 0.55);
+    }
+    if (options.body === 'mars') {
+      const brightness = luma(albedo);
+      const mean = colourSlot.mean.rgb;
+      const meanHue = mean.div(max(luma(mean), 1e-3));
+      const hue = albedo.div(max(brightness, 1e-3));
+      albedo = mix(meanHue, hue, MARS_HUE_KEEP).mul(brightness);
     }
     const { east, north } = tangentFrame(surfaceNormal);
     let relief: Vec3Node;

@@ -565,7 +565,7 @@ export interface UniverseGraphics {
  * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
  * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still.
  */
-export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
+export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
 
 /**
  * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
