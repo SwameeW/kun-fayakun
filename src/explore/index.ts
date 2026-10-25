@@ -1070,8 +1070,9 @@ export default function create(): UniverseModule {
       case 'mercury':
         return ['monochrome', 'map-gaps'];
       case 'mars':
-        return ['dust-haze'];
+        return ['dust-haze', 'colour-balance'];
       case 'venus':
+        return ['colour-model', 'cloud-structure'];
       case 'uranus':
       case 'neptune':
         return ['colour-model'];

@@ -28,7 +28,7 @@
  */
 
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Object3D } from 'three/webgpu';
-import { abs, asin, cos, dot, exp, float, fract, length, max, min, mix, normalize, positionLocal, pow, sin, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
+import { abs, asin, atan, cos, dot, exp, float, fract, length, max, min, mix, normalize, positionLocal, pow, sin, smoothstep, uniform, vec2, vec3 } from 'three/tsl';
 import type { PlanetTextures } from '../assets/streaming';
 import type { ExploreDetail } from '../detail';
 import { blendAdditive } from '../render/blending';
@@ -38,6 +38,15 @@ import { litCosine, sunlit } from './shading';
 
 /** Minnaert's exponent for the cloud decks' limb darkening (1 would be Lambert). */
 const MINNAERT_K = 1.25;
+/**
+ * Venus: a featureless deck in visible light, drawn Lambertian (k = 1: no brightening toward the
+ * disc's centre as seen, which on a uniform globe reads as a plastic highlight), with faint,
+ * slowly drifting structure so it reads as cloud, not a polished ball. Its display colour (an
+ * illustrative model, not a measured albedo) is exposed down as a camera framing Venus would, so the
+ * deck sits at the brightness of the Earth's clouds instead of blooming. Illustrative and labelled:
+ * that exposure, the structure's relative contrast, and its drift (radians of longitude per second).
+ */
+const VENUS = { minnaertK: 1, exposure: 0.58, contrast: 0.045, drift: 0.004 } as const;
 /**
  * Jupiter's schematic zonal drift: the fastest jet's speed (turns of longitude per second, sped up for
  * the eye), the latitude spacing of its alternating jets (radians), the fastest a band may move on
@@ -133,11 +142,20 @@ export function createGiant(textures: PlanetTextures, options: GiantOptions, ini
     } else {
       albedo = read(colourSlot, c).rgb;
     }
+    if (options.body === 'venus') {
+      const lat = asin(normal.y.clamp(-1, 1));
+      const lon = atan(normal.z, normal.x).sub(uTime.mul(VENUS.drift));
+      // Broad, sheared bands and a slower longitude wave: never a pattern that repeats across the disc.
+      const bands = sin(lat.mul(5).add(sin(lon.mul(2)).mul(0.8)));
+      const waves = sin(lon.mul(3).add(lat.mul(2))).mul(cos(lat.mul(2)));
+      albedo = albedo.mul(bands.mul(0.6).add(waves.mul(0.4)).mul(VENUS.contrast).add(1)).mul(VENUS.exposure);
+    }
+    const minnaertK = options.body === 'venus' ? VENUS.minnaertK : MINNAERT_K;
     const view = normalize(uEye.sub(point));
     const nDotL = dot(normal, uSun);
     const mu0 = litCosine(nDotL);
     const mu = max(dot(normal, view), 0.02);
-    const minnaert = pow(mu0, MINNAERT_K).mul(pow(mu, MINNAERT_K - 1));
+    const minnaert = pow(mu0, minnaertK).mul(pow(mu, minnaertK - 1));
     // Low sunlight crosses more haze: warmer toward the terminator, and a faint twilight past it.
     const warm = mix(vec3(1, 0.6, 0.36), vec3(1, 1, 1), smoothstep(0, 0.3, mu0));
     const twilight = smoothstep(-0.07, 0.01, nDotL).mul(float(1).sub(smoothstep(0, 0.12, nDotL))).mul(0.018);

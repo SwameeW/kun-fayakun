@@ -434,6 +434,8 @@
   "ui.universe.illustrative.colour-model": "cloud colour reconstruction",
   "ui.universe.illustrative.monochrome": "visible-band imagery shown in monochrome",
   "ui.universe.illustrative.dust-haze": "schematic dust haze",
+  "ui.universe.illustrative.colour-balance": "colour evened toward the map's mean",
+  "ui.universe.illustrative.cloud-structure": "faint cloud structure",
   "ui.universe.illustrative.map-gaps": "unobserved image patches interpolated",
   "ui.universe.referenceRadius": "{distance} above the reference radius"
 }
