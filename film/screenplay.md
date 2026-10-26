@@ -32,8 +32,10 @@ calligraphy never breaks into particles.
 
 ## Act I. The Beginning (Chapters 0 to 2)
 
-From before time to the first light. 2:117 and 36:82 are read over the still word; the hadith
-references follow with their gradings (wording pending entry by a person). Darkness: "Whether anything
+From before time to the first light. 2:117 and 36:82 are read over the still word. Two short hadith
+cards follow, each a sourced summary labelled as one (the wording awaits entry by a person), with its
+references: Imran ibn Husain's hadith with Abdullah ibn Amr's, then the hadith of the Pen with both of its
+gradings side by side; narrators, notes and links are in the notes. Darkness: "Whether anything
 came before the beginning of time lies beyond what physics can test." A point of light grows softly;
 space stretches, carrying the dust with it, white-hot cooling to amber; 21:30 is read over the
 condensing plasma. One unbroken push carries the camera into the plasma of Chapter 2, where photons
@@ -141,7 +143,7 @@ the on-screen disclaimer.
 
 
 
-### Chapter 0. Before creation (1:36.0)
+### Chapter 0. Before creation (1:38.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -149,8 +151,8 @@ the on-screen disclaimer.
 | ch00-s1-02 | 0:05.5 | 7.5 s | hold | 25.7 mm | The word kun forms in light (a slow fade of at least 4 s) | the calligraphy's own light, breathing | silence, then a single breath of air | word | - | - |
 | ch00-s1-03 | 0:13.0 | 6 s | dolly back and down | 25.7 mm | The calligraphy settles into the frame | calligraphy glow | low pad | - | - | - |
 | ch00-s2-04 | 0:19.0 | 37.5 s | hold | 25.7 mm | Kun in stillness while the verses are read | calligraphy glow | near silence | - | 2:117, 36:82 | text |
-| ch00-s3-05 | 0:56.5 | 23.5 s | hold | 25.7 mm | The light of the word fades | fading glow | near silence | - | hadith bukhari-3191, hadith muslim-2653, hadith abudawud-4700 | - |
-| ch00-s3-06 | 1:20.0 | 16 s | hold | 25.7 mm | Darkness before the beginning | none | silence | beyond | hadith tirmidhi-2155 | scholarly, science |
+| ch00-s3-05 | 0:56.5 | 34.5 s | hold | 25.7 mm | The light of the word fades | fading glow | near silence | - | hadith bukhari-3191 with muslim-2653, hadith abudawud-4700 with tirmidhi-2155 | scholarly |
+| ch00-s3-06 | 1:31.0 | 7 s | hold | 25.7 mm | Darkness before the beginning | none | silence | beyond | - | science |
 
 ### Chapter 1. The beginning (1:20.0)
 

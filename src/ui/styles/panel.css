@@ -329,6 +329,51 @@
   color: var(--kf-text-muted);
 }
 
+/* A hadith's source details: open on request, below what most readers need. */
+.kf-hadith-source {
+  margin-block: var(--kf-space-2) 0;
+}
+
+.kf-hadith-source > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  min-block-size: 2.75rem;
+  font-size: 0.875rem;
+  color: var(--kf-gold);
+  list-style: none;
+  cursor: pointer;
+}
+
+.kf-hadith-source > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kf-hadith-source > summary::after {
+  content: "";
+  display: inline-block;
+  inline-size: 0.42rem;
+  block-size: 0.42rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 250ms var(--kf-ease);
+}
+
+.kf-hadith-source[open] > summary::after {
+  transform: translateY(0.12rem) rotate(-135deg);
+}
+
+.kf-hadith-source > :not(summary) {
+  margin-block: var(--kf-space-1) 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-hadith-source > summary::after {
+    transition: none;
+  }
+}
+
 .kf-summary {
   margin-block: var(--kf-space-3);
   padding: var(--kf-space-3);

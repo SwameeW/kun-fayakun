@@ -77,6 +77,22 @@
   letter-spacing: 0;
 }
 
+/* A hadith card's sourced summary, its references below it (discreet, as under a verse), and where the rest is. */
+.kf-card--hadith-summary .kf-card-ref {
+  margin: 0;
+  font-family: inherit;
+  font-size: calc(0.8125rem * var(--kf-fit, 1));
+  letter-spacing: 0.04em;
+}
+
+.kf-card--hadith-summary .kf-card-ref + .kf-card-ref {
+  margin-block-start: var(--kf-space-1);
+}
+
+.kf-card-details {
+  margin-block: var(--kf-space-2) 0;
+}
+
 .kf-card-meta {
   margin: 0 0 var(--kf-space-1);
   font-size: calc(0.875rem * var(--kf-fit, 1));

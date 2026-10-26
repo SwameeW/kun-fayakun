@@ -14,10 +14,10 @@ import { chapterContent, panelVerseKeys, quranByKey } from './support/data';
 import { SLOW } from './support/env';
 import { expect, test, type KfHook } from './support/fixtures';
 
-const read = <T>(path: string): T => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')) as T;
-const en = read<Record<string, string>>('../src/i18n/en.json');
-const chapters = read<Record<string, string>>('../src/i18n/en.chapters.json');
-const sources = read<SourcesFile>('../data/sources.json');
+const read = (path: string): unknown => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
+const en = read('../src/i18n/en.json') as Record<string, string>;
+const chapters = read('../src/i18n/en.chapters.json') as Record<string, string>;
+const sources = read('../data/sources.json') as SourcesFile;
 const quran = quranByKey();
 
 const text = (locator: Locator): Promise<string | null> => locator.evaluate((el) => el.textContent);

@@ -1,4 +1,4 @@
-import type { App, ChapterId, Cue, HadithId, VerseKey } from '../core/types';
+import type { App, ChapterId, Cue, HadithEntry, VerseKey } from '../core/types';
 import { h } from './dom';
 import { createFadeSlot, type FadeItem, type FadeSlot } from './fade';
 import { arabicFontLoaded, loadArabicFont } from './fonts';
@@ -23,6 +23,10 @@ const STALE_MARGIN_S = 1;
 const MIN_FIT = 0.75;
 
 type TextCue = Extract<Cue, { type: 'verse' | 'hadith' }>;
+type HadithCue = Extract<Cue, { type: 'hadith' }>;
+
+/** Collections whose every hadith their compilers held sahih: their cards name the collection and number alone. */
+const SAHIH_COLLECTIONS: ReadonlySet<string> = new Set(['Sahih al-Bukhari', 'Sahih Muslim']);
 type CaptionCue = Extract<Cue, { type: 'caption' }>;
 
 export interface CueText {
@@ -152,17 +156,54 @@ export function createCueText(app: App, announce: (text: string) => void): CueTe
     );
   }
 
-  function hadithCard(id: HadithId): HTMLElement | null {
-    const entry = lookupHadith(data, id);
-    if (!entry) return null;
-    const text = verifiedHadithText(entry);
+  /** The card's narrations: the cue's hadith, then the other narrations of the same report. */
+  function cardHadith(cue: HadithCue): HadithEntry[] {
+    return [cue.id, ...(cue.also ?? [])].flatMap((id) => lookupHadith(data, id) ?? []);
+  }
+
+  /**
+   * The references, discreet, under the text. Outside the two Sahih collections each narration
+   * carries its grading and grader, so narrations graded differently are shown so, side by side.
+   */
+  function cardReferences(entries: readonly HadithEntry[]): HTMLElement[] {
+    if (entries.every((e) => SAHIH_COLLECTIONS.has(e.collection))) {
+      return [h('p', { class: 'kf-card-ref' }, entries.map((e) => hadithReference(e, i18n)).join(' · '))];
+    }
+    return entries.map((e) => h('p', { class: 'kf-card-ref' }, i18n.t('ui.hadith.graded', { reference: hadithReference(e, i18n), grading: e.grading, grader: e.grader })));
+  }
+
+  /**
+   * A hadith in the film: its verified wording when a person has entered and checked it, otherwise a
+   * sourced summary under a label that says it is not a quotation; then the references. Narrators,
+   * full gradings, notes and links are in the notes. A cue with neither shows the reference and grading.
+   */
+  function hadithCard(cue: HadithCue): HTMLElement | null {
+    const entries = cardHadith(cue);
+    const first = entries[0];
+    if (!first) return null;
+    const text = verifiedHadithText(first);
+    const summary = !text && cue.summaryKey ? i18n.t(cue.summaryKey) : null;
+    const body = text
+      ? [h('p', { class: 'kf-card-translation', dir: 'auto' }, text.en)]
+      : summary
+        ? [h('p', { class: 'kf-card-plain-label' }, i18n.t('ui.hadith.summaryLabel')), h('p', { class: 'kf-card-translation kf-card-summary', dir: 'auto' }, summary)]
+        : null;
+    if (!body) {
+      return h(
+        'div',
+        { class: 'kf-card kf-card--hadith', 'data-hadith': cue.id },
+        h('p', { class: 'kf-card-ref' }, hadithReference(first, i18n)),
+        h('p', { class: 'kf-card-meta' }, i18n.t('ui.hadith.narrator', { narrator: first.narrator })),
+        h('p', { class: 'kf-card-meta' }, hadithGrading(first, i18n)),
+        notesPointer(),
+      );
+    }
     return h(
       'div',
-      { class: 'kf-card kf-card--hadith', 'data-hadith': id },
-      h('p', { class: 'kf-card-ref' }, hadithReference(entry, i18n)),
-      h('p', { class: 'kf-card-meta' }, i18n.t('ui.hadith.narrator', { narrator: entry.narrator })),
-      text ? h('p', { class: 'kf-card-translation', dir: 'auto' }, text.en) : null,
-      h('p', { class: 'kf-card-meta' }, hadithGrading(entry, i18n)),
+      { class: 'kf-card kf-card--hadith kf-card--hadith-summary', 'data-hadith': cue.id, 'data-summary': summary !== null },
+      ...body,
+      ...cardReferences(entries),
+      h('p', { class: 'kf-card-meta kf-card-details' }, i18n.t('ui.hadith.cardDetails')),
       notesPointer(),
     );
   }
@@ -182,15 +223,18 @@ export function createCueText(app: App, announce: (text: string) => void): CueTe
         },
       };
     }
-    const card = hadithCard(cue.id);
-    const entry = lookupHadith(data, cue.id);
+    const card = hadithCard(cue);
+    const entries = cardHadith(cue);
+    const entry = entries[0];
     if (!card || !entry) return null;
+    const summary = card.hasAttribute('data-summary') && cue.summaryKey ? i18n.t(cue.summaryKey) : null;
     return {
       key: id,
       render: () => card,
       onMount: mountCard,
       onShow: () => {
-        announce(i18n.t('ui.announce.hadith', { reference: hadithReference(entry, i18n), grading: hadithGrading(entry, i18n) }));
+        if (summary) announce(i18n.t('ui.announce.hadithSummary', { references: entries.map((e) => hadithReference(e, i18n)).join(', '), summary }));
+        else announce(i18n.t('ui.announce.hadith', { reference: hadithReference(entry, i18n), grading: hadithGrading(entry, i18n) }));
       },
     };
   }

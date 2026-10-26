@@ -54,7 +54,7 @@
   "chapters": [
     {
       "id": "ch00",
-      "duration": 96
+      "duration": 98
     },
     {
       "id": "ch01",
@@ -198,7 +198,7 @@
       "scene": 3,
       "shot": 5,
       "start": 56.5,
-      "duration": 23.5,
+      "duration": 34.5,
       "camera": "hold",
       "lens": {
         "focalLength": 25.7,
@@ -213,9 +213,10 @@
       "hadith": [
         "bukhari-3191",
         "muslim-2653",
-        "abudawud-4700"
+        "abudawud-4700",
+        "tirmidhi-2155"
       ],
-      "panel": null
+      "panel": "scholarly"
     },
     {
       "id": "ch00-s3-06",
@@ -223,8 +224,8 @@
       "act": "act-1",
       "scene": 3,
       "shot": 6,
-      "start": 80,
-      "duration": 16,
+      "start": 91,
+      "duration": 7,
       "camera": "hold",
       "lens": {
         "focalLength": 25.7,
@@ -238,10 +239,8 @@
         "ch00.caption.beyond"
       ],
       "verses": [],
-      "hadith": [
-        "tirmidhi-2155"
-      ],
-      "panel": "scholarly, science"
+      "hadith": [],
+      "panel": "science"
     },
     {
       "id": "ch01-s1-01",

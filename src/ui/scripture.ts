@@ -146,7 +146,13 @@ function parallelLinks(entry: HadithEntry, i18n: I18n): HTMLElement | null {
   return h('p', { class: 'kf-meta' }, i18n.t('ui.hadith.parallels'), ' ', ...items);
 }
 
-/** A hadith in the panel. Wording appears only when entered and reviewed. */
+/**
+ * A hadith in the notes, in two levels. First what most readers need: the reference, the wording
+ * when a person has entered and checked it, the sourced summary (labelled: not a quotation), the
+ * grading and any note on it, since gradings that differ must stay plain to see. Then, behind
+ * "Source details": the narrator, parallel narrations, why the wording is not shown yet, and the
+ * link to sunnah.com. Wording appears only when entered and reviewed.
+ */
 export function hadithArticle(
   id: HadithId,
   data: DataStore,
@@ -162,10 +168,6 @@ export function hadithArticle(
     'article',
     { class: 'kf-hadith', 'aria-labelledby': headingId, 'data-hadith': id },
     h('h3', { id: headingId, class: 'kf-ref' }, hadithReference(entry, i18n)),
-    parallelLinks(entry, i18n),
-    h('p', { class: 'kf-meta' }, i18n.t('ui.hadith.narrator', { narrator: entry.narrator })),
-    h('p', { class: 'kf-grading' }, hadithGrading(entry, i18n)),
-    entry.disputedNote ? h('p', { class: 'kf-note' }, i18n.t('ui.hadith.note', { note: entry.disputedNote })) : null,
     text
       ? h(
           'div',
@@ -174,7 +176,7 @@ export function hadithArticle(
           h('blockquote', { class: 'kf-translation', dir: 'auto' }, h('p', {}, text.en)),
           h('p', { class: 'kf-attrib' }, i18n.t('ui.hadith.checkedBy', { reviewer: entry.reviewer ?? '' })),
         )
-      : h('p', { class: 'kf-pending' }, i18n.t('ui.hadith.pending')),
+      : null,
     opts.summaryKey
       ? h(
           'div',
@@ -183,7 +185,17 @@ export function hadithArticle(
           h('p', {}, i18n.t(opts.summaryKey)),
         )
       : null,
+    h('p', { class: 'kf-grading' }, hadithGrading(entry, i18n)),
+    entry.disputedNote ? h('p', { class: 'kf-note' }, i18n.t('ui.hadith.note', { note: entry.disputedNote })) : null,
     opts.noteKey ? h('p', { class: 'kf-note' }, i18n.t(opts.noteKey)) : null,
-    link ? h('p', { class: 'kf-link' }, externalLink(link, i18n.t('ui.hadith.link'))) : null,
+    h(
+      'details',
+      { class: 'kf-hadith-source', 'data-testid': 'hadith-source' },
+      h('summary', {}, i18n.t('ui.hadith.sourceDetails')),
+      h('p', { class: 'kf-meta' }, i18n.t('ui.hadith.narrator', { narrator: entry.narrator })),
+      parallelLinks(entry, i18n),
+      text ? null : h('p', { class: 'kf-pending' }, i18n.t('ui.hadith.pending')),
+      link ? h('p', { class: 'kf-link' }, externalLink(link, i18n.t('ui.hadith.link'))) : null,
+    ),
   );
 }

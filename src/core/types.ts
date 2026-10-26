@@ -227,7 +227,12 @@ export interface PanelContent {
  */
 export type Cue =
   | { t: number; type: 'verse'; key: VerseKey; duration: number }
-  | { t: number; type: 'hadith'; id: HadithId; duration: number }
+  /**
+   * A hadith card. `also` names other narrations of the same report, shown on the same card by
+   * reference (with their gradings where they differ). While none of them has verified wording,
+   * the card shows `summaryKey`, a sourced summary labelled as one, never a quotation.
+   */
+  | { t: number; type: 'hadith'; id: HadithId; duration: number; also?: HadithId[]; summaryKey?: I18nKey }
   | { t: number; type: 'caption'; key: I18nKey; duration: number }
   | { t: number; type: 'panel'; section: 'text' | 'scholarly' | 'science' }
   | { t: number; type: 'overlay'; id: FigureId; visible: boolean }

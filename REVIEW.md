@@ -78,6 +78,13 @@ scholarly text or science text change later, that area needs review again.
   gradings of the Pen hadith must appear: Abu Dawud 4700 (sahih per al-Albani)
   and Tirmidhi 2155 (gharib by this chain). Any hadith wording must be entered by
   a person from sunnah.com and carry `reviewer` and `reviewedAt`.
+- **The hadith cards in the film.** Chapter 0 shows two cards, each a sourced
+  summary labelled "Summary, not a quotation": `ch00.hadith.before.summary` for
+  Sahih al-Bukhari 3191 with Sahih Muslim 2653, and `ch00.hadith.pen.summary`
+  for the hadith of the Pen (Sunan Abi Dawud 4700 with Jami at-Tirmidhi 2155,
+  each with its grading and grader). Check that each summary reports only what
+  the narrations say, attributes nothing more to the Prophet ﷺ, and that
+  joining the two narrations on one card is fair.
 - **Range-of-views statements.** These cover the seven heavens (Chapter 5), the
   six days (Chapter 8) and evolution (Chapter 9), and are due in later
   milestones. Each must state the range of scholarly views and take no side.

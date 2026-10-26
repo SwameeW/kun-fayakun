@@ -1,6 +1,6 @@
 {
   "id": "ch00",
-  "duration": 96,
+  "duration": 98,
   "intro": {
     "titleKey": "ch00.intro.title",
     "subtitleKey": "ch00.intro.subtitle",
@@ -120,38 +120,34 @@
       "t": 58,
       "type": "hadith",
       "id": "bukhari-3191",
-      "duration": 7
+      "also": [
+        "muslim-2653"
+      ],
+      "summaryKey": "ch00.hadith.before.summary",
+      "duration": 17
     },
     {
-      "t": 65,
-      "type": "hadith",
-      "id": "muslim-2653",
-      "duration": 7
-    },
-    {
-      "t": 72,
-      "type": "hadith",
-      "id": "abudawud-4700",
-      "duration": 8
-    },
-    {
-      "t": 80,
+      "t": 76,
       "type": "panel",
       "section": "scholarly"
     },
     {
-      "t": 80,
+      "t": 76,
       "type": "hadith",
-      "id": "tirmidhi-2155",
-      "duration": 8
+      "id": "abudawud-4700",
+      "also": [
+        "tirmidhi-2155"
+      ],
+      "summaryKey": "ch00.hadith.pen.summary",
+      "duration": 15
     },
     {
-      "t": 88,
+      "t": 91,
       "type": "panel",
       "section": "science"
     },
     {
-      "t": 88.5,
+      "t": 91.5,
       "type": "caption",
       "key": "ch00.caption.beyond",
       "duration": 6
@@ -199,7 +195,7 @@
       "ease": "inOutSine"
     },
     {
-      "t": 96,
+      "t": 98,
       "position": [
         0,
         -2.8,

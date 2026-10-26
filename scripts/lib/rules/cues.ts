@@ -1,8 +1,9 @@
 /**
- * Rule h: cue timing per chapter. Verses stay long enough to read whole (in either English), nothing
+ * Rule h: cue timing per chapter. Verses stay long enough to read whole (in either English), hadith
+ * cards show a labelled summary until their wording is verified and stay long enough to read, nothing
  * runs past the end, and no scene event is timed to a verse (spec principle 1).
  */
-import type { ChapterContent, Cue, QuranEntry } from '../../../src/core/types';
+import type { ChapterContent, Cue, HadithEntry, QuranEntry } from '../../../src/core/types';
 import type { LoadedChapter } from '../content';
 import type { ValidationContext } from '../context';
 import type { RuleLog } from '../report';
@@ -30,6 +31,16 @@ const SCENE_EVENTS: Readonly<Record<string, readonly string[]>> = {
 
 type TimedCue = Extract<Cue, { duration: number }>;
 type VerseCue = Extract<Cue, { type: 'verse' }>;
+type HadithCue = Extract<Cue, { type: 'hadith' }>;
+
+/** Collections a hadith card names alone (src/ui/cue-text.ts); a narration from any other carries its grading. */
+const SAHIH_COLLECTIONS: ReadonlySet<string> = new Set(['Sahih al-Bukhari', 'Sahih Muslim']);
+
+/** What the film needs to show a hadith card: its narrations, and the summaries and other messages by key. */
+interface HadithContext {
+  hadith: ReadonlyMap<string, HadithEntry>;
+  messages: ReadonlyMap<string, string>;
+}
 
 function isTimed(cue: Cue): cue is TimedCue {
   return cue.type === 'verse' || cue.type === 'hadith' || cue.type === 'caption';
@@ -44,7 +55,30 @@ export function minVerseSeconds(entry: QuranEntry, plain = ''): number {
   return Math.max(MIN_VERSE_SECONDS, SECONDS_PER_CHARACTER * (codePointLength(entry.arabic) + english));
 }
 
-function cueTimingProblems(content: ChapterContent, at: (i: number) => string, verses: ReadonlyMap<string, QuranEntry>, plain: ReadonlyMap<string, string>): string[] {
+/**
+ * A hadith card shows verified wording only when a person has entered and checked it; until then a
+ * sourced summary (labelled as one), never a quotation. It stays long enough to read that and its
+ * references, with the gradings of narrations outside the two Sahih collections.
+ */
+function hadithCardProblems(cue: HadithCue, at: string, ctx: HadithContext): string[] {
+  const ids = [cue.id, ...(cue.also ?? [])];
+  if (new Set(ids).size !== ids.length) return [`${at}: a narration is named twice on one hadith card`];
+  const entries = ids.flatMap((id) => ctx.hadith.get(id) ?? []);
+  const first = entries[0];
+  // An id not in data/hadith.json is reported by rule d.
+  if (!first || entries.length !== ids.length) return [];
+  const verified = first.text.en?.trim() && first.reviewer?.trim() ? first.text.en : null;
+  const summary = cue.summaryKey === undefined ? undefined : ctx.messages.get(cue.summaryKey);
+  if (!verified && summary === undefined) {
+    return [`${at}: hadith ${cue.id} has no verified wording, so its card needs a summaryKey (a sourced summary, labelled as not a quotation)`];
+  }
+  const named = entries.every((e) => SAHIH_COLLECTIONS.has(e.collection));
+  const references = entries.map((e) => `${e.collection} ${e.number}${named ? '' : `, graded ${e.grading} by ${e.grader}`}`).join(' · ');
+  const needs = Math.max(MIN_VERSE_SECONDS, SECONDS_PER_CHARACTER * (codePointLength(verified ?? summary ?? '') + codePointLength(references)));
+  return cue.duration < needs ? [`${at}: hadith ${cue.id} shows for ${cue.duration}s; needs at least ${needs.toFixed(1)}s to read its card whole`] : [];
+}
+
+function cueTimingProblems(content: ChapterContent, at: (i: number) => string, verses: ReadonlyMap<string, QuranEntry>, plain: ReadonlyMap<string, string>, hadith: HadithContext): string[] {
   const problems: string[] = [];
   const { cues, duration } = content;
   cues.forEach((cue, i) => {
@@ -54,6 +88,7 @@ function cueTimingProblems(content: ChapterContent, at: (i: number) => string, v
     if (!isTimed(cue)) return;
     if (!(cue.duration > 0)) problems.push(`${at(i)}: ${cue.type} duration must be > 0`);
     else if (cue.t + cue.duration > duration) problems.push(`${at(i)}: ${cue.type} ends at ${cue.t + cue.duration}s, after the chapter ends (${duration}s)`);
+    if (cue.type === 'hadith') problems.push(...hadithCardProblems(cue, at(i), hadith));
     if (cue.type !== 'verse') return;
     const entry = verses.get(cue.key);
     const needs = entry ? minVerseSeconds(entry, plain.get(`plain.${cue.key}`)) : 0;
@@ -98,13 +133,13 @@ function cameraProblems(content: ChapterContent, dir: string): string[] {
   return problems;
 }
 
-function chapterProblems(chapter: LoadedChapter, verses: ReadonlyMap<string, QuranEntry>, plain: ReadonlyMap<string, string>): string[] {
+function chapterProblems(chapter: LoadedChapter, verses: ReadonlyMap<string, QuranEntry>, plain: ReadonlyMap<string, string>, hadith: HadithContext): string[] {
   const { content, dir } = chapter;
   const at = (i: number): string => `${dir} cues[${i}] (t=${content.cues[i]?.t ?? '?'})`;
   const problems: string[] = [];
   if (content.id !== dir) problems.push(`${dir}: content id is "${content.id}", expected "${dir}"`);
   if (!(content.duration > 0)) problems.push(`${dir}: duration must be > 0`);
-  return [...problems, ...cueTimingProblems(content, at, verses, plain), ...sceneProblems(content, dir, at), ...cameraProblems(content, dir)];
+  return [...problems, ...cueTimingProblems(content, at, verses, plain, hadith), ...sceneProblems(content, dir, at), ...cameraProblems(content, dir)];
 }
 
 export function checkCues(ctx: ValidationContext, log: RuleLog): void {
@@ -114,10 +149,15 @@ export function checkCues(ctx: ValidationContext, log: RuleLog): void {
   }
   const verses = new Map<string, QuranEntry>(ctx.quran.status === 'ok' ? ctx.quran.value.ayat.map((a) => [a.key, a]) : []);
   const plain: ReadonlyMap<string, string> = ctx.i18n.chapters.status === 'ok' ? ctx.i18n.chapters.file.messages : new Map();
+  const records: unknown = ctx.hadith.status === 'ok' ? ctx.hadith.value.hadith : [];
+  const hadith: HadithContext = {
+    hadith: new Map(Array.isArray(records) ? (records as HadithEntry[]).map((e) => [e.id, e]) : []),
+    messages: plain,
+  };
   for (const chapter of ctx.content.chapters) {
     const { content } = chapter;
     log.expectNone(
-      chapterProblems(chapter, verses, plain),
+      chapterProblems(chapter, verses, plain, hadith),
       `${chapter.dir}: ${content.cues.length} cues and ${content.camera.length} camera keyframes within ${content.duration}s; verse timing and scene gaps respected`,
     );
   }

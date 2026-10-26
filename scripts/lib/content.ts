@@ -156,7 +156,10 @@ export function collectRefs(chapter: LoadedChapter): ContentRefs {
   content.cues.forEach((cue, i) => {
     const where = at(`cues[${i}] (t=${cue.t})`);
     if (cue.type === 'verse') refs.verses.push({ value: cue.key, where });
-    else if (cue.type === 'hadith') refs.hadith.push({ value: cue.id, where });
+    else if (cue.type === 'hadith') {
+      for (const id of [cue.id, ...(cue.also ?? [])]) refs.hadith.push({ value: id, where });
+      if (cue.summaryKey !== undefined) refs.i18n.push({ value: cue.summaryKey, where: `${where}.summaryKey` });
+    }
     else if (cue.type === 'caption') refs.i18n.push({ value: cue.key, where });
   });
   return refs;
