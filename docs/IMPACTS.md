@@ -40,7 +40,10 @@ disruption criterion; and every outcome sums to the total mass.
 
 - **The projectile in hit-and-run** carries on whole; the paper's reverse impact (its own erosion)
   comes next.
-- **Fragment velocities** (the paper's eqs. 38 to 43) are not yet applied; nor are fragments placed.
+- **Fragment velocities** (the paper's eqs. 38 to 43) are not yet applied: debris leaves the remnant on
+  a 60-degree cone about the impact site at 1.05 to 1.6 times its escape speed, spread evenly, and the
+  second remnant goes on downrange; the speeds are halved as often as needed so that a breakup never
+  makes energy from nothing.
 - **Material strength** (small bodies, the paper's c* = 5): the laboratory's bodies are taken as
   planet-size and strengthless.
 - **Heat and craters**: the energy is accounted (as in Phase 1's mergers), but no crater, melt or
@@ -52,8 +55,8 @@ disruption criterion; and every outcome sums to the total mass.
 | Step | What | Accepted when |
 |---|---|---|
 | 1 | Outcome regimes and remnant masses (this module) | The paper's definitions and closed forms, continuity, exact mass accounting (done) |
-| 2 | The engine uses it at contact: a merger, or the largest remnant, the second, and a bounded number of debris bodies (at most 8 a collision, within the 64-body limit; what cannot be a body is an accounted unresolved reservoir) | Momentum, mass and the closed model's energy conserved through a collision; replay still bit-exact; no NaNs at overlap |
-| 3 | Debris speeds from the paper's distribution (eqs. 38 to 43), placed deterministically | The ejected mass's speed distribution matches the fit; the same scenario gives the same debris |
+| 2 | The engine uses it at contact: a merger, a graze, or the largest remnant (the target's id), the second and up to six debris bodies, within the 64-body limit (debris without room returned to the remnant and reported) | Mass, momentum, angular momentum and the closed model's energy kept to 1e-12 through a breakup; pieces start clear of one another; replay bit-exact; a graze not struck twice (done: `tests/unit/impacts.spec.ts`, and in the browser `tests/explore/lab.spec.ts`) |
+| 3 | Debris speeds from the paper's distribution (eqs. 38 to 43), placed deterministically. Research needed: the fit (log(dv dm/dv) = A - S v, v in units of the combined mass's escape speed at R_C1, relative to the largest remnant) is normalised by the histogram's bin width dv, which the paper does not state; until it is established from its figure 7 or a later source, the placeholder speeds stay | The ejected mass's speed distribution matches the fit; the same scenario gives the same debris |
 | 4 | The reverse impact for hit-and-run projectiles | The paper's projectile remnant law |
 | 5 | Impact heat and a crater size from a cited scaling law, as an event in the history (no surface change until terrain exists, Phase 4) | Crater diameters against the law's published examples |
 | 6 | The interface: the outcome named in words, its regime and numbers, debris drawn as bodies | Browser tests; a showcase (a rogue world striking a planet) |

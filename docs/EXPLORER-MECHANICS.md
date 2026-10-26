@@ -77,7 +77,9 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
    without losing the precision of the surface.
 3. **Down to the ground.** Real terrain near the surface (the Earth's terrain tiles, LOLA, MOLA), a
    view from the ground with the real sky, the next eclipses found from the ephemeris to fly to, and
-   saved, shareable locations (place, view and time).
+   saved, shareable locations (place, view and time). Then on foot in a space suit on every solid
+   world, at its own gravity, and down through the atmospheres of Venus, Titan and the giant planets
+   (ledger GR-5, GR-6), in as much detail as the data hold, with anything finer labelled as drawn.
 4. **Ship mode** (optional). Newtonian flight with thrust and gravity, and orbit prediction.
 
 ## Not planned

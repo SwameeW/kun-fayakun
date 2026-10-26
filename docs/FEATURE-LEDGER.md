@@ -83,10 +83,10 @@ platform.
 
 | ID | Feature | Model / approximation | Depends on | Status |
 |---|---|---|---|---|
-| IM-1 | Outcome by regime (merge, partial accretion, hit-and-run, erosion, super-catastrophic) | Leinhardt and Stewart (2012) scaling laws (`src/sim/impacts.ts`, `docs/IMPACTS.md`) | SB-10 | in progress: the model and its tests done; the engine's use of it next |
+| IM-1 | Outcome by regime (merge, partial accretion, hit-and-run, erosion, super-catastrophic) | Leinhardt and Stewart (2012) scaling laws (`src/sim/impacts.ts`, `docs/IMPACTS.md`), used by the engine at every contact | SB-10 | implemented |
 | IM-2 | Impact heating and a persistent surface mark | Heat already accounted (SB-10); per-surface mark | IM-1, WR-1 | planned |
 | IM-3 | Crater geometry | Documented crater scaling law on a height field | GR-1 | planned |
-| IM-4 | Bounded physical ejecta, separate decorative dust | Fragments as bodies; unresolved mass reservoir | IM-1 | planned |
+| IM-4 | Bounded physical ejecta, separate decorative dust | Fragments as bodies (the second remnant and up to six debris), the rest returned to the remnant; the paper's speed distribution next | IM-1 | partial (bodies and accounting done; launch speeds a placeholder; no dust) |
 | IM-5 | Reaccretion | Fragments under gravity merge back | IM-4 | planned |
 | IM-6 | Rings and belts: decorative, test particles, gravitating | Three explicit classes | SB-4 | planned |
 
@@ -110,6 +110,8 @@ platform.
 | GR-2 | Terrain LOD without cracks at seams and poles | Screen-error patches | GR-1 | planned |
 | GR-3 | Descent, surface-follow, back to orbit | Camera clearance from GR-1 | GR-2 | planned |
 | GR-4 | Saved places and views (place, view, time) | | GR-3 | planned |
+| GR-5 | On foot in a space suit on every solid world, the Earth first and in the most detail: first person at human height, walking and low-gravity bounding at each world's surface gravity, a suit readout (gravity, pressure, temperature range, sunlight, local time), the real sky overhead | Terrain from real elevation data (for the Earth, a 30 m global elevation model under the Sentinel-2 imagery the explorer already streams; LOLA for the Moon, MOLA and HRSC for Mars, MESSENGER for Mercury, Magellan for Venus), screen-error detail down to the boots; anything finer than the data drawn procedurally and labelled so. Around Makkah the 30 km framing rule holds on foot too | GR-1, GR-2, GR-3, WR-5 | planned (asked for by the owner, 2026-10-26) |
+| GR-6 | Into the atmospheres in the suit: down through Venus's clouds, Titan's haze and the giants' cloud decks (which have no surface), with pressure, temperature and wind from probe data | Cited profiles (Venera and Pioneer Venus, Huygens, the Galileo probe); light and haze drawn from them | WR-5, GR-3, IS-1 for Titan | planned (asked for by the owner, 2026-10-26) |
 
 ## Phase 5: interstellar (SE)
 
@@ -167,7 +169,7 @@ research needed, each with its own model, fixtures and measured feasibility firs
 |---|---|---|
 | Change the Sun's mass | Yes | (SB-6) |
 | A second Moon | Yes: add, watch, go back to a checkpoint, try again | (SB-7, SB-11) |
-| A rogue world striking a planet | Aim, prediction and merger accounting yes; craters and heating no | IM-1 to IM-4 |
+| A rogue world striking a planet | Aim, prediction, the breakup and its debris yes; craters and heating no | IM-2, IM-3 |
 | An Earth-like world farther out | No | WR-2 to WR-4 |
 | A ring under tidal stress | No | IM-6, SB-32 |
 | Binary sunset | No | ST-3 |

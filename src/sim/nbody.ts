@@ -1,3 +1,5 @@
+import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts';
+
 /**
  * The orbital laboratory's gravity: direct, pairwise Newtonian N-body. Every massive body pulls
  * every other; a test particle (GM 0) feels the massive bodies and pulls nothing. Integrated with
@@ -9,12 +11,22 @@
  *
  * Contact: bodies are spheres of their physical radii. Before each drift, every pair is tested along
  * the straight paths the drift will take (its closest approach within the step), so a fast impactor
- * cannot pass through a target between steps. A pair that would touch merges then, at the whole step
- * (where positions and velocities belong to the same instant, so the energy accounts exactly):
- * merge() conserves mass, momentum and the centre of mass, keeps the pair's orbital angular momentum
- * as the survivor's spin, and moves the energy the merger takes into `internal` (below). So bodies merge
- * within the step in which they would touch, never later; nothing is softened, and two bodies never
- * share a centre when a force is evaluated.
+ * cannot pass through a target between steps. A pair that would touch collides then, at the whole step
+ * (where positions and velocities belong to the same instant, so the energy accounts exactly), with the
+ * outcome Leinhardt and Stewart's scaling laws give (./impacts) for the speed and angle at contact
+ * (from the pair's own two-body orbit, so gravity's focusing is in it):
+ * - merge() below the merging speed: mass, momentum and the centre of mass conserved, the pair's
+ *   orbital angular momentum kept as the survivor's spin, the energy the merger takes moved into
+ *   `internal` (below);
+ * - fragment() when the impact breaks bodies up: the largest remnant (keeping the target's id), the
+ *   second, and at most MAX_DEBRIS debris bodies, placed just clear of the remnant and launched past its
+ *   escape speed, deterministically, with mass, momentum and angular momentum conserved exactly and the
+ *   energy given up moved into `internal`; debris that would pass MAX_BODIES is returned to the largest
+ *   remnant and reported;
+ * - a hit-and-run graze leaves both bodies as they are (the projectile's own erosion is not modelled),
+ *   and the pair is not tested again until it has parted.
+ * So bodies collide within the step in which they would touch, never later; nothing is softened, and
+ * two bodies never share a centre when a force is evaluated.
  *
  * Energy at a merger: the pair's relative kinetic energy (half the reduced mass times the relative
  * speed squared) is the impact's heat; their mutual attraction becomes the merged body's own binding,
@@ -37,26 +49,54 @@ export interface SimState {
   /** Simulated seconds since the scenario's epoch, and steps taken. */
   t: number;
   step: number;
-  /** Energy (G units) mergers moved from the bodies' motion and mutual attraction into the merged bodies (impact heat less the binding gained), so E + internal is the closed model's total. */
+  /** Energy (G units) collisions moved from the bodies' motion and mutual attraction into the bodies (impact heat less the binding gained), so E + internal is the closed model's total. */
   internal: number;
+  /** Pairs (ids joined by "|", in order) that grazed and passed on: not tested for contact again until they have parted. */
+  passing: string[];
 }
 
-export interface MergeEvent {
-  kind: 'merge';
+/** A collision: what happened to the target (it keeps its id) and the projectile. */
+export interface ContactEvent {
+  /** 'merge': the projectile absorbed; 'fragment': both broken into the largest remnant, a second and debris; 'graze': a hit-and-run, both carrying on. */
+  kind: 'merge' | 'fragment' | 'graze';
   step: number;
   t: number;
-  /** The body that remains (the more massive), and the one absorbed. */
+  /** The target (the more massive, or the one kept) and the projectile. */
   survivor: string;
   absorbed: string;
-  /** The impact's heat: the pair's relative kinetic energy (G units). */
+  /** Leinhardt and Stewart's regime, the speed at contact (km/s) and the impact parameter (0 head-on). */
+  regime: ImpactRegime;
+  speedKmS: number;
+  b: number;
+  /** Bodies the collision made: the second remnant first, then the debris. */
+  created: string[];
+  /** Debris (GM) returned to the largest remnant for want of room. */
+  unresolved: number;
+  /** The impact's heat: the pair's relative kinetic energy at contact for a merger, the energy given up for a breakup (G units). */
   heat: number;
 }
+/** The engine's and the interface's earlier name for it. */
+export type MergeEvent = ContactEvent;
+
+/** Whether a collision ended the projectile (a merger or a breakup), as against a graze it carried on from. */
+export const consumes = (e: ContactEvent): boolean => e.kind !== 'graze';
+
+/** The most bodies a scenario holds (the engine's import limit too). */
+export const MAX_BODIES = 64;
+/** Debris bodies one collision may make, besides the second remnant. */
+export const MAX_DEBRIS = 6;
+/** Debris leaves the largest remnant at these multiples of its surface escape speed, spread evenly. */
+const DEBRIS_SPEED = [1.05, 1.6] as const;
+/** The cone the debris leaves the impact site in (half-angle, radians). */
+const DEBRIS_CONE = Math.PI / 3;
+/** Pieces are placed this much further out than touching the remnant, so they start clear of it. */
+const CLEARANCE = 1.05;
 
 export const count = (s: SimState): number => s.ids.length;
 
 /** A deep copy (the engine's checkpoints and predictions run on copies). */
 export function cloneState(s: SimState): SimState {
-  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], t: s.t, step: s.step, internal: s.internal };
+  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing] };
 }
 
 export function addBody(s: SimState, body: { id: string; name: string; gm: number; radiusKm: number; pos: readonly number[]; vel: readonly number[] }): void {
@@ -180,14 +220,145 @@ function closest(px: number, py: number, pz: number, wx: number, wy: number, wz:
   return Math.hypot(px + wx * s, py + wy * s, pz + wz * s);
 }
 
+const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** A unit vector (and its length), or the fallback where it has none. */
+function unitOf(x: number, y: number, z: number, fallback: readonly [number, number, number]): [number, number, number] {
+  const l = Math.hypot(x, y, z);
+  return l > 0 ? [x / l, y / l, z / l] : [fallback[0], fallback[1], fallback[2]];
+}
+
+/** The total angular momentum (orbital about the origin, and spin), G units. */
+function angularMomentum(s: SimState): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0];
+  for (let i = 0; i < count(s); i += 1) {
+    const g = s.gm[i] ?? 0;
+    const [x, y, z] = [s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0];
+    const [u, v, w] = [s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0];
+    out[0] += g * (y * w - z * v) + (s.spin[i * 3] ?? 0);
+    out[1] += g * (z * u - x * w) + (s.spin[i * 3 + 1] ?? 0);
+    out[2] += g * (x * v - y * u) + (s.spin[i * 3 + 2] ?? 0);
+  }
+  return out;
+}
+
+/** A fresh id for a body a collision makes (the import rule's characters), never one in use. */
+function freshId(s: SimState, base: string): string {
+  let id = base.slice(0, 36);
+  for (let n = 1; s.ids.includes(id); n += 1) id = `${base.slice(0, 33)}-${n}`;
+  return id;
+}
+
 /**
- * Merges every pair that touches now or would touch during a drift of `dt` (its straight path at the
- * velocities after the half kick `acc` gives), repeatedly, the more massive surviving (or the one
- * `keep` names: a scenario's light source keeps its identity). With dt 0 (or no accelerations) only
- * pairs touching now merge.
+ * Breaks target `t` and projectile `p` into the outcome's largest remnant (keeping `t`'s id), its
+ * second and debris (see the module comment). Returns the bodies made, the debris returned to the
+ * remnant for want of room, and the energy given up (G units).
  */
-export function resolveContacts(s: SimState, dt: number, acc: readonly number[] | null, events: MergeEvent[], keep: (id: string) => boolean = () => false): boolean {
-  let merged = false;
+export function fragment(s: SimState, t: number, p: number, o: ImpactOutcome): { created: string[]; unresolved: number; heat: number } {
+  const before = energy(s);
+  const L0 = angularMomentum(s);
+  const mt = s.gm[t] ?? 0;
+  const mp = s.gm[p] ?? 0;
+  const total = mt + mp;
+  const at = (arr: number[], i: number): number[] => [arr[i * 3] ?? 0, arr[i * 3 + 1] ?? 0, arr[i * 3 + 2] ?? 0];
+  const [xt, xp, vt, vp] = [at(s.pos, t), at(s.pos, p), at(s.vel, t), at(s.vel, p)];
+  const com = [0, 1, 2].map((k) => ((xt[k] ?? 0) * mt + (xp[k] ?? 0) * mp) / total);
+  const comV = [0, 1, 2].map((k) => ((vt[k] ?? 0) * mt + (vp[k] ?? 0) * mp) / total);
+  // The impact site's outward normal (from the target toward the projectile), and the projectile's way on (downrange).
+  const n = unitOf((xp[0] ?? 0) - (xt[0] ?? 0), (xp[1] ?? 0) - (xt[1] ?? 0), (xp[2] ?? 0) - (xt[2] ?? 0), [1, 0, 0]);
+  const down = unitOf((vp[0] ?? 0) - (vt[0] ?? 0), (vp[1] ?? 0) - (vt[1] ?? 0), (vp[2] ?? 0) - (vt[2] ?? 0), [-n[0], -n[1], -n[2]]);
+  // Two axes across the normal, for the debris cone.
+  const helper: readonly [number, number, number] = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  const u = unitOf(n[1] * helper[2] - n[2] * helper[1], n[2] * helper[0] - n[0] * helper[2], n[0] * helper[1] - n[1] * helper[0], [0, 1, 0]);
+  const w = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+  // The pieces: the second remnant, then the debris in as many bodies as there is room for (else returned to the remnant).
+  const room = Math.max(0, MAX_BODIES - (count(s) - 2) - 1 - (o.second > 0 ? 1 : 0));
+  const pieces = o.debris > 0 ? Math.min(MAX_DEBRIS, room) : 0;
+  const unresolved = pieces > 0 ? 0 : o.debris;
+  const largest = o.largest + unresolved;
+  const masses: number[] = [...(o.second > 0 ? [o.second] : []), ...Array.from({ length: pieces }, () => o.debris / pieces)];
+  // Every piece at the pair's bulk density; the largest remnant's surface escape speed sets the launch speeds.
+  const pairRadius = Math.cbrt((s.radius[t] ?? 0) ** 3 + (s.radius[p] ?? 0) ** 3);
+  const radiusOf = (m: number): number => pairRadius * Math.cbrt(m / total);
+  const rl = radiusOf(largest);
+  const escape = Math.sqrt((2 * largest) / Math.max(rl, 1e-9));
+  const dirs: number[][] = [];
+  const speeds: number[] = [];
+  if (o.second > 0) {
+    dirs.push(down);
+    speeds.push(DEBRIS_SPEED[0] * escape);
+  }
+  for (let k = 0; k < pieces; k += 1) {
+    const phi = (2 * Math.PI * k) / pieces;
+    dirs.push([0, 1, 2].map((i) => Math.cos(DEBRIS_CONE) * (n[i] ?? 0) + Math.sin(DEBRIS_CONE) * (Math.cos(phi) * (u[i] ?? 0) + Math.sin(phi) * (w[i] ?? 0))));
+    speeds.push((DEBRIS_SPEED[0] + ((DEBRIS_SPEED[1] - DEBRIS_SPEED[0]) * k) / Math.max(1, pieces - 1)) * escape);
+  }
+  // Each piece just clear of the remnant; the remnant set back (and slowed) so the centre of mass and the momentum stay as they were.
+  const offsets = masses.map((m, k) => (dirs[k] ?? n).map((x) => x * (rl + radiusOf(m)) * CLEARANCE));
+  const xl = [0, 1, 2].map((i) => (com[i] ?? 0) - masses.reduce((sum, m, k) => sum + m * (offsets[k]?.[i] ?? 0), 0) / total);
+  const kick = [0, 1, 2].map((i) => masses.reduce((sum, m, k) => sum + m * (speeds[k] ?? 0) * (dirs[k]?.[i] ?? 0), 0) / largest);
+  const names = { target: s.names[t] ?? '', projectile: s.names[p] ?? '' };
+  const targetId = s.ids[t] ?? '';
+  const spin = [0, 1, 2].map((k) => (s.spin[t * 3 + k] ?? 0) + (s.spin[p * 3 + k] ?? 0));
+  // The remnant keeps the target's id; the projectile goes; the pieces are added at the end.
+  s.gm[t] = largest;
+  s.radius[t] = rl;
+  removeAt(s, p);
+  const ti = indexOf(s, targetId);
+  const created: string[] = [];
+  masses.forEach((m, k) => {
+    const second = k === 0 && o.second > 0;
+    const number = k + (o.second > 0 ? 0 : 1);
+    const id = freshId(s, second ? `remnant-${s.step}` : `debris-${s.step}-${number}`);
+    addBody(s, { id, name: second ? `${names.projectile} remnant` : `${names.target} debris ${number}`, gm: m, radiusKm: radiusOf(m), pos: [0, 0, 0], vel: [0, 0, 0] });
+    created.push(id);
+  });
+  const first = count(s) - masses.length;
+  /** Places everything, the launch speeds scaled by `scale`. */
+  const place = (scale: number): void => {
+    for (let i = 0; i < 3; i += 1) {
+      s.pos[ti * 3 + i] = xl[i] ?? 0;
+      s.vel[ti * 3 + i] = (comV[i] ?? 0) - (kick[i] ?? 0) * scale;
+    }
+    masses.forEach((_, k) => {
+      const j = first + k;
+      for (let i = 0; i < 3; i += 1) {
+        s.pos[j * 3 + i] = (xl[i] ?? 0) + (offsets[k]?.[i] ?? 0);
+        s.vel[j * 3 + i] = (comV[i] ?? 0) + (speeds[k] ?? 0) * scale * (dirs[k]?.[i] ?? 0);
+      }
+    });
+  };
+  // As fast as the energy the impact gives up allows (never making energy from nothing): halved until it fits.
+  let scale = 1;
+  for (let tries = 0; tries < 8; tries += 1) {
+    place(scale);
+    if (before - energy(s) >= 0) break;
+    scale *= 0.5;
+  }
+  // The angular momentum the pieces do not carry becomes the remnant's spin, so the total is kept exactly.
+  for (let i = 0; i < 3; i += 1) s.spin[ti * 3 + i] = spin[i] ?? 0;
+  const L1 = angularMomentum(s);
+  for (let i = 0; i < 3; i += 1) s.spin[ti * 3 + i] = (s.spin[ti * 3 + i] ?? 0) + (L0[i] ?? 0) - (L1[i] ?? 0);
+  const heat = before - energy(s);
+  s.internal += heat;
+  return { created, unresolved, heat };
+}
+
+/**
+ * Collides every pair that touches now or would touch during a drift of `dt` (its straight path at
+ * the velocities after the half kick `acc` gives), repeatedly: the more massive is the target (or the
+ * one `keep` names: a scenario's light source keeps its identity). With dt 0 (or no accelerations)
+ * only pairs touching now collide. Pairs that grazed are passed over until they have parted.
+ */
+export function resolveContacts(s: SimState, dt: number, acc: readonly number[] | null, events: ContactEvent[], keep: (id: string) => boolean = () => false): boolean {
+  let changed = false;
+  // Grazing pairs that have parted (or are gone) are tested again.
+  s.passing = s.passing.filter((key) => {
+    const [ia, ib] = key.split('|').map((id) => indexOf(s, id));
+    if (ia === undefined || ib === undefined || ia < 0 || ib < 0) return false;
+    const d = Math.hypot((s.pos[ib * 3] ?? 0) - (s.pos[ia * 3] ?? 0), (s.pos[ib * 3 + 1] ?? 0) - (s.pos[ia * 3 + 1] ?? 0), (s.pos[ib * 3 + 2] ?? 0) - (s.pos[ia * 3 + 2] ?? 0));
+    return d < (s.radius[ia] ?? 0) + (s.radius[ib] ?? 0);
+  });
   for (;;) {
     const n = count(s);
     const half = acc && acc.length === n * 3 ? dt * 0.5 : 0;
@@ -206,21 +377,46 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
           const wz = (s.vel[j * 3 + 2] ?? 0) - (s.vel[i * 3 + 2] ?? 0) + a(2);
           d = closest(px, py, pz, wx, wy, wz, dt);
         }
-        if (d < reach) {
+        if (d < reach && !s.passing.includes(pairKey(s.ids[i] ?? '', s.ids[j] ?? ''))) {
           hit = [i, j];
           break;
         }
       }
     }
-    if (!hit) return merged;
+    if (!hit) return changed;
     const [a, b] = hit;
     const kept = keep(s.ids[a] ?? '') ? a : keep(s.ids[b] ?? '') ? b : -1;
-    const survivor = kept >= 0 ? kept : (s.gm[b] ?? 0) > (s.gm[a] ?? 0) ? b : a;
-    const absorbed = survivor === a ? b : a;
-    const ids = { survivor: s.ids[survivor] ?? '', absorbed: s.ids[absorbed] ?? '' };
-    const heat = merge(s, survivor, absorbed);
-    events.push({ kind: 'merge', step: s.step, t: s.t, survivor: ids.survivor, absorbed: ids.absorbed, heat });
-    merged = true;
+    const t = kept >= 0 ? kept : (s.gm[b] ?? 0) > (s.gm[a] ?? 0) ? b : a;
+    const p = t === a ? b : a;
+    const ids = { survivor: s.ids[t] ?? '', absorbed: s.ids[p] ?? '' };
+    // The speed and angle at contact, from the pair's own two-body orbit (energy and angular momentum kept on the way in).
+    const rx = (s.pos[p * 3] ?? 0) - (s.pos[t * 3] ?? 0);
+    const ry = (s.pos[p * 3 + 1] ?? 0) - (s.pos[t * 3 + 1] ?? 0);
+    const rz = (s.pos[p * 3 + 2] ?? 0) - (s.pos[t * 3 + 2] ?? 0);
+    const ux = (s.vel[p * 3] ?? 0) - (s.vel[t * 3] ?? 0);
+    const uy = (s.vel[p * 3 + 1] ?? 0) - (s.vel[t * 3 + 1] ?? 0);
+    const uz = (s.vel[p * 3 + 2] ?? 0) - (s.vel[t * 3 + 2] ?? 0);
+    const reach = (s.radius[t] ?? 0) + (s.radius[p] ?? 0);
+    const dist = Math.hypot(rx, ry, rz);
+    const gmPair = (s.gm[t] ?? 0) + (s.gm[p] ?? 0);
+    const speed = Math.sqrt(Math.max(0, ux * ux + uy * uy + uz * uz + (dist > reach ? 2 * gmPair * (1 / reach - 1 / dist) : 0)));
+    const h = Math.hypot(ry * uz - rz * uy, rz * ux - rx * uz, rx * uy - ry * ux);
+    const bImpact = speed > 0 ? Math.min(1, h / (Math.max(reach, 1e-9) * speed)) : 0;
+    // Test particles have no mass to break: they merge.
+    const outcome = (s.gm[t] ?? 0) > 0 && (s.gm[p] ?? 0) > 0 ? impactOutcome({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact) : null;
+    const base = { step: s.step, t: s.t, survivor: ids.survivor, absorbed: ids.absorbed, speedKmS: speed, b: bImpact };
+    if (!outcome || outcome.regime === 'merge') {
+      const heat = merge(s, t, p);
+      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat });
+    } else if (outcome.regime === 'hit-and-run') {
+      s.passing.push(pairKey(ids.survivor, ids.absorbed));
+      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0 });
+      continue;
+    } else {
+      const made = fragment(s, t, p, outcome);
+      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat });
+    }
+    changed = true;
     acc = null;
   }
 }

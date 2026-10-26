@@ -71,7 +71,7 @@ scholarly text or science text change later, that area needs review again.
   milestones. Each must state the range of scholarly views and take no side.
 - **Depictions.** Allah, angels, prophets, the Throne, the water beneath the
   Throne, the Pen, the Tablet and the Kaaba must not be depicted in any form.
-- **The prophets' lands (explorer, Living Earth, "Field notes, by Claude").**
+- **The prophets' lands (explorer, Living Earth, "Field notes, by Samee").**
   The 25 prophets named in the Quran, each with a short note and, where a
   tradition is widely held, the place it points to (`src/explore/field-notes/data.ts`,
   the `ui.universe.field.prophet.*` and `ui.universe.field.site.*` messages in

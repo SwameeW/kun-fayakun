@@ -66,8 +66,8 @@
   "ui.universe.living.shadow": "in the Earth’s shadow",
   "ui.universe.living.goTo": "Go to {place}",
   "ui.universe.living.go": "Go",
-  "ui.universe.field.title": "Field notes, by Claude",
-  "ui.universe.field.intro": "I’m Claude. These are the things I would point out to you on the Earth right now, and the places I would fly you to.",
+  "ui.universe.field.title": "Field notes, by Samee",
+  "ui.universe.field.intro": "I’m Samee. These are the things I would point out to you on the Earth right now, and the places I would fly you to.",
   "ui.universe.field.today": "Today on Earth",
   "ui.universe.field.loading": "Gathering today’s notes…",
   "ui.universe.field.sunNear": "The Sun is overhead near {place}.",
@@ -428,5 +428,12 @@
   "ui.universe.islamic.heritage.darb-i-imam.note": "Its tiled portal (1453) is laid in girih patterns that Lu and Steinhardt (Science, 2007) read as nearly a Penrose tiling, a pattern whose proportions are set by the golden ratio; other scholars question how close the match is.",
   "ui.universe.islamic.heritage.istanbul.name": "Istanbul",
   "ui.universe.islamic.heritage.istanbul.note": "Taqi al-Din’s observatory, among the largest of its age, was pulled down in 1580, a few years after it was built.",
-  "ui.universe.islamic.heritage.go": "Go to {place}"
+  "ui.universe.islamic.heritage.go": "Go to {place}",
+  "ui.universe.lab.impact": "{absorbed} struck {survivor} at {speed} km/s: {regime}, {count, plural, =0 {no debris} one {# piece} other {# pieces}} thrown off, at {when}",
+  "ui.universe.lab.grazed": "{absorbed} grazed {survivor} at {speed} km/s and carried on (hit-and-run), at {when}",
+  "ui.universe.lab.regime.merge": "merged",
+  "ui.universe.lab.regime.partialAccretion": "partial accretion (the target grew)",
+  "ui.universe.lab.regime.hitAndRun": "hit-and-run",
+  "ui.universe.lab.regime.erosion": "erosion (the target lost mass)",
+  "ui.universe.lab.regime.superCatastrophic": "super-catastrophic disruption"
 }

@@ -480,7 +480,7 @@ Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Ea
   fetch. The crewed stations are named plainly (`ui.universe.station.*`). Earthquakes: the USGS
   2.5_day feed every 5 minutes, rings by magnitude and depth, a swell for the past hour (none with
   reduced motion), the strongest labelled on the side facing the camera.
-- **Field notes, by Claude** (`src/explore/field-notes`). `bulletin.ts` composes "Today on Earth"
+- **Field notes, by Samee** (`src/explore/field-notes`). `bulletin.ts` composes "Today on Earth"
   about once a second from the ephemeris, the station's state and the quakes (the Sun's overhead
   point, the largest places at dawn and dusk within DAWN_BAND_DEG, the station's height and the
   place beneath, sunlit satellites); `data.ts` holds the atlas (23 places) and the 25 prophets with
@@ -547,8 +547,11 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   the explorer's time, imagery and markers and turns off satellites, earthquakes and discoveries;
   leaving gives them back. Real orbit lines are hidden in an experiment.
 - **Engine** (`src/sim`, no DOM, no three.js). `nbody.ts`: state in km, s and GM (km³ s⁻²), direct
-  pairwise gravity, KDK leapfrog, swept contacts and conservative mergers (mass, momentum, centre of
-  mass; orbital angular momentum into spin; lost kinetic energy into `internal`, reported as heat),
+  pairwise gravity, KDK leapfrog, swept contacts resolved by `impacts.ts` (Leinhardt and Stewart):
+  conservative mergers (mass, momentum, centre of mass; orbital angular momentum into spin; lost
+  kinetic energy into `internal`, reported as heat), breakups (`fragment()`: the remnant keeps the
+  target's id; `remnant-<step>` and `debris-<step>-<k>` bodies, at most `MAX_DEBRIS`, within
+  `MAX_BODIES`) and grazes (`passing` pairs); `ContactEvent` (`merge`, `fragment`, `graze`),
   `primaryOf` (the heavier body with the smallest distance over GM^(1/3)). `engine.ts`: `Engine`
   (scenario, edit log applied at recorded steps, checkpoints, `seek`, `replayFromStart`, `drift`
   since the last intervention), `Prediction` (a copy integrated ahead in slices, with its primary's
