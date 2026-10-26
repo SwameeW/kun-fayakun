@@ -336,6 +336,7 @@ class Engine implements KunFayakunApp {
       step: (frames = 1, dt = 1 / 60) => {
         this.step(frames, dt);
       },
+      camera: () => ({ position: [this.camera.position.x, this.camera.position.y, this.camera.position.z], fov: this.camera.fov }),
       universe: {
         state: () => this.universe(),
         place: (pose) => {

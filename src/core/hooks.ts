@@ -38,6 +38,8 @@ export interface KfTestHandle {
    * moves only through step(), and the tier and render scale stop adapting.
    */
   step(frames?: number, dt?: number): void;
+  /** The camera as it is now: where it stands and its field of view (degrees). */
+  camera(): { position: [number, number, number]; fov: number };
   /** The film's sound (src/ui/film-sound.ts), once the interface has made it. */
   filmSound?: {
     state(): unknown;

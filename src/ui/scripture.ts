@@ -106,8 +106,12 @@ export function plainBlock(key: VerseKey, i18n: I18n): HTMLElement | null {
   );
 }
 
-/** A verse in the panel: Arabic, transliteration, translation, reference and attribution, then the verse in plain words. */
-export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey?: I18nKey): HTMLElement {
+/**
+ * A verse in the panel: Arabic, transliteration, translation, reference and attribution, then the
+ * verse in plain words (`plain: false` leaves that out, where the space is the letters', as in the
+ * letter analysis).
+ */
+export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey?: I18nKey, options: { plain?: boolean } = {}): HTMLElement {
   const headingId = uniqueId('verse');
   const heading = h('h3', { id: headingId, class: 'kf-ref' }, i18n.t('ui.verse.reference', { key }));
   const entry = availableVerse(data, key);
@@ -127,7 +131,7 @@ export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey
     entry.translit ? h('p', { class: 'kf-translit', lang: 'ar-Latn', dir: 'ltr', translate: 'no' }, entry.translit) : null,
     entry.translation ? h('blockquote', { class: 'kf-translation', dir: 'auto' }, h('p', {}, entry.translation)) : null,
     verseAttribution(entry, data, i18n),
-    plainBlock(key, i18n),
+    options.plain === false ? null : plainBlock(key, i18n),
     noteKey ? h('p', { class: 'kf-note' }, i18n.t(noteKey)) : null,
   );
 }

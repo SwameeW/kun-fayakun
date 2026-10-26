@@ -72,15 +72,32 @@ for (const chapter of CHAPTERS) {
   });
 }
 
-test('a moment shows its own picture, and reset gives the film’s moment back', async ({ page, kf, pageErrors }) => {
+test('a moment shows its own picture from the film’s view; reset puts scene and camera back', async ({ page, kf, pageErrors }) => {
   test.setTimeout(120_000 * SLOW);
+  // Reduced motion: the camera is placed at once rather than eased, so where it stands is exact.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await explore(page, kf, 'ch06');
+  const where = (): Promise<[number, number, number]> => page.evaluate(() => (window as unknown as KfHook).__kf.camera().position);
+  const distance = (a: readonly number[], b: readonly number[]): number => Math.hypot(...a.map((v, i) => v - (b[i] ?? 0)));
+  // Where the visitor is once the view has settled (the free camera eases into the chapter's limits).
+  let start = await where();
+  await expect
+    .poll(async () => {
+      const now = await where();
+      const moved = distance(now, start);
+      start = now;
+      return moved;
+    }, { ...LIVE, intervals: [500] })
+    .toBeLessThan(1e-9);
   const before = await canvasStats(page);
   await page.getByTestId('discover-point-type-ia').click();
-  // The Type Ia's scene, seen as the film sees it, is not the layered star of the film's moment.
+  expect(await exploreTime(page)).toBe(chapterContent('ch06').explore.points?.find((p) => p.id === 'type-ia')?.t);
+  // The camera has gone to the film's view of that moment, and the picture is that moment's.
+  expect(distance(await where(), start)).toBeGreaterThan(0.01);
   await expect.poll(async () => Math.abs((await canvasStats(page)).meanLuma - before.meanLuma), LIVE).toBeGreaterThan(1);
   await page.getByTestId('discover-reset').click();
-  await expect.poll(async () => Math.abs((await canvasStats(page)).meanLuma - before.meanLuma), LIVE).toBeLessThan(1);
+  expect(await exploreTime(page)).toBeNull();
+  expect(distance(await where(), start)).toBeLessThan(1e-6);
   expect(pageErrors).toEqual([]);
 });
 

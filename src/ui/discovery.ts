@@ -260,7 +260,8 @@ export function discoveryBlock(app: App, id: string): DiscoveryBlock {
     const n = data.letters.length;
     // The verse, whole and as stored, above the analysis (the three words get the same underline as in the panel).
     const cited = data.verses[0];
-    const verse = cited && isVerseKey(cited.key) ? verseArticle(cited.key, app.data, i18n) : null;
+    // The verse whole; its plain-words explanation stays in the notes, the letters need the room.
+    const verse = cited && isVerseKey(cited.key) ? verseArticle(cited.key, app.data, i18n, undefined, { plain: false }) : null;
     verse?.classList.add('kf-discovery-verse');
     tiles = data.letters.map((cp, i) => {
       const pair = n - 1 - i;
