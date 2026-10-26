@@ -397,6 +397,8 @@
   "ui.futures.bigRip": "Strengthening dark energy: Big Rip",
   "ui.futures.bigCrunch": "Weakening dark energy: possible Big Crunch",
   "ui.discovery.open": "Explore the letters of this phrase",
+  "ui.discovery.invite": "Each in an orbit: explore its letters",
+  "ui.discovery.inline": "Explore its letters, read both ways",
   "ui.discovery.title": "Letter analysis: kullun fī falakin, “each in an orbit”",
   "ui.discovery.label": "Letter analysis: base letters only, diacritics and spaces removed. This is not the Quranic text as written.",
   "ui.discovery.verses": "From 21:33 and 36:40, shown in full above.",

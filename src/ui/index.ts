@@ -166,7 +166,7 @@ export function mountUI(app: App, root: HTMLElement): void {
       { class: 'kf-stage' },
       h('div', { class: 'kf-stage-top' }, cards.cmbOverlay, ...cards.figureOverlays, cards.exploreHint),
       cards.titleCard,
-      h('div', { class: 'kf-stage-text' }, cueText.verseOverlay, cueText.captions),
+      h('div', { class: 'kf-stage-text' }, cueText.verseOverlay, panel.invite, cueText.captions),
       cards.outro,
       status.loading,
       status.error,
