@@ -93,6 +93,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     document.documentElement.classList.toggle('kf-photo', on);
     // Out of photo mode the explorer frames and exposes the view itself again.
     if (!on) photoControls?.reset();
+    else photoControls?.opened();
     if (on && !photoControls && !photoLoading) {
       photoLoading = true;
       void import('./photo-bar')

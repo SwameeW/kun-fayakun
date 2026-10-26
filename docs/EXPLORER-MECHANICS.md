@@ -51,8 +51,12 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   tracking) holds a body in its place in the frame as it moves round the world in view: each frame
   the view is turned about the focus by the body's own motion round it since the last (the turn the
   Earth's spin uses to hold the ground below), so the Moon stays beside the Earth as the days run.
-  Leaving photo mode gives the framing, the exposure and the tracking back. Photo mode's controls are
-  their own chunk, loaded the first time it opens (`src/ui/explore/photo-bar.ts`).
+  "Fly through the saved views" (CR-3's keyframes) takes the saved views as keyframes: each in the
+  order it was saved, its date set and its place reached by the explorer's own flight or glide, the
+  view resting there a few seconds before the next; with "Record a video" running, a film of them.
+  Views on foot are left out, a walk not being a camera move. Leaving photo mode gives the framing,
+  the exposure and the tracking back, and stops a flight. Photo mode's controls are their own chunk,
+  loaded the first time it opens (`src/ui/explore/photo-bar.ts`).
 - **Object information** (SpaceEngine's wiki). "About" the world in view, in the navigator: radius,
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'

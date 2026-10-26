@@ -44,6 +44,8 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
   const gravity = h('p', { class: 'kf-walk-line', 'data-testid': 'walk-gravity' });
   const air = h('p', { class: 'kf-walk-line', 'data-testid': 'walk-air' });
   const sun = h('p', { class: 'kf-walk-line', 'data-testid': 'walk-sun' });
+  // On the Earth, the qibla's great-circle direction from where the walker stands, and which way to turn to face it.
+  const qibla = h('p', { class: 'kf-walk-line', 'data-testid': 'walk-qibla', hidden: true });
   const notice = h('p', { class: 'kf-walk-notice', 'data-testid': 'walk-notice', hidden: true, role: 'status' });
   const keys = h('p', { class: 'kf-walk-keys' }, i18n.t('ui.universe.walk.keys'));
   const touch = h('p', { class: 'kf-walk-touch' }, i18n.t('ui.universe.walk.touch'));
@@ -104,7 +106,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
   const controls = h('div', { class: 'kf-walk-controls' }, pad, back);
   const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit', 'data-photo-credit': '' });
   // The suit's figures fold under the title; on a small screen they start folded, leaving the view and the pad.
-  const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, credit);
+  const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, qibla, credit);
   suit.open = !window.matchMedia(NARROW).matches;
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.walk.label'), 'data-testid': 'walk-hud', hidden: true }, suit, notice, keys, touch, controls);
   const coords = (lat: number, lon: number): string => f.coordinates(lat, lon, 4);
@@ -139,6 +141,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
         notice.hidden = !view.walkRefused;
         write(notice, view.walkRefused ? i18n.t('ui.universe.walk.refused') : '');
         for (const el of [place, ground, gravity, air, sun, keys, touch, controls, credit]) el.hidden = view.walkRefused;
+        qibla.hidden = true;
         if (held.forward || held.backward || held.jump) {
           held.forward = held.backward = held.jump = false;
           send();
@@ -156,6 +159,13 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
       write(sun, i18n.t(w.sunElevationDeg < 0 ? 'ui.universe.walk.sunDown' : w.sunSeen ? 'ui.universe.walk.sunUp' : 'ui.universe.walk.sunClouded', { degrees: f.number(Math.abs(w.sunElevationDeg), 0), time: clock(w.solarTimeH) }));
       notice.hidden = !w.blocked;
       write(notice, w.blocked ? i18n.t('ui.universe.walk.blocked') : '');
+      qibla.hidden = w.qiblaDeg === null;
+      if (w.qiblaDeg !== null) {
+        // How far to turn, and which way, from the heading now (within 2 degrees: ahead).
+        const turn = ((((w.qiblaDeg - w.headingDeg) % 360) + 540) % 360) - 180;
+        const bearing = f.number(Math.round(w.qiblaDeg) % 360, 0);
+        write(qibla, Math.abs(turn) < 2 ? i18n.t('ui.universe.walk.qiblaAhead', { bearing }) : i18n.t(turn > 0 ? 'ui.universe.walk.qiblaRight' : 'ui.universe.walk.qiblaLeft', { bearing, turn: f.number(Math.round(Math.abs(turn)), 0) }));
+      }
     },
   };
 }

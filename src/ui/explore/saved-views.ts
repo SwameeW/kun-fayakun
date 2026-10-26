@@ -17,7 +17,7 @@ export interface SavedViews {
   update(view: UniverseView): void;
 }
 
-interface Saved {
+export interface Saved {
   id: string;
   name: string;
   body: BodyId;
@@ -36,8 +36,8 @@ const UNIX_EPOCH_JD = 2440587.5;
 
 const isNumber = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
-/** The stored list, keeping only well-formed entries (storage is the visitor's own, and may hold anything). */
-function load(): Saved[] {
+/** The stored list, newest first, keeping only well-formed entries (storage is the visitor's own, and may hold anything). */
+export function load(): Saved[] {
   try {
     const raw: unknown = JSON.parse(readPreferenceString(STORE) ?? '[]');
     if (!Array.isArray(raw)) return [];

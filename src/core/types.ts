@@ -972,6 +972,8 @@ export interface UniverseWalk {
   sunElevationDeg: number;
   sunSeen: boolean;
   solarTimeH: number;
+  /** On the Earth, the qibla's great-circle bearing from where the walker stands (degrees from true north); null elsewhere. */
+  qiblaDeg: number | null;
   /** The terrain zoom the ground under the feet comes from, the tiles' counts, and the rings of ground filled. */
   groundZoom: number | null;
   tiles: { ready: number; loading: number; failed: number };

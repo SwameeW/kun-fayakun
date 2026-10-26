@@ -22,5 +22,10 @@
   "ui.universe.photoExposedDarker": "Exposed {stops, plural, one {# stop} other {# stops}} darker than the explorer’s own exposure",
   "ui.universe.photoTrack": "Keep in view",
   "ui.universe.photoTrackNone": "Keep in view: nothing in particular",
-  "ui.universe.photoTrackBody": "Keep in view: {name}"
+  "ui.universe.photoTrackBody": "Keep in view: {name}",
+  "ui.universe.photoTour": "Fly through the saved views",
+  "ui.universe.photoTourStop": "Stop the flight",
+  "ui.universe.photoTouring": "Flying through {count} saved views, in the order they were saved.",
+  "ui.universe.photoTourDone": "The flight through the saved views is over.",
+  "ui.universe.photoTourStopped": "The flight through the saved views stopped."
 }

@@ -186,4 +186,43 @@ test('photo mode keeps a body in its place in the frame as it moves round the wo
   expect(pageErrors).toEqual([]);
 });
 
+test.describe('the saved views as keyframes', () => {
+  test.use({ reducedMotion: 'reduce' });
+
+  test('photo mode flies through the saved views in the order they were saved, resting at each, and stops at the end', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(240_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    // Two views over the Earth, a quarter of the way round from each other, saved in turn.
+    const saveHere = async (pose: Parameters<typeof place>[1], name: string): Promise<{ lat: number; lon: number }> => {
+      await place(page, pose);
+      await expect.poll(async () => (await view(page))?.place?.body ?? null, LIVE).toBe('earth');
+      const at = (await view(page))?.place;
+      await page.getByTestId('saved-name').fill(name);
+      await page.getByTestId('saved-save').click();
+      await expect(page.getByTestId('saved-list')).toContainText(name);
+      return { lat: at?.lat ?? Number.NaN, lon: at?.lon ?? Number.NaN };
+    };
+    await page.getByTestId('saved-views').locator(':scope > summary').click();
+    const a = await saveHere({ body: 'earth', distanceKm: 26_000, azimuthDeg: 10, elevationDeg: 15 }, 'First');
+    const b = await saveHere({ body: 'earth', distanceKm: 26_000, azimuthDeg: 100, elevationDeg: -10 }, 'Second');
+    const near = async (to: { lat: number; lon: number }): Promise<boolean> => {
+      const p = (await view(page))?.place;
+      return p !== null && p !== undefined && Math.abs(p.lat - to.lat) < 1 && Math.abs(((p.lon - to.lon + 540) % 360) - 180) < 1;
+    };
+    expect(await near(b)).toBe(true);
+    // In photo mode: off to the first, a rest there, then the second, and the flight is over.
+    await page.getByTestId('universe-photo').click();
+    const tour = page.getByTestId('universe-photo-tour');
+    await expect(tour).toBeVisible(LIVE);
+    await tour.click();
+    await expect(tour).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => near(a), LIVE).toBe(true);
+    await expect.poll(() => near(b), LIVE).toBe(true);
+    await expect(tour).toHaveAttribute('aria-pressed', 'false', LIVE);
+    await expect(page.locator('.kf-sr-only[aria-live="polite"]').filter({ hasText: 'The flight through the saved views is over.' })).toHaveCount(1);
+    expect(pageErrors).toEqual([]);
+  });
+});
+
 const info = (download: { suggestedFilename(): string }): { out: string } => ({ out: test.info().outputPath(download.suggestedFilename()) });

@@ -13,6 +13,8 @@ sky allows, not when a month begins.
   the Kaaba; and, on request, the path drawn on the globe, ending at the Kaaba's coordinates. The
   Kaaba is never depicted: lines end at a point, and Makkah is never framed closer than the
   explorer's own minimum (`MAKKAH_FRAME`, 30 km).
+- **The qibla on foot.** Walking anywhere on the Earth, the suit's readout gives the qibla's
+  great-circle bearing from where the walker stands and how far to turn, left or right, to face it.
 - **The Sun over the Kaaba.** The next two times the Sun passes the Kaaba's zenith (late May and
   mid-July), when every upright shadow in daylight points away from the qibla, and the two times it
   passes the zenith of the point opposite (mid-January and late November), when shadows on that

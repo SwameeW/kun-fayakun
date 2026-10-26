@@ -1,6 +1,7 @@
 import { BODY_IDS, type App, type BodyId } from '../../core/types';
 import photoMessages from '../../i18n/en.photo.json';
 import { h } from '../dom';
+import { load as loadSavedViews, type Saved } from './saved-views';
 
 /**
  * Photo mode's bar (its own chunk, loaded the first time photo mode opens; ./index keeps the mode
@@ -14,11 +15,21 @@ export interface PhotoBar {
   readonly element: HTMLElement;
   /** The way back to the interface (focused when photo mode opens). */
   readonly exit: HTMLButtonElement;
+  /** Photo mode opening: what it offers brought up to date (the saved views to fly through). */
+  opened(): void;
   /** The explorer's own framing and exposure again (photo mode closing). */
   reset(): void;
 }
 
 const LENSES = [null, 90, 50, 20, 5] as const;
+/**
+ * On the flight through the saved views: how long the view rests at each (ms); how many frames of
+ * arrival make it there (the flight over, and the camera still or over the view's place); and the
+ * longest a keyframe is waited for (ms), so a view that cannot be reached exactly is not waited on.
+ */
+const TOUR_HOLD_MS = 2500;
+const TOUR_ARRIVED_FRAMES = 10;
+const TOUR_WAIT_MS = 30_000;
 /** Exposure compensation offered, in stops (whole ones: each doubles or halves the light). */
 const STOPS = [-2, -1, 0, 1, 2] as const;
 
@@ -145,10 +156,81 @@ export function createPhotoBar(app: App, announce: (text: string) => void, onExi
     app.earthCommand({ kind: 'track', body: BODY_IDS.find((id) => id === track.value) ?? null });
   });
 
+  // The saved views as keyframes (ledger CR-3): flown through in the order they were saved, each
+  // reached by the explorer's own flight or glide and its date set, the view resting at each a while;
+  // with "Record a video", a film of them. Views on foot are left out (a walk is not a camera move).
+  const tour = h('button', { type: 'button', class: 'kf-btn kf-universe-photo-record', 'aria-pressed': 'false', 'data-testid': 'universe-photo-tour' }, i18n.t('ui.universe.photoTour'));
+  let touring: { views: Saved[]; next: number; still: number; restUntil: number; since: number; frame: number } | null = null;
+  const overhead = (): Saved[] => loadSavedViews().filter((v) => v.walk === null).reverse();
+  const showTour = (): void => {
+    tour.hidden = overhead().length < 2 && !touring;
+  };
+  const stopTour = (said: string | null): void => {
+    if (!touring) return;
+    cancelAnimationFrame(touring.frame);
+    touring = null;
+    tour.setAttribute('aria-pressed', 'false');
+    tour.textContent = i18n.t('ui.universe.photoTour');
+    if (said) announce(said);
+    showTour();
+  };
+  const goTo = (v: Saved): void => {
+    app.universeTime({ kind: 'date', jdUtc: v.jdUtc });
+    app.earthCommand({ kind: 'view', body: v.body, lat: v.lat, lon: v.lon, altitudeKm: v.altitudeKm });
+  };
+  const tick = (now: number): void => {
+    const t = touring;
+    if (!t) return;
+    const view = app.universe();
+    if (!view) {
+      stopTour(null);
+      return;
+    }
+    // There once the flight is over and the camera is still or over the keyframe's place (or after waiting long enough); then it rests a while, and on to the next.
+    const at = t.views[t.next - 1];
+    const p = view.place;
+    const over = at !== undefined && p !== null && p.body === at.body && Math.abs(p.lat - at.lat) < 0.5 && Math.abs(((p.lon - at.lon + 540) % 360) - 180) < 0.5;
+    if (t.since === 0) t.since = now;
+    const there = (!view.travelling && (!view.moving || over)) || now - t.since > TOUR_WAIT_MS;
+    t.still = there ? t.still + 1 : 0;
+    if (t.still === TOUR_ARRIVED_FRAMES) t.restUntil = now + TOUR_HOLD_MS;
+    if (t.still >= TOUR_ARRIVED_FRAMES && now >= t.restUntil) {
+      const v = t.views[t.next];
+      if (!v) {
+        stopTour(i18n.t('ui.universe.photoTourDone'));
+        return;
+      }
+      t.next += 1;
+      t.still = 0;
+      t.since = 0;
+      goTo(v);
+    }
+    t.frame = requestAnimationFrame(tick);
+  };
+  tour.addEventListener('click', () => {
+    if (touring) {
+      stopTour(i18n.t('ui.universe.photoTourStopped'));
+      return;
+    }
+    const views = overhead();
+    if (views.length < 2) return;
+    touring = { views, next: 1, still: 0, restUntil: 0, since: 0, frame: 0 };
+    goTo(views[0] as Saved);
+    tour.setAttribute('aria-pressed', 'true');
+    tour.textContent = i18n.t('ui.universe.photoTourStop');
+    announce(i18n.t('ui.universe.photoTouring', { count: views.length }));
+    touring.frame = requestAnimationFrame(tick);
+  });
+  showTour();
+
   return {
-    element: h('div', { class: 'kf-universe-photo-controls' }, lens, exposure, track, record, save, exit),
+    element: h('div', { class: 'kf-universe-photo-controls' }, lens, exposure, track, tour, record, save, exit),
     exit,
+    opened() {
+      showTour();
+    },
     reset() {
+      stopTour(null);
       lens.value = '';
       if (app.universe()?.lensFov !== null) app.earthCommand({ kind: 'lens', fovDeg: null });
       exposure.value = '0';

@@ -1,6 +1,7 @@
 import type { Ephemeris } from '../../astro/ephemeris';
 import { utcToTdb, type TimeConstants } from '../../astro/time';
 import type { PrayerConventionId } from '../../core/types';
+import { KAABA } from './kaaba';
 
 /**
  * The astronomy of the qibla and the new moon, from the explorer's own ephemeris (JPL's approximate
@@ -40,8 +41,7 @@ const DEG = Math.PI / 180;
 const ARCSEC = DEG / 3600;
 const TAU = 2 * Math.PI;
 
-/** The Kaaba: Wikidata Q29466, coordinate location (P625), retrieved 2026-10-26 (CC0). */
-export const KAABA = { qid: 'Q29466', lat: 21.4225, lon: 39.826166666667 } as const;
+export { KAABA, qiblaBearing } from './kaaba';
 
 /** The Earth's equatorial radius (km) and flattening, for an observer's place (WGS 84). */
 const EARTH_A_KM = 6378.137;
@@ -95,16 +95,6 @@ export interface Place {
 // ----- The qibla -------------------------------------------------------------------------------
 
 const wrap360 = (deg: number): number => ((deg % 360) + 360) % 360;
-
-/** Initial bearing (degrees from true north, clockwise) of the great circle from (lat, lon) to the Kaaba. */
-export function qiblaBearing(lat: number, lon: number): number {
-  const p1 = lat * DEG;
-  const p2 = KAABA.lat * DEG;
-  const dl = (KAABA.lon - lon) * DEG;
-  const y = Math.sin(dl) * Math.cos(p2);
-  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
-  return wrap360(Math.atan2(y, x) / DEG);
-}
 
 /** Great-circle distance (km) from (lat, lon) to the Kaaba on a sphere of radius `radiusKm`. */
 export function qiblaDistanceKm(lat: number, lon: number, radiusKm: number): number {

@@ -1,6 +1,7 @@
 import type { Node, Object3D } from 'three/webgpu';
 import type { UniverseWalk, WalkableWorld } from '../../core/types';
 import { vec3 } from 'three/tsl';
+import { qiblaBearing } from '../islamic/kaaba';
 import { AIRLESS_AIR, createGround, EARTH_AIR, MARS_AIR, VENUS_AIR, type GroundAir } from './ground';
 import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFACE, type SurfaceStyle } from './surface';
 import { starlight } from './daylight';
@@ -216,6 +217,7 @@ export function createWalk(setup: WalkSetup): Walk {
         sunElevationDeg: lastSun.elevation,
         sunSeen: skyKind !== 'venus',
         solarTimeH: lastSun.solar,
+        qiblaDeg: world.name === 'earth' ? qiblaBearing(s.lat, s.lon) : null,
         groundZoom: under?.zoom ?? null,
         tiles: { ready: t.ready, loading: t.loading, failed: t.failed },
         rings: ground.stats.filled,
