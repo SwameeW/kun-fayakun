@@ -18,7 +18,10 @@ import { utcToTdb, type TimeConstants } from '../../astro/time';
  * - The new crescent: Yallop's q-test (B. D. Yallop, NAO Technical Note 69, 1997), evaluated at
  *   each place's "best time" (sunset plus four ninths of the time from sunset to moonset): the
  *   geocentric, airless difference in altitude of the Moon and the Sun (ARCV) against a cubic in the
- *   topocentric width of the crescent (W'), sorted into Yallop's zones A to F.
+ *   topocentric width of the crescent (W'), sorted into Yallop's zones A to F. Beside it, Odeh's test
+ *   (M. Sh. Odeh, Experimental Astronomy 18, 39-64, 2004) at the same time: the same cubic with its
+ *   own constant, against the altitude difference and width seen from the place itself (topocentric),
+ *   sorted into Odeh's zones A to D.
  *
  * Positions are geocentric, on the equator and equinox of date (IAU 1976 precession from J2000). The
  * Sun is shifted back along the ecliptic by the annual aberration and its light-time (20.5" at 1 au);
@@ -56,7 +59,16 @@ export const YALLOP_ZONES = [
   ['E', -0.293],
 ] as const;
 
+/** Odeh's zone boundaries for V, highest first (each zone from its value up). */
+export const ODEH_ZONES = [
+  ['A', 5.65],
+  ['B', 2],
+  ['C', -0.96],
+] as const;
+
 export type CrescentZone = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+/** Odeh's zones: A seen by eye; B seen with optical aid, and perhaps by eye; C with optical aid only; D not even with optical aid. */
+export type OdehZone = 'A' | 'B' | 'C' | 'D';
 /** Why a place has no zone: the Moon sets first, the evening is before the new moon, the Sun does not set, or the place is beyond the latitudes Yallop's test was made for. */
 export type CrescentNone = 'moon-sets-first' | 'before-new-moon' | 'no-sunset' | 'high-latitude';
 
@@ -259,7 +271,7 @@ export function horizontal(p: Place, lat: number, lon: number, jdUtc: number): {
 /** The Moon's horizontal parallax (radians) at a distance (km). */
 export const moonParallax = (distKm: number): number => Math.asin(Math.min(1, EARTH_A_KM / distKm));
 
-/** The Moon's place seen from a point on the Earth's surface (topocentric), from its geocentric place. */
+/** A body's place seen from a point on the Earth's surface (topocentric), from its geocentric place. */
 export function topocentric(p: Place, lat: number, lon: number, jdUtc: number): Place {
   // The observer's geocentric position (km, equator of date) on the WGS 84 ellipsoid, at sea level.
   const phi = lat * DEG;
@@ -387,10 +399,27 @@ export function yallopQ(arcvDeg: number, widthArcmin: number): number {
   return (arcvDeg - (11.8371 - 6.3226 * w + 0.7319 * w * w - 0.1018 * w * w * w)) / 10;
 }
 
+/** Odeh's zone for a value of V. */
+export function odehZone(v: number): OdehZone {
+  for (const [zone, from] of ODEH_ZONES) if (v >= from) return zone;
+  return 'D';
+}
+
+/** Odeh's V from the topocentric, airless altitude difference (degrees) and the topocentric crescent width (arcminutes). */
+export function odehV(arcvDeg: number, widthArcmin: number): number {
+  const w = widthArcmin;
+  return arcvDeg - (7.1651 - 6.3226 * w + 0.7319 * w * w - 0.1018 * w * w * w);
+}
+
 export interface CrescentAt {
   zone: CrescentZone | CrescentNone;
   /** Yallop's q (null without a zone) and its inputs at the best time. */
   q: number | null;
+  /** Odeh's zone and V (null without a zone; the same places have none), and its topocentric inputs. */
+  odeh: OdehZone | null;
+  v: number | null;
+  arcvTopoDeg: number;
+  widthTopoArcmin: number;
   sunsetJd: number | null;
   moonsetJd: number | null;
   bestJd: number | null;
@@ -463,10 +492,24 @@ const moonSetAltitude = (p: Place): number => ((1 - MOON_SD_PER_PARALLAX) * moon
 
 /**
  * The new crescent's visibility for a place on the local evening of a date (`dateJd0`: that date's
- * 0h UTC as a Julian date), by Yallop's test, after the conjunction at `conjunctionJd`.
+ * 0h UTC as a Julian date), by Yallop's test and Odeh's, after the conjunction at `conjunctionJd`.
  */
 export function crescentAt(track: SkyTrack, lat: number, lon: number, dateJd0: number, conjunctionJd: number): CrescentAt {
-  const none = (zone: CrescentNone, sunsetJd: number | null, moonsetJd: number | null, ageHours: number): CrescentAt => ({ zone, q: null, sunsetJd, moonsetJd, bestJd: null, arcvDeg: 0, arclDeg: 0, widthArcmin: 0, ageHours });
+  const none = (zone: CrescentNone, sunsetJd: number | null, moonsetJd: number | null, ageHours: number): CrescentAt => ({
+    zone,
+    q: null,
+    odeh: null,
+    v: null,
+    arcvTopoDeg: 0,
+    widthTopoArcmin: 0,
+    sunsetJd,
+    moonsetJd,
+    bestJd: null,
+    arcvDeg: 0,
+    arclDeg: 0,
+    widthArcmin: 0,
+    ageHours,
+  });
   if (Math.abs(lat) > YALLOP_MAX_LAT) return none('high-latitude', null, null, 0);
   const sun: Place = { ra: 0, dec: 0, distKm: 0 };
   const moon: Place = { ra: 0, dec: 0, distKm: 0 };
@@ -491,5 +534,26 @@ export function crescentAt(track: SkyTrack, lat: number, lon: number, dateJd0: n
   const sdTopo = sd * (1 + Math.sin(m.alt * DEG) * Math.sin(parallax));
   const width = sdTopo * (1 - Math.cos(arcl * DEG));
   const q = yallopQ(arcv, width);
-  return { zone: yallopZone(q), q, sunsetJd: sunset, moonsetJd: moonset, bestJd: best, arcvDeg: arcv, arclDeg: arcl, widthArcmin: width, ageHours };
+  // Odeh's test: both bodies as seen from the place (the Moon lowered by up to its parallax, about a
+  // degree; the Sun by 9"), the width from the Moon's distance and elongation seen from there too.
+  const sunTopo = topocentric(sun, lat, lon, best);
+  const moonTopo = topocentric(moon, lat, lon, best);
+  const arcvTopo = horizontal(moonTopo, lat, lon, best).alt - horizontal(sunTopo, lat, lon, best).alt;
+  const widthTopo = sd * (moon.distKm / moonTopo.distKm) * (1 - Math.cos(separationDeg(sunTopo, moonTopo) * DEG));
+  const v = odehV(arcvTopo, widthTopo);
+  return {
+    zone: yallopZone(q),
+    q,
+    odeh: odehZone(v),
+    v,
+    arcvTopoDeg: arcvTopo,
+    widthTopoArcmin: widthTopo,
+    sunsetJd: sunset,
+    moonsetJd: moonset,
+    bestJd: best,
+    arcvDeg: arcv,
+    arclDeg: arcl,
+    widthArcmin: width,
+    ageHours,
+  };
 }

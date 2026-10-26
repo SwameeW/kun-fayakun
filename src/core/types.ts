@@ -723,8 +723,10 @@ export type UniverseTimeCommand =
 export type SkyLayerName = 'constellations' | 'boundaries' | 'grid' | 'names';
 export type UniverseSkyCommand = { kind: 'layer'; layer: SkyLayerName; on: boolean };
 
-/** A zone of Yallop's test for the new crescent: A easily seen by eye ... F below the Danjon limit. */
+/** A zone of Yallop's test for the new crescent: A easily seen by eye ... F below the Danjon limit (Odeh's test uses A to D). */
 export type CrescentZoneName = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+/** The test the crescent's map is drawn by: Yallop's (NAO Technical Note 69, 1997) or Odeh's (Experimental Astronomy 18, 2004). */
+export type CrescentCriterion = 'yallop' | 'odeh';
 
 /** The new crescent's map for an evening after a new moon (src/explore/islamic). */
 export interface UniverseCrescent {
@@ -734,12 +736,13 @@ export interface UniverseCrescent {
   dateMs: number;
   /** Share of the map computed (it fills over a few frames). */
   progress: number;
-  /** Places of the map (every 2 degrees between 60 S and 60 N) in each zone; `none` where the Moon sets first or the evening is before the new moon. */
+  /** Places of the map (every 2 degrees between 60 S and 60 N) in each zone of the test chosen; `none` where the Moon sets first or the evening is before the new moon. */
   counts: Record<CrescentZoneName | 'none', number>;
-  /** The place the qibla is reckoned from, that evening: its zone (or why none), q, sunset, best time and moonset (ms), and the Moon's age at sunset (hours). */
+  /** The place the qibla is reckoned from, that evening: its zone by the test chosen (or why none), Yallop's q and Odeh's V, sunset, best time and moonset (ms), and the Moon's age at sunset (hours). */
   here: {
     zone: CrescentZoneName | 'moon-sets-first' | 'before-new-moon' | 'no-sunset' | 'high-latitude';
     q: number | null;
+    v: number | null;
     sunsetMs: number | null;
     bestMs: number | null;
     moonsetMs: number | null;
@@ -761,6 +764,8 @@ export interface UniverseIslamic {
   kaabaSun: ReadonlyArray<{ kind: 'over' | 'opposite'; unixMs: number; lat: number; lon: number; zenithDeg: number }>;
   /** The new moon chosen (the latest, or the next once the latest is three days old, unless the visitor stepped), its neighbours, and the Moon's age at the date shown (hours since the latest new moon). */
   newMoon: { unixMs: number; previousMs: number | null; nextMs: number | null; ageHours: number | null } | null;
+  /** The test the crescent's map is drawn by (kept while no map is shown). */
+  criterion: CrescentCriterion;
   /** The new crescent's map while one is shown. */
   crescent: UniverseCrescent | null;
   /** Marks drawn on the globe: the qibla's path, the two latitudes, the map's places. */
@@ -895,7 +900,8 @@ export type UniverseIslamicCommand =
   | { kind: 'qiblaLine'; on: boolean }
   | { kind: 'golden'; on: boolean }
   | { kind: 'newMoon'; step: -1 | 1 }
-  | { kind: 'evening'; evening: 0 | 1 | 2 | null };
+  | { kind: 'evening'; evening: 0 | 1 | 2 | null }
+  | { kind: 'criterion'; criterion: CrescentCriterion };
 
 /** One body of an experiment as the view reports it (masses in kg by one G: the Earth's GM over its mass). */
 export interface UniverseLabBody {

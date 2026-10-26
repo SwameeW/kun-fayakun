@@ -1,4 +1,4 @@
-import type { App, CrescentZoneName, UniverseIslamic, UniverseView } from '../../core/types';
+import type { App, CrescentCriterion, CrescentZoneName, UniverseIslamic, UniverseView } from '../../core/types';
 import { loadPlaces, searchPlaces, type Place } from '../../explore/field-notes/places';
 import { HERITAGE } from '../../explore/islamic/heritage';
 import { h, uniqueId } from '../dom';
@@ -9,7 +9,7 @@ import type { Formatters } from './format';
  * qibla from the point beneath the camera or a place found by name, and its path on the globe; the
  * next times the Sun stands over the Kaaba or the point opposite it, each a moment to go to; the
  * golden latitude beside the Kaaba's, with its actual size; and the new moon with the new crescent's
- * map for the evenings after it (Yallop's zones), the place in view read out in words. Everything it
+ * map for the evenings after it (Yallop's zones or Odeh's), the place in view read out in words. Everything it
  * shows comes from src/explore/islamic; it decides nothing for anyone: the notes say the qibla is
  * a great-circle direction and that communities begin each month by their own practice.
  */
@@ -20,6 +20,10 @@ export interface IslamicPanel {
 }
 
 const ZONES: readonly CrescentZoneName[] = ['A', 'B', 'C', 'D', 'E', 'F'];
+/** Odeh's zones, and their swatches: the colours of Yallop's zones nearest in meaning (as the map draws them). */
+const ODEH_ZONES: readonly CrescentZoneName[] = ['A', 'B', 'C', 'D'];
+const ODEH_SWATCH: Partial<Record<CrescentZoneName, string>> = { A: 'a', B: 'b', C: 'd', D: 'e' };
+const CRITERIA: readonly CrescentCriterion[] = ['yallop', 'odeh'];
 /** Why a place has no zone, as message keys. */
 const NONE_KEYS = { 'moon-sets-first': 'moonSetsFirst', 'before-new-moon': 'beforeNewMoon', 'no-sunset': 'noSunset', 'high-latitude': 'highLatitude' } as const;
 /** How wide the view is when going to a moment of the Sun over the Kaaba (km of ground): the whole lit face of the Earth. */
@@ -132,16 +136,33 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
     });
     return b;
   });
+  // The test the map is drawn by: Yallop's or Odeh's (the layer works out both; a choice recolours it).
+  const criteria = CRITERIA.map((criterion) => {
+    const b = h('button', { type: 'button', class: 'kf-living-choice', 'aria-pressed': String(criterion === 'yallop'), 'data-testid': `islamic-criterion-${criterion}` }, i18n.t(`ui.universe.islamic.criterion.${criterion}`));
+    b.addEventListener('click', () => {
+      send({ kind: 'criterion', criterion });
+    });
+    return b;
+  });
+  const zonesOf = (criterion: CrescentCriterion): readonly CrescentZoneName[] => (criterion === 'odeh' ? ODEH_ZONES : ZONES);
+  const zoneText = (criterion: CrescentCriterion, zone: string): string => i18n.t(criterion === 'odeh' ? `ui.universe.islamic.odeh.${zone}` : `ui.universe.islamic.zone.${zone}`);
   const legendRows = new Map<CrescentZoneName, HTMLElement>();
-  const legend = h(
-    'ul',
-    { class: 'kf-islamic-legend', 'data-testid': 'islamic-legend', hidden: true },
-    ...ZONES.map((zone) => {
-      const count = h('span', { class: 'kf-islamic-count' });
-      legendRows.set(zone, count);
-      return h('li', {}, h('span', { class: `kf-islamic-swatch is-${zone.toLowerCase()}`, 'aria-hidden': 'true' }), h('span', {}, i18n.t(`ui.universe.islamic.zone.${zone}`)), count);
-    }),
-  );
+  const legend = h('ul', { class: 'kf-islamic-legend', 'data-testid': 'islamic-legend', hidden: true });
+  let legendFor: CrescentCriterion | null = null;
+  const buildLegend = (criterion: CrescentCriterion): void => {
+    legendFor = criterion;
+    legendRows.clear();
+    legend.replaceChildren(
+      ...zonesOf(criterion).map((zone) => {
+        const count = h('span', { class: 'kf-islamic-count' });
+        legendRows.set(zone, count);
+        const swatch = criterion === 'odeh' ? (ODEH_SWATCH[zone] ?? 'f') : zone.toLowerCase();
+        return h('li', {}, h('span', { class: `kf-islamic-swatch is-${swatch}`, 'aria-hidden': 'true' }), h('span', {}, zoneText(criterion, zone)), count);
+      }),
+    );
+  };
+  buildLegend('yallop');
+  const mapNote = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-map-note' }, i18n.t('ui.universe.islamic.mapNote'));
   const mapState = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-map-state', 'aria-live': 'polite' });
   const here = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-here' });
 
@@ -182,10 +203,12 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
     h('div', { class: 'kf-lab-row' }, previous, next),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.mapIntro')),
     h('div', { class: 'kf-lab-row', role: 'group', 'aria-label': i18n.t('ui.universe.islamic.evenings') }, ...evenings),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.criterionIntro')),
+    h('div', { class: 'kf-lab-row', role: 'group', 'aria-label': i18n.t('ui.universe.islamic.criterion') }, ...criteria),
     mapState,
     legend,
     here,
-    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.mapNote')),
+    mapNote,
     h('h3', { class: 'kf-living-label' }, i18n.t('ui.universe.islamic.heritage.title')),
     heritage,
   );
@@ -257,18 +280,27 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
         if (m) write(b, utcDay.format(new Date(Math.floor(m.unixMs / 86_400_000) * 86_400_000 + k * 86_400_000)));
         b.setAttribute('aria-pressed', String(s.crescent?.evening === k));
       });
+      const criterion = s.criterion;
+      criteria.forEach((b, k) => {
+        b.setAttribute('aria-pressed', String(CRITERIA[k] === criterion));
+      });
+      if (criterion !== legendFor) buildLegend(criterion);
+      write(mapNote, i18n.t(criterion === 'odeh' ? 'ui.universe.islamic.mapNoteOdeh' : 'ui.universe.islamic.mapNote'));
       const c = s.crescent;
       legend.hidden = !c || c.progress < 1;
       if (!c) write(mapState, '');
       else if (c.progress < 1) write(mapState, i18n.t('ui.universe.islamic.mapComputing', { percent: Math.round(c.progress * 100) }));
       else write(mapState, i18n.t('ui.universe.islamic.mapReady', { date: utcDay.format(new Date(c.dateMs)) }));
-      if (c) for (const zone of ZONES) write(legendRows.get(zone) ?? h('span'), f.number(c.counts[zone], 0));
+      if (c) for (const zone of zonesOf(criterion)) write(legendRows.get(zone) ?? h('span'), f.number(c.counts[zone], 0));
       const hereNow = c?.here;
       if (!c || !hereNow || !s.qibla) write(here, '');
       else {
         const place = placeName(s.qibla);
-        if (hereNow.q !== null && hereNow.bestMs !== null && hereNow.zone.length === 1)
-          write(here, i18n.t('ui.universe.islamic.here', { place, zone: i18n.t(`ui.universe.islamic.zone.${hereNow.zone}`), q: fixed(hereNow.q, 2), best: utcTime.format(new Date(hereNow.bestMs)) }));
+        const best = hereNow.bestMs === null ? null : utcTime.format(new Date(hereNow.bestMs));
+        if (criterion === 'odeh' && hereNow.v !== null && best !== null && hereNow.zone.length === 1)
+          write(here, i18n.t('ui.universe.islamic.hereOdeh', { place, zone: zoneText('odeh', hereNow.zone), v: fixed(hereNow.v, 2), best }));
+        else if (criterion === 'yallop' && hereNow.q !== null && best !== null && hereNow.zone.length === 1)
+          write(here, i18n.t('ui.universe.islamic.here', { place, zone: zoneText('yallop', hereNow.zone), q: fixed(hereNow.q, 2), best }));
         else write(here, i18n.t(`ui.universe.islamic.none.${NONE_KEYS[hereNow.zone as keyof typeof NONE_KEYS]}`, { place }));
       }
     },

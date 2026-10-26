@@ -26,8 +26,11 @@ sky allows, not when a month begins.
 - **New moons** (geocentric conjunctions in ecliptic longitude), the Moon's age at the date shown,
   and stepping to earlier and later ones.
 - **The new crescent's map** for the evening of a new moon's day and the two evenings after: a dot
-  every 2 degrees between 60 S and 60 N, coloured by Yallop's zone at that place's best time, with a
-  legend in words and the place in view read out (zone, q, best time).
+  every 2 degrees between 60 S and 60 N, coloured by the zone at that place's best time of the test
+  chosen, Yallop's (1997, zones A to F) or Odeh's (2004, zones A to D), with a legend in words and
+  the place in view read out (zone, q or V, best time). Both tests are worked out for every place,
+  so a change of test recolours the map at once; Odeh's zones take the colours of Yallop's nearest
+  in meaning (seen by eye green; with optical aid only orange; not even with it red).
 - **The date in the Umm al-Qura calendar** beside the time machine's, named as such.
 - **Astronomers and geometers of the Islamic world**: Raqqa (al-Battani), Isfahan (al-Sufi),
   Maragheh (al-Tusi's observatory), Samarkand (Ulugh Beg's), the Darb-i Imam in Isfahan (its girih
@@ -45,7 +48,8 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | Sidereal time | IAU 1982 GMST, UT1 taken as UTC (within 0.9 s) | Meeus, *Astronomical Algorithms*, ch. 12 |
 | Sunset, moonset | Hour angle at the setting altitude, iterated: the Sun's centre at -50' (34' refraction, 16' semi-diameter); the Moon's centre at 0.7275 of its horizontal parallax less 34' | Meeus, ch. 15 |
 | Topocentric Moon | Observer on the WGS 84 ellipsoid at sea level | Meeus, ch. 11 and 40 |
-| Crescent visibility | Yallop's q-test at the best time (sunset plus 4/9 of the time to moonset): q = (ARCV - (11.8371 - 6.3226 W' + 0.7319 W'^2 - 0.1018 W'^3)) / 10, ARCV the geocentric airless altitude difference, W' the topocentric crescent width (SD'(1 - cos ARCL)); zones A (q > +0.216), B (> -0.014), C (> -0.160), D (> -0.232), E (> -0.293), F; not used beyond 63 degrees of latitude | B. D. Yallop, NAO Technical Note 69 (1997); the zones as published with the Utrecht global maps |
+| Crescent visibility (Yallop) | Yallop's q-test at the best time (sunset plus 4/9 of the time to moonset): q = (ARCV - (11.8371 - 6.3226 W' + 0.7319 W'^2 - 0.1018 W'^3)) / 10, ARCV the geocentric airless altitude difference, W' the topocentric crescent width (SD'(1 - cos ARCL)); zones A (q > +0.216), B (> -0.014), C (> -0.160), D (> -0.232), E (> -0.293), F; not used beyond 63 degrees of latitude | B. D. Yallop, NAO Technical Note 69 (1997); the zones as published with the Utrecht global maps |
+| Crescent visibility (Odeh) | Odeh's test at the same best time: V = ARCV - (7.1651 - 6.3226 W + 0.7319 W^2 - 0.1018 W^3), ARCV the airless altitude difference of the Moon and the Sun seen from the place (topocentric), W the topocentric crescent width (the topocentric semi-diameter times 1 - cos of the topocentric elongation, arcminutes); zones A (V >= 5.65, seen by eye), B (>= 2, with optical aid and perhaps by eye), C (>= -0.96, with optical aid only), D (not even with optical aid); not used beyond 63 degrees of latitude, like Yallop's | M. Sh. Odeh, "New criterion for lunar crescent visibility", Experimental Astronomy 18, 39-64 (2004), doi:10.1007/s10686-005-9002-5: 737 observations, almost half from the Islamic Crescents' Observation Project |
 | The Sun over the Kaaba | Each day's solar transit at the Kaaba (and at its antipode); the day the Sun comes nearest the zenith | The ephemeris above |
 | Golden latitude | Meridian arcs on the WGS 84 ellipsoid (Helmert's series); the latitude whose distances to the poles are in the golden ratio, by bisection | WGS 84 (a = 6378.137 km, f = 1/298.257223563) |
 | Hijri date | The browser's Umm al-Qura calendar (ICU, `islamic-umalqura`) for the civil day in UTC | Unicode CLDR / ICU |
@@ -64,6 +68,8 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | Qibla from New York | 58.5 degrees | 58.50 degrees (10,302 km); also Kabul and Islamabad within 0.3 degrees |
 | Ramadan 1447: 17 February 2026 | No naked-eye crescent anywhere in the Arab or Islamic world | Zone F (or no crescent) in Makkah, Riyadh, Cairo, Istanbul, Karachi, Islamabad, Jakarta, Kuala Lumpur, Rabat, Dakar and Lagos |
 | Ramadan 1447: 18 February 2026 | Easily visible in the UK and most of the world | Zone A in London, Makkah, Cairo, Rabat and Istanbul |
+| Ramadan 1447 by Odeh's test | Not by eye in the Arab or Islamic world on the 17th; by eye the next evening | Zone D (or no crescent) in all eleven places on the 17th (V = -6.4 in Makkah); zone A in London, Makkah, Cairo, Rabat and Istanbul on the 18th (V = 8.7 in Makkah) |
+| Seen from the place | The Moon lower by up to its horizontal parallax (about 57') | On 18 February, the topocentric ARCV 0.95 to 0.96 degrees below the geocentric in each of the eleven places, and the topocentric width 11 to 14 per cent below Yallop's W' |
 | Umm al-Qura | 1 Ramadan 1447 = 18 February 2026; 1 Shawwal 1447 = 20 March 2026 | the same |
 | WGS 84 quarter meridian | 10,001.965729 km | the same, to a millimetre |
 
@@ -78,10 +84,13 @@ dawn and dusk) and day-side satellites were drawn as if in the Earth's shadow.
 - **Qibla on a sphere.** The great circle on a sphere of mean radius; on the ellipsoid the bearing
   differs by at most a few tenths of a degree. Bearings are from true north; a compass needs the
   local magnetic declination.
-- **Yallop's test is one criterion.** Others (Odeh's, the South African Astronomical Observatory's,
-  Schaefer's) draw the lines elsewhere, and weather decides any real evening. The map is at sea
-  level, with standard refraction, between 60 S and 60 N, every 2 degrees; between the dots it says
-  nothing.
+- **Two criteria of several.** Yallop's and Odeh's are shown; others (the South African
+  Astronomical Observatory's, Caldwell and Laney 2001, drawn as curves in its paper; Schaefer's
+  physical model, which needs the atmosphere's clarity) draw the lines elsewhere and are not
+  implemented. Odeh's paper also finds a Danjon limit of 6.4 degrees in its observations; the map
+  shows its zones alone, as the paper defines them. Weather decides any real evening, and the map
+  knows none. The map is at sea level, with standard refraction, between 60 S and 60 N, every
+  2 degrees; between the dots it says nothing.
 - **Times to the minute.** Nutation, UT1 - UTC and the approximate planetary elements leave errors
   of seconds; the interface shows minutes.
 - **Umm al-Qura** is Saudi Arabia's civil calendar, computed in advance. Communities that begin each

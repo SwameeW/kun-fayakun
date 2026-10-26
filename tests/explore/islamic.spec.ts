@@ -117,6 +117,26 @@ test('the new moon and the crescent’s map for the evenings after it, read out 
   await expect(page.getByTestId('islamic-map-state')).toContainText('Nov 10');
   await expect(page.getByTestId('islamic-here')).toContainText('At the point below you');
 
+  // Odeh's test: the same places recoloured at once (both tests are worked out for each), four zones.
+  await page.getByTestId('islamic-criterion-odeh').click();
+  await expect.poll(async () => (await islamic(page))?.criterion, LIVE).toBe('odeh');
+  await expect(page.getByTestId('islamic-criterion-odeh')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('islamic-criterion-yallop')).toHaveAttribute('aria-pressed', 'false');
+  const odeh = (await islamic(page))?.crescent;
+  expect(odeh?.progress).toBe(1);
+  expect(odeh?.counts.none).toBe(map1?.counts.none);
+  expect((odeh?.counts.E ?? 0) + (odeh?.counts.F ?? 0)).toBe(0);
+  expect(Object.values(odeh?.counts ?? {}).reduce((a, n) => a + n, 0)).toBe(total);
+  expect((await islamic(page))?.marks.map).toBe(total - (map1?.counts.none ?? 0));
+  await expect(page.getByTestId('islamic-legend').locator('li')).toHaveCount(4);
+  await expect(page.getByTestId('islamic-legend')).toContainText('Only with optical aid (C)');
+  await expect(page.getByTestId('islamic-map-note')).toContainText('Odeh’s test');
+  await expect(page.getByTestId('islamic-here')).toContainText('At the point below you');
+  await page.getByTestId('islamic-criterion-yallop').click();
+  await expect.poll(async () => (await islamic(page))?.criterion, LIVE).toBe('yallop');
+  await expect(page.getByTestId('islamic-legend').locator('li')).toHaveCount(6);
+  expect((await islamic(page))?.crescent?.counts).toEqual(map1?.counts);
+
   // The new moon's own evening: a younger Moon, fewer places that see it easily.
   await page.getByTestId('islamic-evening-0').click();
   await expect.poll(async () => (await islamic(page))?.crescent?.evening, LIVE).toBe(0);

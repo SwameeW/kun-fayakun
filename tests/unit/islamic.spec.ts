@@ -10,6 +10,8 @@
  * - Ramadan 1447: the conjunction on 17 February 2026 at 12:01 UT, the crescent not seen by eye
  *   anywhere in the Arab or Islamic world that evening (International Astronomy Center), and easily
  *   visible in the UK and most of the world the next (moonsighting.org.uk).
+ * - Odeh's test (M. Sh. Odeh, Experimental Astronomy 18, 39-64, 2004): its zones' bounds on V, 5.65,
+ *   2 and -0.96, and its inputs taken from the place itself (topocentric).
  * - Umm al-Qura: 1 Ramadan 1447 on 18 February 2026 and 1 Shawwal 1447 on 20 March 2026.
  * - WGS 84's quarter meridian: 10,001.965729 km.
  * Places' coordinates come from public/assets/places/places.json (Natural Earth).
@@ -29,11 +31,14 @@ import {
   meridianArcKm,
   meridianRatio,
   newMoons,
+  odehV,
+  odehZone,
   qiblaBearing,
   qiblaDistanceKm,
   qiblaPath,
   QUARTER_MERIDIAN_KM,
   skyTrack,
+  yallopQ,
   yallopZone,
   type SkyFrame,
 } from '../../src/explore/islamic/astronomy';
@@ -134,6 +139,19 @@ test('Ramadan 1447’s crescent: not seen by eye in the Arab and Islamic world o
   for (const name of islamicWorld) expect(['A', 'B'], `${name} on 17 February`).not.toContain(first(name).zone);
   expect(second('London').zone).toBe('A');
   for (const name of ['Makkah', 'Cairo', 'Rabat', 'Istanbul']) expect(['A', 'B'], `${name} on 18 February`).toContain(second(name).zone);
+  // Odeh's test agrees: not by eye anywhere in that world on the 17th; by eye (A) or perhaps by eye (B) the next evening.
+  for (const name of islamicWorld) expect(['A', 'B'], `${name} on 17 February, Odeh`).not.toContain(first(name).odeh);
+  expect(second('London').odeh).toBe('A');
+  for (const name of ['Makkah', 'Cairo', 'Rabat', 'Istanbul']) expect(['A', 'B'], `${name} on 18 February, Odeh`).toContain(second(name).odeh);
+  // Seen from the place, the Moon stands lower by nearly its parallax (57' at its mean distance, all of
+  // it at the horizon), and nearer the Sun, so the crescent is thinner than Yallop's W'.
+  for (const name of islamicWorld) {
+    const r = second(name);
+    expect(r.arcvDeg - r.arcvTopoDeg, name).toBeGreaterThan(0.85);
+    expect(r.arcvDeg - r.arcvTopoDeg, name).toBeLessThan(1.03);
+    expect(r.widthTopoArcmin, name).toBeLessThan(r.widthArcmin);
+    expect(r.widthTopoArcmin, name).toBeGreaterThan(0.8 * r.widthArcmin);
+  }
   // A day older, the crescent is wider and higher: q rises wherever both evenings have one.
   for (const name of islamicWorld) {
     const a = first(name).q;
@@ -147,11 +165,22 @@ test('Ramadan 1447’s crescent: not seen by eye in the Arab and Islamic world o
   expect(evening('2026-02-18')('London').widthArcmin).toBeGreaterThan(0);
 });
 
-test('Yallop’s zones and the places the test is not made for', () => {
+test('Yallop’s zones, Odeh’s, and the places the tests are not made for', () => {
   expect([0.3, 0, -0.1, -0.2, -0.25, -0.4].map(yallopZone)).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+  // Odeh's zones run from each bound up: A from 5.65, B from 2, C from -0.96.
+  expect([6, 5.65, 5.6, 2, 1.99, -0.96, -0.97].map(odehZone)).toEqual(['A', 'A', 'B', 'B', 'C', 'C', 'D']);
+  // The two tests share the cubic in the width: for the same inputs, V is 10 q and the difference of their constants (11.8371 - 7.1651).
+  for (const [arcv, w] of [
+    [10, 0.3],
+    [5, 1],
+    [12, 0.05],
+  ] as const)
+    expect(odehV(arcv, w) - 10 * yallopQ(arcv, w)).toBeCloseTo(4.672, 9);
   const d0 = jd('2026-02-18T00:00Z');
   const [from, to] = eveningSpan(d0);
-  expect(crescentAt(skyTrack(sky, from, to), 70, 20, d0, jd('2026-02-17T12:01Z')).zone).toBe('high-latitude');
+  const far = crescentAt(skyTrack(sky, from, to), 70, 20, d0, jd('2026-02-17T12:01Z'));
+  expect(far.zone).toBe('high-latitude');
+  expect([far.q, far.odeh, far.v]).toEqual([null, null, null]);
   // An evening before the conjunction has no crescent at all.
   expect(crescentAt(skyTrack(sky, from - 2, to - 2), 21.4, 39.8, d0 - 2, jd('2026-02-17T12:01Z')).zone).toBe('before-new-moon');
 });

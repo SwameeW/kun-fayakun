@@ -40,7 +40,7 @@ platform.
 | IA-7 | Al-Sufi's "little cloud" named on the sky | The Andromeda Galaxy's catalogue position | Label at the cited position | planned |
 | IA-8 | Star names from Arabic astronomy | Etymologies from a licensed source | Every name cited | research needed |
 | IA-9 | Prayer times | Conventions for twilight and the afternoon differ between communities | Owner and scholar decision first | deferred |
-| IA-10 | Other crescent criteria (Odeh, SAAO), weather | Published criteria | Agreement with each paper's examples | planned |
+| IA-10 | Other crescent criteria (Odeh, SAAO), weather | Odeh's test (Experimental Astronomy 18, 2004) beside Yallop's, chosen in the panel; SAAO (a curve read from a figure) and weather not implemented | `tests/unit/islamic.spec.ts` (Odeh's zone bounds; Ramadan 1447 by both tests; topocentric inputs), `tests/explore/islamic.spec.ts` (the map recoloured by Odeh's zones) | partial |
 
 ## Phase 1: orbital laboratory (US)
 
