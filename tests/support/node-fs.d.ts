@@ -8,6 +8,8 @@ declare module 'node:fs' {
   /** Without an encoding Node returns a Buffer, which is a Uint8Array. */
   export function readFileSync(path: URL): Uint8Array;
   export function existsSync(path: string | URL): boolean;
+  /** A directory's entries' names. */
+  export function readdirSync(path: URL): string[];
 }
 
 declare module 'node:crypto' {
