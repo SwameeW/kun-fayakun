@@ -512,6 +512,8 @@ export interface UniverseView {
   sound: { on: boolean; playing: 'wind' | 'suit' | null };
   /** Photo mode's lens (degrees of field), or null for the explorer's own framing. */
   lensFov: number | null;
+  /** The body photo mode keeps in its place in the frame, or null. */
+  tracking: BodyId | null;
   /**
    * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
    * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
@@ -811,6 +813,20 @@ export interface UniverseIslamic {
   prayer: UniversePrayer | null;
   /** The new crescent's map while one is shown. */
   crescent: UniverseCrescent | null;
+  /**
+   * The astrolabe for the place the qibla is reckoned from (src/explore/islamic/astrolabe.ts): the
+   * place (degrees), the local mean sidereal time and the mean obliquity of the ecliptic of date
+   * (degrees), the Sun's apparent place of date, and the stars the IAU names that are brighter than
+   * magnitude 2, at their places of date (degrees). Null with no place.
+   */
+  astrolabe: {
+    latDeg: number;
+    lonDeg: number;
+    lstDeg: number;
+    obliquityDeg: number;
+    sun: { raDeg: number; decDeg: number };
+    stars: ReadonlyArray<{ name: string; raDeg: number; decDeg: number; vmag: number }>;
+  } | null;
   /** Marks drawn on the globe: the qibla's path, the two latitudes, the map's places. */
   marks: { path: number; lines: number; map: number };
 }
@@ -956,6 +972,8 @@ export interface UniverseWalk {
   sunElevationDeg: number;
   sunSeen: boolean;
   solarTimeH: number;
+  /** On the Earth, the qibla's great-circle bearing from where the walker stands (degrees from true north); null elsewhere. */
+  qiblaDeg: number | null;
   /** The terrain zoom the ground under the feet comes from, the tiles' counts, and the rings of ground filled. */
   groundZoom: number | null;
   tiles: { ready: number; loading: number; failed: number };
@@ -1185,7 +1203,9 @@ export type LabCommand =
   | { kind: 'burn'; id: string; direction: LabBurnDirection; ref: string; deltaVMs: number; inS: number; throttle: number }
   | { kind: 'cancelBurns'; id: string }
   /** An autopilot: a prograde burn centred on the far side of the ship's orbit, to make the orbit round there (refused without the propellant for it). */
-  | { kind: 'circularise'; id: string };
+  | { kind: 'circularise'; id: string }
+  /** The second autopilot: a Hohmann transfer from a round orbit to a round one `toKm` from the primary's centre (two burns; refused unless it can be done). */
+  | { kind: 'transfer'; id: string; toKm: number };
 
 /** A burn's direction, set by a ship's motion about a body: along it or against it, square to its orbit's plane, or toward or away from the body. */
 export type LabBurnDirection = 'prograde' | 'retrograde' | 'normal' | 'antinormal' | 'radialOut' | 'radialIn';
@@ -1236,6 +1256,8 @@ export type EarthCommand =
   | { kind: 'sound'; on: boolean }
   /** Photo mode's lens: a field of view (degrees, top to bottom) in place of the explorer's own, or null to give it back. */
   | { kind: 'lens'; fovDeg: number | null }
+  /** Photo mode's tracking (ledger CR-2): the view turned about the focus as this body moves, so it keeps its place in the frame; null to stop. */
+  | { kind: 'track'; body: BodyId | null }
   | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` }
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
@@ -1467,4 +1489,10 @@ export interface App extends AppCommands {
   startRecording(lines: () => readonly string[]): boolean;
   /** Stops it: the video, or null. */
   stopRecording(): Promise<Blob | null>;
+  /**
+   * Photo mode's exposure compensation (ledger CR-2): whole stops brighter (positive) or darker than
+   * what the scene asks for, -3 to 3, through the engine's flash-safe limiter; 0 to stop.
+   */
+  setExposureBias(stops: number): void;
+  readonly exposureBiasStops: number;
 }

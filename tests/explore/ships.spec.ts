@@ -43,10 +43,18 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   expect(ship?.ship?.deltaVLeftMs ?? 0).toBeCloseTo(320 * 9.80665 * Math.log(2), 3);
   await expect(page.getByTestId('lab-ship')).toBeVisible();
   await expect(page.getByTestId('lab-ship-readout')).toContainText('2,175 m/s of change of speed');
+  // Its own figures: the rocket's mass, and no size, escape speed or spin to show or edit (it pulls on nothing).
+  await expect(page.getByTestId('lab-fact-mass')).toHaveText(/^20,000 kg with its propellant/u);
+  for (const fact of ['lab-fact-radius', 'lab-fact-escape', 'lab-fact-rotation']) await expect(page.getByTestId(fact)).toHaveCount(0);
+  await expect(page.getByTestId('lab-mass-input')).toBeHidden();
+  await expect(page.getByTestId('lab-spin-period')).toBeHidden();
   // Its burn directions marked and named about it (ledger SC-2), seen with the camera on the Earth beside it.
   const shipId = (await shipOf(page))?.id ?? '';
   await page.getByTestId('lab-body-earth').click();
   await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe('earth');
+  // A world's own figures back again.
+  await expect(page.getByTestId('lab-fact-radius')).toBeVisible();
+  await expect(page.getByTestId('lab-mass-input')).toBeVisible();
   await page.getByTestId('lab-follow').click();
   await page.getByTestId(`lab-body-${shipId}`).click();
   await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe(shipId);
@@ -90,5 +98,49 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   expect((await shipOf(page))?.ship?.burns[0]?.inS ?? 0).toBeGreaterThan(3500);
   await page.getByTestId('lab-ship-cancel').click();
   await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 1, LIVE).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the transfer autopilot: a ship taken from 7,000 km to a round orbit at 9,000 km by two burns', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('lab-open').click();
+  await expect(page.getByTestId('lab-panel')).toBeVisible(LIVE);
+  await expect.poll(async () => (await lab(page))?.bodies.length ?? 0, LIVE).toBe(10);
+  await playPause(page);
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  // A stronger engine than the form's (200 kN): the burns short beside the orbit, as the transfer assumes.
+  await page.getByTestId('lab-add-ship').locator('summary').click();
+  await page.getByTestId('lab-ship-thrust').fill('200000');
+  await page.getByTestId('lab-ship-add').click();
+  await expect.poll(async () => (await shipOf(page))?.ship?.thrustN ?? 0, LIVE).toBe(200_000);
+  // Below the Earth's surface: refused, and said so.
+  await page.getByTestId('lab-ship-to').fill('5000');
+  await expect(page.getByTestId('lab-ship-transfer-text')).toContainText('below the surface of Earth');
+  await expect(page.getByTestId('lab-ship-transfer')).toBeDisabled();
+  // To 9,000 km: Vallado's algorithm 36 gives 458 m/s now and 430 m/s at the far side, about an hour later.
+  await page.getByTestId('lab-ship-to').fill('9000');
+  await expect(page.getByTestId('lab-ship-transfer-text')).toHaveText(/^An autopilot: 45\d m\/s prograde now, then 4[23]\d m\/s prograde at the far side of the transfer orbit/u);
+  await page.getByTestId('lab-ship-transfer').click();
+  await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 0, LIVE).toBe(2);
+  const burns = (await shipOf(page))?.ship?.burns ?? [];
+  expect(burns.map((b) => b.direction)).toEqual(['prograde', 'prograde']);
+  // Half the transfer orbit's period (a = 8,000 km) between the burns' middles.
+  const coast = Math.PI * Math.sqrt(8000 ** 3 / 398_600.435);
+  const mid = (b: (typeof burns)[number] | undefined): number => (b?.inS ?? 0) + (b?.durationS ?? 0) / 2;
+  expect((mid(burns[1]) - mid(burns[0])) / coast).toBeCloseTo(1, 2);
+  // A transfer under way: another waits until its burns are done or called off.
+  await expect(page.getByTestId('lab-ship-transfer')).toBeDisabled();
+  await expect(page.getByTestId('lab-ship-transfer-text')).toContainText('call those off first');
+  // Run: both burns, then a round orbit at 9,000 km.
+  await playPause(page);
+  await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 1, LIVE).toBe(0);
+  await playPause(page);
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  const after = await shipOf(page);
+  expect((after?.orbit?.aKm ?? 0) / 9000).toBeGreaterThan(0.985);
+  expect((after?.orbit?.aKm ?? 0) / 9000).toBeLessThan(1.015);
+  expect(after?.orbit?.e ?? 1).toBeLessThan(0.02);
   expect(pageErrors).toEqual([]);
 });

@@ -322,7 +322,15 @@ export class Navigator {
 
   /** Carries the orbit round an axis through the Earth by `angle` (its spin since the last frame), so the ground below stays put. */
   spinWithEarth(axis: Km, angle: number): void {
-    if (this.focus !== 'earth' || this.modeValue !== 'orbit' || this.trip) return;
+    if (this.focus === 'earth') this.turnAbout(axis, angle);
+  }
+
+  /**
+   * Carries the orbit round an axis through the focus by `angle` (a unit axis, radians): with the
+   * Earth's spin, or with a body photo mode keeps in view as it moves round the focus. Not on a trip.
+   */
+  turnAbout(axis: Km, angle: number): void {
+    if (this.modeValue !== 'orbit' || this.trip) return;
     this.orbit.spin(axis, angle);
     if (this.glide) {
       rotateAbout(this.glide.from, axis, angle, this.glide.from);

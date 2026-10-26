@@ -1,7 +1,7 @@
 import { julianDateUtc } from '../../astro/time';
 import labMessages from '../../i18n/en.lab.json';
 import type { App, LabCommand, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
-import { BURN_DIRECTIONS } from '../../sim/ships';
+import { BURN_DIRECTIONS, hohmann, ROUND_E } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { createLabLessons } from './lab-lessons';
@@ -338,6 +338,13 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     if (selectedId) send({ kind: 'circularise', id: selectedId });
   });
   const shipRoundText = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-circularise-text' });
+  // The second autopilot (ledger SC-4): a Hohmann transfer to a round orbit at the distance typed.
+  const shipTo = field('ui.universe.lab.ship.to', 'lab-ship-to');
+  const shipTransfer = button(i18n.t('ui.universe.lab.ship.transfer'), 'lab-ship-transfer', () => {
+    const to = num(shipTo.input);
+    if (selectedId && to > 0) send({ kind: 'transfer', id: selectedId, toKm: to });
+  });
+  const shipTransferText = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-transfer-text' });
   const shipBurns = h('ul', { class: 'kf-living-list', 'data-testid': 'lab-ship-burns' });
   const shipCancel = button(i18n.t('ui.universe.lab.ship.cancel'), 'lab-ship-cancel', () => {
     if (selectedId) send({ kind: 'cancelBurns', id: selectedId });
@@ -363,9 +370,53 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.ship.planHint')),
     shipRound,
     shipRoundText,
+    shipTo.label,
+    h('div', { class: 'kf-lab-row' }, shipTo.input, shipTransfer),
+    shipTransferText,
     shipBurns,
     shipCancel,
   );
+
+  /** What the transfer autopilot would do for the distance typed (src/sim/ships), or why it cannot: the lab plans the same or refuses. */
+  const previewTransfer = (): void => {
+    const b = selectedBody();
+    const ship = b?.ship;
+    const primary = b?.primary ? lab?.bodies.find((x) => x.id === b.primary) : undefined;
+    const to = num(shipTo.input);
+    let text = '';
+    let possible = false;
+    if (b && ship && primary && b.orbit && b.distanceKm !== null && b.relativeSpeedKmS !== null) {
+      if (ship.burns.length > 0) text = i18n.t('ui.universe.lab.ship.transferBusy');
+      else if (!b.orbit.bound || b.orbit.e >= ROUND_E) text = i18n.t('ui.universe.lab.ship.transferRound', { e: f.number(b.orbit.e, 3) });
+      else if (!(to > primary.radiusKm)) text = shipTo.input.value.trim() === '' ? '' : i18n.t('ui.universe.lab.ship.transferBelow', { primary: nameOf(primary), radius: f.number(primary.radiusKm, 0) });
+      else if (Math.abs(to - b.distanceKm) >= 1) {
+        const plan = hohmann(ship, primary.gm, b.distanceKm, b.relativeSpeedKmS, to);
+        possible = Number.isFinite(plan.d1S) && Number.isFinite(plan.d2S);
+        const dir = (dv: number): string => i18n.t(`ui.universe.lab.ship.dirShort.${dv >= 0 ? 'prograde' : 'retrograde'}`);
+        text = possible
+          ? i18n.t('ui.universe.lab.ship.transferText', { dv1: f.number(Math.abs(plan.dv1Ms), 0), dir1: dir(plan.dv1Ms), dv2: f.number(Math.abs(plan.dv2Ms), 0), dir2: dir(plan.dv2Ms), coast: lightTime(plan.coastS) })
+          : i18n.t('ui.universe.lab.ship.transferShort', { dv: f.number(Math.abs(plan.dv1Ms) + Math.abs(plan.dv2Ms), 0) });
+      }
+    }
+    shipTransfer.disabled = !possible;
+    write(shipTransferText, text);
+  };
+  shipTo.input.addEventListener('input', previewTransfer);
+
+  const massGroup = h(
+    'div',
+    { class: 'kf-living-group' },
+    hold.label,
+    hold.select,
+    h('label', { class: 'kf-living-label', for: massId }, i18n.t('ui.universe.lab.massLabel')),
+    h('div', { class: 'kf-lab-row' }, massInput, massApply),
+    h('div', { class: 'kf-lab-row' }, double, halve),
+    radius.label,
+    h('div', { class: 'kf-lab-row' }, radius.input, radiusApply),
+    density.label,
+    h('div', { class: 'kf-lab-row' }, density.input, densityApply),
+  );
+  const spinGroup = h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply);
 
   const inspector = h(
     'section',
@@ -375,19 +426,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     warning,
     climateBox,
     h('div', { class: 'kf-living-group' }, rename.label, h('div', { class: 'kf-lab-row' }, rename.input, renameApply)),
-    h(
-      'div',
-      { class: 'kf-living-group' },
-      hold.label,
-      hold.select,
-      h('label', { class: 'kf-living-label', for: massId }, i18n.t('ui.universe.lab.massLabel')),
-      h('div', { class: 'kf-lab-row' }, massInput, massApply),
-      h('div', { class: 'kf-lab-row' }, double, halve),
-      radius.label,
-      h('div', { class: 'kf-lab-row' }, radius.input, radiusApply),
-      density.label,
-      h('div', { class: 'kf-lab-row' }, density.input, densityApply),
-    ),
+    massGroup,
     h(
       'fieldset',
       { class: 'kf-living-group kf-lab-fieldset' },
@@ -398,7 +437,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.impulse')), ...pushes.flatMap((x) => [x.label, x.input]), pushApply),
     shipBox,
     elementsBox,
-    h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply),
+    spinGroup,
     h('div', { class: 'kf-lab-row' }, fixedBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: fixedId }, i18n.t('ui.universe.lab.fixed'))),
     h('div', { class: 'kf-lab-row' }, duplicate, remove, follow),
     h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: horizonId }, i18n.t('ui.universe.lab.horizon')), horizon, accuracy.label, accuracy.select, predictionText, encounters),
@@ -881,23 +920,30 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           shipRound.hidden = round === null;
           shipRound.disabled = !round?.possible;
           write(shipRoundText, round ? i18n.t(round.possible ? 'ui.universe.lab.ship.circulariseText' : 'ui.universe.lab.ship.circulariseShort', { dv: f.number(round.deltaVMs, round.deltaVMs < 10 ? 1 : 0), when: lightTime(round.inS) }) : '');
+          previewTransfer();
         }
         const primary = b.primary ? l.bodies.find((x) => x.id === b.primary) : undefined;
         const pName = primary ? nameOf(primary) : '';
         const o = b.orbit;
         const rot = b.rotation;
+        // A ship weighs nothing to the worlds (a test particle): its own mass is its rocket's, and it has no size, escape speed or turn to speak of.
+        const isShip = b.ship !== null;
+        massGroup.hidden = isShip;
+        spinGroup.hidden = isShip;
         facts.replaceChildren(
-          ...row(i18n.t('ui.universe.lab.mass'), `${scientific(b.massKg)} kg${b.edited ? ` · ${i18n.t('ui.universe.lab.edited')}` : ''}`, 'lab-fact-mass'),
-          ...row(i18n.t('ui.universe.lab.radius'), f.keep(i18n.t('ui.hud.unit.km', { value: f.number(b.radiusKm, b.radiusKm < 10_000 ? 1 : 0) })), 'lab-fact-radius'),
+          ...(b.ship
+            ? row(i18n.t('ui.universe.lab.mass'), i18n.t('ui.universe.lab.ship.mass', { kg: f.number(b.ship.dryKg + b.ship.fuelKg, 0) }), 'lab-fact-mass')
+            : row(i18n.t('ui.universe.lab.mass'), `${scientific(b.massKg)} kg${b.edited ? ` · ${i18n.t('ui.universe.lab.edited')}` : ''}`, 'lab-fact-mass')),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.radius'), f.keep(i18n.t('ui.hud.unit.km', { value: f.number(b.radiusKm, b.radiusKm < 10_000 ? 1 : 0) })), 'lab-fact-radius')),
           ...(b.densityKgM3 > 0 ? row(i18n.t('ui.universe.lab.density'), i18n.t('ui.universe.lab.densityValue', { value: f.number(b.densityKgM3, 0) }), 'lab-fact-density') : []),
           ...row(i18n.t('ui.universe.lab.speed'), speed(b.speedKmS), 'lab-fact-speed'),
           ...(b.primary && b.relativeSpeedKmS !== null && b.distanceKm !== null ? row(i18n.t('ui.universe.lab.relative', { primary: pName }), i18n.t('ui.universe.lab.relativeValue', { speed: speed(b.relativeSpeedKmS), distance: f.distance(b.distanceKm) }), 'lab-fact-relative') : []),
-          ...row(i18n.t('ui.universe.lab.escape'), speed(b.escapeKmS), 'lab-fact-escape'),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.escape'), speed(b.escapeKmS), 'lab-fact-escape')),
           ...(o ? row(i18n.t('ui.universe.lab.orbit', { primary: pName }), i18n.t('ui.universe.lab.orbitValue', { a: o.bound ? f.distance(o.aKm) : f.distance(Math.abs(o.aKm)), e: f.number(o.e, o.e < 0.01 ? 4 : 3), i: degrees(o.iDeg) }), 'lab-fact-orbit') : []),
           ...(o ? row(i18n.t('ui.universe.lab.period'), o.periodS === null ? i18n.t('ui.universe.lab.unbound') : duration(o.periodS), 'lab-fact-period') : []),
           ...(o ? row(i18n.t('ui.universe.lab.apsides'), o.apoapsisKm === null ? i18n.t('ui.universe.lab.apsidesNear', { near: f.distance(o.periapsisKm) }) : i18n.t('ui.universe.lab.apsidesValue', { near: f.distance(o.periapsisKm), far: f.distance(o.apoapsisKm) }), 'lab-fact-apsides') : []),
           ...(o?.hillKm ? row(i18n.t('ui.universe.lab.hill'), i18n.t('ui.universe.lab.hillValue', { value: f.distance(o.hillKm) }), 'lab-fact-hill') : []),
-          ...row(i18n.t('ui.universe.lab.rotation'), rot.periodS === null ? i18n.t('ui.universe.lab.rotationNone') : rot.tiltDeg === null ? i18n.t('ui.universe.lab.rotationNoTilt', { period: duration(rot.periodS) }) : i18n.t('ui.universe.lab.rotationValue', { period: duration(rot.periodS), tilt: degrees(rot.tiltDeg) }), 'lab-fact-rotation'),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.rotation'), rot.periodS === null ? i18n.t('ui.universe.lab.rotationNone') : rot.tiltDeg === null ? i18n.t('ui.universe.lab.rotationNoTilt', { period: duration(rot.periodS) }) : i18n.t('ui.universe.lab.rotationValue', { period: duration(rot.periodS), tilt: degrees(rot.tiltDeg) }), 'lab-fact-rotation')),
           ...(Number.isFinite(rot.breakupPeriodS) ? row(i18n.t('ui.universe.lab.breakupLabel'), i18n.t('ui.universe.lab.breakup', { period: duration(rot.breakupPeriodS) }), 'lab-fact-breakup') : []),
           ...(b.roche ? row(i18n.t('ui.universe.lab.roche'), i18n.t('ui.universe.lab.rocheValue', { fluid: f.distance(b.roche.fluidKm), rigid: f.distance(b.roche.rigidKm) }), 'lab-fact-roche') : []),
           ...(b.j2 > 0 ? row(i18n.t('ui.universe.lab.j2'), scientific(b.j2), 'lab-fact-j2') : []),

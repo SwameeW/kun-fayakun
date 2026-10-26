@@ -13,7 +13,8 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NO_GPU, SLOW } from '../support/env';
+import { qiblaBearing } from '../../src/explore/islamic/kaaba';
 import { MOCK_GROUND_M } from '../support/live';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 
@@ -24,8 +25,11 @@ test.use({ reducedMotion: 'reduce' });
 const walkView = async (page: Page) => (await view(page))?.walk ?? null;
 
 test('on foot: landing on the ground below, the suit’s figures, walking, jumping, turning, and back to orbit', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(300_000 * SLOW);
-  await kf.open('/universe/earth', { query: { jd: JD } });
+  // In software rendering (CI) a frame of the walk takes about ten seconds, and this test needs some
+  // dozens of them (it reached the pad after 15 minutes there): the lowest detail there (no bloom, the
+  // simpler air; the figures checked are the same), and half an hour.
+  test.setTimeout(600_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD, ...(NO_GPU ? { detail: 'low' } : {}) } });
   await waitForUniverse(page);
   // Over the Sahara's middle, low enough for the Earth's surface to be the point below.
   await place(page, { body: 'earth', distanceKm: 20_000, azimuthDeg: 30, elevationDeg: 20 });
@@ -43,6 +47,12 @@ test('on foot: landing on the ground below, the suit’s figures, walking, jumpi
   await expect(page.getByTestId('walk-ground')).toContainText('1,000 m above sea level');
   await expect(page.getByTestId('walk-gravity')).toContainText('9.82 m/s²');
   await expect(page.getByTestId('walk-air')).toContainText('90.1 kPa');
+  // The qibla on foot: the great circle's bearing from where the walker stands (the function the unit
+  // tests check against published bearings), and which way to turn to face it from the heading now.
+  expect(w?.qiblaDeg ?? -1).toBeCloseTo(qiblaBearing(w?.lat ?? 0, w?.lon ?? 0), 9);
+  const turn = (((((w?.qiblaDeg ?? 0) - (w?.headingDeg ?? 0)) % 360) + 540) % 360) - 180;
+  await expect(page.getByTestId('walk-qibla')).toContainText(`Qibla ${String(Math.round(w?.qiblaDeg ?? 0) % 360)}° from true north`);
+  await expect(page.getByTestId('walk-qibla')).toContainText(Math.abs(turn) < 2 ? 'straight ahead' : turn > 0 ? 'to your right' : 'to your left');
   await expect(page.getByTestId('universe-readout')).toBeHidden();
   // The ground's rings fill, the camera stands 1.7 m above the ground (the eye), not in orbit.
   await expect.poll(async () => (await walkView(page))?.rings ?? 0, LIVE).toBeGreaterThan(5);
@@ -78,7 +88,8 @@ test('on foot: landing on the ground below, the suit’s figures, walking, jumpi
   expect(forward).not.toBeNull();
   await page.mouse.move((forward?.x ?? 0) + (forward?.width ?? 0) / 2, (forward?.y ?? 0) + (forward?.height ?? 0) / 2);
   await page.mouse.down();
-  await expect.poll(async () => ((await walkView(page))?.walkedM ?? 0) - padded, LIVE).toBeGreaterThan(0.5);
+  // Moving at all is the pad working: a frame's walk is over a decimetre.
+  await expect.poll(async () => ((await walkView(page))?.walkedM ?? 0) - padded, LIVE).toBeGreaterThan(0.1);
   await page.mouse.up();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
@@ -180,6 +191,9 @@ test('on foot on the Moon: Walk here from orbit, the ground LOLA measured at Apo
   expect(w?.dayRangeC?.min).toBeCloseTo(95 - 273.15, 6);
   expect(w?.dayRangeC?.max).toBeCloseTo(390 - 273.15, 6);
   await expect(page.getByTestId('walk-title')).toHaveText('On foot on the Moon');
+  // No qibla off the Earth.
+  expect(w?.qiblaDeg).toBeNull();
+  await expect(page.getByTestId('walk-qibla')).toBeHidden();
   await expect(page.getByTestId('walk-air')).toContainText('No air: a vacuum');
   await expect(page.getByTestId('walk-air')).toContainText('from −178 °C before dawn to 117 °C at noon');
   await expect(page.getByTestId('walk-ground')).toContainText('the Moon’s 1,737.4 km sphere');

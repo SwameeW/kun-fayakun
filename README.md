@@ -20,7 +20,7 @@ are in [docs/CONTRACTS.md](docs/CONTRACTS.md) and [src/core/types.ts](src/core/t
 | M3 | Chapters 7 to 10, JPL ephemerides, the letter analysis, end credits | Done, pending review |
 | Film and simulator brief | Screenplay and shot list ([film/](film/)), then film mode, simulators, sound and showcase features | Screenplay and shot list written; the rest is planned |
 | M4 | Recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded | Not started |
-| Explorer: Universe Sandbox and SpaceEngine brief | Phases 1 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phases 1 to 4 done (the laboratory, impacts, worlds that respond, walks on the five solid worlds and descents through Venus's and Jupiter's air); Phase 5 done but generated systems (left for the owner); Phase 6's stars partly (an HR diagram, star figures, binaries' dynamics); Phase 7's ships, burns and an autopilot; Phase 8's picture and video with credits, a lens, lessons and sound; all pending review |
+| Explorer: Universe Sandbox and SpaceEngine brief | Phases 1 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phases 1 to 4 done (the laboratory, impacts, worlds that respond, walks on the five solid worlds and descents through Venus's and Jupiter's air); Phase 5 done but generated systems (left for the owner); Phase 6's stars partly (an HR diagram, star figures, binaries' dynamics); Phase 7's ships, burns and two autopilots (rounding an orbit, a Hohmann transfer); Phase 8's picture and video with credits, a lens, exposure and tracking, lessons and sound; all pending review |
 
 Not for public release until the reviews in [Review process](#review-process) are recorded.
 
@@ -51,9 +51,10 @@ See [the five-planet extension](docs/FIVE-PLANETS.md) for sources and display li
 
 The navigator's "Qibla and the new moon" shows the qibla from any place as a great circle on the
 globe, the moments the Sun stands over the Kaaba, the times of prayer by each published convention,
-the golden latitude beside the Kaaba's (at its actual size), new moons and the new crescent's map
-by Yallop's test or Odeh's, the date in the Umm al-Qura calendar, and places of the Islamic
-world's astronomers; see [the qibla and the new moon](docs/ISLAMIC-ASTRONOMY.md).
+an astrolabe drawn for the place and turned to the time shown, the golden latitude beside the
+Kaaba's (at its actual size), new moons and the new crescent's map by Yallop's test or Odeh's, the
+date in the Umm al-Qura calendar, and places of the Islamic world's astronomers; see [the qibla and
+the new moon](docs/ISLAMIC-ASTRONOMY.md).
 
 On foot, any of the five solid worlds can be walked on its measured heights, and Venus's and
 Jupiter's air descended through with their probes' readings ([walking](docs/WALKING.md),
@@ -126,7 +127,7 @@ projects:
 | `tests/keyboard.spec.ts` | Keyboard-only run-through with visible focus. |
 | `tests/reduced-motion.spec.ts` | `prefers-reduced-motion` is detected and verses only cross-fade. |
 | `tests/perf/*.spec.ts` (`@perf`) | 60 s auto-play frame stats and first contentful paint on slow 4G. |
-| `tests/unit/islamic.spec.ts`, `tests/explore/islamic.spec.ts` | The qibla and the new moon: published qibla bearings, Espenak's new moons, the announced times of the Sun over the Kaaba, Ramadan 1447's crescent reports, Umm al-Qura dates and WGS 84's quarter meridian; in the browser, the panel, the path and map on the globe, going to the Sun over the Kaaba (the explorer's own Sun then over it), the golden latitude near Makkah, the heritage places, and nothing of it in an experiment. |
+| `tests/unit/islamic.spec.ts`, `tests/unit/astrolabe.spec.ts`, `tests/explore/islamic.spec.ts` | The qibla and the new moon: published qibla bearings, Espenak's new moons, the announced times of the Sun over the Kaaba, Ramadan 1447's crescent reports, Umm al-Qura dates and WGS 84's quarter meridian; in the browser, the panel, the path and map on the globe, going to the Sun over the Kaaba (the explorer's own Sun then over it), the golden latitude near Makkah, the heritage places, the astrolabe's plate against its classic constructions and its Sun against the Astronomical Almanac's, and nothing of it in an experiment. |
 | `tests/unit/sim.spec.ts`, `tests/explore/lab.spec.ts` | The orbital laboratory: orbits against Kepler and an independent RK4, convergence, conservation, mergers, no tunnelling, replay and branching, imports refused; in the browser, pause stopping the physics, edits that change the motion, predictions, save, reset, checkpoints, the camera leaving a removed world, and round trips back to the explorer and the film with GPU memory level. Numbers: `node --import tsx scripts/sim-report.ts`. |
 | `tests/explore/planet-textures.spec.ts` | Every planet texture in `planets.json` decodes through the app's KTX2 loader with its size, mips and colour space; the raw maps put Tokyo, the Pacific and the B ring where the manifest says, and the ring strip keeps straight alpha; the compressed maps, decoded by the app's Basis transcoder, put the Sahara, the Himalaya, Tycho, the Great Red Spot and Saturn's bluer south where it says; every planet credit shows on the Sources page. (`tests/unit/planets.spec.ts` checks the manifest, the KTX2 headers and the coordinate helpers without a browser.) |
 

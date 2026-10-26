@@ -63,7 +63,8 @@
 
 .kf-about-facts {
   display: grid;
-  grid-template-columns: minmax(6.5rem, max-content) 1fr;
+  /* The values keep at least 45% of the width: a long name wraps rather than squeezing its value onto two lines. */
+  grid-template-columns: minmax(6.5rem, max-content) minmax(45%, 1fr);
   gap: var(--kf-space-1) var(--kf-space-3);
   margin: 0;
   line-height: 1.45;
@@ -126,6 +127,8 @@
 
 .kf-living-group {
   display: grid;
+  /* One column the box's own width, whatever a child would like (a list of long choices). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-1);
   margin: 0;
 }
@@ -318,6 +321,7 @@
 
 .kf-living-notes-part {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-2);
 }
 
@@ -380,6 +384,7 @@
 
 .kf-living-prophets-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-2);
   padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
 }
@@ -460,6 +465,8 @@
 /* The orbital laboratory's panel (src/ui/explore/lab-panel.ts). */
 .kf-nav-lab {
   display: grid;
+  /* One column no wider than the panel, whatever a child's own width (a list of long choices). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-2);
   margin: 0 var(--kf-space-3) var(--kf-space-2);
   padding: var(--kf-space-3);
@@ -521,6 +528,11 @@
 .kf-lab-file {
   display: inline-flex;
   align-items: center;
+}
+
+/* A list of long choices no wider than the panel. */
+.kf-nav-lab select {
+  max-inline-size: 100%;
 }
 
 /* A tick beside each body (several at once), and the inspector's tick boxes. */
@@ -606,6 +618,20 @@
   display: grid;
   gap: var(--kf-space-2);
   padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
+}
+
+/* The astrolabe (src/ui/explore/astrolabe-view.ts): drawn at a fixed size, scaled to the panel. */
+.kf-islamic-astrolabe {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 22rem;
+  block-size: auto;
+  aspect-ratio: 1;
+  margin: var(--kf-space-1) auto;
+}
+
+.kf-islamic-astrolabe[hidden] {
+  display: none;
 }
 
 .kf-islamic-figure {
@@ -805,7 +831,13 @@
   accent-color: var(--kf-gold-strong);
 }
 
-/* Among the stars (src/ui/explore/neighbourhood-panel.ts): the planets' list. */
+/* Among the stars (src/ui/explore/neighbourhood-panel.ts): inset and set like the navigator's other sections. */
+.kf-stars {
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  font-size: 0.8125rem;
+}
+
+/* The planets' list. */
 .kf-stars-planets {
   list-style: none;
   margin: 0;

@@ -15,7 +15,7 @@
  * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
  * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
- * that load later still (the orbital laboratory, the qibla and new moon section, walking), each
+ * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode), each
  * against its own budget.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -72,6 +72,10 @@ const ISLAMIC_BUDGET_BYTES = 40_000;
 const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts', 'src/explore/walk/equirect.ts'] as const;
 /** What walking may add beyond the shell and the explorer, gzipped. */
 const WALK_BUDGET_BYTES = 30_000;
+/** Photo mode's controls (loaded the first time it opens): the picture, a video, the lens, the exposure, tracking. */
+const PHOTO_SOURCES = ['src/ui/explore/photo-bar.ts'] as const;
+/** What photo mode's controls may add beyond the shell and the explorer, gzipped. */
+const PHOTO_BUDGET_BYTES = 10_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -239,7 +243,15 @@ function main(): void {
   const walkBytes = walkRows.reduce((sum, row) => sum + row.gzip, 0);
   const walkOk = walkRows.length > 0 && walkBytes <= WALK_BUDGET_BYTES;
   console.log(`${walkOk ? 'PASS' : 'FAIL'}: walking (lazy, ${walkRows.length} files) = ${formatBytes(walkBytes)} bytes gzipped (budget ${formatBytes(WALK_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk) process.exitCode = 1;
+  // Photo mode's controls, beyond the shell and the explorer: what opening photo mode adds.
+  const photoRows = measure(exploreFiles(manifest, loaded, PHOTO_SOURCES));
+  for (const row of [...photoRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`photo  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const photoBytes = photoRows.reduce((sum, row) => sum + row.gzip, 0);
+  const photoOk = photoRows.length > 0 && photoBytes <= PHOTO_BUDGET_BYTES;
+  console.log(`${photoOk ? 'PASS' : 'FAIL'}: photo mode (lazy, ${photoRows.length} files) = ${formatBytes(photoBytes)} bytes gzipped (budget ${formatBytes(PHOTO_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk) process.exitCode = 1;
 }
 
 try {

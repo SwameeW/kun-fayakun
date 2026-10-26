@@ -63,6 +63,9 @@ stand on; their atmospheres are GR-6.
     - Mercury: no air, a vacuum (a thin exosphere), its ground averaging 167 °C, and 317 to 452 °C
       on the side toward the Sun (the fact sheet's 440 K, and 590 to 725 K);
   - the Sun's height (on Venus "unseen behind the clouds"), and the local solar time;
+  - on the Earth, the qibla: the great circle's bearing to the Kaaba from where the walker stands
+    (degrees from true north, the function of the section on the qibla and the new moon), and how
+    far to turn left or right from the heading to face it (within 2°, "straight ahead");
   - where the ground comes from, and what is illustrative.
 
   On a narrow screen the figures fold under the title, leaving the view and the buttons.

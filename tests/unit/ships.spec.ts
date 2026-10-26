@@ -9,13 +9,16 @@
  * - a Hohmann transfer planned with two burns (Vallado, Fundamentals of Astrodynamics, 4th ed.,
  *   algorithm 36): from a circular orbit 7,000 km from the Earth's centre to 42,164 km (geostationary
  *   radius), the first burn's apoapsis reaching the second orbit and the second circularising it;
- * - undo takes a burn back, bit for bit; a scenario with a ship and a burn round-trips the validator.
+ * - undo takes a burn back, bit for bit; a scenario with a ship and a burn round-trips the validator;
+ * - the transfer autopilot's plan against Vallado's worked example 6-1 (a Hohmann transfer from a
+ *   191.34411 km circular orbit to geostationary altitude, 35,781.34857 km: 2.457 and 1.478 km/s,
+ *   5.256 hours), and downward (the burns backwards), and refused beyond the propellant.
  */
 import { expect, test } from '@playwright/test';
 import { DEFAULT_INTEGRATOR, Engine, ENGINE_VERSION, SCHEMA_VERSION, validateScenario, type BodySpec, type Scenario } from '../../src/sim/engine';
 import { elementsFromState } from '../../src/sim/elements';
 import { emptyState, step, addBody, type MergeEvent } from '../../src/sim/nbody';
-import { burnDirection, burnDuration, burnStep, deltaVLeft, G0, planBurn, type ShipSpec } from '../../src/sim/ships';
+import { burnDirection, burnDuration, burnStep, deltaVLeft, G0, hohmann, planBurn, type ShipSpec } from '../../src/sim/ships';
 
 const GM_EARTH = 398_600.435;
 const R_EARTH = 6378.137;
@@ -128,4 +131,28 @@ test('undo takes a burn back exactly, and a scenario with a ship and a burn pass
   const last = bad.log[bad.log.length - 1];
   if (last?.command.kind === 'burn') (last.command.burn as { direction: string }).direction = 'sideways';
   expect(validateScenario(bad).ok).toBe(false);
+});
+
+test('the transfer autopilot’s plan: Vallado’s example 6-1, a transfer downward, and one beyond the propellant', () => {
+  // Vallado (4th ed.) works it with mu = 398,600.4418 km^3/s^2 and an Earth of 6,378.137 km.
+  const mu = 398_600.4418;
+  const r1 = 6378.137 + 191.34411;
+  const r2 = 6378.137 + 35_781.34857;
+  const strong: ShipSpec = { dryKg: 2000, fuelKg: 18_000, thrustN: 400_000, ispS: 320 };
+  const up = hohmann(strong, mu, r1, Math.sqrt(mu / r1), r2);
+  expect(up.dv1Ms / 1000).toBeCloseTo(2.457, 3);
+  expect(up.dv2Ms / 1000).toBeCloseTo(1.478, 3);
+  // The book prints the coast as 5.256 h (its last digit cut short: 18,924 s is 5.2567 h).
+  expect(Math.abs(up.coastS / 3600 - 5.256)).toBeLessThan(0.001);
+  // Each burn's length by the rocket equation, the second from the propellant the first leaves.
+  expect(up.d1S).toBeCloseTo(burnDuration(strong, up.dv1Ms), 9);
+  const left = strong.fuelKg - (strong.thrustN / (strong.ispS * G0)) * up.d1S;
+  expect(up.d2S).toBeCloseTo(burnDuration({ ...strong, fuelKg: left }, up.dv2Ms), 9);
+  // Down again: the same changes of speed, backwards (negative along the motion), the same coast.
+  const down = hohmann(strong, mu, r2, Math.sqrt(mu / r2), r1);
+  expect(down.dv1Ms).toBeCloseTo(-up.dv2Ms, 6);
+  expect(down.dv2Ms).toBeCloseTo(-up.dv1Ms, 6);
+  expect(down.coastS).toBeCloseTo(up.coastS, 6);
+  // A ship with 2,175 m/s in it cannot make 3.9 km/s of transfer.
+  expect(hohmann(SHIP, mu, r1, Math.sqrt(mu / r1), r2).d2S).toBe(Number.POSITIVE_INFINITY);
 });

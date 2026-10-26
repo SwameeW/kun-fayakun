@@ -442,12 +442,25 @@ export class Engine {
     const log = this.scenario.log;
     this.discarded = log.length - this.logIndex;
     log.length = this.logIndex;
-    // A new branch: checkpoints of the discarded future go with it.
-    if (this.discarded > 0) this.prune(this.state.step, log.length);
+    // A new branch: checkpoints of the future it replaces go with it (after going back, those of the run as it was).
+    this.prune(this.state.step, log.length);
     this.undone.length = 0;
     this.checkpoint();
     log.push({ step: this.state.step, command });
     this.applyDue();
+  }
+
+  /**
+   * An edit made to the run as the visitor saw it, at `atStep`. The worker runs on between the view
+   * last shown and the edit's arrival (a frame or two: a long stretch at a fast rate), so the run goes
+   * back to that step first (exactly: a checkpoint, the log replayed), unless an edit has been made
+   * since. A body placed beside another is then placed where that one was seen, not where it has
+   * moved since (at a day a second, a hundred thousand kilometres for the Earth).
+   */
+  applyAt(command: Command, atStep: number): void {
+    const last = this.logIndex > 0 ? (this.scenario.log[this.logIndex - 1]?.step ?? 0) : -1;
+    if (!this.failure && atStep > last && atStep < this.state.step) this.restore(atStep);
+    this.apply(command);
   }
 
   /** Edits that can be undone (applied ones) and redone. */
@@ -499,6 +512,8 @@ export class Engine {
     }
     const log = this.scenario.log;
     log.length = this.logIndex;
+    // Checkpoints taken since the undo belong to a run without it.
+    this.prune(this.state.step, log.length);
     this.checkpoint();
     log.push({ step: this.state.step, command: next.command });
     this.applyDue();

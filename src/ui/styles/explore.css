@@ -984,13 +984,21 @@
   margin: 0 var(--kf-space-3);
 }
 
-/* Detail and Sound side by side; the row places the detail menu, so it keeps the foot's width. */
+/* Detail and Sound side by side (Sound as wide as it needs); the row places the detail menu, so it keeps the foot's width. */
 .kf-nav-foot-row {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--kf-space-2);
   margin: 0 var(--kf-space-3);
+}
+
+.kf-nav-foot-row :is(.kf-nav-detail-label, .kf-nav-detail-value) {
+  white-space: nowrap;
+}
+
+.kf-nav-sound .kf-nav-detail-button {
+  gap: var(--kf-space-3);
 }
 
 .kf-nav-foot-row .kf-nav-detail {
@@ -1794,11 +1802,20 @@
 
 .kf-photo .kf-universe-photo-bar {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--kf-space-2);
   position: fixed;
   inset-block-start: var(--kf-space-3);
   inset-inline-end: var(--kf-gutter);
+  /* On a narrow screen the controls wrap rather than run off its edge. */
+  max-inline-size: calc(100vw - 2 * var(--kf-gutter));
   z-index: 5;
+}
+
+/* Its controls come with their own chunk, in a wrapper the bar lays out as its own children. */
+.kf-universe-photo-controls {
+  display: contents;
 }
 
 .kf-photo .kf-universe-photo-bar .kf-btn {

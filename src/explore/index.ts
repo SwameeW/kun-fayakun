@@ -383,6 +383,8 @@ export default function create(): UniverseModule {
   let lab: Lab | null = null;
   /** What the laboratory is made from (kept from loading; the laboratory's own code loads only when one starts). */
   let labInputs: { planets: PlanetsFile; moon: MoonFile; physical: PhysicalFile } | null = null;
+  /** The sky's catalogue, kept for the astrolabe's stars. */
+  let skyData: SkyFile | null = null;
   let labLoading = false;
   let wantLab = false;
   /** A share link's scenario (src/sim/share), waiting for the laboratory to open. */
@@ -457,6 +459,10 @@ export default function create(): UniverseModule {
   const soundView: UniverseView['sound'] = { on: true, playing: null };
   /** Photo mode's lens (degrees of field, top to bottom), or null for the explorer's own framing. */
   let lensFov: number | null = null;
+  /** Photo mode's tracking: the body kept in its place in the frame, and its direction from the focus last frame. */
+  let tracking: BodyId | null = null;
+  const trackDir = km();
+  let trackKnown = false;
   let islamicLoading = false;
   const islamicWaiting: UniverseIslamicCommand[] = [];
   let hijriDay = Number.NaN;
@@ -686,6 +692,7 @@ export default function create(): UniverseModule {
     neighbourhood: null,
     sound: { on: true, playing: null },
     lensFov: null,
+    tracking: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -1522,7 +1529,28 @@ export default function create(): UniverseModule {
     const mx = eb[0] ?? 1;
     const my = eb[1] ?? 0;
     const mz = eb[2] ?? 0;
-    if (earthMeridianKnown && nav.focus === 'earth' && (placeLock || nav.lensActive || nav.gliding)) {
+    // Photo mode's tracking (ledger CR-2): the view turned about the focus by the body's own motion round
+    // it since the last frame, so it keeps its place in the frame; while it does, the Earth's spin is not followed.
+    if (tracking && tracking !== nav.focus && !nav.busy && nav.mode === 'orbit') {
+      const f = sys.bodies[nav.focus].position;
+      const t = sys.bodies[tracking].position;
+      const len = Math.hypot(t.x - f.x, t.y - f.y, t.z - f.z) || 1;
+      const nx = (t.x - f.x) / len;
+      const ny = (t.y - f.y) / len;
+      const nz = (t.z - f.z) / len;
+      if (trackKnown) {
+        const cx = trackDir.y * nz - trackDir.z * ny;
+        const cy = trackDir.z * nx - trackDir.x * nz;
+        const cz = trackDir.x * ny - trackDir.y * nx;
+        const sin = Math.hypot(cx, cy, cz);
+        if (sin > 1e-12) nav.turnAbout(km(cx / sin, cy / sin, cz / sin), Math.atan2(sin, trackDir.x * nx + trackDir.y * ny + trackDir.z * nz));
+      }
+      trackDir.x = nx;
+      trackDir.y = ny;
+      trackDir.z = nz;
+      trackKnown = true;
+    } else trackKnown = false;
+    if (!tracking && earthMeridianKnown && nav.focus === 'earth' && (placeLock || nav.lensActive || nav.gliding)) {
       const b = earthMeridianBefore;
       const crossDotPole = (b.y * mz - b.z * my) * earthPole.x + (b.z * mx - b.x * mz) * earthPole.y + (b.x * my - b.y * mx) * earthPole.z;
       nav.spinWithEarth(earthPole, Math.atan2(crossDotPole, b.x * mx + b.y * my + b.z * mz));
@@ -2487,6 +2515,7 @@ export default function create(): UniverseModule {
       range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
       system = createSolarSystem(planets, moon, physical);
       labInputs = { planets, moon, physical };
+      skyData = skyFile;
       world = navBodies(system);
       ringSphere.innerKm = physical.saturnRings.innerKm;
       ringSphere.outerKm = physical.saturnRings.outerKm;
@@ -2928,6 +2957,11 @@ export default function create(): UniverseModule {
           lensFov = command.fovDeg === null || !(command.fovDeg >= LENS_FOV.min && command.fovDeg <= LENS_FOV.max) ? null : command.fovDeg;
           viewState.lensFov = lensFov;
           return;
+        case 'track':
+          tracking = command.body !== null && BODY_IDS.includes(command.body) ? command.body : null;
+          trackKnown = false;
+          viewState.tracking = tracking;
+          return;
         case 'starsSearch':
           hood?.search(command.text);
           return;
@@ -2977,7 +3011,7 @@ export default function create(): UniverseModule {
       import('./islamic')
         .then(({ createIslamic }) => {
           islamicLoading = false;
-          islamic = createIslamic({ ephemeris: createEphemeris(planets, moon, physical), time, obliquityRad: obliquityRad(physical) }, radiusKm);
+          islamic = createIslamic({ ephemeris: createEphemeris(planets, moon, physical), time, obliquityRad: obliquityRad(physical) }, radiusKm, skyData ?? undefined);
           root.add(...islamic.objects);
           for (const c of islamicWaiting.splice(0)) islamic.command(c);
         })
@@ -3084,6 +3118,11 @@ export default function create(): UniverseModule {
       endWalk(true);
       endDescent(true);
       endStars(true);
+      // Photo mode's lens and tracking end with the visit.
+      lensFov = null;
+      viewState.lensFov = null;
+      tracking = null;
+      viewState.tracking = null;
       starsRoot.removeFromParent();
       root.removeFromParent();
       input?.detach();

@@ -6,7 +6,7 @@ import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Comma
 import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
 import { circularOrbit, consumes, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
-import { burnDuration, deltaVLeft, G0 } from '../sim/ships';
+import { burnDuration, deltaVLeft, G0, hohmann, ROUND_E, type Transfer } from '../sim/ships';
 import { SWARM_LIMITS } from '../sim/swarms';
 import { airlessRock, climateSummary, noonK, worldClimates } from '../sim/climate';
 import { presets as presetList, type Preset } from '../sim/presets';
@@ -528,7 +528,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     // A solid body the visitor adds has a temperature too: an airless rock, unless it comes with a climate.
     const command: Command = given.kind === 'add' && !given.body.climate && given.body.gm > 0 && given.body.gm <= SOLID_MAX_GM ? { ...given, body: { ...given.body, climate: airlessRock() } } : given;
     sentEdits += 1;
-    send({ type: 'command', generation, command });
+    // On the run as last seen: the worker goes back to that step if it has run on since.
+    send({ type: 'command', generation, command, ...(snap?.generation === generation ? { atStep: snap.step } : {}) });
     edited.add(commandId(command));
   };
 
@@ -600,6 +601,23 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     const deltaVMs = (Math.sqrt(rel.mu / ra) - Math.sqrt(rel.mu * (2 / ra - 1 / el.a))) * 1000;
     const left = { ...x, fuelKg: x.burns.reduce((f, b) => f - ((b.throttle * x.thrustN) / (x.ispS * G0)) * b.durationS, x.fuelKg) };
     return { inS, deltaVMs, durationS: burnDuration(left, deltaVMs), ref: s.ids[rel.p] ?? '' };
+  };
+
+  /**
+   * The second autopilot's plan: a Hohmann transfer from the ship's orbit (round, with no burns
+   * planned) to a round one `toKm` from its primary's centre, above the primary's surface; null when
+   * it cannot be done (or the propellant left cannot give it).
+   */
+  const transferPlan = (s: LabSnapshot, id: string, toKm: number): (Transfer & { ref: string }) | null => {
+    const i = s.ids.indexOf(id);
+    const x = s.ships.find((y) => y.id === id);
+    const rel = i >= 0 ? relativeTo(s, i) : null;
+    if (!x || !rel || x.burns.length > 0 || !(toKm > (s.radius[rel.p] ?? 0))) return null;
+    const el = elementsFromState(rel.r, rel.v, rel.mu);
+    const r1 = norm3(rel.r);
+    if (!el.bound || el.e >= ROUND_E || Math.abs(toKm - r1) < 1) return null;
+    const plan = hohmann(x, rel.mu, r1, norm3(rel.v), toKm);
+    return Number.isFinite(plan.d1S) && Number.isFinite(plan.d2S) ? { ...plan, ref: s.ids[rel.p] ?? '' } : null;
   };
 
   /** A ship's rocket as the view gives it (src/sim/ships): its burns to come, each one's change of speed by the rocket equation. */
@@ -1518,6 +1536,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           if (!s || !round || !Number.isFinite(round.durationS) || round.durationS <= 0) return;
           // Centred on the far side: half the burn before it, half after.
           edit({ kind: 'burn', id: c.id, burn: { startT: s.t + Math.max(0, round.inS - round.durationS / 2), durationS: round.durationS, direction: 'prograde', ref: round.ref, throttle: 1 } });
+          requestPrediction();
+          return;
+        }
+        case 'transfer': {
+          const plan = s ? transferPlan(s, c.id, c.toKm) : null;
+          if (!s || !plan) return;
+          // Two burns along the motion (backwards to fall): the first now, the second centred on the transfer orbit's far side.
+          edit({ kind: 'burn', id: c.id, burn: { startT: s.t, durationS: plan.d1S, direction: plan.dv1Ms >= 0 ? 'prograde' : 'retrograde', ref: plan.ref, throttle: 1 } });
+          edit({ kind: 'burn', id: c.id, burn: { startT: s.t + plan.d1S / 2 + plan.coastS - plan.d2S / 2, durationS: plan.d2S, direction: plan.dv2Ms >= 0 ? 'prograde' : 'retrograde', ref: plan.ref, throttle: 1 } });
           requestPrediction();
           return;
         }
