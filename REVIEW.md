@@ -101,7 +101,12 @@ scholarly text or science text change later, that area needs review again.
   and that the note sends people to their own community's timetable. The
   heritage notes (`ui.universe.islamic.heritage.*`): al-Battani, al-Sufi,
   al-Tusi, Ulugh Beg, the Darb-i Imam's girih tiles, Taqi al-Din; and the
-  Andromeda Galaxy named on the sky as al-Sufi's "little cloud".
+  Andromeda Galaxy named on the sky as al-Sufi's "little cloud". The astrolabe's
+  note (`ui.universe.islamic.astrolabe.*`): the one instrument it names (the
+  Science Museum's, from its catalogue) and the line 18 degrees below the
+  horizon described as several conventions' depression for Fajr or Isha. The
+  qibla on foot (`ui.universe.walk.qibla*`): a great-circle bearing and the turn
+  to face it, worded as a direction only.
 
 ### 3. Astrophysicist
 
@@ -111,6 +116,10 @@ scholarly text or science text change later, that area needs review again.
   Odeh's (topocentric ARCV and W at the same best time), and the times of
   prayer (depressions of the Sun's centre without refraction; sunrise and
   sunset by the upper limb with 34' of refraction; Asr from the noon shadow).
+  The astrolabe (`src/explore/islamic/astrolabe.ts`): the stereographic
+  projection from the pole below the horizon, the plate's circles against their
+  classic constructions, the rete turned by the local mean sidereal time with
+  the stars precessed to the date, and the rule's local apparent time.
 
 - Every number in `data/constants.json` (value, uncertainty, unit, qualifier,
   citation and access date), and every place it appears in the panels.
