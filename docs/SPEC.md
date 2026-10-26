@@ -6,6 +6,36 @@ Build it in milestones (see DELIVERABLE). Ship a working vertical slice (Chapter
 
 —
 
+## 0. PURPOSE (owner, 2026-10-26)
+
+Kun Fayakun is an Islamic educational and reflective experience. Its purpose is to help people
+contemplate the precision, balance, intricacy and interconnectedness of the universe Allah has
+created, through the cinematic timeline, the scientific explanations, the astronomical explorer, the
+physics laboratory and the interactive features alike.
+
+**The real universe is the reference. The sandbox is the thought experiment. Reflection is the
+purpose.**
+
+- **The laboratory (sandbox) is never a universe-creation game.** It does not make the visitor a
+  creator or give them control over creation. It lets them change physical conditions and see what
+  the scientific models say would follow (a planet's distance from the Sun, the Sun's mass, an orbit's
+  speed, the Moon's orbit, an atmosphere's thickness, its greenhouse gases, an unstable orbit, a
+  collision), so that they understand how the conditions depend on one another and reflect on the
+  relationships in the real universe. Every useful mechanic stays; this is its meaning, not a limit on it.
+- **Four kinds of content are always kept apart, and labelled:** (1) real observed or measured data;
+  (2) scientific theories and models; (3) hypothetical simulation results; (4) Quranic content and
+  Islamic interpretation. Modern scientific theories are never presented as definitive Quranic
+  interpretations, nor as mathematical proofs of theological claims. A simulation's outcome never
+  says what Allah would have decreed under other conditions. Uncertainty, modelling assumptions and a
+  simulation's limits are stated.
+- **Words.** Never "create your universe", "become the creator", "play God" or "control creation".
+  Use "explore the consequences", "what if?", "change the conditions", "experiment with gravity",
+  "compare with reality", "investigate the effects".
+- **Reflection arises from understanding, not commentary.** Religious commentary is not forced into
+  every interaction. A visitor should see what changed, understand why, and compare it with the real
+  baseline; occasional questions ("What changed?", "Why did the orbit become unstable?", "How is this
+  different from the real solar system?") lead from observation to understanding to reflection.
+
 ## 1. CORE PRINCIPLES (non-negotiable)
 
 1. Reflection, not proof. Verses are shown beside science for reflection, never as predictions, proofs, or “scientific miracles”. Never write “the Quran predicted X”. Never time an explosion, burst, or reveal to land on the key word of a verse.

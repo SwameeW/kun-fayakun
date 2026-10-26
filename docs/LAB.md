@@ -11,6 +11,25 @@ shows what Newtonian gravity does to a copy of it once changed. Every screen in 
 experiment ... not a prediction"), and nothing it does reaches the explorer's data. It carries no
 scripture: destructive experiments stay clear of the film's verses.
 
+
+## What the laboratory is for
+
+The real universe is the reference; the laboratory is the thought experiment; reflection is the
+purpose (docs/SPEC.md, section 0). It is a copy of the real solar system at a moment (or a small
+system of its own), in which the visitor changes the conditions (a mass, an orbit, an atmosphere,
+a collision) and sees what the models say would follow. It never presents itself as making a
+universe: its title says "an experiment", its first line says "What if? Change the conditions, see
+what the science models say would follow, and compare it with the real solar system, which stays as
+it is", and its results are labelled as the experiment's, not as observations.
+
+**Compared with reality** (`src/ui/explore/lab-panel.ts`, `UniverseLabBody.baseline`): once a
+built-in world's mass or size has changed by a thousandth, or its orbit's size or year by 3 per cent
+(beyond the slow drift of the osculating elements the other worlds' pulls cause), the inspector sets
+its figures beside the real ones (the real seed's at the fork, from JPL's ephemeris) and asks one
+question about the largest change: a different mass, a different size, a wider or a tighter orbit, or
+an escape. Only for an experiment begun from the real system; a file or a link is an experiment of
+its own and has no real baseline.
+
 ## Using it
 
 - **Enter.** "Experiment with this system" in the navigator forks the system at the
