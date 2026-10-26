@@ -505,6 +505,79 @@
   align-items: center;
 }
 
+/* A tick beside each body (several at once), and the inspector's tick boxes. */
+.kf-lab-body-row {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-1);
+}
+
+.kf-lab-body-row > .kf-living-place {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.kf-lab-check {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  margin: 0;
+  accent-color: var(--kf-gold-strong);
+  flex: none;
+}
+
+.kf-lab-check-label {
+  margin: 0;
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+/* The palette of real bodies to add, by kind. */
+.kf-lab-palette {
+  display: grid;
+  gap: var(--kf-space-1);
+  max-block-size: 18rem;
+  overflow-y: auto;
+  padding-inline-end: var(--kf-space-1);
+}
+
+.kf-lab-presets .kf-living-place[aria-pressed="true"] {
+  border-color: var(--kf-gold-strong);
+}
+
+/* A quantity over time: a line on a faint frame, in the text colour. */
+.kf-lab-chart {
+  display: block;
+  inline-size: 100%;
+  block-size: 6rem;
+  color: var(--kf-gold-strong);
+}
+
+@media (pointer: coarse) {
+  /* A 44 px target with a 24 px box drawn in it (the theme's line and gold: data images take no variables). */
+  .kf-lab-check {
+    appearance: none;
+    -webkit-appearance: none;
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    border-radius: var(--kf-radius-small);
+    background: no-repeat center / 1.5rem 1.5rem url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='1.5' width='21' height='21' rx='4' fill='none' stroke='%23ede7da' stroke-opacity='0.55' stroke-width='2'/%3E%3C/svg%3E");
+    cursor: pointer;
+  }
+
+  .kf-lab-check:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='1.5' width='21' height='21' rx='4' fill='%23e8c983'/%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%2305060a' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  .kf-lab-check:focus-visible {
+    outline: 2px solid var(--kf-gold-strong);
+    outline-offset: 2px;
+  }
+
+  .kf-lab-body-row {
+    min-block-size: 2.75rem;
+  }
+}
+
 .kf-nav.is-sheet .kf-nav-lab,
 .kf-nav.is-sheet .kf-nav-lab-entry {
   order: 2;

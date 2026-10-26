@@ -93,6 +93,8 @@ export interface UniverseOpenOptions {
   stretch?: boolean;
   /** In the orbital laboratory (an experiment forked from the explorer's system), or back out of it. */
   lab?: boolean;
+  /** A scenario from a share link (src/sim/share), to load once the laboratory opens. */
+  labShare?: string;
 }
 
 type HostState = 'idle' | 'loading' | 'active' | 'leaving';

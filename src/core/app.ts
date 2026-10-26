@@ -694,7 +694,7 @@ class Engine implements KunFayakunApp {
       // On the first address (a deep link) there is nothing of ours behind it.
       this.universeBack = !initial && !this.universeHost.requested;
       if (!route.lab) this.labBack = false;
-      this.enterUniverse(route.body, route.jd, route.lab === true);
+      this.enterUniverse(route.body, route.jd, route.lab === true, route.share);
       return;
     }
     if (route.name === 'sources') {
@@ -749,7 +749,7 @@ class Engine implements KunFayakunApp {
    * Opens the explorer for a route (or applies the route to it when it is already open). The
    * film's position is remembered the first time, so closing the explorer can return to it.
    */
-  private enterUniverse(body: BodyId | null, jd: number | null, lab = false): void {
+  private enterUniverse(body: BodyId | null, jd: number | null, lab = false, labShare?: string): void {
     const fresh = !this.universeHost.requested;
     if (fresh) {
       const chapter = this.timeline.chapter;
@@ -766,7 +766,7 @@ class Engine implements KunFayakunApp {
     // From Chapter 7's compressed solar system, with no body or date asked for, the explorer opens on
     // that view and stretches it out to true scale.
     const stretch = fresh && this.origin?.chapter === 'ch07' && body === null && jd === null;
-    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced, stretch: stretch && !lab, lab });
+    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced, stretch: stretch && !lab, lab, ...(labShare ? { labShare } : {}) });
   }
 
   private returnToOrigin(origin: FilmOrigin, history: NavOptions['history']): void {

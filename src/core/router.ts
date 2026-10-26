@@ -13,8 +13,9 @@ function chapterIdFromNumber(n: number): ChapterId | null {
 
 /**
  * Parses "#/", "#/ch/<n>?t=<seconds>", "#/sources", "#/universe[/<body>][?jd=<Julian date>]" and
- * "#/universe/lab[?jd=...]" (the orbital laboratory, forked at that date); anything else is home. An
- * unknown body still opens the explorer, on its default view.
+ * "#/universe/lab[?jd=...]" (the orbital laboratory, forked at that date), or "#/universe/lab?s=..." (a
+ * scenario carried in the link, src/sim/share); anything else is home. An unknown body still opens the
+ * explorer, on its default view.
  */
 export function parseHash(hash: string): Route {
   const h = hash.trim();
@@ -32,8 +33,11 @@ export function parseHash(hash: string): Route {
   if (u) {
     const name = (u[1] ?? '').toLowerCase();
     const body = BODY_IDS.find((b) => b === name) ?? null;
-    const jd = parseJulianDate(new URLSearchParams(u[2] ?? '').get('jd'));
-    return name === LAB ? { name: 'universe', body: null, jd, lab: true } : { name: 'universe', body, jd };
+    const query = new URLSearchParams(u[2] ?? '');
+    const jd = parseJulianDate(query.get('jd'));
+    const share = query.get('s');
+    if (name === LAB) return share && /^[A-Za-z0-9_-]{8,16000}$/u.test(share) ? { name: 'universe', body: null, jd, lab: true, share } : { name: 'universe', body: null, jd, lab: true };
+    return { name: 'universe', body, jd };
   }
   return { name: 'home' };
 }
@@ -51,6 +55,7 @@ export function formatRoute(route: Route): string {
     case 'universe': {
       const body: BodyId | null = route.body;
       const where = route.lab ? `/${LAB}` : body ? `/${body}` : '';
+      if (route.lab && route.share) return `#/universe${where}?s=${route.share}`;
       return `#/universe${where}${route.jd === null ? '' : `?jd=${route.jd}`}`;
     }
   }

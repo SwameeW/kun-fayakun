@@ -33,6 +33,16 @@ import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts'
  * speed squared) is the impact's heat; their mutual attraction becomes the merged body's own binding,
  * which point masses do not hold. Both go to `internal`, the merged bodies' internal-energy reservoir,
  * so mechanical energy plus `internal` is the closed model's total and stays constant through it.
+ *
+ * Oblateness (ledger SB-33): a body with a J2 (its flattening's lowest zonal harmonic, normalised to
+ * its radius) pulls every other body with the J2 term of its field about its spin axis, as well as
+ * as a point; the others pull it back (momentum kept), and the torque turns its spin axis (angular
+ * momentum kept: the axis precesses, as the Earth's does under the Moon and the Sun). The J2 term's
+ * potential energy is in the energy, so it is conserved as the point masses' is.
+ *
+ * Held in place (ledger SB-28): a body the visitor holds fixed has no velocity and feels no force: an
+ * external constraint, so momentum and energy are no longer conserved while it holds (the drift
+ * readout says so rather than counting it an error).
  */
 
 export interface SimState {
@@ -45,8 +55,13 @@ export interface SimState {
   /** Positions (km) and velocities (km s^-1), three per body. */
   pos: number[];
   vel: number[];
-  /** Spin angular momentum taken up by mergers, GM-weighted (km^5 s^-3 / ... in G units), three per body. */
+  /** Spin angular momentum, GM-weighted (G times kg km^2 s^-1), three per body: set by the visitor or the seed, taken up by mergers, turned by oblateness's torque. */
   spin: number[];
+  /** Each body's J2 (0: spherical) and moment of inertia factor (I / M R^2; 0.4 for a uniform sphere). */
+  j2: number[];
+  inertia: number[];
+  /** Ids of bodies held in place (no velocity, no force felt). */
+  fixed: string[];
   /** Simulated seconds since the scenario's epoch, and steps taken. */
   t: number;
   step: number;
@@ -101,20 +116,55 @@ export const count = (s: SimState): number => s.ids.length;
 
 /** A deep copy (the engine's checkpoints and predictions run on copies). */
 export function cloneState(s: SimState): SimState {
-  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing] };
+  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing] };
 }
 
-export function addBody(s: SimState, body: { id: string; name: string; gm: number; radiusKm: number; pos: readonly number[]; vel: readonly number[] }): void {
+/** An empty state. */
+export function emptyState(): SimState {
+  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [] };
+}
+
+/** A uniform sphere's moment of inertia factor: the default where a body's own is not known. */
+export const UNIFORM_INERTIA = 0.4;
+
+export function addBody(s: SimState, body: { id: string; name: string; gm: number; radiusKm: number; pos: readonly number[]; vel: readonly number[]; spin?: readonly number[]; j2?: number; inertia?: number }): void {
   s.ids.push(body.id);
   s.names.push(body.name);
   s.gm.push(body.gm);
   s.radius.push(body.radiusKm);
   s.pos.push(body.pos[0] ?? 0, body.pos[1] ?? 0, body.pos[2] ?? 0);
   s.vel.push(body.vel[0] ?? 0, body.vel[1] ?? 0, body.vel[2] ?? 0);
-  s.spin.push(0, 0, 0);
+  s.spin.push(body.spin?.[0] ?? 0, body.spin?.[1] ?? 0, body.spin?.[2] ?? 0);
+  s.j2.push(body.j2 ?? 0);
+  s.inertia.push(body.inertia ?? UNIFORM_INERTIA);
+}
+
+/**
+ * The spin angular momentum (G units) of a body turning once every `periodS` seconds about `pole`
+ * (prograde about it), from its moment of inertia factor: k GM R^2 (2 pi / period).
+ */
+export function spinVector(gm: number, radiusKm: number, inertia: number, periodS: number, pole: readonly number[]): [number, number, number] {
+  const l = Math.hypot(pole[0] ?? 0, pole[1] ?? 0, pole[2] ?? 0);
+  if (!(l > 0) || !(periodS > 0)) return [0, 0, 0];
+  const L = (inertia * gm * radiusKm * radiusKm * 2 * Math.PI) / periodS;
+  return [((pole[0] ?? 0) / l) * L, ((pole[1] ?? 0) / l) * L, ((pole[2] ?? 0) / l) * L];
+}
+
+/** A body's rotation from its spin: the period (s; null when it does not turn or weighs nothing) and the unit pole. */
+export function rotationOf(s: SimState, i: number): { periodS: number | null; pole: [number, number, number] } {
+  const L = Math.hypot(s.spin[i * 3] ?? 0, s.spin[i * 3 + 1] ?? 0, s.spin[i * 3 + 2] ?? 0);
+  const g = s.gm[i] ?? 0;
+  const r = s.radius[i] ?? 0;
+  const k = s.inertia[i] ?? UNIFORM_INERTIA;
+  if (!(L > 0) || !(g > 0)) return { periodS: null, pole: [0, 0, 1] };
+  return { periodS: (k * g * r * r * 2 * Math.PI) / L, pole: [(s.spin[i * 3] ?? 0) / L, (s.spin[i * 3 + 1] ?? 0) / L, (s.spin[i * 3 + 2] ?? 0) / L] };
 }
 
 export function removeAt(s: SimState, i: number): void {
+  const id = s.ids[i];
+  if (id !== undefined && s.fixed.includes(id)) s.fixed.splice(s.fixed.indexOf(id), 1);
+  s.j2.splice(i, 1);
+  s.inertia.splice(i, 1);
   s.ids.splice(i, 1);
   s.names.splice(i, 1);
   s.gm.splice(i, 1);
@@ -145,12 +195,13 @@ export function primaryOf(gm: ArrayLike<number>, pos: ArrayLike<number>, i: numb
 }
 
 /**
- * Accelerations (km s^-2) of every body into `out` (three per body). Returns the shortest dynamical
- * timescale of the massive pairs, found on the way (see timescale()).
+ * Accelerations (km s^-2) of every body into `out` (three per body), followed by the torques on their
+ * spins (G units per second, three per body: oblateness's). Returns the shortest dynamical timescale
+ * of the massive pairs, found on the way (see timescale()). Bodies held in place feel nothing.
  */
 export function accelerations(s: SimState, out: number[]): number {
   const n = count(s);
-  out.length = n * 3;
+  out.length = n * 6;
   out.fill(0);
   let shortest = Number.POSITIVE_INFINITY;
   for (let i = 0; i < n; i += 1) {
@@ -181,7 +232,76 @@ export function accelerations(s: SimState, out: number[]): number {
       out[j * 3 + 2] = (out[j * 3 + 2] ?? 0) - gi * dz * inv;
     }
   }
+  // Oblateness: each oblate body's J2 term, about its spin axis, on every other body; the reaction on
+  // it, and the torque on its spin (minus the sum of r x F over the bodies it pulls).
+  for (let o = 0; o < n; o += 1) {
+    const j2 = s.j2[o] ?? 0;
+    const go = s.gm[o] ?? 0;
+    if (j2 === 0 || go <= 0) continue;
+    const L = Math.hypot(s.spin[o * 3] ?? 0, s.spin[o * 3 + 1] ?? 0, s.spin[o * 3 + 2] ?? 0);
+    if (!(L > 0)) continue;
+    const px = (s.spin[o * 3] ?? 0) / L;
+    const py = (s.spin[o * 3 + 1] ?? 0) / L;
+    const pz = (s.spin[o * 3 + 2] ?? 0) / L;
+    const ro = s.radius[o] ?? 0;
+    const k = 1.5 * j2 * go * ro * ro;
+    for (let i = 0; i < n; i += 1) {
+      if (i === o) continue;
+      const dx = (s.pos[i * 3] ?? 0) - (s.pos[o * 3] ?? 0);
+      const dy = (s.pos[i * 3 + 1] ?? 0) - (s.pos[o * 3 + 1] ?? 0);
+      const dz = (s.pos[i * 3 + 2] ?? 0) - (s.pos[o * 3 + 2] ?? 0);
+      const r2 = dx * dx + dy * dy + dz * dz;
+      const z = dx * px + dy * py + dz * pz;
+      const f = k / (r2 * r2 * Math.sqrt(r2));
+      const c = 1 - (5 * z * z) / r2;
+      const ax = -f * (c * dx + 2 * z * px);
+      const ay = -f * (c * dy + 2 * z * py);
+      const az = -f * (c * dz + 2 * z * pz);
+      out[i * 3] = (out[i * 3] ?? 0) + ax;
+      out[i * 3 + 1] = (out[i * 3 + 1] ?? 0) + ay;
+      out[i * 3 + 2] = (out[i * 3 + 2] ?? 0) + az;
+      const gi = s.gm[i] ?? 0;
+      if (gi <= 0) continue;
+      const w = gi / go;
+      out[o * 3] = (out[o * 3] ?? 0) - w * ax;
+      out[o * 3 + 1] = (out[o * 3 + 1] ?? 0) - w * ay;
+      out[o * 3 + 2] = (out[o * 3 + 2] ?? 0) - w * az;
+      const t = n * 3 + o * 3;
+      out[t] = (out[t] ?? 0) - gi * (dy * az - dz * ay);
+      out[t + 1] = (out[t + 1] ?? 0) - gi * (dz * ax - dx * az);
+      out[t + 2] = (out[t + 2] ?? 0) - gi * (dx * ay - dy * ax);
+    }
+  }
+  for (const id of s.fixed) {
+    const i = s.ids.indexOf(id);
+    if (i >= 0) for (let k = 0; k < 3; k += 1) out[i * 3 + k] = 0;
+  }
   return shortest;
+}
+
+/** The J2 terms' potential energy (G units): over oblate bodies o and the bodies i they pull, GM_i GM_o J2 R^2 (3 z^2 - r^2) / (2 r^5). */
+function oblatePotential(s: SimState): number {
+  const n = count(s);
+  let e = 0;
+  for (let o = 0; o < n; o += 1) {
+    const j2 = s.j2[o] ?? 0;
+    const go = s.gm[o] ?? 0;
+    if (j2 === 0 || go <= 0) continue;
+    const L = Math.hypot(s.spin[o * 3] ?? 0, s.spin[o * 3 + 1] ?? 0, s.spin[o * 3 + 2] ?? 0);
+    if (!(L > 0)) continue;
+    const ro = s.radius[o] ?? 0;
+    for (let i = 0; i < n; i += 1) {
+      const gi = s.gm[i] ?? 0;
+      if (i === o || gi <= 0) continue;
+      const dx = (s.pos[i * 3] ?? 0) - (s.pos[o * 3] ?? 0);
+      const dy = (s.pos[i * 3 + 1] ?? 0) - (s.pos[o * 3 + 1] ?? 0);
+      const dz = (s.pos[i * 3 + 2] ?? 0) - (s.pos[o * 3 + 2] ?? 0);
+      const r2 = dx * dx + dy * dy + dz * dz;
+      const z = (dx * (s.spin[o * 3] ?? 0) + dy * (s.spin[o * 3 + 1] ?? 0) + dz * (s.spin[o * 3 + 2] ?? 0)) / L;
+      e += (gi * go * j2 * ro * ro * (3 * z * z - r2)) / (2 * r2 * r2 * Math.sqrt(r2));
+    }
+  }
+  return e;
 }
 
 /** Merges body j into body i (i the survivor, before or after j in the arrays): see the module comment. Returns the impact's heat. */
@@ -435,18 +555,25 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
  */
 export function step(s: SimState, dt: number, acc: number[], events: MergeEvent[], keep?: (id: string) => boolean): number {
   let n = count(s);
-  if (acc.length !== n * 3) accelerations(s, acc);
+  if (acc.length !== n * 6) accelerations(s, acc);
   // Contacts the coming drift would make, merged now, at the whole step.
   if (resolveContacts(s, dt, acc, events, keep)) {
     n = count(s);
     accelerations(s, acc);
   }
+  // Held bodies stay where they are (a merger may have given one a velocity).
+  for (const id of s.fixed) {
+    const i = s.ids.indexOf(id);
+    if (i >= 0) for (let k = 0; k < 3; k += 1) s.vel[i * 3 + k] = 0;
+  }
   for (let k = 0; k < n * 3; k += 1) s.vel[k] = (s.vel[k] ?? 0) + (acc[k] ?? 0) * dt * 0.5;
+  for (let k = 0; k < n * 3; k += 1) s.spin[k] = (s.spin[k] ?? 0) + (acc[n * 3 + k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.pos[k] = (s.pos[k] ?? 0) + (s.vel[k] ?? 0) * dt;
   s.t += dt;
   s.step += 1;
   const shortest = accelerations(s, acc);
   for (let k = 0; k < n * 3; k += 1) s.vel[k] = (s.vel[k] ?? 0) + (acc[k] ?? 0) * dt * 0.5;
+  for (let k = 0; k < n * 3; k += 1) s.spin[k] = (s.spin[k] ?? 0) + (acc[n * 3 + k] ?? 0) * dt * 0.5;
   return shortest;
 }
 
@@ -486,7 +613,7 @@ export interface Diagnostics {
 
 export function energy(s: SimState): number {
   const n = count(s);
-  let e = 0;
+  let e = oblatePotential(s);
   for (let i = 0; i < n; i += 1) {
     const g = s.gm[i] ?? 0;
     e += 0.5 * g * ((s.vel[i * 3] ?? 0) ** 2 + (s.vel[i * 3 + 1] ?? 0) ** 2 + (s.vel[i * 3 + 2] ?? 0) ** 2);
@@ -533,8 +660,9 @@ export function diagnostics(s: SimState): Diagnostics {
       potential += (g * (s.gm[j] ?? 0)) / r;
     }
   }
-  const e = kinetic - potential;
-  return { gm, momentum: p, angularMomentum: l, energy: e, totalEnergy: e + s.internal, momentumScale: pScale, angularScale: lScale, energyScale: kinetic + potential };
+  const oblate = oblatePotential(s);
+  const e = kinetic - potential + oblate;
+  return { gm, momentum: p, angularMomentum: l, energy: e, totalEnergy: e + s.internal, momentumScale: pScale, angularScale: lScale, energyScale: kinetic + potential + Math.abs(oblate) };
 }
 
 /** Relative drift of `now` from `ref` (total energy, momentum, angular momentum), each against the reference's own scale. */
@@ -549,7 +677,7 @@ export function drift(ref: Diagnostics, now: Diagnostics): { energy: number; mom
 
 /** Whether every number is finite and every body physical (positive radius; GM not negative). */
 export function healthy(s: SimState): boolean {
-  return s.pos.every(Number.isFinite) && s.vel.every(Number.isFinite) && s.gm.every((g) => Number.isFinite(g) && g >= 0) && s.radius.every((r) => Number.isFinite(r) && r > 0);
+  return s.pos.every(Number.isFinite) && s.vel.every(Number.isFinite) && s.spin.every(Number.isFinite) && s.gm.every((g) => Number.isFinite(g) && g >= 0) && s.radius.every((r) => Number.isFinite(r) && r > 0);
 }
 
 /**

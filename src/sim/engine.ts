@@ -5,14 +5,17 @@ import {
   consumes,
   diagnostics,
   drift,
+  emptyState,
   healthy,
   indexOf,
   MAX_BODIES,
   primaryOf,
   removeAt,
   resolveContacts,
+  spinVector,
   step,
   timescale,
+  UNIFORM_INERTIA,
   type Diagnostics,
   type MergeEvent,
   type SimState,
@@ -68,11 +71,21 @@ export interface BodySpec {
   vel: [number, number, number];
   origin: ValueOrigin;
   sourceIds: string[];
+  /** Its rotation (once every periodS seconds, prograde about the unit pole, scenario frame); none: it does not turn. */
+  spin?: { periodS: number; pole: [number, number, number] };
+  /** Its J2 (flattening's lowest zonal harmonic, normalised to its radius; 0 or none: spherical) and moment of inertia factor (I / M R^2; none: 0.4). */
+  j2?: number;
+  inertia?: number;
 }
 
 export type Command =
   | { kind: 'setMass'; id: string; gm: number }
   | { kind: 'setVelocity'; id: string; vel: [number, number, number] }
+  | { kind: 'setState'; id: string; pos: [number, number, number]; vel: [number, number, number] }
+  | { kind: 'setRadius'; id: string; radiusKm: number; gm?: number }
+  | { kind: 'setSpin'; id: string; periodS: number; pole: [number, number, number] }
+  | { kind: 'setFixed'; id: string; fixed: boolean }
+  | { kind: 'rename'; id: string; name: string }
   | { kind: 'add'; body: BodySpec }
   | { kind: 'remove'; id: string };
 
@@ -122,13 +135,32 @@ export interface PredictionResult {
   /** The body it moved about at the start (its primary, followed through mergers), with its positions at the same samples, so the path can be drawn as an orbit about it; null and empty for none. */
   frame: string | null;
   framePath: number[];
+  /** Its closest approaches to other bodies (at most ENCOUNTERS, nearest first relative to their size): when (s from now), how close (km between centres), where it is then and where the other is. */
+  encounters: Encounter[];
 }
+
+export interface Encounter {
+  with: string;
+  t: number;
+  distanceKm: number;
+  pos: [number, number, number];
+  otherPos: [number, number, number];
+}
+
+/** The closest approaches a prediction reports. */
+export const ENCOUNTERS = 3;
 
 const MAX_CHECKPOINTS = 48;
 
+/** A body spec's state: its rotation as a spin angular momentum, its J2 and moment of inertia factor. */
+function bodyOf(b: BodySpec): Parameters<typeof addBody>[1] {
+  const inertia = b.inertia ?? UNIFORM_INERTIA;
+  return { id: b.id, name: b.name, gm: b.gm, radiusKm: b.radiusKm, pos: b.pos, vel: b.vel, spin: b.spin ? spinVector(b.gm, b.radiusKm, inertia, b.spin.periodS, b.spin.pole) : undefined, j2: b.j2 ?? 0, inertia };
+}
+
 export function stateFrom(bodies: readonly BodySpec[]): SimState {
-  const s: SimState = { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], t: 0, step: 0, internal: 0, passing: [] };
-  for (const b of bodies) addBody(s, { id: b.id, name: b.name, gm: b.gm, radiusKm: b.radiusKm, pos: b.pos, vel: b.vel });
+  const s = emptyState();
+  for (const b of bodies) addBody(s, bodyOf(b));
   return s;
 }
 
@@ -149,6 +181,8 @@ export class Engine {
   /** Why the run stopped, if it did (non-finite numbers): it pauses at the last good checkpoint. */
   failure: string | null = null;
   private lastPeriodic = 0;
+  /** Edits undone, the latest last, for redo (cleared by any new edit). */
+  private readonly undone: LoggedCommand[] = [];
 
   /** Whether a body keeps its identity in a merger (Scenario.persistentIds). */
   readonly keep = (id: string): boolean => this.scenario.persistentIds?.includes(id) ?? false;
@@ -192,16 +226,71 @@ export class Engine {
     switch (command.kind) {
       case 'setMass': {
         const i = indexOf(s, command.id);
-        if (i >= 0 && Number.isFinite(command.gm) && command.gm >= 0) s.gm[i] = command.gm;
+        if (i >= 0 && Number.isFinite(command.gm) && command.gm >= 0) {
+          // Its rotation kept: the same period about the same pole, so the spin scales with GM.
+          const old = s.gm[i] ?? 0;
+          for (let k = 0; k < 3; k += 1) s.spin[i * 3 + k] = old > 0 ? (s.spin[i * 3 + k] ?? 0) * (command.gm / old) : 0;
+          s.gm[i] = command.gm;
+        }
         break;
       }
       case 'setVelocity': {
         const i = indexOf(s, command.id);
-        if (i >= 0 && command.vel.every(Number.isFinite)) for (let k = 0; k < 3; k += 1) s.vel[i * 3 + k] = command.vel[k] ?? 0;
+        if (i >= 0 && command.vel.every(Number.isFinite) && !s.fixed.includes(command.id)) for (let k = 0; k < 3; k += 1) s.vel[i * 3 + k] = command.vel[k] ?? 0;
+        break;
+      }
+      case 'setState': {
+        const i = indexOf(s, command.id);
+        if (i >= 0 && command.pos.every(Number.isFinite) && command.vel.every(Number.isFinite)) {
+          for (let k = 0; k < 3; k += 1) {
+            s.pos[i * 3 + k] = command.pos[k] ?? 0;
+            s.vel[i * 3 + k] = s.fixed.includes(command.id) ? 0 : (command.vel[k] ?? 0);
+          }
+        }
+        break;
+      }
+      case 'setRadius': {
+        const i = indexOf(s, command.id);
+        const gm = command.gm ?? s.gm[i] ?? 0;
+        if (i >= 0 && Number.isFinite(command.radiusKm) && command.radiusKm > 0 && Number.isFinite(gm) && gm >= 0) {
+          // Its rotation kept: the same period about the same pole, so the spin scales with GM R^2 (with the mass too, when the density is held).
+          const old = s.radius[i] ?? command.radiusKm;
+          const oldGm = s.gm[i] ?? 0;
+          const f = oldGm > 0 ? (gm / oldGm) * (command.radiusKm / old) ** 2 : 0;
+          for (let k = 0; k < 3; k += 1) s.spin[i * 3 + k] = (s.spin[i * 3 + k] ?? 0) * f;
+          s.radius[i] = command.radiusKm;
+          s.gm[i] = gm;
+        }
+        break;
+      }
+      case 'setSpin': {
+        const i = indexOf(s, command.id);
+        if (i >= 0 && Number.isFinite(command.periodS) && command.periodS > 0 && command.pole.every(Number.isFinite)) {
+          const v = spinVector(s.gm[i] ?? 0, s.radius[i] ?? 0, s.inertia[i] ?? UNIFORM_INERTIA, command.periodS, command.pole);
+          for (let k = 0; k < 3; k += 1) s.spin[i * 3 + k] = v[k] ?? 0;
+        }
+        break;
+      }
+      case 'setFixed': {
+        const i = indexOf(s, command.id);
+        if (i < 0) break;
+        const at = s.fixed.indexOf(command.id);
+        if (command.fixed && at < 0) {
+          s.fixed.push(command.id);
+          for (let k = 0; k < 3; k += 1) s.vel[i * 3 + k] = 0;
+        } else if (!command.fixed && at >= 0) {
+          s.fixed.splice(at, 1);
+        }
+        break;
+      }
+      case 'rename': {
+        const i = indexOf(s, command.id);
+        const name = command.name.trim().slice(0, IMPORT_LIMITS.nameLength);
+        if (i >= 0 && name.length > 0) s.names[i] = name;
         break;
       }
       case 'add':
-        if (indexOf(s, command.body.id) < 0) addBody(s, { id: command.body.id, name: command.body.name, gm: command.body.gm, radiusKm: command.body.radiusKm, pos: command.body.pos, vel: command.body.vel });
+        if (indexOf(s, command.body.id) < 0) addBody(s, bodyOf(command.body));
         break;
       case 'remove': {
         const i = indexOf(s, command.id);
@@ -223,9 +312,67 @@ export class Engine {
     const log = this.scenario.log;
     this.discarded = log.length - this.logIndex;
     log.length = this.logIndex;
+    // A new branch: checkpoints of the discarded future go with it.
+    if (this.discarded > 0) this.prune(this.state.step, log.length);
+    this.undone.length = 0;
     this.checkpoint();
     log.push({ step: this.state.step, command });
     this.applyDue();
+  }
+
+  /** Edits that can be undone (applied ones) and redone. */
+  get undoable(): number {
+    return this.logIndex;
+  }
+  get redoable(): number {
+    return this.undone.length;
+  }
+
+  /**
+   * Undoes the latest applied edit: the run goes back to the moment it was made, as it was before it
+   * (bit for bit: from the checkpoint taken before it), and it is kept for redo. Later edits, if the run
+   * had been taken back before them, go with it.
+   */
+  undo(): boolean {
+    if (this.logIndex === 0) return false;
+    const log = this.scenario.log;
+    const index = this.logIndex - 1;
+    const last = log[index];
+    if (!last) return false;
+    log.length = index;
+    this.undone.push(last);
+    this.discarded = 0;
+    this.failure = null;
+    // From the checkpoint taken just before it (several edits may share a step: the one with exactly the
+    // edits before it applied), and nothing of the future that had it.
+    this.prune(last.step, index);
+    this.restore(last.step, true, index);
+    this.applyDue();
+    return true;
+  }
+
+  /** Drops checkpoints a change of the log makes stale: later than `step`, or with more of the log applied than `logLength`. The first (the start) stays. */
+  private prune(step: number, logLength: number): void {
+    for (let k = this.checkpoints.length - 1; k >= 1; k -= 1) {
+      const c = this.checkpoints[k];
+      if (c && (c.step > step || c.logIndex > logLength)) this.checkpoints.splice(k, 1);
+    }
+  }
+
+  /** Redoes the latest undone edit, at the moment it was first made (the run goes back there if it has moved on). */
+  redo(): boolean {
+    const next = this.undone.pop();
+    if (!next) return false;
+    if (this.state.step !== next.step) {
+      this.failure = null;
+      this.restore(next.step);
+    }
+    const log = this.scenario.log;
+    log.length = this.logIndex;
+    this.checkpoint();
+    log.push({ step: this.state.step, command: next.command });
+    this.applyDue();
+    return true;
   }
 
   /** Runs whole steps until simulated time reaches `t` or `maxSteps` are taken; returns the steps taken. */
@@ -255,15 +402,18 @@ export class Engine {
     }
   }
 
-  /** Goes back (or forward) to `targetStep`: the latest checkpoint at or before it, then the log replayed up to it. */
-  restore(targetStep: number, replayTo = true): void {
+  /** Goes back (or forward) to `targetStep`: the latest checkpoint at or before it (with at most `maxLogIndex` edits applied), then the log replayed up to it. */
+  restore(targetStep: number, replayTo = true, maxLogIndex = Number.POSITIVE_INFINITY): void {
     let best: Checkpoint | undefined;
-    for (const c of this.checkpoints) if (c.step <= targetStep && (!best || c.step >= best.step)) best = c;
+    for (const c of this.checkpoints) if (c.step <= targetStep && c.logIndex <= maxLogIndex && (!best || c.step > best.step || (c.step === best.step && c.logIndex >= best.logIndex))) best = c;
     const c = best ?? this.checkpoints[0];
     if (!c) return;
     this.state = cloneState(c.state);
     this.dt = c.dt;
     this.logIndex = c.logIndex;
+    // The history as it stood then (the replay adds back what it passes again): interventions mirror the log entries applied, collisions their steps.
+    this.interventions.length = Math.min(this.interventions.length, c.logIndex);
+    for (let k = this.events.length - 1; k >= 0; k -= 1) if ((this.events[k]?.step ?? 0) >= c.step) this.events.splice(k, 1);
     this.acc.length = 0;
     this.reference = diagnostics(this.state);
     this.lastPeriodic = this.state.step;
@@ -284,8 +434,8 @@ export class Engine {
   }
 
   /** Integrates a copy of the current state `horizonS` ahead with the same rules, sampling body `id` `samples` times (all at once: see Prediction for the sliced form). */
-  predict(id: string, horizonS: number, samples: number, maxSteps: number): PredictionResult {
-    const p = new Prediction(this, id, horizonS, samples, maxSteps);
+  predict(id: string, horizonS: number, samples: number, maxSteps: number, accuracy = 1): PredictionResult {
+    const p = new Prediction(this, id, horizonS, samples, maxSteps, accuracy);
     p.work(Number.POSITIVE_INFINITY);
     return p.result();
   }
@@ -297,7 +447,7 @@ export class Engine {
 
   /** The scenario as saved: its start, settings and the log so far (not the derived state). */
   toScenario(): Scenario {
-    return { ...this.scenario, bodies: this.scenario.bodies.map((b) => ({ ...b, pos: [...b.pos], vel: [...b.vel], sourceIds: [...b.sourceIds] })), log: this.scenario.log.map((e) => ({ step: e.step, command: structuredCloneCommand(e.command) })) };
+    return { ...this.scenario, bodies: this.scenario.bodies.map(cloneBody), log: this.scenario.log.map((e) => ({ step: e.step, command: structuredCloneCommand(e.command) })) };
   }
 
   /** Accelerations now (for readouts). */
@@ -330,19 +480,25 @@ export class Prediction {
   private follow: string | null;
   private readonly framePath: number[] = [];
   private frameAt: [number, number, number] = [0, 0, 0];
+  /** Each other body's closest approach so far (by id): its distance then, when, where both were; and its distance at the start. */
+  private readonly nearest = new Map<string, { d0: number; d: number; t: number; pos: [number, number, number]; otherPos: [number, number, number] }>();
+  private readonly eta: number;
   done = false;
 
+  /** `accuracy` scales the step (eta): 0.25 four times finer than the live run, 4 four times coarser and faster. */
   constructor(
     engine: Engine,
     readonly id: string,
     readonly horizonS: number,
     readonly samples: number,
     readonly maxSteps: number,
+    accuracy = 1,
   ) {
     this.copy = cloneState(engine.state);
     this.start = this.copy.t;
-    this.dt = engine.dt;
     this.g = engine.scenario.integrator;
+    this.eta = this.g.eta * accuracy;
+    this.dt = this.g.fixedDtS ?? Math.min(this.g.dtMaxS, Math.max(this.g.dtMinS, engine.dt * accuracy));
     this.keep = engine.keep;
     const i = indexOf(this.copy, id);
     if (i < 0) this.done = true;
@@ -363,8 +519,9 @@ export class Prediction {
         const shortest = step(copy, this.dt, this.acc, this.events, this.keep);
         this.steps += 1;
         used += 1;
-        // The same retiming as the live run's.
-        if (g.fixedDtS === null && (g.eta * shortest < 0.5 * this.dt || copy.step % g.retimeSteps === 0)) this.dt = Math.min(g.dtMaxS, Math.max(g.dtMinS, g.eta * shortest));
+        // The same retiming as the live run's (at its own accuracy).
+        if (g.fixedDtS === null && (this.eta * shortest < 0.5 * this.dt || copy.step % g.retimeSteps === 0)) this.dt = Math.min(g.dtMaxS, Math.max(g.dtMinS, this.eta * shortest));
+        this.watch();
         // The frame merged: its survivor carries on as the frame (should that be the body itself, the frame stays where it was).
         const lost = this.follow === null ? undefined : this.events.find((ev) => consumes(ev) && ev.absorbed === this.follow);
         if (lost) this.follow = lost.survivor === this.id ? null : lost.survivor;
@@ -390,6 +547,50 @@ export class Prediction {
     return this.done;
   }
 
+  /** Notes each body's distance from the predicted one, keeping the closest so far. */
+  private watch(): void {
+    const copy = this.copy;
+    const i = indexOf(copy, this.id);
+    if (i < 0) return;
+    const x = copy.pos[i * 3] ?? 0;
+    const y = copy.pos[i * 3 + 1] ?? 0;
+    const z = copy.pos[i * 3 + 2] ?? 0;
+    for (let j = 0; j < copy.ids.length; j += 1) {
+      const other = copy.ids[j] ?? '';
+      if (j === i || other === this.frame || (copy.gm[j] ?? 0) <= 0) continue;
+      const ox = copy.pos[j * 3] ?? 0;
+      const oy = copy.pos[j * 3 + 1] ?? 0;
+      const oz = copy.pos[j * 3 + 2] ?? 0;
+      const d = Math.hypot(ox - x, oy - y, oz - z);
+      const seen = this.nearest.get(other);
+      if (!seen) this.nearest.set(other, { d0: d, d, t: copy.t - this.start, pos: [x, y, z], otherPos: [ox, oy, oz] });
+      else if (d < seen.d) {
+        seen.d = d;
+        seen.t = copy.t - this.start;
+        seen.pos = [x, y, z];
+        seen.otherPos = [ox, oy, oz];
+      }
+    }
+  }
+
+  /** The closest approaches that are encounters: nearer than at the start and than at the end (it came in and went away), nearest first for the other body's size. */
+  private encounters(): Encounter[] {
+    const copy = this.copy;
+    const i = indexOf(copy, this.id);
+    const out: Array<Encounter & { rank: number }> = [];
+    for (const [other, n] of this.nearest) {
+      const j = indexOf(copy, other);
+      if (j < 0 || n.d >= n.d0 * 0.999) continue;
+      const end = i < 0 ? n.d : Math.hypot((copy.pos[j * 3] ?? 0) - (copy.pos[i * 3] ?? 0), (copy.pos[j * 3 + 1] ?? 0) - (copy.pos[i * 3 + 1] ?? 0), (copy.pos[j * 3 + 2] ?? 0) - (copy.pos[i * 3 + 2] ?? 0));
+      if (i >= 0 && n.d >= end * 0.999) continue;
+      out.push({ with: other, t: n.t, distanceKm: n.d, pos: n.pos, otherPos: n.otherPos, rank: n.d / Math.max(copy.radius[j] ?? 1, 1e-9) });
+    }
+    return out
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, ENCOUNTERS)
+      .map(({ rank: _rank, ...e }) => e);
+  }
+
   /** The frame body's place at this sample (its last place, once it has merged into the body itself). */
   private sampleFrame(): void {
     if (this.frame === null) return;
@@ -399,7 +600,7 @@ export class Prediction {
   }
 
   result(): PredictionResult {
-    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath] };
+    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath], encounters: this.encounters() };
   }
 }
 
@@ -411,16 +612,24 @@ function checkpointSteps(dt: number): number {
 function structuredCloneCommand(c: Command): Command {
   switch (c.kind) {
     case 'add':
-      return { kind: 'add', body: { ...c.body, pos: [...c.body.pos], vel: [...c.body.vel], sourceIds: [...c.body.sourceIds] } };
+      return { kind: 'add', body: cloneBody(c.body) };
     case 'setVelocity':
       return { kind: 'setVelocity', id: c.id, vel: [...c.vel] };
+    case 'setState':
+      return { kind: 'setState', id: c.id, pos: [...c.pos], vel: [...c.vel] };
+    case 'setSpin':
+      return { kind: 'setSpin', id: c.id, periodS: c.periodS, pole: [...c.pole] };
     default:
       return { ...c };
   }
 }
 
+function cloneBody(b: BodySpec): BodySpec {
+  return { ...b, pos: [...b.pos], vel: [...b.vel], sourceIds: [...b.sourceIds], ...(b.spin ? { spin: { periodS: b.spin.periodS, pole: [...b.spin.pole] } } : {}) };
+}
+
 /** Limits on an imported scenario (a file could ask for anything). */
-export const IMPORT_LIMITS = { bodies: MAX_BODIES, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7 } as const;
+export const IMPORT_LIMITS = { bodies: MAX_BODIES, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7, periodS: 1e12 } as const;
 
 /**
  * A scenario from a parsed file, or the reasons it is refused: unsupported version, missing or
@@ -450,11 +659,14 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
       errors.push(`${where}: not a body`);
       return false;
     }
+    const spin = b.spin;
+    const spinOk = spin === undefined || (obj(spin) && num(spin.periodS, 1e-3, L.periodS) && vec(spin.pole, 1e6) && Math.hypot(...(spin.pole as number[])) > 0);
     const ok =
       typeof b.id === 'string' && /^[a-z0-9-]{1,40}$/u.test(b.id) &&
       typeof b.name === 'string' && b.name.length > 0 && b.name.length <= L.nameLength &&
       num(b.gm, 0, L.gm) && num(b.radiusKm, 1e-6, L.radiusKm) && vec(b.pos, L.coordinateKm) && vec(b.vel, L.speedKmS) &&
-      (b.origin === 'observed' || b.origin === 'modelled' || b.origin === 'user-edited') && Array.isArray(b.sourceIds) && b.sourceIds.every((x) => typeof x === 'string');
+      (b.origin === 'observed' || b.origin === 'modelled' || b.origin === 'user-edited') && Array.isArray(b.sourceIds) && b.sourceIds.every((x) => typeof x === 'string') &&
+      spinOk && (b.j2 === undefined || num(b.j2, 0, 0.5)) && (b.inertia === undefined || num(b.inertia, 0.01, 0.67));
     if (!ok) errors.push(`${where}: a value is missing, not finite or out of range`);
     return ok;
   };
@@ -482,12 +694,17 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
         if (ids.has(c.body.id)) errors.push(`${where}: adds an id that already exists (${c.body.id})`);
         ids.add(c.body.id);
       }
-    } else if (c.kind === 'setMass' || c.kind === 'setVelocity' || c.kind === 'remove') {
+    } else if (c.kind === 'setMass' || c.kind === 'setVelocity' || c.kind === 'remove' || c.kind === 'setState' || c.kind === 'setRadius' || c.kind === 'setSpin' || c.kind === 'setFixed' || c.kind === 'rename') {
       // Bodies a collision made (src/sim/nbody fragment()) exist only once the run reaches it: their ids are checked for form, not presence.
       const made = typeof c.id === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(c.id);
       if (typeof c.id !== 'string' || !(ids.has(c.id) || made)) errors.push(`${where}: names a body that does not exist`);
       if (c.kind === 'setMass' && !num(c.gm, 0, L.gm)) errors.push(`${where}: mass out of range`);
       if (c.kind === 'setVelocity' && !vec(c.vel, L.speedKmS)) errors.push(`${where}: velocity out of range`);
+      if (c.kind === 'setState' && !(vec(c.pos, L.coordinateKm) && vec(c.vel, L.speedKmS))) errors.push(`${where}: position or velocity out of range`);
+      if (c.kind === 'setRadius' && !(num(c.radiusKm, 1e-6, L.radiusKm) && (c.gm === undefined || num(c.gm, 0, L.gm)))) errors.push(`${where}: radius out of range`);
+      if (c.kind === 'setSpin' && !(num(c.periodS, 1e-3, L.periodS) && vec(c.pole, 1e6) && Math.hypot(...(c.pole as number[])) > 0)) errors.push(`${where}: rotation out of range`);
+      if (c.kind === 'setFixed' && typeof c.fixed !== 'boolean') errors.push(`${where}: not a hold`);
+      if (c.kind === 'rename' && !(typeof c.name === 'string' && c.name.trim().length > 0 && c.name.length <= L.nameLength)) errors.push(`${where}: not a name`);
     } else {
       errors.push(`${where}: unknown edit`);
     }
