@@ -1,17 +1,27 @@
-import type { App, UniverseView } from '../../core/types';
+import type { App, I18nKey, UniverseView, UniverseWalk, WalkableWorld } from '../../core/types';
 import { h } from '../dom';
 import type { Formatters } from './format';
 
 /**
- * The suit's readout while walking on the Earth (src/explore/walk): where the walker stands, the
- * ground's height, the world's gravity, the air's pressure at the feet (an isothermal atmosphere from
- * the cited sea-level pressure and scale height), the Earth's mean surface temperature (named as a
- * mean, not today's), the Sun's height and the local solar time, folded under the title on a small
- * screen; the keys; and the way back to orbit.
+ * The suit's readout while walking on the Earth, the Moon, Mars, Mercury or Venus (src/explore/walk): where the
+ * walker stands, the ground's height above the world's datum, its gravity, the air's pressure at the
+ * feet (an isothermal atmosphere from the cited surface pressure and scale height) and the world's
+ * mean surface temperature (named as a mean, not today's), or on the airless Moon the vacuum and its
+ * ground's range through the day, the Sun's height and the local solar time, and where the ground
+ * comes from, folded under the title on a small screen; the keys; and the way back to orbit.
  * While a walk lands (its ground loading) it says so; a walk refused at Makkah says why. Forward,
  * Back and Jump buttons walk without a keyboard (held down, as the keys are; a keyboard's press on
  * one takes a short step).
  */
+
+/** Each world's title, height line and credit. */
+const WORLD: Record<WalkableWorld, { title: I18nKey; ground: I18nKey; credit: I18nKey }> = {
+  earth: { title: 'ui.universe.walk.title', ground: 'ui.universe.walk.ground', credit: 'ui.universe.walk.credit' },
+  moon: { title: 'ui.universe.walk.titleMoon', ground: 'ui.universe.walk.groundMoon', credit: 'ui.universe.walk.creditMoon' },
+  mars: { title: 'ui.universe.walk.titleMars', ground: 'ui.universe.walk.groundMars', credit: 'ui.universe.walk.creditMars' },
+  mercury: { title: 'ui.universe.walk.titleMercury', ground: 'ui.universe.walk.groundMercury', credit: 'ui.universe.walk.creditMercury' },
+  venus: { title: 'ui.universe.walk.titleVenus', ground: 'ui.universe.walk.groundVenus', credit: 'ui.universe.walk.creditVenus' },
+};
 
 /** How long a keyboard press on a pad button walks (ms). */
 const PAD_STEP_MS = 600;
@@ -79,12 +89,27 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
     app.earthCommand({ kind: 'walkEnd' });
   });
   const controls = h('div', { class: 'kf-walk-controls' }, pad, back);
-  const credit = h('p', { class: 'kf-walk-credit' }, i18n.t('ui.universe.walk.credit'));
+  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit' });
   // The suit's figures fold under the title; on a small screen they start folded, leaving the view and the pad.
   const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, credit);
   suit.open = !window.matchMedia(NARROW).matches;
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.walk.label'), 'data-testid': 'walk-hud', hidden: true }, suit, notice, keys, touch, controls);
   const coords = (lat: number, lon: number): string => f.coordinates(lat, lon, 4);
+  /** A temperature in whole degrees, below zero with a true minus sign. */
+  const degrees = (c: number): string => {
+    const whole = Math.round(c);
+    return whole < 0 ? `−${f.number(-whole, 0)}` : f.number(whole === 0 ? 0 : whole, 0);
+  };
+  /** The air at the feet and the world's mean temperature; on an airless world the vacuum and the ground's temperatures. */
+  const airLine = (w: UniverseWalk): string => {
+    const mean = w.meanTempC === null ? '' : degrees(w.meanTempC);
+    if (w.pressureKpa !== null) {
+      const key = w.world === 'mars' ? 'ui.universe.walk.airMars' : w.world === 'venus' ? 'ui.universe.walk.airVenus' : 'ui.universe.walk.air';
+      return i18n.t(key, { kpa: f.number(w.pressureKpa, w.pressureKpa < 10 ? 2 : w.pressureKpa < 1000 ? 1 : 0), mean });
+    }
+    if (w.dayRangeC) return i18n.t(w.world === 'mercury' ? 'ui.universe.walk.vacuumMercury' : 'ui.universe.walk.vacuum', { min: degrees(w.dayRangeC.min), max: degrees(w.dayRangeC.max), mean });
+    return '';
+  };
   const clock = (hours: number): string => {
     const m = Math.floor(hours * 60) % 1440;
     return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -108,12 +133,14 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
         return;
       }
       for (const el of [place, ground, gravity, air, sun, keys, touch, controls, credit]) el.hidden = false;
-      write(title, i18n.t(w.state === 'landing' ? 'ui.universe.walk.landing' : 'ui.universe.walk.title'));
+      const on = WORLD[w.world];
+      write(title, i18n.t(w.state === 'landing' ? 'ui.universe.walk.landing' : on.title));
       write(place, coords(w.lat, w.lon));
-      write(ground, i18n.t('ui.universe.walk.ground', { metres: f.number(w.groundM, 0), walked: f.number(w.walkedM, 0) }));
+      write(ground, i18n.t(on.ground, { metres: f.number(Math.abs(w.groundM), 0), side: w.groundM < 0 ? 'below' : 'above', walked: f.number(w.walkedM, 0) }));
       write(gravity, i18n.t('ui.universe.walk.gravity', { g: f.number(w.gravity, 2) }));
-      write(air, w.pressureKpa === null ? '' : i18n.t('ui.universe.walk.air', { kpa: f.number(w.pressureKpa, 1), mean: w.meanTempC === null ? '' : f.number(w.meanTempC, 0) }));
-      write(sun, i18n.t(w.sunElevationDeg >= 0 ? 'ui.universe.walk.sunUp' : 'ui.universe.walk.sunDown', { degrees: f.number(Math.abs(w.sunElevationDeg), 0), time: clock(w.solarTimeH) }));
+      write(air, airLine(w));
+      write(credit, i18n.t(on.credit));
+      write(sun, i18n.t(w.sunElevationDeg < 0 ? 'ui.universe.walk.sunDown' : w.sunSeen ? 'ui.universe.walk.sunUp' : 'ui.universe.walk.sunClouded', { degrees: f.number(Math.abs(w.sunElevationDeg), 0), time: clock(w.solarTimeH) }));
       notice.hidden = !w.blocked;
       write(notice, w.blocked ? i18n.t('ui.universe.walk.blocked') : '');
     },

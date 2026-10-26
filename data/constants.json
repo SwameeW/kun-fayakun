@@ -1825,6 +1825,71 @@
         "url": "https://www.ipcc.ch/report/ar6/wg1/chapter/chapter-7/",
         "accessed": "2026-10-26"
       }
+    },
+    {
+      "id": "mars.atmosphere.scaleHeight",
+      "description": "The scale height of Mars's atmosphere: the height over which its pressure falls by a factor e",
+      "value": 11.0,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet, Martian Atmosphere: scale height 11.0 km",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.atmosphere.scaleHeight",
+      "description": "The scale height of Venus's atmosphere: the height over which its pressure falls by a factor e",
+      "value": 15.9,
+      "uncertainty": null,
+      "unit": "km",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet, Venusian Atmosphere: scale height 15.9 km",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mercury.averageTemperature",
+      "description": "Average temperature at Mercury's surface",
+      "value": 440,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mercury Fact Sheet: average temperature 440 K (167 C) (590-725 K, sunward side)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mercury.surfaceTemperature.sunwardMin",
+      "description": "The lower end of the temperatures on Mercury's sunward side",
+      "value": 590,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mercury Fact Sheet: average temperature 440 K (167 C) (590-725 K, sunward side)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mercury.surfaceTemperature.sunwardMax",
+      "description": "The upper end of the temperatures on Mercury's sunward side",
+      "value": 725,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mercury Fact Sheet: average temperature 440 K (167 C) (590-725 K, sunward side)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "accessed": "2026-10-26"
+      }
     }
   ]
 }

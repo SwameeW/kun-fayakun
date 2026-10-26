@@ -300,6 +300,54 @@ function checkPlaces(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: ${places.length} places [name, lat, lon, population] in population order, credited to ${String(source.id)}`);
 }
 
+const WALK_OWNER = 'walk heights builder, python -I scripts/walk/heights.py';
+const WALK_WORLDS = ['moon', 'mars', 'mercury', 'venus'] as const;
+
+/** A PNG's width and height from its header (IHDR follows the 8-byte signature), or null if it is not a PNG. */
+function pngSize(bytes: Uint8Array): { width: number; height: number } | null {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length < 24 || signature.some((b, i) => bytes[i] !== b)) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { width: view.getUint32(16), height: view.getUint32(20) };
+}
+
+/** Walking on the Moon, Mars, Mercury and Venus: each world's heights (the whole world, and its detailed tiles) present at the sizes listed, and credited. */
+function checkWalkHeights(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'walk', 'heights.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${WALK_OWNER})`);
+    return;
+  }
+  const worlds = isRecord(loaded.value) && isRecord(loaded.value.worlds) ? loaded.value.worlds : {};
+  const problems: string[] = [];
+  let files = 0;
+  for (const world of WALK_WORLDS) {
+    const w = worlds[world];
+    const label = `${path}: worlds.${world}`;
+    problems.push(...checkFields(w, { datumKm: 'number', sourceId: 'nonempty', 'base.path': 'nonempty', 'base.ppd': 'number', 'detail.path': 'nonempty', 'detail.ppd': 'number', 'detail.tileDeg': 'number', 'detail.cols': 'number', 'detail.rows': 'number', minM: 'number', maxM: 'number' }, label));
+    if (!isRecord(w) || !isRecord(w.base) || !isRecord(w.detail)) continue;
+    if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((s) => s.id === w.sourceId)) problems.push(`data/sources.json: no "${String(w.sourceId)}" entry for ${label}`);
+    const sized = (file: string, width: number, height: number): void => {
+      const full = rootPath('public', ...file.split('/'));
+      if (!fileExists(full)) {
+        problems.push(`${label}: ${file} is missing`);
+        return;
+      }
+      const size = pngSize(readBytes(full));
+      if (!size || size.width !== width || size.height !== height) problems.push(`${label}: ${file} must be a ${width} x ${height} PNG`);
+      else files += 1;
+    };
+    const basePpd = Number(w.base.ppd);
+    sized(String(w.base.path), 360 * basePpd, 180 * basePpd);
+    const { ppd, tileDeg, cols, rows } = w.detail as { ppd: number; tileDeg: number; cols: number; rows: number };
+    if (cols * tileDeg !== 360 || rows * tileDeg !== 180) problems.push(`${label}: the detailed tiles must cover the world (${cols} x ${rows} of ${tileDeg} degrees)`);
+    for (let col = 0; col < cols; col += 1) for (let row = 0; row < rows; row += 1) sized(String(w.detail.path).replace('{col}', String(col)).replace('{row}', String(row)), tileDeg * ppd, tileDeg * ppd);
+  }
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${WALK_OWNER})`);
+  else log.pass(`${path}: the heights of ${WALK_WORLDS.join(', ')}, ${files} PNGs at the sizes listed, credited to data/sources.json`);
+}
+
 const SKY_OWNER = 'sky builder, python3 -I scripts/sky/build.py';
 
 /** The explorer's sky: the Bright Star Catalogue's stars (brightest first), IAU names for them, the 88 constellations; every source credited. */
@@ -554,6 +602,7 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkJpl(ctx, log);
   checkPlanets(ctx, log);
   checkPlaces(ctx, log);
+  checkWalkHeights(ctx, log);
   checkSky(ctx, log);
   checkAnalyses(ctx, log);
 }

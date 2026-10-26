@@ -22,8 +22,10 @@ export const TERRAIN = {
   concurrent: 8,
 } as const;
 
-/** Web Mercator's latitude limit (degrees): tiles stop here. */
-const MERCATOR_LAT = 85.05112878;
+/** Web Mercator's latitude limit (degrees): tiles stop here, and so do walks (./walker). */
+export const MERCATOR_LAT = 85.05112878;
+/** The radius Web Mercator's metres are measured on (WGS 84's equatorial, km). */
+const MERCATOR_RADIUS_KM = 6378.137;
 
 /** Decodes terrarium pixels (RGBA, 4 bytes each) into heights in metres. */
 export function decodeTerrarium(rgba: ArrayLike<number>, out: Float32Array = new Float32Array(Math.floor(rgba.length / 4))): Float32Array {
@@ -42,9 +44,13 @@ export function mercatorPixel(latDeg: number, lonDeg: number, zoom: number): { x
   };
 }
 
-/** The zoom whose pixels are about `metres` across at a latitude (clamped to the source's range). */
-export function zoomFor(metres: number, latDeg: number): number {
-  const z = Math.log2((TERRAIN.metresPerPixel0 * Math.cos((latDeg * Math.PI) / 180)) / Math.max(metres, 1e-3));
+/**
+ * The zoom whose pixels are about `metres` across at a latitude, on a world of `radiusKm` (the same
+ * tiling spread over a smaller world has smaller pixels: the Moon's are 0.27 of the Earth's), clamped
+ * to the tiles' range.
+ */
+export function zoomFor(metres: number, latDeg: number, radiusKm = MERCATOR_RADIUS_KM): number {
+  const z = Math.log2((TERRAIN.metresPerPixel0 * (radiusKm / MERCATOR_RADIUS_KM) * Math.cos((latDeg * Math.PI) / 180)) / Math.max(metres, 1e-3));
   return Math.max(0, Math.min(TERRAIN.maxZoom, Math.round(z)));
 }
 
@@ -75,7 +81,8 @@ interface Entry {
   heights: Float32Array | null;
 }
 
-export function createHeights(load: TileLoader): Heights {
+/** Heights from a loader whose tiles hold nothing finer past `maxZoom` (asked for finer, it reads that zoom's). */
+export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoom): Heights {
   const tiles = new Map<string, Entry>();
   const queue: Array<[number, number, number]> = [];
   let inFlight = 0;
@@ -161,7 +168,7 @@ export function createHeights(load: TileLoader): Heights {
   };
 
   const want = (latDeg: number, lonDeg: number, zoom: number): void => {
-    const z = Math.max(0, Math.min(TERRAIN.maxZoom, Math.round(zoom)));
+    const z = Math.max(0, Math.min(maxZoom, Math.round(zoom)));
     for (const zz of z > 0 ? [z - 1, z] : [z]) {
       // Every tile the interpolation reads: near an edge, the neighbour's too, so the ground has no seam.
       const p = mercatorPixel(latDeg, lonDeg, zz);
@@ -185,7 +192,7 @@ export function createHeights(load: TileLoader): Heights {
 
   return {
     at(latDeg, lonDeg, zoom) {
-      const z = Math.max(0, Math.min(TERRAIN.maxZoom, Math.round(zoom)));
+      const z = Math.max(0, Math.min(maxZoom, Math.round(zoom)));
       want(latDeg, lonDeg, z);
       for (let zz = z; zz >= 0; zz -= 1) {
         const h = sample(zz, latDeg, lonDeg);
@@ -207,7 +214,7 @@ export function createHeights(load: TileLoader): Heights {
     },
     revision(zoom) {
       let n = 0;
-      for (let z = 0; z <= Math.min(TERRAIN.maxZoom, Math.round(zoom)); z += 1) n += arrivedAt[z] ?? 0;
+      for (let z = 0; z <= Math.min(maxZoom, Math.round(zoom)); z += 1) n += arrivedAt[z] ?? 0;
       return n;
     },
     clear() {
@@ -217,17 +224,20 @@ export function createHeights(load: TileLoader): Heights {
   };
 }
 
-/** The browser's loader: the PNG fetched, decoded without colour conversion, read back and decoded to heights. */
+/** A terrarium-encoded PNG fetched, decoded without colour conversion, read back and decoded to heights (row-major from the top left), or null. */
+export async function terrariumImage(url: string): Promise<{ width: number; height: number; heights: Float32Array } | null> {
+  const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+  if (!response.ok) return null;
+  const bitmap = await createImageBitmap(await response.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return null;
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return { width: canvas.width, height: canvas.height, heights: decodeTerrarium(context.getImageData(0, 0, canvas.width, canvas.height).data) };
+}
+
+/** The browser's loader for the Earth's tiles: each tile's PNG decoded to heights. */
 export function terrariumLoader(url: (z: number, x: number, y: number) => string): TileLoader {
-  return async (z, x, y) => {
-    const response = await fetch(url(z, x, y), { mode: 'cors', credentials: 'omit' });
-    if (!response.ok) return null;
-    const bitmap = await createImageBitmap(await response.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(bitmap, 0, 0);
-    bitmap.close();
-    return decodeTerrarium(context.getImageData(0, 0, canvas.width, canvas.height).data);
-  };
+  return async (z, x, y) => (await terrariumImage(url(z, x, y)))?.heights ?? null;
 }

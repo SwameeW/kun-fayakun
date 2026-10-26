@@ -631,9 +631,11 @@ Terms:    Public domain (https://www.naturalearthdata.com/about/terms-of-use/):
           no permission is needed, and crediting the authors is unnecessary.
 Credit:   Made with Natural Earth
 
-Moon colour and relief (NASA Scientific Visualization Studio)
+Moon colour, relief and walking heights (NASA Scientific Visualization Studio)
           CGI Moon Kit, SVS 4720: lroc_color_poles_8k.tif (2019) and
-          ldem_16_uint.tif, from LRO LROC WAC and LOLA data
+          ldem_16_uint.tif, from LRO LROC WAC and LOLA data; the heights
+          averaged to 8 and 2 pixels a degree for walking
+          (public/assets/walk/moon, scripts/walk/heights.py)
 Terms:    Public domain unless otherwise noted (https://svs.gsfc.nasa.gov/help/).
           NASA's media usage guidelines apply
           (https://www.nasa.gov/nasa-brand-center/images-and-media/): texture
@@ -684,7 +686,9 @@ Terms:    Public-domain U.S. Government data; the USGS records identify public
           from data/sources.json and
           https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits
 Changes:  GeoTIFF projection metadata used to register exact global grids;
-          Mercury DEM rotated from its 180 E central meridian. Mercury uses
+          Mercury DEM rotated from its 180 E central meridian, and averaged to
+          8 and 2 pixels a degree as terrarium-encoded PNG for walking
+          (public/assets/walk/mercury, scripts/walk/heights.py). Mercury uses
           only MDIS's visible 430 nm band as neutral monochrome, with its
           published I/F contrast stretch undone and missing patches
           interpolated (labelled in the readout), not the
@@ -694,6 +698,27 @@ Changes:  GeoTIFF projection metadata used to register exact global grids;
           encoded. Source byte counts and SHA256 pins are in config.py.
 Credits:  NASA/JHUAPL/CIW/USGS, MESSENGER MDIS and MESSENGER DEM |
           NASA/USGS, Viking | NASA/GSFC/USGS, MOLA
+
+Venus walking heights (NASA mission data distributed by USGS Astrogeology)
+          Venus Magellan Global Topography 4641m v02, from Magellan's radar
+          altimetry
+Terms:    Public-domain U.S. Government data
+          (https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits).
+Changes:  re-referenced to Venus's mean radius (6,051.8 km); averaged to 8 and
+          2 pixels a degree; the pixels Magellan did not measure filled from
+          around them and smoothed; re-centred; stored as terrarium-encoded PNG
+          to half a metre (public/assets/walk/venus, scripts/walk/heights.py).
+Credit:   NASA/JPL/USGS, Magellan
+
+Mars walking heights (NASA Planetary Data System)
+          MGS MOLA Mission Experiment Gridded Data Record, MGS-M-MOLA-5-MEGDR-
+          L3-V1.0, meg016/megt90n000eb.img (16 pixels a degree), PDS
+          Geosciences Node
+Terms:    Public domain: NASA Planetary Data System archive data.
+Changes:  averaged to 8 and 2 pixels a degree, re-centred to start at 180
+          degrees west and stored as terrarium-encoded PNG to half a metre
+          (public/assets/walk/mars, scripts/walk/heights.py).
+Credit:   NASA/GSFC, MGS MOLA Science Team; PDS Geosciences Node
 
 Venus, Uranus and Neptune (original uniform cloud-colour display models)
           No third-party images or maps are reproduced. Venus is pale

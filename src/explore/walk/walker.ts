@@ -19,6 +19,8 @@ export const WALK = {
   maxPitch: 1.45,
   /** Radians per second the arrow keys turn and tip the look. */
   turnRadPerS: 1.2,
+  /** The furthest from the equator a walk goes (degrees): the terrain tiles' Web Mercator stops at 85.05. */
+  maxLatDeg: 85,
 } as const;
 
 export interface WalkerState {
@@ -60,7 +62,7 @@ export interface WalkWorld {
 }
 
 export function createWalker(lat: number, lon: number, groundM: number, heading = 0): WalkerState {
-  return { lat, lon, heading, pitch: 0, groundM, feetM: groundM, vUp: 0, airborne: false, blocked: false, walkedM: 0 };
+  return { lat: Math.max(-WALK.maxLatDeg, Math.min(WALK.maxLatDeg, lat)), lon, heading, pitch: 0, groundM, feetM: groundM, vUp: 0, airborne: false, blocked: false, walkedM: 0 };
 }
 
 const DEG = Math.PI / 180;
@@ -86,7 +88,7 @@ export function stepWalker(s: WalkerState, input: WalkInput, dt: number, world: 
     const north = (Math.cos(s.heading) * f - Math.sin(s.heading) * r) * speed;
     const east = (Math.sin(s.heading) * f + Math.cos(s.heading) * r) * speed;
     const radiusM = world.radiusKm * 1000;
-    const lat = Math.max(-89.999, Math.min(89.999, s.lat + north / radiusM / DEG));
+    const lat = Math.max(-WALK.maxLatDeg, Math.min(WALK.maxLatDeg, s.lat + north / radiusM / DEG));
     const lon = wrapLon(s.lon + east / (radiusM * Math.max(Math.cos(s.lat * DEG), 1e-6)) / DEG);
     if (world.blocked(lat, lon)) s.blocked = true;
     else {

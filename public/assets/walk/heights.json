@@ -1,0 +1,75 @@
+{
+  "encoding": "terrarium RGB: height (m above the datum) = R * 256 + G + B / 256 - 32768, to half a metre",
+  "grid": "equirectangular, pixel-is-area: the first column starts at 180 degrees west (east longitude increasing to the right), the first row at the north pole",
+  "worlds": {
+    "moon": {
+      "datumKm": 1737.4,
+      "sourceId": "nasa-svs-cgi-moon-kit",
+      "base": {
+        "path": "assets/walk/moon/base.png",
+        "ppd": 2
+      },
+      "detail": {
+        "path": "assets/walk/moon/{col}-{row}.png",
+        "ppd": 8,
+        "tileDeg": 90,
+        "cols": 4,
+        "rows": 2
+      },
+      "minM": -8729.0,
+      "maxM": 10553.0
+    },
+    "mars": {
+      "datumKm": 3396.0,
+      "sourceId": "pds-mola-megdr",
+      "base": {
+        "path": "assets/walk/mars/base.png",
+        "ppd": 2
+      },
+      "detail": {
+        "path": "assets/walk/mars/{col}-{row}.png",
+        "ppd": 8,
+        "tileDeg": 90,
+        "cols": 4,
+        "rows": 2
+      },
+      "minM": -8135.0,
+      "maxM": 21160.0
+    },
+    "mercury": {
+      "datumKm": 2439.4,
+      "sourceId": "usgs-dem-mercury",
+      "base": {
+        "path": "assets/walk/mercury/base.png",
+        "ppd": 2
+      },
+      "detail": {
+        "path": "assets/walk/mercury/{col}-{row}.png",
+        "ppd": 8,
+        "tileDeg": 90,
+        "cols": 4,
+        "rows": 2
+      },
+      "minM": -5363.0,
+      "maxM": 4425.0
+    },
+    "venus": {
+      "datumKm": 6051.8,
+      "sourceId": "usgs-magellan-venus",
+      "base": {
+        "path": "assets/walk/venus/base.png",
+        "ppd": 2
+      },
+      "detail": {
+        "path": "assets/walk/venus/{col}-{row}.png",
+        "ppd": 8,
+        "tileDeg": 90,
+        "cols": 4,
+        "rows": 2
+      },
+      "minM": -3676.0,
+      "maxM": 10443.0,
+      "filledShare": 0.0828
+    }
+  }
+}

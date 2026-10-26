@@ -212,7 +212,7 @@ test('the palette adds real bodies; placing with the pointer; dragging the veloc
   expect(pageErrors).toEqual([]);
 });
 
-test('frames, measurements, a quantity followed, the library, a link that opens the experiment again, and several bodies at once', async ({ page, kf, pageErrors, context }) => {
+test('frames, measurements and a quantity followed', async ({ page, kf, pageErrors }) => {
   test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -252,6 +252,15 @@ test('frames, measurements, a quantity followed, the library, a link that opens 
   await expect(page.getByTestId('lab-graph-summary')).toContainText('samples');
   expect(await page.getByTestId('lab-graph').locator('polyline').getAttribute('points')).toMatch(/\d/);
   await pause(page);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a body renamed, the library, and a link that opens the experiment again', async ({ page, kf, pageErrors, context }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await pause(page);
   // Renamed, saved to the library, deleted from it.
   await choose(page, 'moon');
   await page.getByTestId('lab-rename-input').fill('Luna');
@@ -272,7 +281,16 @@ test('frames, measurements, a quantity followed, the library, a link that opens 
   await other.goto(url);
   await expect.poll(async () => (await other.evaluate(() => (window as unknown as { __kf?: { universe?: { state(): { lab: UniverseLab | null } | null } } }).__kf?.universe?.state()?.lab?.bodies.find((b) => b.id === 'moon')?.name ?? null)), LIVE).toBe('Luna');
   await other.close();
-  // Two copies of the Moon, ticked and removed together.
+  expect(pageErrors).toEqual([]);
+});
+
+test('several bodies at once: two copies of the Moon, ticked and removed together', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await pause(page);
+  await choose(page, 'moon');
   await page.getByTestId('lab-duplicate').click();
   await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(11);
   await choose(page, 'moon');

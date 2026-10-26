@@ -167,7 +167,8 @@ test('five round trips ch07 -> universe -> ch07 resume the film where it was and
     }
     // And one real flight, back to the Earth.
     await page.getByRole('button', { name: 'Earth', exact: true }).click();
-    await expect.poll(async () => (await view(page))?.travelling, { timeout: 30_000 }).toBe(false);
+    // A flight is timed in frames as well as seconds (a frame's step is capped): software rendering's slow frames make it longer.
+    await expect.poll(async () => (await view(page))?.travelling, { timeout: 30_000 * SLOW }).toBe(false);
     // Back with Esc on odd rounds, with the interface's own button on even ones.
     if (round % 2 === 1) await page.keyboard.press('Escape');
     else await page.getByTestId('universe-back').click();
