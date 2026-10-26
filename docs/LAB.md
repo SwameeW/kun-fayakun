@@ -132,6 +132,25 @@ burns (Vallado's algorithm 36) reaches the second orbit to 1.5 per cent with an 
 0.02, spending the rocket equation's propellant for the two; undo takes a burn back bit for bit,
 and the validator takes a scenario with a ship and a burn. In the browser, `tests/explore/ships.spec.ts`.
 
+## Lessons (ledger CR-4)
+
+`src/ui/explore/lab-lessons.ts`: short lessons, each on its own experiment set up from the start
+(the seed loaded, the body in question chosen, the clock paused), then a few steps, each an edit
+made with a button (the panel's own edits), with what to look for and the number the physics
+expects worked out beforehand from the experiment as it stands, beside the experiment's own figure:
+
+- **Kepler's third law** (a star and a planet): the planet moved out to twice its distance; its
+  year 2^1.5 = 2.828 times as long; then running, its speed one over the square root of two.
+- **Escape speed**: a push a little past the square root of two times the circular speed opens the
+  orbit (eccentricity over 1).
+- **A Hohmann transfer** (a ship 7,000 km from the Earth's centre, to 42,164 km): the two burns
+  worked out (Vallado's algorithm 36), the first planned and run, the far side checked against the
+  target, the second planned by the autopilot.
+- **The Roche limit**: the Moon moved inside the Earth's fluid limit for it, and torn apart.
+
+"Start the lesson again" sets the experiment up from the start once more. Tested in
+`tests/explore/lessons.spec.ts`.
+
 ## State ownership
 
 | State | Owner | Notes |

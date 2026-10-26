@@ -107,6 +107,8 @@ const SECONDS_PER_DAY = 86_400;
  * microphones, Maurice et al. 2022).
  */
 const SOUND_BREEZE: Partial<Record<WalkableWorld, number>> = { earth: 5, mars: 5, venus: 1 };
+/** Photo mode's lenses may span this field (degrees). */
+const LENS_FOV = { min: 1, max: 120 } as const;
 const SOUND_BRIGHT: Partial<Record<WalkableWorld | 'jupiter', number>> = { earth: 1800, mars: 500, venus: 1200, jupiter: 2000 };
 
 /** Above this height (km) with the lens at rest, the view stops turning with the Earth (it is no longer held over a place). */
@@ -453,6 +455,8 @@ export default function create(): UniverseModule {
   /** Sound where there is air (./sound): made with the context. */
   let soundscape: Soundscape | null = null;
   const soundView: UniverseView['sound'] = { on: true, playing: null };
+  /** Photo mode's lens (degrees of field, top to bottom), or null for the explorer's own framing. */
+  let lensFov: number | null = null;
   let islamicLoading = false;
   const islamicWaiting: UniverseIslamicCommand[] = [];
   let hijriDay = Number.NaN;
@@ -681,6 +685,7 @@ export default function create(): UniverseModule {
     descent: null,
     neighbourhood: null,
     sound: { on: true, playing: null },
+    lensFov: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -1455,7 +1460,7 @@ export default function create(): UniverseModule {
     if (hoodShown && hood) {
       const camera = c.camera;
       // Points beyond the stars are sized in device pixels from their distance: the screen's focal length.
-      const focalPx = (c.renderer.domElement.clientHeight * c.renderer.getPixelRatio()) / (2 * Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)));
+      const focalPx = (c.renderer.domElement.clientHeight * c.renderer.getPixelRatio()) / (2 * Math.tan(MathUtils.degToRad((lensFov ?? DEFAULT_FOV) / 2)));
       const pose = hood.update(dt, jdTdb - 2451545, camera, focalPx);
       camera.position.set(0, 0, 0);
       target.set(...pose.forward);
@@ -1465,7 +1470,7 @@ export default function create(): UniverseModule {
       camera.up.copy(up);
       camera.near = pose.near;
       camera.far = pose.far;
-      camera.fov = DEFAULT_FOV;
+      camera.fov = lensFov ?? DEFAULT_FOV;
       camera.updateProjectionMatrix();
       camera.updateMatrixWorld();
       c.exposure.setTarget(1);
@@ -1662,7 +1667,8 @@ export default function create(): UniverseModule {
       look.lookAt(eye, target, up);
       camera.quaternion.setFromRotationMatrix(look);
     }
-    const fov = navOut.fov;
+    // Photo mode's lens, when chosen, in place of the explorer's own framing (ledger CR-2).
+    const fov = lensFov ?? navOut.fov;
     const tanHalf = Math.tan(MathUtils.degToRad(fov / 2));
     const pxPerTan = viewportPx / (2 * tanHalf);
     const settle = entering ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS);
@@ -2917,6 +2923,10 @@ export default function create(): UniverseModule {
         case 'sound':
           soundView.on = command.on;
           soundscape?.setEnabled(command.on);
+          return;
+        case 'lens':
+          lensFov = command.fovDeg === null || !(command.fovDeg >= LENS_FOV.min && command.fovDeg <= LENS_FOV.max) ? null : command.fovDeg;
+          viewState.lensFov = lensFov;
           return;
         case 'starsSearch':
           hood?.search(command.text);

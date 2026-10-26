@@ -4,6 +4,7 @@ import type { App, LabCommand, LabQuantity, UniverseLab, UniverseLabBody, Univer
 import { BURN_DIRECTIONS } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
+import { createLabLessons } from './lab-lessons';
 
 /**
  * The orbital laboratory's panel (heading the navigator while an experiment runs): what it is (an
@@ -138,6 +139,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   // Head: what this is, and the way back.
   const title = h('h3', { class: 'kf-living-notes-title' }, i18n.t('ui.universe.lab.title'));
   const note = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-note' });
+  // Lessons on experiments set up again from the start (ledger CR-4).
+  const lessons = createLabLessons(app, f);
   const clock = h('p', { class: 'kf-lab-clock', 'data-testid': 'lab-clock' });
   const rates = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-rates' });
   const back = button(i18n.t('ui.universe.lab.back'), 'lab-back', () => {
@@ -684,6 +687,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     { class: 'kf-nav-lab', 'data-testid': 'lab-panel', 'aria-label': i18n.t('ui.universe.lab.title'), hidden: true },
     title,
     note,
+    lessons.element,
     clock,
     rates,
     failure,
@@ -747,6 +751,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       if (!lab) return;
       const l = lab;
       write(note, i18n.t('ui.universe.lab.note', { seed: l.seedNote }));
+      lessons.update(l);
       write(clock, i18n.t('ui.universe.lab.clock', { elapsed: days(l.elapsedS), date: new Date((l.epochJdTdb - julianDateUtc(0)) * 86_400_000 + l.elapsedS * 1000).toISOString().slice(0, 10) }));
       if (!slow) return;
       write(rates, i18n.t(l.paused ? 'ui.universe.lab.paused' : l.achievedRate < 0.9 * l.requestedRate ? 'ui.universe.lab.ratesSlow' : 'ui.universe.lab.rates', { requested: days(l.requestedRate), achieved: days(l.achievedRate), step: f.number(l.dtS / 60, 1) }));

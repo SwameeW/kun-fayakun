@@ -510,6 +510,8 @@ export interface UniverseView {
   neighbourhood: UniverseNeighbourhood | null;
   /** Sound where there is air (src/explore/sound.ts): whether it is on, and what plays (the wind, a suit's fans, or nothing). */
   sound: { on: boolean; playing: 'wind' | 'suit' | null };
+  /** Photo mode's lens (degrees of field), or null for the explorer's own framing. */
+  lensFov: number | null;
   /**
    * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
    * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
@@ -1232,6 +1234,8 @@ export type EarthCommand =
   /** A place beyond the stars, or a galaxy of the Local Group as `galaxy:` and its catalogue name. */
   /** Sound where there is air, on or off (the visitor's choice; the interface keeps it). */
   | { kind: 'sound'; on: boolean }
+  /** Photo mode's lens: a field of view (degrees, top to bottom) in place of the explorer's own, or null to give it back. */
+  | { kind: 'lens'; fovDeg: number | null }
   | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` }
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
@@ -1459,4 +1463,8 @@ export interface App extends AppCommands {
    * lines (its credits); null where the browser cannot give the canvas's pixels.
    */
   capturePicture(lines: readonly string[]): Promise<Blob | null>;
+  /** Starts recording the view as a video with these credits below it (asked for again each second); false where the browser cannot. */
+  startRecording(lines: () => readonly string[]): boolean;
+  /** Stops it: the video, or null. */
+  stopRecording(): Promise<Blob | null>;
 }

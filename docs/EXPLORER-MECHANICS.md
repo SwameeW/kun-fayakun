@@ -41,7 +41,11 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date, with
   its credits set in a band below it, never over it: where and when, what in it is illustrative, whose
   imagery and data it shows (the lines the readouts carry: the planet maps', the streamed imagery's
-  with EOX's link, a walk's or a descent's, the stars'), and the app with its Sources page.
+  with EOX's link, a walk's or a descent's, the stars'), and the app with its Sources page. "Record a
+  video" (CR-3; where the browser can record a canvas) records the view as it moves, each frame copied
+  as it is drawn, with the same credits below it (their place kept right as a flight moves on), saved
+  as WebM (or MP4). The lens (CR-2) sets the field of view for the picture, from 90 to 5 degrees, in
+  place of the explorer's own framing; leaving photo mode gives the framing back.
 - **Object information** (SpaceEngine's wiki). "About" the world in view, in the navigator: radius,
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'

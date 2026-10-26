@@ -90,6 +90,58 @@ const DETAIL_FOR_TIER: Readonly<Record<QualityProfile['tier'], ExploreTier>> = {
 /** Upper bound for one __kf.step call (an hour of film at 60 fps), so a typo cannot hang the page. */
 const MAX_STEP_FRAMES = 216_000;
 const EMPTY_HUD: HudState = { labels: [], metresPerPixel: null };
+
+/** A video being recorded: the canvas it is drawn into (the view, and its credits below it), the lines and when they were last asked for, and the recorder. */
+interface Recording {
+  out: HTMLCanvasElement;
+  g: CanvasRenderingContext2D;
+  height: number;
+  rows: number;
+  lines: () => readonly string[];
+  linesAt: number;
+  wrapped: string[];
+  recorder: MediaRecorder;
+  done: Promise<Blob | null>;
+}
+
+/** A picture's or a recording's credits: the type's size for its width, its lines wrapped to it, and the band's height. */
+function creditLayout(g: CanvasRenderingContext2D, width: number, lines: readonly string[]): { band: number; rows: number; wrapped: string[] } {
+  const scale = Math.max(1, width / 1600);
+  const fontPx = Math.round(15 * scale);
+  const lineH = Math.round(fontPx * 1.45);
+  const pad = Math.round(14 * scale);
+  g.font = `${String(fontPx)}px system-ui, sans-serif`;
+  const wrapped: string[] = [];
+  for (const line of lines) {
+    let current = '';
+    for (const word of line.split(/\s+/u)) {
+      const next = current === '' ? word : `${current} ${word}`;
+      if (g.measureText(next).width > width - 2 * pad && current !== '') {
+        wrapped.push(current);
+        current = word;
+      } else current = next;
+    }
+    if (current !== '') wrapped.push(current);
+  }
+  return { band: wrapped.length > 0 ? pad * 2 + wrapped.length * lineH : 0, rows: wrapped.length, wrapped };
+}
+
+/** The credits band below a picture: white on near-black, a line each. */
+function drawCredits(g: CanvasRenderingContext2D, width: number, top: number, band: number, wrapped: readonly string[]): void {
+  if (band <= 0) return;
+  const scale = Math.max(1, width / 1600);
+  const fontPx = Math.round(15 * scale);
+  const lineH = Math.round(fontPx * 1.45);
+  const pad = Math.round(14 * scale);
+  g.fillStyle = '#07080c';
+  g.fillRect(0, top, width, band);
+  g.fillStyle = 'rgba(255,255,255,0.86)';
+  g.font = `${String(fontPx)}px system-ui, sans-serif`;
+  g.textBaseline = 'top';
+  wrapped.forEach((line, i) => {
+    g.fillText(line, pad, top + pad + i * lineH);
+  });
+}
 const projected = new Vector3();
 
 /** Longest a chapter waits for its GPU pipelines to compile before playing anyway. */
@@ -162,6 +214,8 @@ class Engine implements KunFayakunApp {
   private manualClock = false;
   /** A picture asked for (capturePicture): taken right after the next frame is drawn, while its pixels are there to copy. */
   private pendingCapture: { lines: readonly string[]; resolve: (blob: Blob | null) => void } | null = null;
+  /** A video being recorded (startRecording): its canvas, credits and recorder. */
+  private recording: Recording | null = null;
   /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms. */
   private lastGpuMs: number | null = null;
   /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
@@ -448,6 +502,7 @@ class Engine implements KunFayakunApp {
       this.advance(gfx, this.manualClock ? 0 : Math.min(raw, MAX_FRAME_DT));
       gfx.post.render();
       if (this.pendingCapture) this.takePicture(this.pendingCapture);
+      if (this.recording) this.recordFrame(this.recording);
       this.measure(gfx);
     } catch (err) {
       this.logOnce('[frame]', err);
@@ -474,6 +529,61 @@ class Engine implements KunFayakunApp {
   }
 
   /**
+   * Starts recording the view as a video (ledger CR-3), with its credits in a band below it (the lines
+   * asked for again each second, so a flight's place stays right): each frame copied as it is drawn,
+   * into a canvas the browser records. False where the browser cannot record a canvas.
+   */
+  startRecording(lines: () => readonly string[]): boolean {
+    if (this.recording || typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement.prototype.captureStream !== 'function') return false;
+    const type = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    const out = document.createElement('canvas');
+    const g = out.getContext('2d');
+    if (!type || !g || width === 0 || height === 0) return false;
+    const layout = creditLayout(g, width, lines());
+    out.width = width;
+    out.height = height + layout.band;
+    const recorder = new MediaRecorder(out.captureStream(30), { mimeType: type });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    const done = new Promise<Blob | null>((resolve) => {
+      recorder.onstop = () => {
+        resolve(chunks.length > 0 ? new Blob(chunks, { type: type.split(';')[0] }) : null);
+      };
+    });
+    this.recording = { out, g, height, rows: layout.rows, lines, linesAt: 0, wrapped: layout.wrapped, recorder, done };
+    recorder.start(1000);
+    return true;
+  }
+
+  /** Stops the recording; the video, or null when nothing was recorded. */
+  stopRecording(): Promise<Blob | null> {
+    const r = this.recording;
+    if (!r) return Promise.resolve(null);
+    this.recording = null;
+    if (r.recorder.state !== 'inactive') r.recorder.stop();
+    return r.done;
+  }
+
+  /** Copies the frame just drawn into the recording, and its credits below (their lines refreshed each second). */
+  private recordFrame(r: Recording): void {
+    const now = performance.now();
+    if (now - r.linesAt > 1000) {
+      r.linesAt = now;
+      r.wrapped = creditLayout(r.g, r.out.width, r.lines()).wrapped.slice(0, r.rows);
+    }
+    try {
+      r.g.drawImage(this.canvas, 0, 0);
+    } catch {
+      return;
+    }
+    drawCredits(r.g, r.out.width, r.height, r.out.height - r.height, r.wrapped);
+  }
+
+  /**
    * Copies the frame just drawn (still the canvas's current image in this task) into a picture, and
    * sets its credits in a band below it: white on near-black, a line each, wrapped to the width.
    */
@@ -482,47 +592,22 @@ class Engine implements KunFayakunApp {
     const source = this.canvas;
     const width = source.width;
     const height = source.height;
-    const scale = Math.max(1, width / 1600);
-    const fontPx = Math.round(15 * scale);
-    const lineH = Math.round(fontPx * 1.45);
-    const pad = Math.round(14 * scale);
     const out = document.createElement('canvas');
     const g = out.getContext('2d');
     if (!g || width === 0 || height === 0) {
       capture.resolve(null);
       return;
     }
-    g.font = `${String(fontPx)}px system-ui, sans-serif`;
-    // Each line wrapped at word boundaries to the picture's width.
-    const wrapped: string[] = [];
-    for (const line of capture.lines) {
-      let current = '';
-      for (const word of line.split(/\s+/u)) {
-        const next = current === '' ? word : `${current} ${word}`;
-        if (g.measureText(next).width > width - 2 * pad && current !== '') {
-          wrapped.push(current);
-          current = word;
-        } else current = next;
-      }
-      if (current !== '') wrapped.push(current);
-    }
-    const band = wrapped.length > 0 ? pad * 2 + wrapped.length * lineH : 0;
+    const layout = creditLayout(g, width, capture.lines);
     out.width = width;
-    out.height = height + band;
+    out.height = height + layout.band;
     try {
       g.drawImage(source, 0, 0);
     } catch {
       capture.resolve(null);
       return;
     }
-    g.fillStyle = '#07080c';
-    g.fillRect(0, height, width, band);
-    g.fillStyle = 'rgba(255,255,255,0.86)';
-    g.font = `${String(fontPx)}px system-ui, sans-serif`;
-    g.textBaseline = 'top';
-    wrapped.forEach((line, i) => {
-      g.fillText(line, pad, height + pad + i * lineH);
-    });
+    drawCredits(g, width, height, layout.band, layout.wrapped);
     out.toBlob((blob) => {
       capture.resolve(blob);
     }, 'image/png');
