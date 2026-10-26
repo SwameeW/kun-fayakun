@@ -367,6 +367,21 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     shipCancel,
   );
 
+  const massGroup = h(
+    'div',
+    { class: 'kf-living-group' },
+    hold.label,
+    hold.select,
+    h('label', { class: 'kf-living-label', for: massId }, i18n.t('ui.universe.lab.massLabel')),
+    h('div', { class: 'kf-lab-row' }, massInput, massApply),
+    h('div', { class: 'kf-lab-row' }, double, halve),
+    radius.label,
+    h('div', { class: 'kf-lab-row' }, radius.input, radiusApply),
+    density.label,
+    h('div', { class: 'kf-lab-row' }, density.input, densityApply),
+  );
+  const spinGroup = h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply);
+
   const inspector = h(
     'section',
     { class: 'kf-living-notes-part', 'data-testid': 'lab-inspector', hidden: true },
@@ -375,19 +390,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     warning,
     climateBox,
     h('div', { class: 'kf-living-group' }, rename.label, h('div', { class: 'kf-lab-row' }, rename.input, renameApply)),
-    h(
-      'div',
-      { class: 'kf-living-group' },
-      hold.label,
-      hold.select,
-      h('label', { class: 'kf-living-label', for: massId }, i18n.t('ui.universe.lab.massLabel')),
-      h('div', { class: 'kf-lab-row' }, massInput, massApply),
-      h('div', { class: 'kf-lab-row' }, double, halve),
-      radius.label,
-      h('div', { class: 'kf-lab-row' }, radius.input, radiusApply),
-      density.label,
-      h('div', { class: 'kf-lab-row' }, density.input, densityApply),
-    ),
+    massGroup,
     h(
       'fieldset',
       { class: 'kf-living-group kf-lab-fieldset' },
@@ -398,7 +401,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.impulse')), ...pushes.flatMap((x) => [x.label, x.input]), pushApply),
     shipBox,
     elementsBox,
-    h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply),
+    spinGroup,
     h('div', { class: 'kf-lab-row' }, fixedBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: fixedId }, i18n.t('ui.universe.lab.fixed'))),
     h('div', { class: 'kf-lab-row' }, duplicate, remove, follow),
     h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: horizonId }, i18n.t('ui.universe.lab.horizon')), horizon, accuracy.label, accuracy.select, predictionText, encounters),
@@ -886,18 +889,24 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         const pName = primary ? nameOf(primary) : '';
         const o = b.orbit;
         const rot = b.rotation;
+        // A ship weighs nothing to the worlds (a test particle): its own mass is its rocket's, and it has no size, escape speed or turn to speak of.
+        const isShip = b.ship !== null;
+        massGroup.hidden = isShip;
+        spinGroup.hidden = isShip;
         facts.replaceChildren(
-          ...row(i18n.t('ui.universe.lab.mass'), `${scientific(b.massKg)} kg${b.edited ? ` · ${i18n.t('ui.universe.lab.edited')}` : ''}`, 'lab-fact-mass'),
-          ...row(i18n.t('ui.universe.lab.radius'), f.keep(i18n.t('ui.hud.unit.km', { value: f.number(b.radiusKm, b.radiusKm < 10_000 ? 1 : 0) })), 'lab-fact-radius'),
+          ...(b.ship
+            ? row(i18n.t('ui.universe.lab.mass'), i18n.t('ui.universe.lab.ship.mass', { kg: f.number(b.ship.dryKg + b.ship.fuelKg, 0) }), 'lab-fact-mass')
+            : row(i18n.t('ui.universe.lab.mass'), `${scientific(b.massKg)} kg${b.edited ? ` · ${i18n.t('ui.universe.lab.edited')}` : ''}`, 'lab-fact-mass')),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.radius'), f.keep(i18n.t('ui.hud.unit.km', { value: f.number(b.radiusKm, b.radiusKm < 10_000 ? 1 : 0) })), 'lab-fact-radius')),
           ...(b.densityKgM3 > 0 ? row(i18n.t('ui.universe.lab.density'), i18n.t('ui.universe.lab.densityValue', { value: f.number(b.densityKgM3, 0) }), 'lab-fact-density') : []),
           ...row(i18n.t('ui.universe.lab.speed'), speed(b.speedKmS), 'lab-fact-speed'),
           ...(b.primary && b.relativeSpeedKmS !== null && b.distanceKm !== null ? row(i18n.t('ui.universe.lab.relative', { primary: pName }), i18n.t('ui.universe.lab.relativeValue', { speed: speed(b.relativeSpeedKmS), distance: f.distance(b.distanceKm) }), 'lab-fact-relative') : []),
-          ...row(i18n.t('ui.universe.lab.escape'), speed(b.escapeKmS), 'lab-fact-escape'),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.escape'), speed(b.escapeKmS), 'lab-fact-escape')),
           ...(o ? row(i18n.t('ui.universe.lab.orbit', { primary: pName }), i18n.t('ui.universe.lab.orbitValue', { a: o.bound ? f.distance(o.aKm) : f.distance(Math.abs(o.aKm)), e: f.number(o.e, o.e < 0.01 ? 4 : 3), i: degrees(o.iDeg) }), 'lab-fact-orbit') : []),
           ...(o ? row(i18n.t('ui.universe.lab.period'), o.periodS === null ? i18n.t('ui.universe.lab.unbound') : duration(o.periodS), 'lab-fact-period') : []),
           ...(o ? row(i18n.t('ui.universe.lab.apsides'), o.apoapsisKm === null ? i18n.t('ui.universe.lab.apsidesNear', { near: f.distance(o.periapsisKm) }) : i18n.t('ui.universe.lab.apsidesValue', { near: f.distance(o.periapsisKm), far: f.distance(o.apoapsisKm) }), 'lab-fact-apsides') : []),
           ...(o?.hillKm ? row(i18n.t('ui.universe.lab.hill'), i18n.t('ui.universe.lab.hillValue', { value: f.distance(o.hillKm) }), 'lab-fact-hill') : []),
-          ...row(i18n.t('ui.universe.lab.rotation'), rot.periodS === null ? i18n.t('ui.universe.lab.rotationNone') : rot.tiltDeg === null ? i18n.t('ui.universe.lab.rotationNoTilt', { period: duration(rot.periodS) }) : i18n.t('ui.universe.lab.rotationValue', { period: duration(rot.periodS), tilt: degrees(rot.tiltDeg) }), 'lab-fact-rotation'),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.rotation'), rot.periodS === null ? i18n.t('ui.universe.lab.rotationNone') : rot.tiltDeg === null ? i18n.t('ui.universe.lab.rotationNoTilt', { period: duration(rot.periodS) }) : i18n.t('ui.universe.lab.rotationValue', { period: duration(rot.periodS), tilt: degrees(rot.tiltDeg) }), 'lab-fact-rotation')),
           ...(Number.isFinite(rot.breakupPeriodS) ? row(i18n.t('ui.universe.lab.breakupLabel'), i18n.t('ui.universe.lab.breakup', { period: duration(rot.breakupPeriodS) }), 'lab-fact-breakup') : []),
           ...(b.roche ? row(i18n.t('ui.universe.lab.roche'), i18n.t('ui.universe.lab.rocheValue', { fluid: f.distance(b.roche.fluidKm), rigid: f.distance(b.roche.rigidKm) }), 'lab-fact-roche') : []),
           ...(b.j2 > 0 ? row(i18n.t('ui.universe.lab.j2'), scientific(b.j2), 'lab-fact-j2') : []),

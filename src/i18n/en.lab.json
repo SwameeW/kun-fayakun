@@ -173,6 +173,7 @@
   "ui.universe.lab.ship.distance": "From its centre (km)",
   "ui.universe.lab.ship.add": "Add the ship",
   "ui.universe.lab.ship.title": "Its rocket",
+  "ui.universe.lab.ship.mass": "{kg} kg with its propellant (to the worlds, nothing: it pulls on none of them)",
   "ui.universe.lab.ship.readout": "{fuel} kg of propellant left: {dv} m/s of change of speed, by the rocket equation. Thrust {thrust} N, specific impulse {isp} s.",
   "ui.universe.lab.ship.burningNow": "Burning now.",
   "ui.universe.lab.ship.direction": "Direction of the burn",

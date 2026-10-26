@@ -13,7 +13,8 @@ import type { Burn } from './ships';
 export type LabRequest =
   | { type: 'load'; generation: number; scenario: Scenario }
   | { type: 'run'; generation: number; rate: number; paused: boolean }
-  | { type: 'command'; generation: number; command: Command }
+  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt). */
+  | { type: 'command'; generation: number; command: Command; atStep?: number }
   | { type: 'predict'; generation: number; id: string | null; horizonS: number; accuracy: number }
   | { type: 'undo'; generation: number }
   | { type: 'redo'; generation: number }

@@ -528,7 +528,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     // A solid body the visitor adds has a temperature too: an airless rock, unless it comes with a climate.
     const command: Command = given.kind === 'add' && !given.body.climate && given.body.gm > 0 && given.body.gm <= SOLID_MAX_GM ? { ...given, body: { ...given.body, climate: airlessRock() } } : given;
     sentEdits += 1;
-    send({ type: 'command', generation, command });
+    // On the run as last seen: the worker goes back to that step if it has run on since.
+    send({ type: 'command', generation, command, ...(snap?.generation === generation ? { atStep: snap.step } : {}) });
     edited.add(commandId(command));
   };
 

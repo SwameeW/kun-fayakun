@@ -43,10 +43,18 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   expect(ship?.ship?.deltaVLeftMs ?? 0).toBeCloseTo(320 * 9.80665 * Math.log(2), 3);
   await expect(page.getByTestId('lab-ship')).toBeVisible();
   await expect(page.getByTestId('lab-ship-readout')).toContainText('2,175 m/s of change of speed');
+  // Its own figures: the rocket's mass, and no size, escape speed or spin to show or edit (it pulls on nothing).
+  await expect(page.getByTestId('lab-fact-mass')).toHaveText(/^20,000 kg with its propellant/u);
+  for (const fact of ['lab-fact-radius', 'lab-fact-escape', 'lab-fact-rotation']) await expect(page.getByTestId(fact)).toHaveCount(0);
+  await expect(page.getByTestId('lab-mass-input')).toBeHidden();
+  await expect(page.getByTestId('lab-spin-period')).toBeHidden();
   // Its burn directions marked and named about it (ledger SC-2), seen with the camera on the Earth beside it.
   const shipId = (await shipOf(page))?.id ?? '';
   await page.getByTestId('lab-body-earth').click();
   await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe('earth');
+  // A world's own figures back again.
+  await expect(page.getByTestId('lab-fact-radius')).toBeVisible();
+  await expect(page.getByTestId('lab-mass-input')).toBeVisible();
   await page.getByTestId('lab-follow').click();
   await page.getByTestId(`lab-body-${shipId}`).click();
   await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe(shipId);

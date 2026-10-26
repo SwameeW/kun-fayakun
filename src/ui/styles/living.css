@@ -126,6 +126,8 @@
 
 .kf-living-group {
   display: grid;
+  /* One column the box's own width, whatever a child would like (a list of long choices). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-1);
   margin: 0;
 }
@@ -318,6 +320,7 @@
 
 .kf-living-notes-part {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-2);
 }
 
@@ -380,6 +383,7 @@
 
 .kf-living-prophets-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-2);
   padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
 }
@@ -460,6 +464,8 @@
 /* The orbital laboratory's panel (src/ui/explore/lab-panel.ts). */
 .kf-nav-lab {
   display: grid;
+  /* One column no wider than the panel, whatever a child's own width (a list of long choices). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--kf-space-2);
   margin: 0 var(--kf-space-3) var(--kf-space-2);
   padding: var(--kf-space-3);
@@ -521,6 +527,11 @@
 .kf-lab-file {
   display: inline-flex;
   align-items: center;
+}
+
+/* A list of long choices no wider than the panel. */
+.kf-nav-lab select {
+  max-inline-size: 100%;
 }
 
 /* A tick beside each body (several at once), and the inspector's tick boxes. */

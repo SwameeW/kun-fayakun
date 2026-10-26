@@ -171,7 +171,7 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         break;
       case 'command':
         applied += 1;
-        engine.apply(msg.command);
+        engine.applyAt(msg.command, msg.atStep ?? engine.state.step);
         startPrediction();
         snapshot();
         break;

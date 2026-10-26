@@ -239,3 +239,52 @@ test('undo through several edits made at the same moment (paused): each comes of
   e.apply({ kind: 'setMass', id: 'moon', gm: 1 });
   expect(e.checkpoints.every((c) => c.step <= branchStep)).toBe(true);
 });
+
+test('an edit made on a view the run has since passed is made at that view’s step, exactly as if made then; no checkpoint of a run without it survives', () => {
+  const start = scenario([body('sun', 132_712_440_041.279, 695_700, [0, 0, 0], [0, 0, 0]), body('planet', GM_EARTH, R_EARTH, [149_597_870.7, 0, 0], [0, 29.78, 0]), body('moon', 4902.8, 1737.4, [149_597_870.7 + 384_400, 0, 0], [0, 29.78 + 1.022, 0])]);
+  const e = new Engine(structuredClone(start));
+  e.advanceTo(86_400 * 10, 1_000_000);
+  const seen = e.state.step;
+  // A ship placed 7,000 km from the planet as it was seen, on a circular orbit; the run goes on a day (a fast rate) before the edit arrives.
+  const p = e.state.ids.indexOf('planet');
+  const at = [0, 1, 2].map((k) => e.state.pos[p * 3 + k] ?? 0);
+  const av = [0, 1, 2].map((k) => e.state.vel[p * 3 + k] ?? 0);
+  const ship = body('ship', 0, 0.01, [(at[0] ?? 0) + 7000, at[1] ?? 0, at[2] ?? 0], [av[0] ?? 0, (av[1] ?? 0) + Math.sqrt(GM_EARTH / 7000), av[2] ?? 0]);
+  e.advanceTo(86_400 * 11, 1_000_000);
+  e.applyAt({ kind: 'add', body: ship }, seen);
+  expect(e.toScenario().log.at(-1)?.step).toBe(seen);
+  // Exactly the run that made it then, there and a day on.
+  const straight = new Engine(structuredClone(start));
+  straight.advanceTo(86_400 * 10, 1_000_000);
+  straight.apply({ kind: 'add', body: ship });
+  expect(JSON.stringify(e.state)).toBe(JSON.stringify(straight.state));
+  expect(e.checkpoints.every((c) => c.step <= seen)).toBe(true);
+  e.advanceTo(86_400 * 11, 1_000_000);
+  straight.advanceTo(86_400 * 11, 1_000_000);
+  expect(JSON.stringify(e.state)).toBe(JSON.stringify(straight.state));
+  // Still on its orbit (made at the later step, it would have been some 2.6 million kilometres behind the planet).
+  const i = e.state.ids.indexOf('ship');
+  const q = e.state.ids.indexOf('planet');
+  const rel = (v: readonly number[]): number[] => [0, 1, 2].map((k) => (v[i * 3 + k] ?? 0) - (v[q * 3 + k] ?? 0));
+  const orbit = elementsFromState(rel(e.state.pos), rel(e.state.vel), GM_EARTH);
+  expect(orbit.a / 7000).toBeGreaterThan(0.99);
+  expect(orbit.a / 7000).toBeLessThan(1.01);
+  expect(orbit.e).toBeLessThan(0.01);
+  // A view from before the latest edit: made now instead, the edit before it kept.
+  const now = e.state.step;
+  e.applyAt({ kind: 'rename', id: 'moon', name: 'Luna' }, seen - 10);
+  expect(e.toScenario().log.map((x) => x.step)).toEqual([seen, now]);
+  // Gone back (the history) to before nothing later in the log, an edit there: the run as it was keeps no checkpoint to go back to.
+  e.advanceTo(86_400 * 30, 1_000_000);
+  const back = e.checkpoints.find((c) => c.step > now && c.t < 86_400 * 25);
+  expect(back).toBeDefined();
+  e.seek(back?.step ?? 0);
+  e.apply({ kind: 'setMass', id: 'moon', gm: 4902.8 * 2 });
+  expect(e.checkpoints.every((c) => c.step <= (back?.step ?? 0))).toBe(true);
+  // Likewise a redo: the checkpoints taken while it was undone go.
+  e.advanceTo(86_400 * 40, 1_000_000);
+  expect(e.undo()).toBe(true);
+  e.advanceTo(86_400 * 50, 1_000_000);
+  expect(e.redo()).toBe(true);
+  expect(e.checkpoints.every((c) => c.step <= (back?.step ?? 0))).toBe(true);
+});
