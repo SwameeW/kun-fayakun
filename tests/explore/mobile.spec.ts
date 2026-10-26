@@ -346,6 +346,47 @@ test('the orbital laboratory on a phone: opened from the sheet, every control a 
   expect(pageErrors).toEqual([]);
 });
 
+test('the orbital laboratory on a phone: entered, its panel shows from its top after the list of worlds; folded, the sheet is as small as outside it', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const nav = page.getByTestId('universe-bodies');
+  const toggle = page.getByTestId('universe-nav-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  const small = (await nav.boundingBox())?.height ?? 0;
+  await toggle.tap();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  const panel = page.getByTestId('lab-panel');
+  await expect(panel).toBeVisible({ timeout: 60_000 * SLOW });
+  // In view from its heading, though it was entered from the foot of the sheet.
+  await expect
+    .poll(() =>
+      panel.locator('h3').first().evaluate((h) => {
+        const body = h.closest('.kf-nav-body-wrap')?.getBoundingClientRect();
+        const r = h.getBoundingClientRect();
+        return body !== undefined && r.top >= body.top - 1 && r.bottom <= body.bottom + 1;
+      }),
+    )
+    .toBe(true);
+  // The sheet puts the list of worlds first: the panel comes after the last of the experiment's worlds.
+  const order = await page.evaluate(() => {
+    const body = document.querySelector('.kf-nav-body-wrap');
+    const rows = [...document.querySelectorAll<HTMLElement>('.kf-nav-row')].filter((r) => r.offsetParent !== null);
+    const lab = document.querySelector('[data-testid="lab-panel"]');
+    if (!body || !lab || rows.length === 0) return null;
+    return { rowsEnd: Math.max(...rows.map((r) => r.getBoundingClientRect().bottom)), panelTop: lab.getBoundingClientRect().top };
+  });
+  expect(order).not.toBeNull();
+  expect(order?.panelTop ?? 0).toBeGreaterThanOrEqual(order?.rowsEnd ?? Infinity);
+  // Folded in the experiment: its worlds in two rows, nothing of the panel, as small as outside it.
+  await toggle.tap();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toBeHidden();
+  await expect.poll(async () => Math.abs(((await nav.boundingBox())?.height ?? 0) - small)).toBeLessThanOrEqual(2);
+  expect(pageErrors).toEqual([]);
+});
+
 test('the qibla and the new moon on a phone: opened from the sheet, every control a touch target, the map computed, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
   test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
