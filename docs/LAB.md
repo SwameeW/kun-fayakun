@@ -238,11 +238,18 @@ Every edit (mass, radius, velocity, state, rotation, hold, name, add, remove) is
 at the step it was applied and applied again at that step on replay, so an experiment is its start
 plus its log.
 
+- **The step an edit is made at.** The worker runs on between the view last drawn and an edit's
+  arrival: a frame or two, which at a day a second is about an hour of the experiment, in which the
+  Earth moves some 100,000 km. An edit therefore carries the step of the view it was made on, and
+  the engine goes back to that step first (exactly: a checkpoint and the log replayed) unless an
+  edit has been made since (`Engine.applyAt`). A body placed beside another is placed where that one
+  was seen; the clock steps back by those few frames.
 - **Checkpoints.** A checkpoint (a copy of the state) is taken before every edit and every 200 to
   2,000 steps, keeping at most 48 (the first, and then the most recent).
 - **Going back.** This restores the nearest checkpoint at or before the step and replays to it. An
-  edit made there discards the later log, a new branch, and drops the checkpoints of the discarded
-  future.
+  edit made there is a new branch: it discards the later log and drops every checkpoint later than
+  its step (those of the run as it was), so none can be gone back to. Redo likewise drops the
+  checkpoints taken while its edit was undone.
 - **Undo.** Undo takes the run back to the moment of the latest edit, as it was before it, bit for
   bit. It uses the checkpoint taken just before that edit, even when several edits share a step
   (made while paused). The edit is kept for redo until another edit is made.
