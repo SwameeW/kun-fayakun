@@ -8,8 +8,10 @@ import {
   hadithGrading,
   hadithReference,
   lookupHadith,
+  plainExplanation,
   verifiedHadithText,
 } from './scripture';
+import { onVersePlainChange, versePlain } from './verse-english';
 import './styles/cue-text.css';
 
 /** Verses fade slowly and whole; captions a little faster. */
@@ -126,15 +128,25 @@ export function createCueText(app: App, announce: (text: string) => void): CueTe
     return h('p', { class: 'kf-card-note' }, i18n.t('ui.cue.inNotes'));
   }
 
+  /** The verse in plain words, when the visitor has chosen it for the cards (./verse-english) and it has one. */
+  function cardPlain(key: VerseKey): string | null {
+    return versePlain() ? plainExplanation(key, i18n) : null;
+  }
+
   function verseCard(key: VerseKey): HTMLElement {
     const entry = availableVerse(data, key);
     const reference = h('p', { class: 'kf-card-ref' }, i18n.t('ui.verse.reference', { key }));
     if (!entry) return h('div', { class: 'kf-card kf-card--verse' }, reference);
+    const plain = cardPlain(key);
+    // In plain words the explanation takes the translation's place, under a label that says what it is.
+    const english = plain
+      ? [h('p', { class: 'kf-card-plain-label' }, i18n.t('ui.verse.plainCard')), h('p', { class: 'kf-card-translation kf-card-plain', dir: 'auto' }, plain)]
+      : [entry.translation ? h('p', { class: 'kf-card-translation', dir: 'auto' }, entry.translation) : null];
     return h(
       'div',
-      { class: 'kf-card kf-card--verse', 'data-verse': key },
+      { class: 'kf-card kf-card--verse', 'data-verse': key, 'data-plain': plain !== null },
       arabicText(entry.arabic, 'kf-card-arabic'),
-      entry.translation ? h('p', { class: 'kf-card-translation', dir: 'auto' }, entry.translation) : null,
+      ...english,
       reference,
       notesPointer(),
     );
@@ -158,12 +170,15 @@ export function createCueText(app: App, announce: (text: string) => void): CueTe
   function textItem(id: string, cue: TextCue): FadeItem | null {
     if (cue.type === 'verse') {
       const entry = availableVerse(data, cue.key);
+      const plain = entry ? cardPlain(cue.key) : null;
       return {
-        key: id,
+        // A change of English fades the card out and back in whole, never swapping its words in place.
+        key: plain ? `${id}:plain` : id,
         render: () => verseCard(cue.key),
         onMount: mountCard,
         onShow: () => {
-          if (entry?.translation) announce(i18n.t('ui.announce.verse', { key: cue.key, translation: entry.translation }));
+          if (plain) announce(i18n.t('ui.announce.versePlain', { key: cue.key, text: plain }));
+          else if (entry?.translation) announce(i18n.t('ui.announce.verse', { key: cue.key, translation: entry.translation }));
         },
       };
     }
@@ -229,6 +244,7 @@ export function createCueText(app: App, announce: (text: string) => void): CueTe
     chapter = stateChapter;
   });
   app.events.on('error', clearFast);
+  onVersePlainChange(update);
   app.events.on('route', ({ route }) => {
     if (route.name !== 'chapter') clearFast();
   });

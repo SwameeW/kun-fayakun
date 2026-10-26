@@ -84,7 +84,29 @@ function verseAttribution(entry: QuranEntry, data: DataStore, i18n: I18n): HTMLE
   );
 }
 
-/** A verse in the panel: Arabic, transliteration, translation, reference and attribution. */
+/** The verse's plain-words explanation (src/i18n/en.chapters.json), or null if it has none. */
+export function plainExplanation(key: VerseKey, i18n: I18n): string | null {
+  return i18n.has(`plain.${key}`) ? i18n.t(`plain.${key}`) : null;
+}
+
+/**
+ * The plain-words explanation under a verse's translation: labelled as an explanation, apart from
+ * the translation and its attribution, so it is never taken for a translation of the Quran.
+ */
+function plainBlock(key: VerseKey, i18n: I18n): HTMLElement | null {
+  const text = plainExplanation(key, i18n);
+  if (!text) return null;
+  const labelId = uniqueId('plain');
+  return h(
+    'div',
+    { class: 'kf-plain', role: 'group', 'aria-labelledby': labelId, 'data-testid': 'verse-plain' },
+    h('p', { id: labelId, class: 'kf-plain-label' }, i18n.t('ui.verse.plainLabel')),
+    h('p', { class: 'kf-plain-text' }, text),
+    h('p', { class: 'kf-plain-note' }, i18n.t('ui.verse.plainNote')),
+  );
+}
+
+/** A verse in the panel: Arabic, transliteration, translation, reference and attribution, then the verse in plain words. */
 export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey?: I18nKey): HTMLElement {
   const headingId = uniqueId('verse');
   const heading = h('h3', { id: headingId, class: 'kf-ref' }, i18n.t('ui.verse.reference', { key }));
@@ -105,6 +127,7 @@ export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey
     entry.translit ? h('p', { class: 'kf-translit', lang: 'ar-Latn', dir: 'ltr', translate: 'no' }, entry.translit) : null,
     entry.translation ? h('blockquote', { class: 'kf-translation', dir: 'auto' }, h('p', {}, entry.translation)) : null,
     verseAttribution(entry, data, i18n),
+    plainBlock(key, i18n),
     noteKey ? h('p', { class: 'kf-note' }, i18n.t(noteKey)) : null,
   );
 }

@@ -150,4 +150,15 @@ export function checkScripture(ctx: ValidationContext, log: RuleLog): void {
         'they are canonically equivalent to the Tanzil text',
     );
   }
+
+  // The plain-words explanations (en.chapters.json "plain.<key>"): one for every verse, and none for a verse that is not there.
+  const plain = ctx.i18n.chapters.status === 'ok' ? [...ctx.i18n.chapters.file.messages.keys()].filter((k) => k.startsWith('plain.')).map((k) => k.slice('plain.'.length)) : [];
+  const explained = new Set(plain);
+  log.expectNone(
+    [
+      ...plain.filter((k) => !present.has(k)).map((k) => `en.chapters.json plain.${k}: no such verse in quran.json`),
+      ...keys.filter((k) => !explained.has(k)).map((k) => `${k}: has no plain-words explanation (en.chapters.json plain.${k})`),
+    ],
+    `every one of the ${keys.length} verses has a plain-words explanation, and every explanation names a verse in quran.json`,
+  );
 }

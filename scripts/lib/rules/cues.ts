@@ -1,5 +1,5 @@
 /**
- * Rule h: cue timing per chapter. Verses stay long enough to read whole, nothing
+ * Rule h: cue timing per chapter. Verses stay long enough to read whole (in either English), nothing
  * runs past the end, and no scene event is timed to a verse (spec principle 1).
  */
 import type { ChapterContent, Cue, QuranEntry } from '../../../src/core/types';
@@ -35,11 +35,16 @@ function isTimed(cue: Cue): cue is TimedCue {
   return cue.type === 'verse' || cue.type === 'hadith' || cue.type === 'caption';
 }
 
-export function minVerseSeconds(entry: QuranEntry): number {
-  return Math.max(MIN_VERSE_SECONDS, SECONDS_PER_CHARACTER * (codePointLength(entry.arabic) + codePointLength(entry.translation)));
+/**
+ * A card shows the Arabic with the translation, or with the verse's plain-words explanation in the
+ * translation's place (the visitor's choice; src/ui/verse-english.ts): long enough for the longer.
+ */
+export function minVerseSeconds(entry: QuranEntry, plain = ''): number {
+  const english = Math.max(codePointLength(entry.translation), codePointLength(plain));
+  return Math.max(MIN_VERSE_SECONDS, SECONDS_PER_CHARACTER * (codePointLength(entry.arabic) + english));
 }
 
-function cueTimingProblems(content: ChapterContent, at: (i: number) => string, verses: ReadonlyMap<string, QuranEntry>): string[] {
+function cueTimingProblems(content: ChapterContent, at: (i: number) => string, verses: ReadonlyMap<string, QuranEntry>, plain: ReadonlyMap<string, string>): string[] {
   const problems: string[] = [];
   const { cues, duration } = content;
   cues.forEach((cue, i) => {
@@ -51,9 +56,10 @@ function cueTimingProblems(content: ChapterContent, at: (i: number) => string, v
     else if (cue.t + cue.duration > duration) problems.push(`${at(i)}: ${cue.type} ends at ${cue.t + cue.duration}s, after the chapter ends (${duration}s)`);
     if (cue.type !== 'verse') return;
     const entry = verses.get(cue.key);
+    const needs = entry ? minVerseSeconds(entry, plain.get(`plain.${cue.key}`)) : 0;
     if (!entry) problems.push(`${at(i)}: verse ${cue.key} not in quran.json, cannot check its reading time`);
-    else if (cue.duration < minVerseSeconds(entry)) {
-      problems.push(`${at(i)}: verse ${cue.key} shows for ${cue.duration}s; needs at least ${minVerseSeconds(entry).toFixed(1)}s to read whole`);
+    else if (cue.duration < needs) {
+      problems.push(`${at(i)}: verse ${cue.key} shows for ${cue.duration}s; needs at least ${needs.toFixed(1)}s to read whole`);
     }
   });
   return problems;
@@ -92,13 +98,13 @@ function cameraProblems(content: ChapterContent, dir: string): string[] {
   return problems;
 }
 
-function chapterProblems(chapter: LoadedChapter, verses: ReadonlyMap<string, QuranEntry>): string[] {
+function chapterProblems(chapter: LoadedChapter, verses: ReadonlyMap<string, QuranEntry>, plain: ReadonlyMap<string, string>): string[] {
   const { content, dir } = chapter;
   const at = (i: number): string => `${dir} cues[${i}] (t=${content.cues[i]?.t ?? '?'})`;
   const problems: string[] = [];
   if (content.id !== dir) problems.push(`${dir}: content id is "${content.id}", expected "${dir}"`);
   if (!(content.duration > 0)) problems.push(`${dir}: duration must be > 0`);
-  return [...problems, ...cueTimingProblems(content, at, verses), ...sceneProblems(content, dir, at), ...cameraProblems(content, dir)];
+  return [...problems, ...cueTimingProblems(content, at, verses, plain), ...sceneProblems(content, dir, at), ...cameraProblems(content, dir)];
 }
 
 export function checkCues(ctx: ValidationContext, log: RuleLog): void {
@@ -107,10 +113,11 @@ export function checkCues(ctx: ValidationContext, log: RuleLog): void {
     return;
   }
   const verses = new Map<string, QuranEntry>(ctx.quran.status === 'ok' ? ctx.quran.value.ayat.map((a) => [a.key, a]) : []);
+  const plain: ReadonlyMap<string, string> = ctx.i18n.chapters.status === 'ok' ? ctx.i18n.chapters.file.messages : new Map();
   for (const chapter of ctx.content.chapters) {
     const { content } = chapter;
     log.expectNone(
-      chapterProblems(chapter, verses),
+      chapterProblems(chapter, verses, plain),
       `${chapter.dir}: ${content.cues.length} cues and ${content.camera.length} camera keyframes within ${content.duration}s; verse timing and scene gaps respected`,
     );
   }

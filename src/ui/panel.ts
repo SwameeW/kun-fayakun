@@ -4,8 +4,9 @@ import { figure } from './figures';
 import { blockCitations, formatProse } from './format';
 import { icon } from './icons';
 import { discoveryBlock, type DiscoveryBlock } from './discovery';
-import { hadithArticle, verseArticle } from './scripture';
+import { hadithArticle, plainExplanation, verseArticle } from './scripture';
 import { readPreference, writePreference } from './preferences';
+import { setVersePlain, versePlain } from './verse-english';
 import './styles/panel.css';
 
 type Section = 'text' | 'scholarly' | 'science';
@@ -180,6 +181,26 @@ export function createPanel(app: App): Panel {
     });
   }
 
+  /**
+   * The switch between the published translation and the plain-words explanation on the film's
+   * verse cards, at the top of the text layer of a chapter whose verses have explanations.
+   */
+  function plainSwitch(blocks: readonly TextBlock[]): HTMLElement | null {
+    if (!blocks.some((b) => b.type === 'verse' && plainExplanation(b.key, i18n) !== null)) return null;
+    const hintId = uniqueId('plain-hint');
+    const button = h(
+      'button',
+      { type: 'button', class: 'kf-plain-switch', 'aria-pressed': String(versePlain()), 'aria-describedby': hintId, 'data-testid': 'verse-plain-switch' },
+      h('span', { class: 'kf-plain-switch-track', 'aria-hidden': 'true' }),
+      i18n.t('ui.verse.plainSwitch'),
+    );
+    button.addEventListener('click', () => {
+      setVersePlain(!versePlain());
+      button.setAttribute('aria-pressed', String(versePlain()));
+    });
+    return h('div', { class: 'kf-plain-choice' }, button, h('p', { id: hintId, class: 'kf-plain-hint' }, i18n.t('ui.verse.plainSwitchHint')));
+  }
+
   /** A plain note at the top of a layer (e.g. a chapter that pairs no text with the science). */
   function layerNote(key: string | undefined): HTMLElement | null {
     return key ? h('p', { class: 'kf-layer-note' }, i18n.t(key)) : null;
@@ -214,7 +235,7 @@ export function createPanel(app: App): Panel {
     try {
       body.replaceChildren(
         // The order of the three layers is a core principle: text, then scholars, then science.
-        section('text', [layerNote(panel.notes?.text), ...panel.text.map(textBlock)]),
+        section('text', [layerNote(panel.notes?.text), plainSwitch(panel.text), ...panel.text.map(textBlock)]),
         section('scholarly', [
           layerNote(panel.notes?.scholarly),
           ...subheading('ui.panel.classical', panel.scholarly.classical),

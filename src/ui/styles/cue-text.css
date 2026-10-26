@@ -53,6 +53,16 @@
   color: var(--kf-text);
 }
 
+/* The plain-words explanation in the translation's place, under a label that says what it is. */
+.kf-card-plain-label {
+  margin: 0 0 var(--kf-space-1);
+  font-size: calc(0.75rem * var(--kf-fit, 1));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
 .kf-card-ref {
   margin: 0;
   font-size: 0.8125rem;

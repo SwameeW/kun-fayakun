@@ -50,6 +50,18 @@ scholarly text or science text change later, that area needs review again.
 - **Translations.** The Pickthall translation (1930, public domain) for every
   cited ayah. Is it acceptable to show next to the Arabic, and does any ayah
   need a note? Also check the transliteration (Tanzil `en.transliteration`).
+- **The verses in plain words.** Every cited ayah has a short plain-English
+  explanation (`plain.<surah>:<ayah>` in `src/i18n/en.chapters.json`), shown in
+  the notes under the translation and its attribution, labelled "In plain
+  words" with the note that it is an explanation, not a translation, awaiting a
+  scholar's review; a visitor may choose it in place of the translation on the
+  film's verse cards, labelled there too. They were written for this project
+  (not taken from any published translation) from the classical commentaries
+  cited in each chapter's notes, and no scholar has checked them yet. For each:
+  is it faithful to the classical reading, does it add or drop anything, and
+  does it keep to the meaning without passing for the Quran's words? Matters of
+  belief are worded as the commentators word them (for example "rose above the
+  Throne" for istawa in 7:54, 25:59 and 32:4, without explaining how).
 - **Tafsir summaries.** The classical reading comes first: Ibn Kathir,
   al-Tabari, al-Qurtubi. Each summary must be faithful to the cited scholar.
   Modern readings must be labelled "Some modern writers read this as...", and
