@@ -5,6 +5,7 @@
  * the exposure (CR-2), each given back on leaving.
  */
 import { readFileSync } from 'node:fs';
+import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { expect, test } from '../support/fixtures';
 import { SLOW } from '../support/env';
@@ -82,6 +83,9 @@ test('photo mode’s lens sets the camera’s field of view, and leaving gives t
   const framed = await fov();
   await page.getByTestId('universe-photo').click();
   await openCamera(page);
+  // The bar and its camera settings, open: axe finds nothing.
+  const results = await new AxeBuilder({ page }).include('.kf-universe-photo-bar').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
   await page.getByTestId('universe-photo-lens').selectOption('20');
   await expect.poll(async () => (await view(page))?.lensFov, LIVE).toBe(20);
   await expect.poll(fov, LIVE).toBeCloseTo(20, 6);
