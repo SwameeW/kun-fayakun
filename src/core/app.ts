@@ -36,6 +36,7 @@ import type {
   ScreenLabel,
   UniverseGraphics,
   UniverseSteer,
+  EarthCommand,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -897,6 +898,10 @@ class Engine implements KunFayakunApp {
     return this.universeHost.steer(command);
   }
 
+  earthCommand(command: EarthCommand): void {
+    this.universeHost.earth(command);
+  }
+
   universe(): UniverseView | null {
     return this.universeHost.view();
   }
@@ -918,6 +923,7 @@ class Engine implements KunFayakunApp {
         y: rect.top + ((1 - projected.y) / 2) * rect.height,
         opacity: label.opacity,
         ...(label.offset ? { offset: label.offset } : {}),
+        ...(label.text !== undefined ? { text: label.text } : {}),
       });
     }
     const scale = module.scale?.() ?? null;

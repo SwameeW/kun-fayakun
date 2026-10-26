@@ -259,6 +259,39 @@ function checkJpl(ctx: ValidationContext, log: RuleLog): void {
   }
 }
 
+const PLACES_OWNER = 'places builder, python3 -I scripts/places/build.py';
+const PLACES_FIELDS = ['name', 'lat', 'lon', 'population'];
+
+/** The explorer's place search: Natural Earth's places as the builder wrote them, credited, and with no country. */
+function checkPlaces(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'places', 'places.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${PLACES_OWNER})`);
+    return;
+  }
+  const file = loaded.value;
+  const problems = checkFields(file, { 'source.id': 'nonempty', 'source.url': 'nonempty', 'source.sha256': 'nonempty', fields: 'array', places: 'array' }, path);
+  const source = isRecord(file) && isRecord(file.source) ? file.source : {};
+  if (typeof source.sha256 === 'string' && !SHA256.test(source.sha256)) problems.push(`${path}: source.sha256 is not a sha256`);
+  if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((s) => s.id === source.id)) problems.push(`data/sources.json: no "${String(source.id)}" entry for ${path}`);
+  const fields: unknown = isRecord(file) ? file.fields : undefined;
+  if (!Array.isArray(fields) || fields.join() !== PLACES_FIELDS.join()) problems.push(`${path}: fields must be ${PLACES_FIELDS.join(', ')}`);
+  const places: unknown[] = isRecord(file) && Array.isArray(file.places) ? file.places : [];
+  let previous = Number.POSITIVE_INFINITY;
+  places.forEach((row, i) => {
+    const ok = Array.isArray(row) && row.length === 4 && typeof row[0] === 'string' && row[0].trim() !== ''
+      && isFiniteNumber(row[1]) && Math.abs(row[1]) <= 90 && isFiniteNumber(row[2]) && Math.abs(row[2]) <= 180
+      && Number.isInteger(row[3]) && Number(row[3]) >= 0;
+    if (!ok) problems.push(`${path}: places[${i}] must be [name, lat, lon, population]`);
+    else if (Number(row[3]) > previous) problems.push(`${path}: places[${i}] is out of population order`);
+    else previous = Number(row[3]);
+  });
+  if (places.length < 1000) problems.push(`${path}: ${places.length} places, expected Natural Earth's 1:50m set`);
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${PLACES_OWNER})`);
+  else log.pass(`${path}: ${places.length} places [name, lat, lon, population] in population order, credited to ${String(source.id)}`);
+}
+
 /** Letter analyses: each asset must equal what scripts/build-analysis.ts derives from the verified text now. */
 function checkAnalyses(ctx: ValidationContext, log: RuleLog): void {
   const citations = loadJson<{ analysis?: Record<string, AnalysisSpec | string> }>(rootPath('data', 'citations.json'));
@@ -466,5 +499,6 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkSdss(ctx, log);
   checkJpl(ctx, log);
   checkPlanets(ctx, log);
+  checkPlaces(ctx, log);
   checkAnalyses(ctx, log);
 }

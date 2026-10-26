@@ -418,6 +418,54 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   `createStarfield(count, radius, seed, { depthTest, dynamicRadius })` with `setRadius`,
   `createStreakField({ ..., profile: 'trail'|'line', tailColor })`.
 
+## Living Earth (explorer)
+
+Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Earth.
+
+- **Imagery** (`src/explore/earth-tiles`). Tiles stream into toroidal clipmaps: ranks from coarse
+  to fine, each an atlas of k x k tiles addressed modulo k, with an index texture of the tiles
+  loaded (`clipmap.ts`, `atlas.ts`: GPU textures made from a one-texel stub, tiles copied in with
+  `copyExternalImageToTexture` or `texSubImage2D`). The Earth's surface shader samples them at the
+  exact ray-sphere point (`sample.ts`) and weighs each rank by footprint, window edge and no-data.
+  Two layers: EOX Sentinel-2 cloudless 2016 (WGS84, 256 px, z0 to z13) and NASA GIBS VIIRS NOAA-20
+  for the last whole UTC day (EPSG:4326 "250m", 512 px, z0 to z8, plus a fixed z2 globe). The
+  cloud shell fades as the zoom passes CLOUDS_FADE. `EarthImageryStats.showing` says which layer is
+  on screen; the readout then credits it (EOX's sentence with its link, verbatim from
+  `ui.universe.tilesClear`; GIBS with the date).
+- **Lens** (`navigation.ts` `LENS`). Below the lowest orbit (150 km over the Earth) zooming narrows
+  the field of view to `lensMinDeg` (1.2 degrees; 6 for the day mosaic), the gaze eased straight
+  down (the nadir spring), and the view held over its place as the Earth turns. `glideTo` flies a
+  great circle with lift; `UniverseView.lens` gives the angle and the ground per CSS pixel.
+- **Live layers** (`src/explore/living`). Satellites: CelesTrak's active group (TLE), fetched at
+  most once per browser per 6 hours (Cache Storage), falling back to the deploy's snapshot
+  (`assets/live/active.tle`, written by the Pages workflow, never committed) and then a stale copy;
+  SGP4 (satellite.js's JavaScript modules only) in a worker at 1 Hz, Earth-fixed positions and
+  velocities, carried between answers on the GPU; shown only within 3 days of the catalogue's
+  fetch. The crewed stations are named plainly (`ui.universe.station.*`). Earthquakes: the USGS
+  2.5_day feed every 5 minutes, rings by magnitude and depth, a swell for the past hour (none with
+  reduced motion), the strongest labelled on the side facing the camera.
+- **Field notes, by Claude** (`src/explore/field-notes`). `bulletin.ts` composes "Today on Earth"
+  about once a second from the ephemeris, the station's state and the quakes (the Sun's overhead
+  point, the largest places at dawn and dusk within DAWN_BAND_DEG, the station's height and the
+  place beneath, sunlit satellites); `data.ts` holds the atlas (23 places) and the 25 prophets with
+  the sites their notes name, every coordinate a Wikidata P625 value with its item id;
+  `places.ts` loads `public/assets/places/places.json` once for search and "near". The interface
+  words everything (`ui.universe.field.*`, `ui.universe.living.*`).
+- **Commands and view.** `EarthCommand`: `goto` (lat, lon, viewKm), `imagery` (clear | today),
+  `layer` (satellites | quakes, on), `select` (a satellite's index, or null), `markers` (atlas |
+  prophets | null: the set named on the ground, eased, facing the camera, MARKER_SPACING_PX apart).
+  `UniverseView.living` carries both layers' state, the selected satellite, the station and the
+  bulletin.
+- **Rules.** Within `MAKKAH_FRAME.radiusKm` of Makkah no flight frames less than
+  `MAKKAH_FRAME.minWidthKm` and the lens stops at that width (spec principle 4). The prophets'
+  notes say "by tradition", state where traditions differ, mark no place where they differ too
+  widely, show only names on the ground, and await a scholar's review (REVIEW.md). Places carry no
+  country. The live layers are off until the visitor turns them on.
+- **Tests.** Every page's live hosts are answered in the browser (`tests/support/live.ts`: a
+  one-pixel tile, five real element sets moved to the test's day, three earthquakes ending now);
+  `tests/unit/living-earth.spec.ts` covers the pure parts and `tests/explore/living-earth.spec.ts`
+  the panel, tours, layers and the Makkah framing.
+
 ## Browsers and local testing (measured on this machine)
 
 - **The user browses with Brave** (installed: `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,

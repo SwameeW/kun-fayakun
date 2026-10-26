@@ -21,6 +21,7 @@ import type { BodyId } from '../../core/types';
 import { planetCredits, ringColourGeometry, type PlanetBody } from '../assets/planets';
 import type { PlanetTextures } from '../assets/streaming';
 import type { ExploreDetail } from '../detail';
+import type { EarthTiles } from '../earth-tiles';
 import type { AirModel, TransmittanceTable } from '../render/air';
 import type { BodySpec } from '../system';
 import { createEarth, type ExploreEarth } from './earth';
@@ -74,6 +75,8 @@ export interface BodiesOptions {
   /** The Sun's angular radius from the Moon (its shadows' penumbra), radians. */
   sunAngularRadius: number;
   detail: ExploreDetail;
+  /** The Earth's streamed imagery (zoom anywhere), or null without it. */
+  tiles: EarthTiles | null;
   /** Compiles objects' materials ahead of their first use (renderer.compileAsync against the scene). */
   compile(objects: Object3D[]): Promise<void>;
 }
@@ -88,7 +91,7 @@ export function createBodies(options: BodiesOptions): Bodies {
   const polar = (spec: BodySpec): number => spec.polarKm / spec.radiusKm;
   const uAt = (body: PlanetBody, map: 'colour' | 'day'): number => textures.manifest.files.find((f) => f.body === body && f.map === map)?.uAtLon0 ?? 0;
   const sun = createSun(options.noise, options.sunLimb, detail);
-  const earth = createEarth(textures, options.noise, options.air, options.table, detail);
+  const earth = createEarth(textures, options.noise, options.air, options.table, detail, options.tiles);
   const moon = createMoon(textures, options.sunAngularRadius, detail);
   const jupiter = createGiant(textures, { name: 'explore-jupiter', body: 'jupiter', polar: polar(specs.jupiter), uAtLon0: uAt('jupiter', 'colour'), flow: true }, detail);
   const radius = specs.saturn.radiusKm;

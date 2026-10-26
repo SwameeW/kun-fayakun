@@ -13,6 +13,7 @@ import type {
   UniverseExposure,
   UniverseModule,
   UniverseSteer,
+  EarthCommand,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -296,6 +297,10 @@ export class UniverseHost {
 
   steer(command: UniverseSteer): boolean {
     return this.active?.steer(command) ?? false;
+  }
+
+  earth(command: EarthCommand): void {
+    this.active?.earth(command);
   }
 
   dispose(): void {

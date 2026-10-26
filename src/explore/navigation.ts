@@ -147,6 +147,13 @@ export const navOutput = (): NavOutput => ({
 const DRAG_RADIANS_PER_PX = 0.0055;
 /** Keyboard rates: radians and natural-log units of height per second. */
 const KEY_TURN = 1.1;
+/**
+ * The Earth's zoom lens ("zoom anywhere"): past the lowest orbit, zooming in narrows the field of
+ * view instead, down to this many degrees (set by the imagery: about four screen pixels per texel of
+ * the finest layer streaming). A glide between places takes this long per radian of arc (within the
+ * bounds) and lifts this much (natural-log units of height per radian) on long ones.
+ */
+export const LENS = { minDeg: 1.2, glidePerRadian: 1.5, glideSeconds: [1.4, 4.5], liftPerRadian: 1.4, maxLift: 2.4 } as const;
 const KEY_ZOOM = 1.2;
 /**
  * Entry glide: a slow push in from this many times the framing distance, over this long, swinging
@@ -163,7 +170,9 @@ const cutDim = (s: number): number =>
 /** Bank into a trip's turns: radians per (radian per second) of turn, its limit, and its spring. */
 const BANK = { perTurnRate: 0.55, max: 0.14, omega: 3.5 } as const;
 /** The lens widens by up to this many degrees at a trip's fastest, and eases back (its spring, rad/s). */
-const LENS = { widen: 5, omega: 3.5 } as const;
+const TRIP_LENS = { widen: 5, omega: 3.5 } as const;
+/** The gaze eases to straight down over a place, and back up after, at this spring rate (rad/s). */
+const NADIR_OMEGA = 2.8;
 /** After free flight the gaze eases round to the orbited body over about a second (spring, rad/s). */
 const HANDOFF_OMEGA = 4.2;
 /** Closer than this many framing distances, a body asked for is orbited where the camera is rather than flown to. */
@@ -215,6 +224,17 @@ export class Navigator {
   private readonly bank = springOf();
   private readonly fov = springOf(50);
   private baseFov = 50;
+  /** The zoom lens over the Earth (degrees; the base field of view when not zoomed) and its narrowest. */
+  private lensDeg = 50;
+  lensMinDeg: number = LENS.minDeg;
+  /**
+   * Looking straight down (1) rather than lifting toward the horizon low over a world (0): eased in
+   * while the lens is narrowed, a glide runs or the view is held over a place (placeView), eased out after.
+   */
+  private readonly nadir = springOf(0);
+  placeView = false;
+  /** A glide to a place on the Earth under way (./earth-tiles' places, the field notes' tour). */
+  private glide: { from: Km; to: Km; lnFrom: number; lnTo: number; lift: number; lensFrom: number; lensTo: number; t: number; seconds: number } | null = null;
   private view: NavView = { tanHalfFov: Math.tan((25 * Math.PI) / 180), aspect: 16 / 10, top: 0, bottom: 0 };
   /** The last pose written, so a new trip or flight starts exactly where the camera is. */
   private readonly last = rigPose();
@@ -228,6 +248,85 @@ export class Navigator {
 
   constructor(focus: BodyId) {
     this.focus = focus;
+  }
+
+  /** The field of view the camera is easing to (the lens's when zoomed over the Earth). */
+  private get fovGoal(): number {
+    return this.lensActive ? this.lensDeg : this.baseFov;
+  }
+
+  /** True while the Earth's lens is narrower than the base field of view. */
+  get lensActive(): boolean {
+    return this.focus === 'earth' && this.modeValue === 'orbit' && this.lensDeg < this.baseFov - 1e-6;
+  }
+
+  /** The lens now (degrees): the base field of view when not zoomed. */
+  get lens(): number {
+    return this.lensActive ? this.lensDeg : this.baseFov;
+  }
+
+  /** A glide to a place is under way. */
+  get gliding(): boolean {
+    return this.glide !== null;
+  }
+
+  /** The narrowest lens the imagery supports (degrees); a lens narrower than that widens to it. */
+  setLensMin(deg: number): void {
+    this.lensMinDeg = deg;
+    if (this.lensDeg < deg) this.lensDeg = deg;
+  }
+
+  /** Back to the base field of view (a trip begins, or the camera leaves the Earth's orbit). */
+  private resetLens(): void {
+    this.lensDeg = this.baseFov;
+    this.glide = null;
+    this.placeView = false;
+  }
+
+  /**
+   * Glides the camera, orbiting the Earth, until it looks straight down on `dir` (a unit direction
+   * from the Earth's centre, render frame) from `altitudeKm`, through a lens of `lensDeg`: along the
+   * great circle, lifting on long glides, eased at both ends. With reduced motion it is there at once.
+   */
+  glideTo(world: NavWorld, dir: Km, altitudeKm: number, lensDeg: number): void {
+    if (this.focus !== 'earth' || this.trip) return;
+    if (this.modeValue === 'flight') this.orbitFromHere(world.body('earth'));
+    const body = world.body('earth');
+    const to = normalize(copy(km(), dir));
+    const ln = Math.log(Math.max(altitudeKm, body.minAltitudeKm));
+    const lens = clamp(lensDeg, this.lensMinDeg, this.baseFov);
+    if (this.reducedMotion) {
+      this.orbit.hold(to, Math.exp(ln));
+      this.lensDeg = lens;
+      this.fov.x = lens;
+      this.fov.v = 0;
+      this.glide = null;
+      return;
+    }
+    const from = this.orbit.directionNow(km());
+    const arc = Math.acos(clamp(dot(from, to), -1, 1));
+    this.glide = {
+      from,
+      to,
+      lnFrom: Math.log(Math.max(this.orbit.altitudeKm, body.minAltitudeKm)),
+      lnTo: ln,
+      lift: Math.min(LENS.maxLift, arc * LENS.liftPerRadian),
+      lensFrom: this.lens,
+      lensTo: lens,
+      t: 0,
+      seconds: clamp(LENS.glideSeconds[0] + arc * LENS.glidePerRadian, LENS.glideSeconds[0], LENS.glideSeconds[1]),
+    };
+    this.handoff = null;
+  }
+
+  /** Carries the orbit round an axis through the Earth by `angle` (its spin since the last frame), so the ground below stays put. */
+  spinWithEarth(axis: Km, angle: number): void {
+    if (this.focus !== 'earth' || this.modeValue !== 'orbit' || this.trip) return;
+    this.orbit.spin(axis, angle);
+    if (this.glide) {
+      rotateAbout(this.glide.from, axis, angle, this.glide.from);
+      rotateAbout(this.glide.to, axis, angle, this.glide.to);
+    }
   }
 
   /** A trip is under way (not the entry glide, nor the light coming back after Esc called a cut off). */
@@ -350,6 +449,7 @@ export class Navigator {
       return;
     }
     if (this.trip) this.endApproach(world);
+    this.resetLens();
     const to = world.body(id);
     const framing = this.framingKm(to);
     const distance = Math.hypot(this.last.position.x - to.position.x, this.last.position.y - to.position.y, this.last.position.z - to.position.z);
@@ -440,6 +540,7 @@ export class Navigator {
     const ref = near ?? world.body(trip.to);
     this.focus = ref.id;
     this.flight.begin(this.last, ref, this.velocity);
+    this.resetLens();
     this.modeValue = 'flight';
     return true;
   }
@@ -453,6 +554,7 @@ export class Navigator {
 
   /** Puts the camera at once (tests, captures): no trip, no easing. */
   place(id: BodyId, dir: Km, distanceKm: number, world: NavWorld): void {
+    this.resetLens();
     this.focus = id;
     this.trip = null;
     this.queued = null;
@@ -478,6 +580,7 @@ export class Navigator {
       this.flight.look(dxPx * perPx, -dyPx * perPx);
       return;
     }
+    this.glide = null;
     const rate = this.dragRate(world);
     this.orbit.rotate(-dxPx * rate, dyPx * rate);
   }
@@ -489,15 +592,43 @@ export class Navigator {
   private dragRate(world: NavWorld): number {
     const body = world.body(this.focus);
     const h = this.orbit.altitudeKm;
-    return DRAG_RADIANS_PER_PX * clamp((1.6 * h) / (h + body.radiusKm), 0.012, 1);
+    // Through a narrowed lens the ground moves with the pointer as it would at the lens's width.
+    return DRAG_RADIANS_PER_PX * clamp((1.6 * h) / (h + body.radiusKm), 0.012, 1) * (this.fov.x / Math.max(this.baseFov, 1e-6));
   }
 
   /** Zoom (wheel, pinch, keys): natural-log units of height, positive away. */
   zoom(world: NavWorld, dLn: number): void {
     if (this.trip?.kind === 'approach') this.endApproach(world);
     if (this.trip) return;
+    this.glide = null;
     if (this.modeValue === 'flight') this.flight.dollyBy(dLn);
-    else this.orbit.zoom(dLn);
+    else this.zoomOrbit(world, dLn);
+  }
+
+  /**
+   * Orbit zoom, with the Earth's lens: zooming in goes down to the lowest orbit and then narrows the
+   * lens; zooming out widens the lens back to the base field of view first, then climbs.
+   */
+  private zoomOrbit(world: NavWorld, dLn: number): void {
+    if (this.focus !== 'earth' || dLn === 0) {
+      this.orbit.zoom(dLn);
+      return;
+    }
+    let left = dLn;
+    if (left < 0) {
+      const room = Math.max(0, this.orbit.goal.lnAltitude - Math.log(world.body('earth').minAltitudeKm));
+      const down = Math.max(left, -room);
+      this.orbit.zoom(down);
+      left -= down;
+      if (left < 0) this.lensDeg = Math.max(this.lensMinDeg, Math.min(this.baseFov, this.lensDeg) * Math.exp(left));
+      return;
+    }
+    if (this.lensDeg < this.baseFov) {
+      const widen = Math.min(left, Math.log(this.baseFov / this.lensDeg));
+      this.lensDeg = Math.min(this.baseFov, this.lensDeg * Math.exp(widen));
+      left -= widen;
+    }
+    if (left > 0) this.orbit.zoom(left);
   }
 
   /** Pan (two fingers, a right drag): moves the view with the pointer. dx right, dy down, CSS px. */
@@ -549,6 +680,7 @@ export class Navigator {
     this.flight.begin(this.last, near, null);
     this.focus = near.id;
     this.handoff = null;
+    this.resetLens();
     this.modeValue = 'flight';
   }
 
@@ -612,7 +744,7 @@ export class Navigator {
           copy(pose.up, this.frame.up);
           // The lens widens with the pace: most at the fastest point (mid-trip), none at either end.
           const p = this.frame.pace;
-          lensWiden = LENS.widen * Math.sin(Math.PI * p) ** 2;
+          lensWiden = TRIP_LENS.widen * Math.sin(Math.PI * p) ** 2;
         }
       }
       if (s >= 1 && trip.kind === 'uncut') {
@@ -644,9 +776,25 @@ export class Navigator {
       const body = world.body(this.focus);
       const rate = this.dragRate(world) / DRAG_RADIANS_PER_PX;
       this.orbit.rotate(this.orbitKeys[0] * KEY_TURN * rate * dt, this.orbitKeys[1] * KEY_TURN * rate * dt);
-      this.orbit.zoom(this.orbitKeys[2] * KEY_ZOOM * dt);
+      if (this.orbitKeys[2] !== 0) {
+        this.glide = null;
+        this.zoomOrbit(world, this.orbitKeys[2] * KEY_ZOOM * dt);
+      }
       this.orbit.instant = this.reducedMotion;
+      const glide = this.glide;
+      if (glide && (this.orbitKeys[0] !== 0 || this.orbitKeys[1] !== 0)) this.glide = null;
+      if (glide && this.glide) {
+        glide.t += dt;
+        const p = smootherstep(0, 1, glide.t / glide.seconds);
+        const along = slerpDir(glide.from, glide.to, p, this.scratch.d);
+        const ln = glide.lnFrom + (glide.lnTo - glide.lnFrom) * p + glide.lift * Math.sin(Math.PI * p);
+        this.orbit.hold(along, Math.exp(ln));
+        this.lensDeg = Math.exp(Math.log(glide.lensFrom) + (Math.log(glide.lensTo) - Math.log(glide.lensFrom)) * p);
+        if (glide.t >= glide.seconds) this.glide = null;
+      }
       this.orbit.update(body, dt);
+      const down = this.focus === 'earth' && (this.placeView || this.glide !== null || this.lensActive) ? 1 : 0;
+      stepSpring(this.nadir, down, this.reducedMotion ? Infinity : NADIR_OMEGA, dt);
       this.writeOrbit(body, pose);
       keepOutside(world.all, pose.position);
     }
@@ -679,7 +827,8 @@ export class Navigator {
     squareUp(out.forward, out.up, out.up);
 
     // The lens: wider at a trip's fastest, back to rest otherwise; never with reduced motion.
-    stepSpring(this.fov, this.baseFov + (this.reducedMotion ? 0 : lensWiden), this.reducedMotion ? Infinity : LENS.omega, dt);
+    const glidingLens = this.glide !== null;
+    stepSpring(this.fov, this.fovGoal + (this.reducedMotion ? 0 : lensWiden), this.reducedMotion || glidingLens ? Infinity : TRIP_LENS.omega, dt);
     out.fov = this.fov.x;
 
     copy(out.position, pose.position);
@@ -693,7 +842,7 @@ export class Navigator {
     out.speedKmS = this.modeValue === 'flight' && !this.trip ? this.flight.speed : this.trip ? len(this.velocity) : 0;
     const scale = Math.max(1, range);
     const moved = Math.hypot(pose.position.x - e.x, pose.position.y - e.y, pose.position.z - e.z) + range * Math.hypot(out.forward.x - before.x, out.forward.y - before.y, out.forward.z - before.z);
-    this.moving = this.trip !== null || this.handoff !== null || moved > STILL * scale || Math.abs(this.bank.x) > 1e-5 || Math.abs(this.fov.x - this.baseFov) > 1e-4;
+    this.moving = this.trip !== null || this.handoff !== null || moved > STILL * scale || Math.abs(this.bank.x) > 1e-5 || this.glide !== null || Math.abs(this.fov.x - this.fovGoal) > 1e-4;
     copy(this.last.position, out.position);
     copy(this.last.forward, out.forward);
     copy(this.last.up, out.up);
@@ -707,7 +856,7 @@ export class Navigator {
   }
 
   private writeOrbit(body: NavBody, out: { position: Km; forward: Km; up: Km }): void {
-    this.orbit.pose(body, out);
+    this.orbit.pose(body, out, 1 - clamp(this.nadir.x, 0, 1));
   }
 
   /** The entry glide: centred on the one body, its height falling smoothly in log space. */

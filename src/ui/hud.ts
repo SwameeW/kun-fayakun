@@ -61,8 +61,10 @@ export function createHud(app: App): Hud {
     for (const label of list) {
       seen.add(label.id);
       let entry = tags.get(label.id);
+      const text = label.text ?? i18n.t(label.textKey);
+      if (entry && entry.tag.textContent !== text) entry.tag.textContent = text;
       if (!entry) {
-        const tag = h('span', { class: label.offset ? 'kf-hud-tag kf-hud-callout' : 'kf-hud-tag' }, i18n.t(label.textKey));
+        const tag = h('span', { class: label.offset ? 'kf-hud-tag kf-hud-callout' : 'kf-hud-tag' }, text);
         const leader = label.offset ? h('span', { class: 'kf-hud-leader' }) : null;
         if (leader) labels.append(leader);
         labels.append(tag);

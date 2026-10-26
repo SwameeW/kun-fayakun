@@ -23,10 +23,12 @@
     "check:bundle": "tsx scripts/check-bundle.ts",
     "preprocess:sdss": "bash scripts/preprocess-sdss.sh",
     "preprocess:jpl": "bash scripts/preprocess-jpl.sh",
-    "preprocess:analysis": "tsx scripts/build-analysis.ts"
+    "preprocess:analysis": "tsx scripts/build-analysis.ts",
+    "preprocess:places": "python3 -I scripts/places/build.py"
   },
   "dependencies": {
     "intl-messageformat": "12.1.4",
+    "satellite.js": "7.1.0",
     "three": "0.186.1"
   },
   "devDependencies": {

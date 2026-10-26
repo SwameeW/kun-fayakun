@@ -221,7 +221,7 @@ test('every control is a 44 px touch target; the pulled-up sheet lists the world
     return { cut, listFirst: Boolean(list && map && list.top < map.top) };
   });
   expect(rows).toEqual({ cut: 0, listFirst: true });
-  expect(await small('.kf-nav-body, .kf-nav-seen summary, .kf-nav-keys summary, [data-testid="universe-detail"]')).toEqual([]);
+  expect(await small('.kf-nav-body, .kf-nav-seen summary, .kf-nav-keys summary, .kf-nav-living > summary, [data-testid="universe-detail"]')).toEqual([]);
   // The detail menu closes on a choice, and on a tap outside it.
   await page.getByTestId('universe-detail').click();
   await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'true');

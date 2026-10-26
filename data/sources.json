@@ -826,6 +826,125 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "eox-s2cloudless-2016",
+      "kind": "dataset",
+      "title": "Sentinel-2 cloudless 2016: a cloud-free mosaic of the Earth from Copernicus Sentinel-2 imagery (WMTS, WGS84 tiles)",
+      "author": "EOX IT Services GmbH",
+      "url": "https://s2maps.eu",
+      "version": "s2cloudless 2016 (tiles.maps.eox.at WMTS, layer s2cloudless, WGS84 grid), streamed live",
+      "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "credit": "Sentinel-2 cloudless - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016 & 2017)",
+      "notes": "The explorer's cloud-free close-up imagery of the Earth (src/explore/earth-tiles), streamed as the visitor zooms in: 256-pixel JPEG tiles, about 10 m per pixel at the finest level. Nothing is stored in the repository. The credit is shown, with its link, in the explorer's readout whenever these tiles are on screen.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "nasa-gibs-viirs",
+      "kind": "dataset",
+      "title": "VIIRS (NOAA-20) Corrected Reflectance, True Colour, daily, from NASA's Global Imagery Browse Services (GIBS)",
+      "author": "NASA Earth Science Data and Information System (ESDIS), Global Imagery Browse Services",
+      "url": "https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api",
+      "version": "GIBS WMTS, EPSG:4326 best-available layer VIIRS_NOAA20_CorrectedReflectance_TrueColor, the last whole UTC day, streamed live",
+      "license": "NASA Earth science data: no restrictions on use, reuse or redistribution (NASA Earth Science Data and Information Policy)",
+      "licenseUrl": "https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-data-information-policy",
+      "credit": "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
+      "notes": "The explorer's \"today\" imagery of the Earth: the whole planet as the satellite saw it on the last whole UTC day, clouds and all, at up to about 250 m per pixel. Streamed as the visitor looks; nothing is stored in the repository.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "celestrak-gp",
+      "kind": "dataset",
+      "title": "CelesTrak GP data: orbital elements (two-line element sets) of the active satellites",
+      "author": "CelesTrak (T. S. Kelso), from US Space Force space-surveillance data",
+      "url": "https://celestrak.org/NORAD/elements/",
+      "version": "GP group \"active\", TLE format; fetched by the visitor's browser (cached six hours) and snapshotted at each deploy",
+      "license": "Public orbital data, redistributed free of charge by CelesTrak",
+      "licenseUrl": null,
+      "credit": "Satellite orbits: CelesTrak",
+      "notes": "The explorer's live satellites (src/explore/living), propagated with SGP4 (satellite.js). Positions are as accurate as the elements: typically within a few kilometres for a day or two after their epoch. The deploy-time snapshot (assets/live/active.tle) is used when CelesTrak cannot be reached; it is fetched by the Pages workflow and never committed.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-earthquakes",
+      "kind": "dataset",
+      "title": "USGS Earthquake Hazards Program real-time feed: magnitude 2.5 and above, past day (GeoJSON summary)",
+      "author": "U.S. Geological Survey, Earthquake Hazards Program",
+      "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php",
+      "version": "feed v1.0, 2.5_day.geojson, fetched live every five minutes",
+      "license": "Public domain (U.S. Government work)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Earthquakes: U.S. Geological Survey",
+      "notes": "The explorer's earthquakes: each event's place, time, magnitude and depth as USGS gives them, drawn as rings at the epicentre. Preliminary events are revised by USGS as they are reviewed.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "satellite-js",
+      "kind": "software",
+      "title": "satellite.js: SGP4/SDP4 orbit propagation in JavaScript",
+      "author": "Shashwat Kandadai, UCSC Jack Baskin School of Engineering, and the satellite.js contributors",
+      "url": "https://github.com/shashwatak/satellite-js",
+      "version": "7.1.0",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/shashwatak/satellite-js/blob/develop/LICENSE",
+      "credit": "satellite.js, Copyright (C) 2013 Shashwat Kandadai, UCSC Jack Baskin School of Engineering, MIT License.",
+      "notes": "Runs in a worker (src/explore/living/satellites.worker.ts): its JavaScript propagator only, not its WebAssembly build.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "natural-earth-5.1.2-places",
+      "kind": "dataset",
+      "title": "Natural Earth 1:50m cultural vectors: populated places (ne_50m_populated_places_simple), version 5.1.2",
+      "author": "Natural Earth (Tom Patterson, Nathaniel Vaughn Kelso and contributors)",
+      "url": "https://github.com/nvkelso/natural-earth-vector/tree/v5.1.2/geojson",
+      "version": "5.1.2 (git tag v5.1.2), retrieved 2026-10-25",
+      "license": "Public domain: no permission is needed to use Natural Earth and crediting the authors is unnecessary (Natural Earth terms of use).",
+      "licenseUrl": "https://www.naturalearthdata.com/about/terms-of-use/",
+      "credit": "Made with Natural Earth",
+      "notes": "The explorer's place search and the places its field notes name (public/assets/places/places.json, from scripts/places/build.py): name, coordinates and population. No country is kept: the site takes no position on who governs a disputed place.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "wikidata-coordinates",
+      "kind": "dataset",
+      "title": "Wikidata: coordinate locations (property P625) of the places in the explorer's field notes",
+      "author": "Wikidata contributors",
+      "url": "https://www.wikidata.org/",
+      "version": "retrieved 2026-10-25; each place's item id is recorded beside it in src/explore/field-notes/data.ts",
+      "license": "CC0 1.0 Universal (public domain dedication)",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "credit": "Coordinates: Wikidata (CC0)",
+      "notes": "The coordinates of the atlas's natural wonders and of the places tradition associates with the prophets, peace be upon them. A coordinate places a site; it is not evidence that an event happened there. The traditions themselves are summarised in the interface text, with their uncertainty, and await a qualified scholar's review.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []

@@ -1,0 +1,367 @@
+/* The navigator's Living Earth (src/ui/explore/living-earth.ts): imagery, live layers, place search and field notes. */
+.kf-nav-living {
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+  padding-block-start: var(--kf-space-2);
+  font-size: 0.8125rem;
+}
+
+.kf-nav-living > summary,
+.kf-living-prophets-box > summary {
+  min-block-size: 2.25rem;
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  padding-inline: var(--kf-space-1);
+  border-radius: var(--kf-radius-small);
+  color: var(--kf-text-muted);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.kf-nav-living > summary:hover,
+.kf-living-prophets-box > summary:hover {
+  color: var(--kf-gold-strong);
+}
+
+/* On a phone's sheet (explore.css orders its parts): after the list, before the log. */
+.kf-nav.is-sheet .kf-nav-living {
+  order: 2;
+}
+
+.kf-living-body {
+  display: grid;
+  gap: var(--kf-space-3);
+  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
+}
+
+.kf-living-group {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: 0;
+}
+
+.kf-living-label {
+  margin: 0;
+  color: var(--kf-text-faint);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kf-living-hint,
+.kf-living-review {
+  margin: 0;
+  color: var(--kf-text-muted);
+  line-height: 1.5;
+}
+
+.kf-living-review {
+  color: var(--kf-gold);
+  font-style: italic;
+}
+
+.kf-living-choices {
+  display: flex;
+  gap: var(--kf-space-1);
+}
+
+.kf-living-choice,
+.kf-living-switch,
+.kf-living-go,
+.kf-living-place {
+  min-block-size: 2.25rem;
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 999px;
+  background: rgb(20 21 29 / 0.9);
+  color: var(--kf-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.kf-living-choice {
+  flex: 1;
+  padding-inline: var(--kf-space-3);
+}
+
+.kf-living-choice[aria-pressed="true"] {
+  border-color: var(--kf-gold);
+  background: var(--kf-gold-faint);
+  color: var(--kf-gold-strong);
+}
+
+.kf-living-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  justify-self: start;
+  padding-inline: var(--kf-space-2) var(--kf-space-3);
+}
+
+.kf-living-switch-mark {
+  inline-size: 1.75rem;
+  block-size: 1rem;
+  border-radius: 999px;
+  background: var(--kf-line-strong);
+  position: relative;
+  transition: background 160ms var(--kf-ease);
+}
+
+.kf-living-switch-mark::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 50%;
+  background: var(--kf-text);
+  transition: transform 160ms var(--kf-ease);
+}
+
+.kf-living-switch[aria-pressed="true"] .kf-living-switch-mark {
+  background: var(--kf-gold);
+}
+
+.kf-living-switch[aria-pressed="true"] .kf-living-switch-mark::after {
+  transform: translateX(0.75rem);
+}
+
+.kf-living-go {
+  flex: none;
+  padding-inline: var(--kf-space-3);
+  font-size: 0.75rem;
+}
+
+.kf-living-go:disabled,
+.kf-living-go[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.kf-living-choice:hover,
+.kf-living-switch:hover,
+.kf-living-go:hover:not(:disabled, [aria-disabled="true"]),
+.kf-living-place:hover {
+  border-color: var(--kf-gold-soft);
+  background: var(--kf-surface-raised);
+}
+
+.kf-living-input {
+  min-block-size: 2.5rem;
+  padding-inline: var(--kf-space-3);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface);
+  color: var(--kf-text);
+  font: inherit;
+}
+
+.kf-living-input:focus-visible {
+  outline: 2px solid var(--kf-gold);
+  outline-offset: 1px;
+}
+
+.kf-living-list,
+.kf-living-today,
+.kf-living-sites {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kf-living-list:empty {
+  display: none;
+}
+
+.kf-living-place {
+  inline-size: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  padding-inline: var(--kf-space-3);
+  border-radius: var(--kf-radius-small);
+  text-align: start;
+}
+
+.kf-living-place-where {
+  color: var(--kf-text-faint);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-living-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  color: var(--kf-text);
+  line-height: 1.45;
+}
+
+.kf-living-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  margin: 0;
+  color: var(--kf-gold-strong);
+  line-height: 1.45;
+}
+
+.kf-living-notes {
+  display: grid;
+  gap: var(--kf-space-2);
+  padding-block-start: var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-living-notes-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--kf-gold-strong);
+}
+
+.kf-living-notes-part {
+  display: grid;
+  gap: var(--kf-space-2);
+}
+
+.kf-living-subtitle {
+  margin: 0;
+  color: var(--kf-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.kf-living-tour-start {
+  justify-self: start;
+  min-block-size: 2.25rem;
+  padding-inline: var(--kf-space-3);
+  font-size: 0.8125rem;
+}
+
+.kf-living-tour {
+  display: grid;
+  gap: var(--kf-space-1);
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-gold-soft);
+  border-radius: var(--kf-radius);
+  background: var(--kf-gold-faint);
+}
+
+.kf-living-tour:focus {
+  outline: none;
+}
+
+.kf-living-tour:focus-visible {
+  outline: 2px solid var(--kf-gold);
+}
+
+.kf-living-tour-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--kf-gold-strong);
+}
+
+.kf-living-tour-subtitle {
+  margin: 0;
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+}
+
+.kf-living-tour-text {
+  margin: 0;
+  color: var(--kf-text);
+  line-height: 1.5;
+}
+
+.kf-living-tour-moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-1);
+}
+
+.kf-living-prophets-body {
+  display: grid;
+  gap: var(--kf-space-2);
+  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
+}
+
+.kf-living-prophets {
+  display: grid;
+  gap: var(--kf-space-3);
+  margin: 0;
+  padding-inline-start: var(--kf-space-5);
+}
+
+.kf-living-prophets > li::marker {
+  color: var(--kf-gold);
+}
+
+.kf-living-prophet {
+  display: grid;
+  gap: var(--kf-space-1);
+}
+
+.kf-living-prophet-name {
+  margin: 0;
+  color: var(--kf-gold-strong);
+}
+
+.kf-living-prophet-text {
+  margin: 0;
+  color: var(--kf-text);
+  line-height: 1.5;
+}
+
+.kf-living-sites li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  color: var(--kf-text-muted);
+}
+
+.kf-universe-lens {
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-universe-tiles a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--kf-gold-soft);
+  text-underline-offset: 2px;
+}
+
+/* Touch: every control a 44 px target, as the rest of the explorer's are (explore.css). */
+@media (pointer: coarse) {
+  .kf-nav-living > summary,
+  .kf-living-prophets-box > summary,
+  .kf-living-choice,
+  .kf-living-switch,
+  .kf-living-go,
+  .kf-living-place,
+  .kf-living-input,
+  .kf-living-tour-start {
+    min-block-size: 2.75rem;
+  }
+
+  .kf-living-go {
+    min-inline-size: 2.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-living-switch-mark,
+  .kf-living-switch-mark::after {
+    transition: none;
+  }
+}
