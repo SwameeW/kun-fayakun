@@ -159,10 +159,16 @@ function planetsProblems(path: string, planets: unknown): string[] {
           name: 'nonempty', meanRadiusKm: 'number',
           'elements.a': 'number', 'elements.e': 'number', 'elements.I': 'number', 'elements.L': 'number', 'elements.varpi': 'number', 'elements.Omega': 'number',
           'ratesPerCentury.a': 'number', 'ratesPerCentury.e': 'number', 'ratesPerCentury.I': 'number', 'ratesPerCentury.L': 'number', 'ratesPerCentury.varpi': 'number', 'ratesPerCentury.Omega': 'number',
+          // JPL's "Planetary Physical Parameters" row (the explorer's object information).
+          'physical.equatorialRadiusKm': 'number', 'physical.massE24Kg': 'number', 'physical.densityGcm3': 'number', 'physical.rotationDays': 'number',
+          'physical.orbitYears': 'number', 'physical.equatorialGravityMs2': 'number', 'physical.escapeVelocityKmS': 'number',
         },
         `${path} bodies[${i}]`,
       ),
     );
+    const row = isRecord(body) && isRecord(body.physical) ? body.physical : {};
+    const positive = ['equatorialRadiusKm', 'massE24Kg', 'densityGcm3', 'orbitYears', 'equatorialGravityMs2', 'escapeVelocityKmS'].every((k) => isFiniteNumber(row[k]) && row[k] > 0);
+    if (!positive || !isFiniteNumber(row.rotationDays) || row.rotationDays === 0) problems.push(`${path} bodies[${i}]: physical values must be positive (rotationDays non-zero, negative when retrograde)`);
   });
   if (!bodies.some((b) => isRecord(b) && b.name === 'Earth')) problems.push(`${path}: no Earth (Earth-Moon barycentre) row`);
   return problems;
@@ -183,10 +189,12 @@ function moonProblems(path: string, moon: unknown): string[] {
 function physicalProblems(ctx: ValidationContext, path: string, physical: unknown, assets: Record<string, Uint8Array>): string[] {
   const problems = checkFields(
     physical,
-    { auKm: 'number', emrat: 'number', obliquityJ2000Arcsec: 'number', bodies: 'object', saturnRings: 'object', time: 'object', sources: 'object', assets: 'object' },
+    { auKm: 'number', emrat: 'number', obliquityJ2000Arcsec: 'number', gmKm3S2: 'object', bodies: 'object', saturnRings: 'object', time: 'object', sources: 'object', assets: 'object' },
     path,
   );
   if (!isRecord(physical) || problems.length > 0) return problems;
+  const gm = isRecord(physical.gmKm3S2) ? physical.gmKm3S2 : {};
+  for (const name of JPL_BODIES) if (!isFiniteNumber(gm[name]) || gm[name] <= 0) problems.push(`${path}: gmKm3S2.${name} must be a positive GM (km^3 s^-2, DE440)`);
   for (const name of JPL_BODIES) {
     const body = isRecord(physical.bodies) ? physical.bodies[name] : undefined;
     if (!isRecord(body)) {

@@ -858,6 +858,11 @@ export interface I18n {
   has(key: I18nKey): boolean;
   /** Locale-aware number formatting used for science values. */
   number(value: number, maximumFractionDigits?: number): string;
+  /**
+   * Adds a message file loaded with a lazy chunk (the explorer's, src/i18n/en.explore.json, with its
+   * interface). A key it shares with what is loaded is an error; the same file added again is ignored.
+   */
+  extend(name: string, messages: unknown): void;
 }
 
 /** Static chapter registry entry (src/chapters/index.ts). */

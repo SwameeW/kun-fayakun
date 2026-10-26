@@ -44,20 +44,16 @@ function fileProblems(file: MessageFile, checkPhrasing: boolean): string[] {
 export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   const en = available(ctx.i18n.en, 'ui builder', log);
   const chapters = available(ctx.i18n.chapters, 'content builder', log);
-  const files = [en, chapters].filter((f): f is MessageFile => f !== null);
+  const explore = available(ctx.i18n.explore, 'explorer builder', log);
+  const files = [en, chapters, explore].filter((f): f is MessageFile => f !== null);
   const ar = ctx.i18n.ar.status === 'ok' ? ctx.i18n.ar.file : null;
 
   const parseIssues = [...files.flatMap((f) => fileProblems(f, true)), ...(ar ? fileProblems(ar, false) : [])];
   const messageCount = files.reduce((n, f) => n + f.messages.size, 0);
   log.expectNone(parseIssues, `${messageCount} English message(s) parse with intl-messageformat and avoid forbidden phrasing`);
 
-  if (en && chapters) {
-    const collisions = [...en.messages.keys()].filter((k) => chapters.messages.has(k));
-    log.expectNone(
-      collisions.map((k) => `${k}: defined in both ${en.path} and ${chapters.path}`),
-      'no key is defined in both en.json and en.chapters.json',
-    );
-  }
+  const collisions = files.flatMap((a, i) => files.slice(i + 1).flatMap((b) => [...a.messages.keys()].filter((k) => !k.startsWith('$') && b.messages.has(k)).map((k) => `${k}: defined in both ${a.path} and ${b.path}`)));
+  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json and en.explore.json');
 
   const merged = new Map<string, string>();
   for (const f of files) for (const [k, v] of f.messages) merged.set(k, v);

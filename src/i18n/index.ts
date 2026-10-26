@@ -74,9 +74,12 @@ class MessageCatalog implements I18n {
   private readonly numberFormats = new Map<number, Intl.NumberFormat>();
   private readonly reportedMissing = new Set<I18nKey>();
 
+  /** The message files added with lazy chunks (see extend). */
+  private readonly extensions = new Set<string>();
+
   constructor(
     readonly locale: Locale,
-    private readonly messages: Messages,
+    private messages: Messages,
   ) {
     this.dir = RTL_LOCALES.has(locale) ? 'rtl' : 'ltr';
   }
@@ -90,6 +93,15 @@ class MessageCatalog implements I18n {
 
   has(key: I18nKey): boolean {
     return Object.hasOwn(this.messages, key);
+  }
+
+  extend(name: string, raw: unknown): void {
+    if (this.extensions.has(name)) return;
+    const added = asMessages(raw, name);
+    const repeated = Object.keys(added).find((key) => Object.hasOwn(this.messages, key));
+    if (repeated !== undefined) throw new Error(`i18n: duplicate key "${repeated}" in ${name}`);
+    this.extensions.add(name);
+    this.messages = { ...this.messages, ...added };
   }
 
   number(value: number, maximumFractionDigits = 3): string {

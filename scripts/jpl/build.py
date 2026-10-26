@@ -12,8 +12,10 @@ Steps (run in order by scripts/preprocess-jpl.sh, or one at a time):
 
 Planets: the Keplerian elements and their rates of Table 1 of "Approximate Positions of the
 Planets" (E. M. Standish and J. G. Williams; mean ecliptic and equinox of J2000, valid 1800 to
-2050 AD), copied number for number from the page, with mean radii from JPL's "Planetary Physical
-Parameters". The scene solves Kepler's equation with them for any date in that range.
+2050 AD), copied number for number from the page, with each planet's row of JPL's "Planetary
+Physical Parameters" (mean radius, mass, bulk density, sidereal rotation and orbital periods,
+equatorial gravity, escape velocity). The scene solves Kepler's equation with them for any date in
+that range; the explorer's object information shows the physical parameters as JPL gives them.
 
 Moon: its geocentric position, one row per day from 2026-01-01 to 2036-01-01 (TDB), from the
 Horizons system (ecliptic of J2000, kilometres), so its phase as seen from the Earth is the real
@@ -24,7 +26,8 @@ typed in:
 - The IAU rotation models and triaxial radii of the Sun, all eight planets and the Moon come
   from NAIF's generic PCK pck00011.tpc (IAU WGCCRE 2015 report). A model is the pole's right
   ascension and declination, the prime meridian W(t), and their nutation-precession terms.
-- EMRAT (the Earth/Moon mass ratio) and the astronomical unit come from the DE440 header.
+- EMRAT (the Earth/Moon mass ratio), the astronomical unit and the GM of the Sun and of each
+  planet's system come from the DE440 header (the Earth's and the Moon's split by EMRAT).
 - The leap seconds and the TDB - TT terms come from NAIF's LSK naif0012.tls.
 - The J2000 obliquity that Horizons uses for its ecliptic frame comes from its own reply.
 - The radial span of Saturn's rings, and their structure across it, come from a Cassini
@@ -191,20 +194,34 @@ def parse_elements() -> list[dict[str, Any]]:
     return bodies
 
 
-def parse_radii() -> dict[str, float]:
+# The columns of a planet's row in "Planetary Physical Parameters", in order (their units in the page's heading).
+PHYSICAL_COLUMNS = [
+    "equatorialRadiusKm", "meanRadiusKm", "massE24Kg", "densityGcm3", "rotationDays", "orbitYears",
+    "absoluteMagnitude", "geometricAlbedo", "equatorialGravityMs2", "escapeVelocityKmS",
+]
+
+
+def parse_physical() -> dict[str, dict[str, float]]:
+    """Each planet's row of the table: its ten values, number for number (notes and uncertainties dropped)."""
     text = " ".join(_text(FILES["physical"].read_text(encoding="utf-8")).split())
-    start = text.find("Planetary Physical Parameters")
-    radii: dict[str, float] = {}
-    for name in RADIUS_NAMES.values():
-        # A planet's row: its name, the equatorial radius with a note and an uncertainty (±), then the mean radius (km).
+    start = text.find("Escape Velocity", text.find("Planetary Physical Parameters The following"))
+    if start < 0:
+        raise SystemExit("phys_par.html: the planets' table heading was not found; the page changed, check it by hand")
+    if "(km) (km) (×10 24 kg) (g cm -3 ) (d) (y) (mag) (m s -2 ) (km s -1 )" not in text[start : start + 200]:
+        raise SystemExit("phys_par.html: the table's units are not km, km, 10^24 kg, g cm^-3, d, y, mag, m s^-2, km s^-1")
+    names = list(RADIUS_NAMES.values())
+    rows: dict[str, dict[str, float]] = {}
+    for i, name in enumerate(names):
         index = text.find(f" {name} ", start)
         if index < 0:
             raise SystemExit(f"phys_par.html: no row for {name}")
-        numbers = [t for t in text[index + len(name) + 2 :].split()[:24] if re.fullmatch(r"\d+(\.\d+)?", t)]
-        if len(numbers) < 2:
-            raise SystemExit(f"phys_par.html: no mean radius for {name}")
-        radii[name] = float(numbers[1])
-    return radii
+        end = text.find(f" {names[i + 1]} ", index) if i + 1 < len(names) else index + 400
+        row = re.sub(r"\[\s*[^\]]*\]", " ", text[index + len(name) + 2 : end])
+        values = [float(t) for t in row.split() if re.fullmatch(r"-?\d+(\.\d+)?", t)]
+        if len(values) < len(PHYSICAL_COLUMNS):
+            raise SystemExit(f"phys_par.html: {name} has {len(values)} values, expected {len(PHYSICAL_COLUMNS)}")
+        rows[name] = dict(zip(PHYSICAL_COLUMNS, values[: len(PHYSICAL_COLUMNS)]))
+    return rows
 
 
 def parse_moon() -> dict[str, Any]:
@@ -304,7 +321,13 @@ def parse_de440() -> dict[str, float]:
     values = dict(zip(group(1040), (float(v.replace("D", "E")) for v in group(1041))))
     if values.get("DENUM") != 440:
         raise SystemExit(f"header.440: DENUM is {values.get('DENUM')}, expected 440")
-    return {"emrat": values["EMRAT"], "auKm": values["AU"]}
+    # GM in au^3/day^2 -> km^3/s^2; the Earth-Moon barycentre's split by EMRAT (Earth/Moon mass ratio).
+    to_km3s2 = values["AU"] ** 3 / 86_400.0 ** 2
+    emrat = values["EMRAT"]
+    gm = {name: values[key] * to_km3s2 for name, key in (("Sun", "GMS"), ("Mercury", "GM1"), ("Venus", "GM2"), ("Mars", "GM4"), ("Jupiter", "GM5"), ("Saturn", "GM6"), ("Uranus", "GM7"), ("Neptune", "GM8"))}
+    gm["Earth"] = values["GMB"] * to_km3s2 * emrat / (1 + emrat)
+    gm["Moon"] = values["GMB"] * to_km3s2 / (1 + emrat)
+    return {"emrat": emrat, "auKm": values["AU"], "gm": {name: gm[name] for name in PHYSICAL_BODIES}}
 
 
 def _jd_utc(token: str) -> float:
@@ -401,9 +424,11 @@ def parse_rings() -> dict[str, Any]:
 
 def step_build() -> None:
     bodies = parse_elements()
-    radii = parse_radii()
+    table = parse_physical()
     for body in bodies:
-        body["meanRadiusKm"] = radii[body["name"]]
+        row = table[body["name"]]
+        body["meanRadiusKm"] = row["meanRadiusKm"]
+        body["physical"] = {k: v for k, v in row.items() if k != "meanRadiusKm"}
     PUBLIC.mkdir(parents=True, exist_ok=True)
     planets = {
         "$comment": "Generated by scripts/jpl/build.py. Do not edit by hand.",
@@ -414,6 +439,10 @@ def step_build() -> None:
         "units": {"a": "au (rate au per century)", "e": "(rate per century)", "I, L, varpi, Omega": "degrees (rates degrees per century)"},
         "earthRow": "EM Bary: the Earth-Moon barycentre stands in for the Earth",
         "radiiSource": PHYSICAL_URL,
+        "physicalUnits": {
+            "equatorialRadiusKm": "km", "massE24Kg": "10^24 kg", "densityGcm3": "g cm^-3", "rotationDays": "sidereal, days (negative: retrograde)",
+            "orbitYears": "sidereal, Julian years", "absoluteMagnitude": "V(1,0), mag", "geometricAlbedo": "", "equatorialGravityMs2": "m s^-2", "escapeVelocityKmS": "km s^-1",
+        },
         "bodies": bodies,
         "rawSha256": {"elements": sha256(FILES["elements"]), "physical": sha256(FILES["physical"])},
     }
@@ -440,10 +469,12 @@ def step_build() -> None:
             "pm": "W, the prime meridian: degrees, degrees per day, degrees per day squared (d = TDB days from J2000)",
             "nutPrec": "ra and pm terms multiply sin(angle), dec terms cos(angle); each angle is [degrees, degrees per century, optional degrees per century squared]",
             "radiiKm": "triaxial ellipsoid a, b, c in km (c along the pole)",
+            "gmKm3S2": "GM, km^3 s^-2, from the DE440 header: the Sun's; Mercury's and Venus's; the Earth's and the Moon's (the barycentre's split by EMRAT); Mars to Neptune each with its moons (DE440 gives the systems')",
             "time": "TDB - TAI = deltaTA + k sin(E), E = M + eb sin(M), M = m0 + m1 t (t = seconds from J2000); taiMinusUtc in seconds from jdUtc on",
         },
         "auKm": de440["auKm"],
         "emrat": de440["emrat"],
+        "gmKm3S2": de440["gm"],
         "obliquityJ2000Arcsec": parse_obliquity(),
         "bodies": parse_pck(),
         "saturnRings": parse_rings(),
@@ -494,14 +525,14 @@ def step_sources() -> None:
         {
             "id": "jpl-phys-par",
             "kind": "dataset",
-            "title": "Planetary Physical Parameters (mean radii)",
+            "title": "Planetary Physical Parameters: radii, masses, bulk densities, sidereal rotation and orbital periods, equatorial gravity and escape velocities of the planets",
             "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics",
             "url": PHYSICAL_URL,
             "version": f"retrieved {retrieved('jpl-phys-par', 'physical')}",
             "license": "Public information from NASA/JPL",
             "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
-            "credit": "Planet radii: NASA/JPL-Caltech Solar System Dynamics",
-            "notes": "Relative planet sizes in Chapter 7 (compressed, not to scale).",
+            "credit": "Planet radii and physical parameters: NASA/JPL-Caltech Solar System Dynamics",
+            "notes": "Relative planet sizes in Chapter 7 (compressed, not to scale), and the explorer's object information for each planet, shown as the table gives it (public/assets/jpl/planets.json).",
             "review": {"reviewer": None, "role": None, "date": None},
         },
         {
@@ -526,8 +557,8 @@ def step_sources() -> None:
             "version": f"DE440, retrieved {retrieved('jpl-de440', 'de440')}",
             "license": "Public information from NASA/JPL",
             "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
-            "credit": "Earth/Moon mass ratio and astronomical unit: NASA/JPL-Caltech DE440 planetary ephemeris",
-            "notes": "EMRAT places the Earth's centre relative to the Earth-Moon barycentre (Earth = barycentre - Moon / (1 + EMRAT)). public/assets/jpl/physical.json records the file's sha256.",
+            "credit": "Earth/Moon mass ratio, astronomical unit and GM values: NASA/JPL-Caltech DE440 planetary ephemeris",
+            "notes": "EMRAT places the Earth's centre relative to the Earth-Moon barycentre (Earth = barycentre - Moon / (1 + EMRAT)). The GM of the Sun and of the Moon give the explorer's object information for them (mass in units of the Earth's, surface gravity GM/R^2, escape speed sqrt(2GM/R)). public/assets/jpl/physical.json records the file's sha256.",
             "review": {"reviewer": None, "role": None, "date": None},
         },
         {

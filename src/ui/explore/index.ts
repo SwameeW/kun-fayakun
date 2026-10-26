@@ -1,4 +1,5 @@
 import { BODY_IDS, type App, type BodyId, type ChapterId, type UniverseView } from '../../core/types';
+import exploreMessages from '../../i18n/en.explore.json';
 import { focusLost, h } from '../dom';
 import { icon } from '../icons';
 import '../styles/explore.css';
@@ -57,6 +58,8 @@ const SLOW_MS = 250;
 
 export function mountUniverse(app: App, announce: (text: string) => void): UniverseUi {
   const { i18n } = app;
+  // The explorer's own messages come with its chunk, not the shell.
+  i18n.extend('en.explore.json', exploreMessages);
   const f = formatters(i18n);
   const coarse = window.matchMedia('(pointer: coarse)');
 
