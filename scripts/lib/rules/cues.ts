@@ -123,6 +123,22 @@ function sceneProblems(content: ChapterContent, dir: string, at: (i: number) => 
   return problems;
 }
 
+/** Explore Mode's moments and process (src/ui/discover-dock.ts) lie inside the chapter, the process forwards, ids unique. */
+function exploreProblems(content: ChapterContent, dir: string): string[] {
+  const problems: string[] = [];
+  const { points = [], process } = content.explore;
+  const inside = (t: number): boolean => t >= 0 && t <= content.duration;
+  points.forEach((p, i) => {
+    if (!inside(p.t)) problems.push(`${dir} explore.points[${String(i)}] (${p.id}): t=${String(p.t)} is outside [0, ${String(content.duration)}]`);
+  });
+  const ids = points.map((p) => p.id);
+  if (new Set(ids).size !== ids.length) problems.push(`${dir} explore.points: an id is used twice`);
+  if (process && !(inside(process.from) && inside(process.to) && process.from < process.to)) {
+    problems.push(`${dir} explore.process: [${String(process.from)}, ${String(process.to)}] must run forwards inside [0, ${String(content.duration)}]`);
+  }
+  return problems;
+}
+
 function cameraProblems(content: ChapterContent, dir: string): string[] {
   const problems: string[] = [];
   content.camera.forEach((kf, i) => {
@@ -139,7 +155,7 @@ function chapterProblems(chapter: LoadedChapter, verses: ReadonlyMap<string, Qur
   const problems: string[] = [];
   if (content.id !== dir) problems.push(`${dir}: content id is "${content.id}", expected "${dir}"`);
   if (!(content.duration > 0)) problems.push(`${dir}: duration must be > 0`);
-  return [...problems, ...cueTimingProblems(content, at, verses, plain, hadith), ...sceneProblems(content, dir, at), ...cameraProblems(content, dir)];
+  return [...problems, ...cueTimingProblems(content, at, verses, plain, hadith), ...sceneProblems(content, dir, at), ...cameraProblems(content, dir), ...exploreProblems(content, dir)];
 }
 
 export function checkCues(ctx: ValidationContext, log: RuleLog): void {

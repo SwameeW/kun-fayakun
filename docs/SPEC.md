@@ -280,6 +280,7 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 ## 7. UI AND ACCESSIBILITY
 
 - Cinematic auto-play and free-explore modes (orbit by mouse or touch, WASD, Esc returns to timeline).
+  - Owner, 2026-10-26: free explore is more than a free camera. Each chapter's Discover dock (content.json `explore`: points, process, extras; src/ui/discover-dock.ts) offers moments to visit (the scene at that time, seen from the film's camera then, with a card labelled measured, model or illustration, its numbers from data/constants.json and its sources cited), a slider through the chapter's own process, and closer looks suited to the chapter. The film's clock never moves; "Back to the film's moment" and leaving explore restore the scene and camera; the film's captions and verse cards step aside while another moment is shown. No scores or collectibles. Chapter 0 offers words only (nothing of the unseen is pictured); Chapter 10's futures are labelled models, apart from the Quran's descriptions of the Last Day. Different from the laboratory, which is for hypothetical experiments.
 - Side panel with the three layers; bottom sheet on mobile.
 - Sources page generated from sources.json, including reviewer names and dates.
 - English and Arabic UI via ICU message files; dir=“rtl” with CSS logical properties; Urdu added later by one locale file.

@@ -51,7 +51,8 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   const photo = available(ctx.i18n.photo, 'explorer builder', log);
   const help = available(ctx.i18n.help, 'explorer builder', log);
   const plain = available(ctx.i18n.plain, 'content builder', log);
-  const files = [en, chapters, explore, lab, islamic, stars, photo, help, plain].filter((f): f is MessageFile => f !== null);
+  const discover = available(ctx.i18n.discover, 'content builder', log);
+  const files = [en, chapters, explore, lab, islamic, stars, photo, help, plain, discover].filter((f): f is MessageFile => f !== null);
   const ar = ctx.i18n.ar.status === 'ok' ? ctx.i18n.ar.file : null;
 
   const parseIssues = [...files.flatMap((f) => fileProblems(f, true)), ...(ar ? fileProblems(ar, false) : [])];
@@ -59,7 +60,7 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   log.expectNone(parseIssues, `${messageCount} English message(s) parse with intl-messageformat and avoid forbidden phrasing`);
 
   const collisions = files.flatMap((a, i) => files.slice(i + 1).flatMap((b) => [...a.messages.keys()].filter((k) => !k.startsWith('$') && b.messages.has(k)).map((k) => `${k}: defined in both ${a.path} and ${b.path}`)));
-  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json, en.explore.json, en.lab.json, en.islamic.json, en.stars.json, en.photo.json, en.help.json and en.plain.json');
+  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json, en.explore.json, en.lab.json, en.islamic.json, en.stars.json, en.photo.json, en.help.json, en.plain.json and en.discover.json');
 
   const merged = new Map<string, string>();
   for (const f of files) for (const [k, v] of f.messages) merged.set(k, v);
@@ -76,6 +77,7 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
       ...chapter.content.panel.scholarly.modern,
       ...chapter.content.panel.science,
       ...chapter.content.panel.openQuestions,
+      ...(chapter.content.explore.points ?? []).map((point) => point.text),
     ];
     for (const block of blocks) {
       const message = merged.get(block.key);

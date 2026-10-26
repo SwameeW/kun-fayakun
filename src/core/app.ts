@@ -1007,6 +1007,18 @@ class Engine implements KunFayakunApp {
     this.timeline.setMode(mode);
   }
 
+  get exploreTime(): number | null {
+    return this.timeline.exploreTime;
+  }
+
+  setExploreTime(t: number | null): void {
+    this.timeline.setExploreTime(t);
+  }
+
+  focusView(t: number | null): void {
+    if (this.timeline.mode === 'explore') this.director.focusFilmView(t);
+  }
+
   interact(id: string, value: number | null): void {
     this.timeline.module?.onInteract?.(id, value);
   }

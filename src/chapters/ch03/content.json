@@ -225,6 +225,70 @@
       0
     ],
     "minDistance": 6,
-    "maxDistance": 110
+    "maxDistance": 110,
+    "points": [
+      {
+        "id": "dark",
+        "t": 6,
+        "kind": "model",
+        "titleKey": "discover.ch03.dark.title",
+        "text": {
+          "key": "discover.ch03.dark.text"
+        }
+      },
+      {
+        "id": "web",
+        "t": 26,
+        "kind": "model",
+        "titleKey": "discover.ch03.web.title",
+        "text": {
+          "key": "discover.ch03.web.text"
+        }
+      },
+      {
+        "id": "stars",
+        "t": 42,
+        "kind": "illustration",
+        "titleKey": "discover.ch03.stars.title",
+        "text": {
+          "key": "discover.ch03.stars.text",
+          "values": {
+            "early": {
+              "constant": "firststars.age.earliest",
+              "field": "value",
+              "digits": 0
+            },
+            "late": {
+              "constant": "firststars.age.latest",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      },
+      {
+        "id": "galaxies",
+        "t": 66,
+        "kind": "illustration",
+        "titleKey": "discover.ch03.galaxies.title",
+        "text": {
+          "key": "discover.ch03.galaxies.text",
+          "values": {
+            "age": {
+              "constant": "jwst.momz14.age",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      }
+    ],
+    "process": {
+      "from": 8,
+      "to": 70,
+      "titleKey": "discover.ch03.process",
+      "startKey": "discover.ch03.process.start",
+      "endKey": "discover.ch03.process.end"
+    }
   }
 }

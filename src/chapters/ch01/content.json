@@ -213,6 +213,57 @@
       0
     ],
     "minDistance": 2,
-    "maxDistance": 90
+    "maxDistance": 90,
+    "points": [
+      {
+        "id": "light",
+        "t": 6,
+        "kind": "illustration",
+        "titleKey": "discover.ch01.light.title",
+        "text": {
+          "key": "discover.ch01.light.text"
+        }
+      },
+      {
+        "id": "stretch",
+        "t": 18,
+        "kind": "model",
+        "titleKey": "discover.ch01.stretch.title",
+        "text": {
+          "key": "discover.ch01.stretch.text"
+        }
+      },
+      {
+        "id": "cooling",
+        "t": 28,
+        "kind": "model",
+        "titleKey": "discover.ch01.cooling.title",
+        "text": {
+          "key": "discover.ch01.cooling.text",
+          "values": {
+            "temp": {
+              "constant": "recombination.temperature",
+              "field": "value",
+              "digits": 0
+            },
+            "age": {
+              "constant": "recombination.age",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      }
+    ],
+    "process": {
+      "from": 2,
+      "to": 32,
+      "titleKey": "discover.ch01.process",
+      "startKey": "discover.ch01.process.start",
+      "endKey": "discover.ch01.process.end"
+    },
+    "extras": [
+      "expansion-model"
+    ]
   }
 }

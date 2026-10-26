@@ -388,6 +388,87 @@
       0
     ],
     "minDistance": 1,
-    "maxDistance": 40
+    "maxDistance": 40,
+    "points": [
+      {
+        "id": "disk",
+        "t": 8,
+        "kind": "model",
+        "titleKey": "discover.ch07.disk.title",
+        "text": {
+          "key": "discover.ch07.disk.text",
+          "values": {
+            "age": {
+              "constant": "solarSystem.age",
+              "field": "value",
+              "digits": 2
+            }
+          }
+        }
+      },
+      {
+        "id": "sun",
+        "t": 50,
+        "kind": "illustration",
+        "titleKey": "discover.ch07.sun.title",
+        "text": {
+          "key": "discover.ch07.sun.text",
+          "values": {
+            "temp": {
+              "constant": "sun.effectiveTemperature",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      },
+      {
+        "id": "orrery",
+        "t": 74,
+        "kind": "measured",
+        "titleKey": "discover.ch07.orrery.title",
+        "text": {
+          "key": "discover.ch07.orrery.text",
+          "cite": [
+            "jpl-approx-pos"
+          ]
+        }
+      },
+      {
+        "id": "moon",
+        "t": 90,
+        "kind": "measured",
+        "titleKey": "discover.ch07.moon.title",
+        "text": {
+          "key": "discover.ch07.moon.text"
+        }
+      },
+      {
+        "id": "galaxy",
+        "t": 150,
+        "kind": "model",
+        "titleKey": "discover.ch07.galaxy.title",
+        "text": {
+          "key": "discover.ch07.galaxy.text",
+          "values": {
+            "years": {
+              "constant": "sun.galacticYear",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      }
+    ],
+    "process": {
+      "from": 101,
+      "to": 141,
+      "titleKey": "discover.ch07.process",
+      "startKey": "discover.ch07.process.start",
+      "endKey": "discover.ch07.process.end"
+    },
+    "extras": [
+      "orbits"
+    ]
   }
 }

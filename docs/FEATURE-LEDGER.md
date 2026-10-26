@@ -184,13 +184,14 @@ research needed, each with its own model, fixtures and measured feasibility firs
 
 | Area | Budget | Measured (2026-10-26, evening) |
 |---|---|---|
-| Shell (first load) | baseline 327,629 B gzipped + 10,000 | 336,213 (+8,584) |
+| Shell (first load) | baseline 327,629 B gzipped + 10,000 | 337,119 (+9,490) |
 | Explorer (lazy) | 150,000 B gzipped | 147,489 |
 | Orbital laboratory (lazy: adapter, panel, worker) | 250,000 B gzipped | 62,782 |
 | The qibla and the new moon (lazy) | 40,000 B gzipped | 18,492 |
 | Walking (lazy) | 30,000 B gzipped | 11,328 |
 | Photo mode's controls (lazy) | 10,000 B gzipped | 2,826 |
 | The film's sound (lazy: voices and score) | 12,000 B gzipped | 5,598 |
+| Explore Mode's dock (lazy: dock, styles, strings) | 20,000 B gzipped | 10,919 |
 | Worker | 8 ms of steps and 3 ms of prediction per 16 ms tick | solar fork: about 130,000 steps a second in Node |
 | GPU | No growth over round trips | level over three (`lab.spec`) |
 

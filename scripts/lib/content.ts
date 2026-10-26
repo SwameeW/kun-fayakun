@@ -118,6 +118,7 @@ function proseBlocks(content: ChapterContent): Array<[string, ProseBlock]> {
     ...named('panel.scholarly.modern', panel.scholarly.modern),
     ...named('panel.science', panel.science),
     ...named('panel.openQuestions', panel.openQuestions),
+    ...(content.explore.points ?? []).map((point, i): [string, ProseBlock] => [`explore.points[${String(i)}].text`, point.text]),
   ];
 }
 
@@ -152,6 +153,12 @@ export function collectRefs(chapter: LoadedChapter): ContentRefs {
     }
     for (const id of block.cite ?? []) refs.cites.push({ value: id, where: `${where}.cite` });
   }
+
+  (content.explore.points ?? []).forEach((point, i) => {
+    refs.i18n.push({ value: point.titleKey, where: at(`explore.points[${String(i)}].titleKey`) });
+  });
+  const { process } = content.explore;
+  if (process) for (const name of ['titleKey', 'startKey', 'endKey'] as const) refs.i18n.push({ value: process[name], where: at(`explore.process.${name}`) });
 
   content.cues.forEach((cue, i) => {
     const where = at(`cues[${i}] (t=${cue.t})`);

@@ -336,6 +336,69 @@
       0
     ],
     "minDistance": 1.6,
-    "maxDistance": 30
+    "maxDistance": 30,
+    "points": [
+      {
+        "id": "ocean",
+        "t": 12,
+        "kind": "illustration",
+        "titleKey": "discover.ch09.ocean.title",
+        "text": {
+          "key": "discover.ch09.ocean.text",
+          "values": {
+            "age": {
+              "constant": "life.evidence.accepted",
+              "field": "value",
+              "digits": 1
+            }
+          }
+        }
+      },
+      {
+        "id": "surface",
+        "t": 64,
+        "kind": "illustration",
+        "titleKey": "discover.ch09.surface.title",
+        "text": {
+          "key": "discover.ch09.surface.text"
+        }
+      },
+      {
+        "id": "oxygen",
+        "t": 80,
+        "kind": "model",
+        "titleKey": "discover.ch09.oxygen.title",
+        "text": {
+          "key": "discover.ch09.oxygen.text",
+          "values": {
+            "start": {
+              "constant": "oxygen.rise.start",
+              "field": "value",
+              "digits": 2
+            }
+          }
+        }
+      },
+      {
+        "id": "green",
+        "t": 100,
+        "kind": "model",
+        "titleKey": "discover.ch09.green.title",
+        "text": {
+          "key": "discover.ch09.green.text"
+        }
+      }
+    ],
+    "process": {
+      "from": 58,
+      "to": 120,
+      "titleKey": "discover.ch09.process",
+      "startKey": "discover.ch09.process.start",
+      "endKey": "discover.ch09.process.end"
+    },
+    "extras": [
+      "water",
+      "earth"
+    ]
   }
 }

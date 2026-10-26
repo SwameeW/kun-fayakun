@@ -355,6 +355,54 @@
       0
     ],
     "minDistance": 4,
-    "maxDistance": 120
+    "maxDistance": 120,
+    "points": [
+      {
+        "id": "today",
+        "t": 10,
+        "kind": "measured",
+        "titleKey": "discover.ch10.today.title",
+        "text": {
+          "key": "discover.ch10.today.text",
+          "cite": [
+            "riess-1998",
+            "perlmutter-1999"
+          ]
+        }
+      },
+      {
+        "id": "heat-death",
+        "t": 30,
+        "kind": "model",
+        "titleKey": "discover.ch10.heat-death.title",
+        "text": {
+          "key": "discover.ch10.heat-death.text"
+        }
+      },
+      {
+        "id": "big-rip",
+        "t": 42,
+        "kind": "model",
+        "titleKey": "discover.ch10.big-rip.title",
+        "text": {
+          "key": "discover.ch10.big-rip.text",
+          "cite": [
+            "caldwell-2003"
+          ]
+        }
+      },
+      {
+        "id": "big-crunch",
+        "t": 54,
+        "kind": "model",
+        "titleKey": "discover.ch10.big-crunch.title",
+        "text": {
+          "key": "discover.ch10.big-crunch.text"
+        }
+      }
+    ],
+    "extras": [
+      "futures"
+    ]
   }
 }

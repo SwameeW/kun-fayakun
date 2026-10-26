@@ -400,6 +400,89 @@
       0
     ],
     "minDistance": 1.6,
-    "maxDistance": 30
+    "maxDistance": 30,
+    "points": [
+      {
+        "id": "molten",
+        "t": 10,
+        "kind": "model",
+        "titleKey": "discover.ch08.molten.title",
+        "text": {
+          "key": "discover.ch08.molten.text",
+          "values": {
+            "age": {
+              "constant": "earth.age",
+              "field": "value",
+              "digits": 2
+            }
+          }
+        }
+      },
+      {
+        "id": "impact",
+        "t": 26,
+        "kind": "model",
+        "titleKey": "discover.ch08.impact.title",
+        "text": {
+          "key": "discover.ch08.impact.text",
+          "values": {
+            "early": {
+              "constant": "moon.impact.earliest",
+              "field": "value",
+              "digits": 0
+            },
+            "late": {
+              "constant": "moon.impact.latest",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      },
+      {
+        "id": "moon",
+        "t": 45,
+        "kind": "model",
+        "titleKey": "discover.ch08.moon.title",
+        "text": {
+          "key": "discover.ch08.moon.text"
+        }
+      },
+      {
+        "id": "oceans",
+        "t": 82,
+        "kind": "model",
+        "titleKey": "discover.ch08.oceans.title",
+        "text": {
+          "key": "discover.ch08.oceans.text",
+          "values": {
+            "age": {
+              "constant": "oceans.earliest",
+              "field": "value",
+              "digits": 1
+            }
+          }
+        }
+      },
+      {
+        "id": "continents",
+        "t": 115,
+        "kind": "model",
+        "titleKey": "discover.ch08.continents.title",
+        "text": {
+          "key": "discover.ch08.continents.text"
+        }
+      }
+    ],
+    "process": {
+      "from": 0,
+      "to": 125,
+      "titleKey": "discover.ch08.process",
+      "startKey": "discover.ch08.process.start",
+      "endKey": "discover.ch08.process.end"
+    },
+    "extras": [
+      "earth"
+    ]
   }
 }

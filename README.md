@@ -96,6 +96,14 @@ Keyboard: `Space` pauses and resumes, `Right` / `Left` go to the next / previous
 (with `Shift` they seek), `P` shows or hides the panel, `E` enters free explore (orbit,
 `WASD`), `Esc` returns to the timeline, `?` lists the shortcuts.
 
+In free explore each chapter's Discover dock offers its moments (the scene as it was then,
+from the film's own view, each card saying whether it shows measured data, a model or an
+illustration), a slider through the chapter's process, and closer looks: a model of
+expanding space, the Planck map's measurements, two kinds of supernova, Kepler's law from
+JPL's orbits, the Earth today, water, and the words Chapter 0 rests on. The film's clock
+does not move while exploring. The film has sound (nature and physics only, no music),
+under the speaker in the header.
+
 ## Checks
 
 These are the same steps CI runs ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
@@ -164,8 +172,11 @@ sources. Nothing is typed from memory or generated.
    loader show as upcoming stops on the timeline.
 2. **Content.** Write `src/chapters/chNN/content.json` (type `ChapterContent` in
    `src/core/types.ts`): duration, intro card, the three-layer panel, cues, camera
-   keyframes and explore limits. Scene cues must not fall inside a verse cue's window or
-   the 2 s before it.
+   keyframes and explore limits (and, for Explore Mode's dock, its moments, process and
+   closer looks, with their strings in `src/i18n/en.discover.json`). Scene cues must not
+   fall inside a verse cue's window or the 2 s before it. Add the chapter's shots to
+   `film/shotlist.json` and `film/screenplay.md`, and its sound to
+   `src/core/film-score.ts`; `npm run validate` checks they agree.
 3. **Scene.** Write `src/chapters/chNN/scene.ts` with
    `export default function create(): ChapterModule`, importing `./content.json`. Shaders
    in TSL only, brightness changes through `ctx.exposure`, and it must run with

@@ -246,6 +246,74 @@
       0
     ],
     "minDistance": 4,
-    "maxDistance": 180
+    "maxDistance": 180,
+    "points": [
+      {
+        "id": "galaxies",
+        "t": 6,
+        "kind": "illustration",
+        "titleKey": "discover.ch04.galaxies.title",
+        "text": {
+          "key": "discover.ch04.galaxies.text"
+        }
+      },
+      {
+        "id": "stretch",
+        "t": 20,
+        "kind": "model",
+        "titleKey": "discover.ch04.stretch.title",
+        "text": {
+          "key": "discover.ch04.stretch.text",
+          "cite": [
+            "hubble-1929"
+          ]
+        }
+      },
+      {
+        "id": "redshift",
+        "t": 55,
+        "kind": "model",
+        "titleKey": "discover.ch04.redshift.title",
+        "text": {
+          "key": "discover.ch04.redshift.text"
+        }
+      },
+      {
+        "id": "tension",
+        "t": 68,
+        "kind": "measured",
+        "titleKey": "discover.ch04.tension.title",
+        "text": {
+          "key": "discover.ch04.tension.text",
+          "values": {
+            "planck": {
+              "constant": "hubble.planck",
+              "field": "value",
+              "digits": 1
+            },
+            "shoes": {
+              "constant": "hubble.shoes",
+              "field": "value",
+              "digits": 1
+            },
+            "sigma": {
+              "constant": "hubble.tension.sigma",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      }
+    ],
+    "process": {
+      "from": 13,
+      "to": 62,
+      "titleKey": "discover.ch04.process",
+      "startKey": "discover.ch04.process.start",
+      "endKey": "discover.ch04.process.end"
+    },
+    "extras": [
+      "stretch"
+    ]
   }
 }

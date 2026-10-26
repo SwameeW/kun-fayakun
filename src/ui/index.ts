@@ -208,6 +208,32 @@ export function mountUI(app: App, root: HTMLElement): void {
     main.focus();
   });
 
+  // Explore Mode's dock: what there is to discover in the chapter (its own chunk, loaded on the first visit).
+  const stage = main.querySelector<HTMLElement>('.kf-stage');
+  let dock: import('./discover-dock').DiscoverDock | null = null;
+  let dockLoading = false;
+  app.events.on('state', ({ state }) => {
+    if (state !== 'explore') {
+      dock?.close();
+      return;
+    }
+    if (dock) {
+      if (app.content) dock.open(app.content);
+      return;
+    }
+    if (dockLoading || !stage) return;
+    dockLoading = true;
+    void import('./discover-dock')
+      .then(({ createDiscoverDock }) => {
+        dock = createDiscoverDock(app);
+        stage.append(dock.element);
+        if (app.state === 'explore' && app.content) dock.open(app.content);
+      })
+      .finally(() => {
+        dockLoading = false;
+      });
+  });
+
   root.replaceChildren(skip, header, main, timeline.element, panel.element, shortcuts.dialog, announcer.element);
   trackHeight(header, '--kf-header-h');
   trackHeight(timeline.element, '--kf-timeline-h');

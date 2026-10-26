@@ -1,0 +1,324 @@
+/* Explore Mode's dock (src/ui/discover-dock.ts): beside the scene, never over its centre. */
+.kf-discover {
+  position: absolute;
+  inset-block-start: calc(var(--kf-space-6) * 2);
+  inset-inline-start: var(--kf-gutter);
+  z-index: 3;
+  inline-size: min(22rem, calc(100% - 2 * var(--kf-gutter)));
+  max-block-size: calc(100% - var(--kf-space-6) * 3);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius);
+  background: var(--kf-scrim);
+  backdrop-filter: blur(6px);
+  color: var(--kf-text);
+}
+
+.kf-discover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  padding-block: var(--kf-space-1);
+  padding-inline: var(--kf-space-4) var(--kf-space-1);
+}
+
+.kf-discover-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+.kf-discover-collapse {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  border: 0;
+  background: none;
+  color: var(--kf-text-muted);
+  cursor: pointer;
+}
+
+.kf-discover-collapse::after {
+  content: "";
+  display: inline-block;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  transform: translateY(0.1rem) rotate(-135deg);
+  transition: transform 250ms var(--kf-ease);
+}
+
+.kf-discover-collapse[aria-expanded='false']::after {
+  transform: translateY(-0.15rem) rotate(45deg);
+}
+
+.kf-discover-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: 0 var(--kf-space-4);
+  padding-inline: var(--kf-space-4);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.kf-discover-body > * + * {
+  margin-block-start: var(--kf-space-3);
+}
+
+.kf-discover-lead,
+.kf-discover-hint {
+  margin: 0;
+  color: var(--kf-text-muted);
+}
+
+.kf-discover-hint {
+  font-size: 0.8125rem;
+}
+
+.kf-discover-moments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-2);
+}
+
+.kf-discover-moment {
+  min-block-size: 2.75rem;
+  padding-block: var(--kf-space-1);
+  padding-inline: var(--kf-space-3);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 999px;
+  background: var(--kf-surface-2);
+  color: var(--kf-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.kf-discover-moment:hover {
+  border-color: var(--kf-gold-soft);
+}
+
+.kf-discover-moment[aria-pressed='true'] {
+  border-color: var(--kf-gold);
+  background: var(--kf-gold-faint);
+}
+
+.kf-discover-card {
+  padding: var(--kf-space-3);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-2);
+}
+
+.kf-discover-card p,
+.kf-discover-card h3 {
+  margin: 0;
+}
+
+.kf-discover-card-title {
+  margin-block: var(--kf-space-1) !important;
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem;
+  font-weight: normal;
+}
+
+.kf-discover-kind {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-discover-kind--measured {
+  color: var(--kf-gold);
+}
+
+.kf-discover-card .kf-cites {
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-discover-label {
+  display: block;
+  font-weight: 600;
+}
+
+.kf-discover-process input,
+.kf-discover-extra input[type='range'] {
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  accent-color: var(--kf-gold);
+}
+
+.kf-discover-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  font-size: 0.75rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-discover-extra {
+  border-block-start: 1px solid var(--kf-line);
+  padding-block-start: var(--kf-space-2);
+}
+
+.kf-discover-extra > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: 2.75rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.kf-discover-extra > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kf-discover-extra > summary::after {
+  content: "";
+  flex: none;
+  inline-size: 0.42rem;
+  block-size: 0.42rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 250ms var(--kf-ease);
+}
+
+.kf-discover-extra[open] > summary::after {
+  transform: translateY(0.12rem) rotate(-135deg);
+}
+
+.kf-discover-extra-body > * + * {
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-discover-extra-body p {
+  margin: 0;
+}
+
+.kf-discover-list {
+  margin: 0;
+  padding-inline-start: var(--kf-space-4);
+}
+
+.kf-discover-list li + li {
+  margin-block-start: var(--kf-space-1);
+}
+
+.kf-discover-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-2);
+}
+
+.kf-discover-reset {
+  inline-size: 100%;
+}
+
+.kf-discover-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.kf-discover-table th,
+.kf-discover-table td {
+  padding: var(--kf-space-1);
+  border-block-end: 1px solid var(--kf-line);
+  text-align: start;
+  vertical-align: top;
+}
+
+.kf-discover-table thead th {
+  color: var(--kf-gold);
+}
+
+.kf-discover-table tbody th {
+  font-weight: 600;
+  color: var(--kf-text-muted);
+}
+
+/* The model of expanding space. */
+.kf-expansion-plot {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface);
+  overflow: hidden;
+}
+
+.kf-expansion-dot {
+  fill: var(--kf-text-muted);
+  cursor: pointer;
+}
+
+.kf-expansion-dot[aria-pressed='true'] {
+  fill: var(--kf-gold);
+}
+
+.kf-expansion-dot:focus-visible {
+  outline: none;
+  stroke: var(--kf-gold-strong);
+  stroke-width: 2;
+}
+
+.kf-expansion-name {
+  font-size: 9px;
+  fill: var(--kf-text-muted);
+}
+
+.kf-expansion-line {
+  stroke: var(--kf-gold-soft);
+  stroke-width: 1;
+}
+
+.kf-expansion-readout,
+.kf-expansion-chosen {
+  margin: 0;
+}
+
+/* The film's captions and verse cards belong to the film's moment: they step aside while the scene shows another. */
+.kf-stage .kf-stage-text {
+  transition: opacity 400ms var(--kf-ease);
+}
+
+.kf-explore-elsewhere .kf-stage-text {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* On a phone: a sheet along the bottom of the scene, above the timeline. */
+@media (max-width: 767.98px) {
+  .kf-discover {
+    inset-block-start: auto;
+    inset-block-end: var(--kf-space-2);
+    inset-inline: var(--kf-space-2);
+    inline-size: auto;
+    max-block-size: 45%;
+  }
+
+  /* Open over the captions' place: they wait until it is closed. */
+  .kf-discover-open .kf-stage-text {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-stage .kf-stage-text,
+  .kf-discover-collapse::after,
+  .kf-discover-extra > summary::after {
+    transition: none;
+  }
+}
