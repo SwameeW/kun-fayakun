@@ -34,7 +34,15 @@ export interface Panel {
   toggle(): void;
   /** Hidden on the home and sources routes, where there is no chapter. */
   setAvailable(available: boolean): void;
+  /**
+   * The invitation to the chapter's letter analysis, shown on the stage under the verse it reads
+   * while that verse's cue plays (so it is found without scrolling the notes, or opening them on a phone).
+   */
+  readonly invite: HTMLElement;
 }
+
+/** How long the stage invitation stays after its verse's cue ends (ms). */
+const INVITE_LINGER_MS = 6000;
 
 export function createPanel(app: App): Panel {
   const { i18n } = app;
@@ -111,6 +119,33 @@ export function createPanel(app: App): Panel {
     writePreference('panelOpen', open);
     sync();
   }
+
+  /*
+   * Finding the letter analysis: besides its quiet button at the end of the scholarly layer, a
+   * button under the last verse of the text layer (the verse the analysis is introduced under:
+   * 21:33 in Chapter 7), where the reader is, and on the stage, while that verse's cue plays, an
+   * invitation under the verse itself. Either opens the notes if they are closed and then the
+   * analysis, scrolled into view. Neither loads the analysis: it still loads when it opens.
+   */
+  let inviteKey: string | null = null;
+  let inviteTimer = 0;
+  const invite = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-invite', 'data-testid': 'discovery-invite', 'aria-hidden': 'true', tabindex: '-1' }, i18n.t('ui.discovery.invite'));
+  const showInvite = (shown: boolean): void => {
+    window.clearTimeout(inviteTimer);
+    invite.classList.toggle('is-shown', shown);
+    invite.setAttribute('aria-hidden', String(!shown));
+    invite.tabIndex = shown ? 0 : -1;
+  };
+  const openAnalysis = (): void => {
+    showInvite(false);
+    if (!open && routeAllows && hasContent) setOpen(true);
+    // The notes take a frame to show (they are inert while closed): the analysis opens after.
+    requestAnimationFrame(() => {
+      discovery?.open();
+      discovery?.element.scrollIntoView({ block: 'nearest', behavior: app.reducedMotion ? 'auto' : 'smooth' });
+    });
+  };
+  invite.addEventListener('click', openAnalysis);
 
   toggleButton.addEventListener('click', () => {
     setOpen(!open);
@@ -193,6 +228,16 @@ export function createPanel(app: App): Panel {
       );
       body.scrollTop = 0;
       renderedChapter = chapter;
+      showInvite(false);
+      inviteKey = null;
+      const verses = sections.get('text')?.querySelectorAll('[data-verse]');
+      const last = verses?.[verses.length - 1];
+      if (discovery && last) {
+        inviteKey = last.getAttribute('data-verse');
+        const inline = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-inline', 'data-testid': 'discovery-inline' }, i18n.t('ui.discovery.inline'));
+        inline.addEventListener('click', openAnalysis);
+        last.after(inline);
+      }
       if (pendingSection?.chapter === chapter) focusSection(pendingSection.section);
       pendingSection = null;
     } catch (err) {
@@ -240,6 +285,15 @@ export function createPanel(app: App): Panel {
     show(chapter, content);
   });
   app.events.on('cue', ({ chapter, cue, active }) => {
+    // The stage invitation follows the cue of a verse the analysis reads, lingering a little after it.
+    if (cue.type === 'verse' && chapter === renderedChapter && cue.key === inviteKey) {
+      if (active) showInvite(true);
+      else
+        inviteTimer = window.setTimeout(() => {
+          showInvite(false);
+        }, INVITE_LINGER_MS);
+      return;
+    }
     if (!active || cue.type !== 'panel') return;
     if (chapter === renderedChapter) focusSection(cue.section);
     else pendingSection = { chapter, section: cue.section };
@@ -251,6 +305,7 @@ export function createPanel(app: App): Panel {
   return {
     element,
     toggleButton,
+    invite,
     toggle() {
       if (routeAllows && hasContent) setOpen(!open);
     },
