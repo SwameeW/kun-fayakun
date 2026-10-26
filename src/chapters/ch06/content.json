@@ -1,6 +1,6 @@
 {
   "id": "ch06",
-  "duration": 128,
+  "duration": 125,
   "intro": {
     "titleKey": "ch06.intro.title",
     "subtitleKey": "ch06.intro.subtitle",
@@ -170,7 +170,7 @@
       "duration": 7
     },
     {
-      "t": 124,
+      "t": 122,
       "type": "overlay",
       "id": "decay-chain",
       "visible": false
@@ -308,7 +308,7 @@
       ]
     },
     {
-      "t": 128,
+      "t": 125,
       "position": [
         33,
         6,

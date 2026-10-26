@@ -14,6 +14,7 @@ import { checkAssets } from './lib/rules/assets';
 import { checkConstants } from './lib/rules/constants';
 import { checkContentVerses } from './lib/rules/content-refs';
 import { checkCues } from './lib/rules/cues';
+import { checkFilm } from './lib/rules/film';
 import { checkHadith } from './lib/rules/hadith';
 import { checkI18n } from './lib/rules/i18n';
 import { checkOnline } from './lib/rules/online';
@@ -33,6 +34,7 @@ const RULES: ReadonlyArray<readonly [string, string, Rule]> = [
   ['h', 'Cue timing', checkCues],
   ['i', 'No Arabic script in src/', checkArabicInSrc],
   ['j', 'Generated assets', checkAssets],
+  ['k', 'Film: shot list and screenplay', checkFilm],
 ];
 
 function parseArgs(args: readonly string[]): { online: boolean } {

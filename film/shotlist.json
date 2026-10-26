@@ -54,7 +54,7 @@
   "chapters": [
     {
       "id": "ch00",
-      "duration": 98
+      "duration": 97
     },
     {
       "id": "ch01",
@@ -62,7 +62,7 @@
     },
     {
       "id": "ch02",
-      "duration": 90
+      "duration": 86
     },
     {
       "id": "ch03",
@@ -70,7 +70,7 @@
     },
     {
       "id": "ch04",
-      "duration": 92
+      "duration": 87
     },
     {
       "id": "ch05",
@@ -78,19 +78,19 @@
     },
     {
       "id": "ch06",
-      "duration": 128
+      "duration": 125
     },
     {
       "id": "ch07",
-      "duration": 172
+      "duration": 166
     },
     {
       "id": "ch08",
-      "duration": 170
+      "duration": 167
     },
     {
       "id": "ch09",
-      "duration": 150
+      "duration": 144
     },
     {
       "id": "ch10",
@@ -105,7 +105,7 @@
       "scene": 1,
       "shot": 1,
       "start": 0,
-      "duration": 5.5,
+      "duration": 4,
       "camera": "hold",
       "lens": {
         "focalLength": 25.7,
@@ -126,7 +126,7 @@
       "act": "act-1",
       "scene": 1,
       "shot": 2,
-      "start": 5.5,
+      "start": 4,
       "duration": 7.5,
       "camera": "hold",
       "lens": {
@@ -150,7 +150,7 @@
       "act": "act-1",
       "scene": 1,
       "shot": 3,
-      "start": 13,
+      "start": 11.5,
       "duration": 6,
       "camera": "dolly back and down",
       "lens": {
@@ -172,15 +172,15 @@
       "act": "act-1",
       "scene": 2,
       "shot": 4,
-      "start": 19,
-      "duration": 37.5,
+      "start": 17.5,
+      "duration": 71,
       "camera": "hold",
       "lens": {
         "focalLength": 25.7,
         "fov": 50.06,
         "depthOfField": "deep"
       },
-      "subject": "Kun in stillness while the verses are read",
+      "subject": "Kun in stillness while the verses are read, then the hadith",
       "lighting": "calligraphy glow",
       "sound": "near silence",
       "text": [],
@@ -188,8 +188,13 @@
         "2:117",
         "36:82"
       ],
-      "hadith": [],
-      "panel": "text"
+      "hadith": [
+        "bukhari-3191",
+        "muslim-2653",
+        "abudawud-4700",
+        "tirmidhi-2155"
+      ],
+      "panel": "text, scholarly"
     },
     {
       "id": "ch00-s3-05",
@@ -197,8 +202,8 @@
       "act": "act-1",
       "scene": 3,
       "shot": 5,
-      "start": 56.5,
-      "duration": 34.5,
+      "start": 88.5,
+      "duration": 4.5,
       "camera": "hold",
       "lens": {
         "focalLength": 25.7,
@@ -208,15 +213,12 @@
       "subject": "The light of the word fades",
       "lighting": "fading glow",
       "sound": "near silence",
-      "text": [],
-      "verses": [],
-      "hadith": [
-        "bukhari-3191",
-        "muslim-2653",
-        "abudawud-4700",
-        "tirmidhi-2155"
+      "text": [
+        "ch00.caption.beyond"
       ],
-      "panel": "scholarly"
+      "verses": [],
+      "hadith": [],
+      "panel": "science"
     },
     {
       "id": "ch00-s3-06",
@@ -224,8 +226,8 @@
       "act": "act-1",
       "scene": 3,
       "shot": 6,
-      "start": 91,
-      "duration": 7,
+      "start": 93,
+      "duration": 4,
       "camera": "hold",
       "lens": {
         "focalLength": 25.7,
@@ -235,12 +237,10 @@
       "subject": "Darkness before the beginning",
       "lighting": "none",
       "sound": "silence",
-      "text": [
-        "ch00.caption.beyond"
-      ],
+      "text": [],
       "verses": [],
       "hadith": [],
-      "panel": "science"
+      "panel": null
     },
     {
       "id": "ch01-s1-01",
@@ -386,7 +386,7 @@
       "text": [],
       "verses": [],
       "hadith": [],
-      "panel": null
+      "panel": "figure cmb-legend"
     },
     {
       "id": "ch02-s3-03",
@@ -419,7 +419,7 @@
       "scene": 4,
       "shot": 4,
       "start": 45.5,
-      "duration": 44.5,
+      "duration": 40.5,
       "camera": "slow orbit",
       "lens": {
         "focalLength": 25.7,
@@ -456,7 +456,8 @@
       "lighting": "false-colour violet, very dim",
       "sound": "deep drone",
       "text": [
-        "ch03.caption.dark"
+        "ch03.caption.dark",
+        "ch03.caption.web"
       ],
       "verses": [],
       "hadith": [],
@@ -480,8 +481,8 @@
       "lighting": "violet to blue-white",
       "sound": "drone with slow swells",
       "text": [
-        "ch03.caption.web",
-        "ch03.caption.method"
+        "ch03.caption.method",
+        "ch03.caption.stars"
       ],
       "verses": [],
       "hadith": [],
@@ -505,7 +506,6 @@
       "lighting": "blue-white stars, warm galaxy glow",
       "sound": "high, soft tones",
       "text": [
-        "ch03.caption.stars",
         "ch03.caption.webb",
         "ch03.caption.galaxies",
         "ch03.caption.open"
@@ -570,7 +570,7 @@
       "scene": 3,
       "shot": 3,
       "start": 48,
-      "duration": 44,
+      "duration": 39,
       "camera": "pull back",
       "lens": {
         "focalLength": 25.7,
@@ -815,7 +815,7 @@
       "scene": 5,
       "shot": 5,
       "start": 100,
-      "duration": 28,
+      "duration": 25,
       "camera": "dolly back",
       "lens": {
         "focalLength": 25.7,
@@ -1010,7 +1010,7 @@
       "scene": 6,
       "shot": 8,
       "start": 142,
-      "duration": 30,
+      "duration": 24,
       "camera": "pull back to the galaxy",
       "lens": {
         "focalLength": 26,
@@ -1099,7 +1099,7 @@
       ],
       "verses": [],
       "hadith": [],
-      "panel": null
+      "panel": "text"
     },
     {
       "id": "ch08-s3-04",
@@ -1123,7 +1123,7 @@
         "41:9"
       ],
       "hadith": [],
-      "panel": "text"
+      "panel": null
     },
     {
       "id": "ch08-s4-05",
@@ -1158,7 +1158,7 @@
       "scene": 5,
       "shot": 6,
       "start": 108,
-      "duration": 20,
+      "duration": 17,
       "camera": "slow orbit",
       "lens": {
         "focalLength": 35,
@@ -1181,7 +1181,7 @@
       "act": "act-3",
       "scene": 6,
       "shot": 7,
-      "start": 128,
+      "start": 125,
       "duration": 42,
       "camera": "hold, wide",
       "lens": {
@@ -1260,7 +1260,7 @@
       "scene": 3,
       "shot": 3,
       "start": 72,
-      "duration": 24,
+      "duration": 18,
       "camera": "slow orbit",
       "lens": {
         "focalLength": 35,
@@ -1283,7 +1283,7 @@
       "act": "act-3",
       "scene": 4,
       "shot": 4,
-      "start": 96,
+      "start": 90,
       "duration": 43,
       "camera": "slow orbit",
       "lens": {
@@ -1309,7 +1309,7 @@
       "act": "act-3",
       "scene": 5,
       "shot": 5,
-      "start": 139,
+      "start": 133,
       "duration": 11,
       "camera": "hold",
       "lens": {
@@ -1350,7 +1350,7 @@
       ],
       "verses": [],
       "hadith": [],
-      "panel": null
+      "panel": "figure cosmic-futures"
     },
     {
       "id": "ch10-s2-02",
@@ -1374,7 +1374,7 @@
       ],
       "verses": [],
       "hadith": [],
-      "panel": "figure cosmic-futures"
+      "panel": null
     },
     {
       "id": "ch10-s2-03",

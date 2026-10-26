@@ -1,6 +1,6 @@
 {
   "id": "ch00",
-  "duration": 98,
+  "duration": 97,
   "intro": {
     "titleKey": "ch00.intro.title",
     "subtitleKey": "ch00.intro.subtitle",
@@ -79,45 +79,40 @@
   },
   "cues": [
     {
-      "t": 5.5,
+      "t": 4.0,
       "type": "scene",
       "event": "kun-reveal"
     },
     {
-      "t": 10.5,
+      "t": 9.0,
       "type": "scene",
       "event": "kun-hold"
     },
     {
-      "t": 12,
+      "t": 10.5,
       "type": "caption",
       "key": "ch00.caption.word",
       "duration": 6
     },
     {
-      "t": 20,
+      "t": 18.5,
       "type": "panel",
       "section": "text"
     },
     {
-      "t": 20,
+      "t": 18.5,
       "type": "verse",
       "key": "2:117",
       "duration": 18
     },
     {
-      "t": 40,
+      "t": 38.5,
       "type": "verse",
       "key": "36:82",
       "duration": 15
     },
     {
-      "t": 56.5,
-      "type": "scene",
-      "event": "kun-fade"
-    },
-    {
-      "t": 58,
+      "t": 55.5,
       "type": "hadith",
       "id": "bukhari-3191",
       "also": [
@@ -127,12 +122,12 @@
       "duration": 17
     },
     {
-      "t": 76,
+      "t": 73.5,
       "type": "panel",
       "section": "scholarly"
     },
     {
-      "t": 76,
+      "t": 73.5,
       "type": "hadith",
       "id": "abudawud-4700",
       "also": [
@@ -142,12 +137,17 @@
       "duration": 15
     },
     {
-      "t": 91,
+      "t": 88.5,
+      "type": "scene",
+      "event": "kun-fade"
+    },
+    {
+      "t": 89,
       "type": "panel",
       "section": "science"
     },
     {
-      "t": 91.5,
+      "t": 90,
       "type": "caption",
       "key": "ch00.caption.beyond",
       "duration": 6
@@ -168,7 +168,7 @@
       ]
     },
     {
-      "t": 13,
+      "t": 11.5,
       "position": [
         0,
         -0.55,
@@ -181,7 +181,7 @@
       ]
     },
     {
-      "t": 19,
+      "t": 17.5,
       "position": [
         0,
         -2.8,
@@ -195,7 +195,7 @@
       "ease": "inOutSine"
     },
     {
-      "t": 98,
+      "t": 97,
       "position": [
         0,
         -2.8,

@@ -1,6 +1,6 @@
 {
   "id": "ch07",
-  "duration": 172,
+  "duration": 166,
   "intro": {
     "titleKey": "ch07.intro.title",
     "subtitleKey": "ch07.intro.subtitle",
@@ -367,7 +367,7 @@
       "fov": 49.55
     },
     {
-      "t": 172,
+      "t": 166,
       "position": [
         0,
         3.2,

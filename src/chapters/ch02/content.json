@@ -1,6 +1,6 @@
 {
   "id": "ch02",
-  "duration": 90,
+  "duration": 86,
   "intro": {
     "titleKey": "ch02.intro.title",
     "subtitleKey": "ch02.intro.subtitle",
@@ -329,7 +329,7 @@
       ]
     },
     {
-      "t": 90,
+      "t": 86,
       "position": [
         7.4,
         7,

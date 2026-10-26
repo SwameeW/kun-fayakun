@@ -1,6 +1,6 @@
 {
   "id": "ch04",
-  "duration": 92,
+  "duration": 87,
   "intro": {
     "titleKey": "ch04.intro.title",
     "subtitleKey": "ch04.intro.subtitle",
@@ -179,7 +179,7 @@
       "duration": 6
     },
     {
-      "t": 86,
+      "t": 84,
       "type": "overlay",
       "id": "hubble-tension",
       "visible": false
@@ -226,7 +226,7 @@
       ]
     },
     {
-      "t": 92,
+      "t": 87,
       "position": [
         8,
         8,
