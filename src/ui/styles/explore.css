@@ -307,6 +307,9 @@
 
 .kf-universe summary::after {
   content: "";
+  /* Sized and turned in any summary (an inline box would show only one of its borders, as a bar). */
+  display: inline-block;
+  vertical-align: middle;
   flex: none;
   inline-size: 0.42rem;
   block-size: 0.42rem;
