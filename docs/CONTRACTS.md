@@ -502,6 +502,39 @@ Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Ea
   `tests/unit/living-earth.spec.ts` covers the pure parts and `tests/explore/living-earth.spec.ts`
   the panel, tours, layers and the Makkah framing.
 
+## The qibla and the new moon (explorer)
+
+Methods, sources, checks and limits: `docs/ISLAMIC-ASTRONOMY.md`.
+
+- **Modules.** `src/explore/islamic/astronomy.ts` (no DOM, no three.js): `KAABA` (Wikidata Q29466),
+  `qiblaBearing`, `qiblaDistanceKm`, `qiblaPath`, `compassPoint`, `gmst`, `sunPlace`, `moonPlace`
+  (geocentric, equator of date), `horizontal`, `topocentric`, `newMoons`, `kaabaSuns`, `yallopQ`,
+  `yallopZone`, `skyTrack`, `crescentAt`, `GOLDEN_RATIO`, `meridianArcKm`, `goldenLatitude`,
+  `meridianRatio`. `hijri.ts`: `hijriDate(unixMs)` (Umm al-Qura through ICU, null without it), used
+  by the explorer's view. `heritage.ts`: `HERITAGE` (Wikidata places). `layer.ts`: three instanced
+  sprites in the Earth's frame (the qibla's path, the two latitudes, the map's dots), fading over the
+  horizon like the earthquake rings. `index.ts` (`createIslamic`, its own lazy chunk): state, the
+  map computed `MAP_BUDGET_MS` (4 ms) a frame, the view and labels (`qibla-from`,
+  `golden-latitude`, `kaaba-latitude`).
+- **App and module.** `app.universeIslamic(command: UniverseIslamicCommand)` (`open`, `qiblaFrom`,
+  `qiblaFromBelow`, `qiblaLine`, `golden`, `newMoon` with a step, `evening` 0 to 2 or null);
+  `UniverseModule.islamic()`; `UniverseView.islamic: UniverseIslamic | null` (qibla, golden, the
+  next four `kaabaSun` moments, `newMoon`, `crescent` with progress, counts per zone and the place
+  in view, `marks`); `UniverseTime.hijri`. The first command loads the chunk; commands wait for it.
+  Null and hidden in the laboratory.
+- **Interface** (`src/ui/explore/islamic-panel.ts`, lazy, in the navigator's `universe-islamic`
+  section). Test ids: `islamic-panel`, `islamic-qibla-from`, `islamic-qibla`, `islamic-find`,
+  `islamic-find-results`, `islamic-from-below`, `islamic-qibla-line`, `islamic-kaaba-sun`,
+  `islamic-sun-go-over`, `islamic-sun-go-opposite`, `islamic-golden`, `islamic-golden-line`,
+  `islamic-golden-go`, `islamic-new-moon`, `islamic-moon-age`, `islamic-moon-previous`,
+  `islamic-moon-next`, `islamic-evening-0|1|2`, `islamic-map-state`, `islamic-legend`,
+  `islamic-here`, `islamic-heritage`, `islamic-heritage-<id>`; the time machine's
+  `universe-time-hijri`. Messages: `ui.universe.islamic.*`, `ui.universe.hijri.*`.
+- **Budget.** `scripts/check-bundle.ts` holds the section's lazy files to 40,000 bytes gzipped.
+- **The Living Earth's Sun.** `living.sun` (the satellites' `SatelliteFrame.sun`, the bulletin's
+  point beneath the Sun) is the unit direction from the Earth toward the Sun; it pointed the other
+  way until this section's test found it.
+
 ## Orbital laboratory (explorer)
 
 The explorer's experiment mode; the full description, scenario schema, limitations and measured

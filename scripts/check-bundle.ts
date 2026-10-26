@@ -62,6 +62,10 @@ const EXPLORE_BUDGET_BYTES = 150_000;
 const LAB_SOURCES = ['src/explore/lab.ts', 'src/ui/explore/lab-panel.ts'] as const;
 /** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget). */
 const LAB_BUDGET_BYTES = 250_000;
+/** The qibla and the new moon's lazy entry points (loaded when their section first opens): the explorer's part and its panel. */
+const ISLAMIC_SOURCES = ['src/explore/islamic/index.ts', 'src/ui/explore/islamic-panel.ts'] as const;
+/** What that section may add beyond the shell and the explorer, gzipped. */
+const ISLAMIC_BUDGET_BYTES = 40_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -213,7 +217,15 @@ function main(): void {
   const labBytes = labRows.reduce((sum, row) => sum + row.gzip, 0);
   const labOk = labBytes <= LAB_BUDGET_BYTES;
   console.log(`${labOk ? 'PASS' : 'FAIL'}: orbital laboratory (lazy, ${labRows.length} files) = ${formatBytes(labBytes)} bytes gzipped (budget ${formatBytes(LAB_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk) process.exitCode = 1;
+  // The qibla and the new moon, beyond the shell and the explorer: what opening their section adds.
+  const islamicRows = measure(exploreFiles(manifest, loaded, ISLAMIC_SOURCES));
+  for (const row of [...islamicRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`islamic  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const islamicBytes = islamicRows.reduce((sum, row) => sum + row.gzip, 0);
+  const islamicOk = islamicRows.length > 0 && islamicBytes <= ISLAMIC_BUDGET_BYTES;
+  console.log(`${islamicOk ? 'PASS' : 'FAIL'}: qibla and new moon (lazy, ${islamicRows.length} files) = ${formatBytes(islamicBytes)} bytes gzipped (budget ${formatBytes(ISLAMIC_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk) process.exitCode = 1;
 }
 
 try {

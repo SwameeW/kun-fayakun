@@ -1,6 +1,7 @@
 /* The navigator's Living Earth (src/ui/explore/living-earth.ts): imagery, live layers, place search and field notes; and About the world in view (src/ui/explore/about.ts). */
 .kf-nav-about,
-.kf-nav-living {
+.kf-nav-living,
+.kf-nav-islamic {
   margin: 0 var(--kf-space-3) var(--kf-space-2);
   border-block-start: 1px solid var(--kf-line);
   padding-block-start: var(--kf-space-2);
@@ -9,6 +10,7 @@
 
 .kf-nav-about > summary,
 .kf-nav-living > summary,
+.kf-nav-islamic > summary,
 .kf-living-prophets-box > summary {
   min-block-size: 2.25rem;
   display: flex;
@@ -23,13 +25,15 @@
 
 .kf-nav-about > summary:hover,
 .kf-nav-living > summary:hover,
+.kf-nav-islamic > summary:hover,
 .kf-living-prophets-box > summary:hover {
   color: var(--kf-gold-strong);
 }
 
 /* On a phone's sheet (explore.css orders its parts): after the list, before the log. */
 .kf-nav.is-sheet .kf-nav-about,
-.kf-nav.is-sheet .kf-nav-living {
+.kf-nav.is-sheet .kf-nav-living,
+.kf-nav.is-sheet .kf-nav-islamic {
   order: 2;
 }
 
@@ -412,6 +416,7 @@
 @media (pointer: coarse) {
   .kf-nav-about > summary,
   .kf-nav-living > summary,
+  .kf-nav-islamic > summary,
   .kf-living-prophets-box > summary,
   .kf-living-choice,
   .kf-living-switch,
@@ -504,3 +509,52 @@
 .kf-nav.is-sheet .kf-nav-lab-entry {
   order: 2;
 }
+
+/* The qibla and the new moon (src/ui/explore/islamic-panel.ts). */
+.kf-islamic {
+  display: grid;
+  gap: var(--kf-space-2);
+  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
+}
+
+.kf-islamic-figure {
+  margin: 0;
+  color: var(--kf-text);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-islamic-legend {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+}
+
+.kf-islamic-legend li {
+  display: grid;
+  grid-template-columns: 0.75rem 1fr auto;
+  align-items: center;
+  gap: var(--kf-space-2);
+}
+
+.kf-islamic-count {
+  color: var(--kf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The map's colours (src/explore/islamic/index.ts ZONE_RGB), each beside its words: colour is never the only cue. */
+.kf-islamic-swatch {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: 50%;
+}
+
+.kf-islamic-swatch.is-a { background: rgb(92 219 128); }
+.kf-islamic-swatch.is-b { background: rgb(189 224 92); }
+.kf-islamic-swatch.is-c { background: rgb(250 209 82); }
+.kf-islamic-swatch.is-d { background: rgb(250 148 66); }
+.kf-islamic-swatch.is-e { background: rgb(237 87 82); }
+.kf-islamic-swatch.is-f { background: rgb(143 145 161); }

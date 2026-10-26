@@ -19,7 +19,7 @@ const physical = readJson('public/assets/jpl/physical.json') as PhysicalFile;
 const GM_SUN = physical.gmKm3S2.Sun;
 const GM_EARTH = physical.gmKm3S2.Earth;
 const AU = physical.auKm;
-/** 2026-11-05 06:00 TDB, the explorer tests' date, inside the Moon's table. */
+/** 2026-10-23 06:00 TDB, the explorer tests' date, inside the Moon's table. */
 const EPOCH = 2461336.75;
 
 const sci = (x: number): string => x.toExponential(2);

@@ -41,9 +41,11 @@ import {
   type UniverseBodyView,
   type UniverseContext,
   type UniverseIllustration,
+  type UniverseIslamicCommand,
   type UniverseModule,
   type UniversePose,
   type UniverseSteer,
+  type UniverseTime,
   type UniverseView,
   type UniverseLiving,
   type ViewInsets,
@@ -55,6 +57,8 @@ import { createUploader } from './assets/upload';
 import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createEarthTiles, type EarthTiles } from './earth-tiles';
 import { lastWholeDay } from './earth-tiles/sources';
+import type { Islamic } from './islamic';
+import { hijriDate } from './islamic/hijri';
 import type { Lab } from './lab';
 import { composeBulletin } from './field-notes/bulletin';
 import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes/data';
@@ -332,6 +336,12 @@ export default function create(): UniverseModule {
   let labLoading = false;
   let wantLab = false;
   const hiddenBodies = new Set<BodyId>();
+  /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
+  let islamic: Islamic | null = null;
+  let islamicLoading = false;
+  const islamicWaiting: UniverseIslamicCommand[] = [];
+  let hijriDay = Number.NaN;
+  let hijri: UniverseTime['hijri'] = null;
   let beforeLab: { rate: number; paused: boolean; jdTdb: number; jdUtc: number; imagery: 'clear' | 'today'; markers: 'atlas' | 'prophets' | null } | null = null;
   /** The time machine (./time): the rate set, whether paused, the end it stopped at, and the rate the clock ran at this frame. */
   let timeRate = 1;
@@ -542,9 +552,10 @@ export default function create(): UniverseModule {
     solarFilter: false,
     jdTdb: 0,
     unixMs: 0,
-    time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0 },
+    time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0, hijri: null },
     sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
     lab: null,
+    islamic: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -588,6 +599,14 @@ export default function create(): UniverseModule {
     v.time.paused = lab?.active ? lab.paused : timePaused;
     v.time.edge = lab?.active ? null : timeEdge;
     v.lab = lab?.view() ?? null;
+    // The Umm al-Qura date of the day shown (looked up once a day of the clock); none over an experiment.
+    const day = Math.floor(v.unixMs / 86_400_000);
+    if (day !== hijriDay) {
+      hijriDay = day;
+      hijri = hijriDate(v.unixMs);
+    }
+    v.time.hijri = lab?.active ? null : hijri;
+    v.islamic = lab?.active ? null : (islamic?.view() ?? null);
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -1304,6 +1323,24 @@ export default function create(): UniverseModule {
       lab.labels(labels);
     }
 
+    // The qibla and the new moon: their marks turn with the Earth (near it, at true scale, never over an experiment).
+    if (islamic) {
+      const pe = placed.earth;
+      const near = pe.k > 0.999 && pe.distance < LIVING_RANGE_KM && !lab?.active;
+      // The point beneath the camera: the direction from the Earth's centre to the camera (at the origin), in the Earth's own frame.
+      const m = sys.bodies.earth.basis;
+      const dx = -pe.drawn.x;
+      const dy = -pe.drawn.y;
+      const dz = -pe.drawn.z;
+      const bx = dx * (m[0] ?? 1) + dy * (m[1] ?? 0) + dz * (m[2] ?? 0);
+      const by = dx * (m[3] ?? 0) + dy * (m[4] ?? 1) + dz * (m[5] ?? 0);
+      const bz = dx * (m[6] ?? 0) + dy * (m[7] ?? 0) + dz * (m[8] ?? 1);
+      const r = Math.hypot(bx, by, bz);
+      const below = near && r > 0 ? { lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)) } : null;
+      islamic.update({ jdUtc, earth: pe.drawn, basis: m, earthRadiusKm: sys.specs.earth.radiusKm, visible: near, below });
+      islamic.labels(labels);
+    }
+
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
     if (satellites || quakes) {
       const pe = placed.earth;
@@ -1311,7 +1348,8 @@ export default function create(): UniverseModule {
       living.earth.x = pe.drawn.x;
       living.earth.y = pe.drawn.y;
       living.earth.z = pe.drawn.z;
-      unit(scratch, sun, sys.bodies.earth.position);
+      // From the Earth toward the Sun (the satellites' shadow and the point beneath the Sun both read it that way).
+      unit(scratch, sys.bodies.earth.position, sun);
       living.sun.x = scratch.x;
       living.sun.y = scratch.y;
       living.sun.z = scratch.z;
@@ -2116,6 +2154,30 @@ export default function create(): UniverseModule {
       stars?.setLayer(command.layer, command.on);
     },
 
+    islamic(command) {
+      if (islamic) {
+        islamic.command(command);
+        return;
+      }
+      islamicWaiting.push(command);
+      if (islamicLoading || !labInputs || !timeConstants || !system) return;
+      islamicLoading = true;
+      const { planets, moon, physical } = labInputs;
+      const time = timeConstants;
+      const radiusKm = system.specs.earth.radiusKm;
+      import('./islamic')
+        .then(({ createIslamic }) => {
+          islamicLoading = false;
+          islamic = createIslamic({ ephemeris: createEphemeris(planets, moon, physical), time, obliquityRad: obliquityRad(physical) }, radiusKm);
+          root.add(...islamic.objects);
+          for (const c of islamicWaiting.splice(0)) islamic.command(c);
+        })
+        .catch(() => {
+          // Its code did not arrive: the next command tries again.
+          islamicLoading = false;
+        });
+    },
+
     lab(command) {
       lab?.command(command);
     },
@@ -2244,6 +2306,8 @@ export default function create(): UniverseModule {
       bodies = null;
       stars = null;
       lab?.dispose();
+      islamic?.dispose();
+      islamic = null;
       lab = null;
       orbits = null;
       dots = null;

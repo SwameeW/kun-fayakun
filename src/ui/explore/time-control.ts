@@ -60,6 +60,10 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
     send({ kind: 'date', jdUtc: julianDateUtc(day + timeOfDay) });
   });
 
+  // The same day in the Umm al-Qura calendar (its civil day), named as such: communities that begin
+  // each month by sighting the crescent may be a day apart.
+  const hijri = h('span', { class: 'kf-universe-time-hijri', 'data-testid': 'universe-time-hijri', hidden: true });
+
   const element = h(
     'div',
     { class: 'kf-universe-time', role: 'group', 'aria-label': i18n.t('ui.universe.time.label'), 'data-testid': 'universe-time' },
@@ -67,6 +71,7 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
     rate,
     dateLabel,
     date,
+    hijri,
   );
 
   /** The rate in words. */
@@ -112,6 +117,8 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
         if (date.min !== min) date.min = min;
         if (date.max !== max) date.max = max;
       }
+      hijri.hidden = t.hijri === null;
+      if (t.hijri) write(hijri, i18n.t('ui.universe.hijri.date', { day: t.hijri.day, month: i18n.t(`ui.universe.hijri.month.${t.hijri.month}`), year: t.hijri.year }));
       // Never rewritten under the visitor's typing.
       if (document.activeElement !== date) {
         const shown = dayOf(view.unixMs);
