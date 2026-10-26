@@ -55,8 +55,19 @@ axe-checked; on a phone it is a sheet above the timeline.
 | 10 | The cosmos today (measured), Heat death, Big Rip, Big Crunch (each labelled a model) | none | **Models, not the unseen**: the futures as hypotheses, apart from the Quran's descriptions of the Last Day |
 
 While another moment is shown, the film's captions and verse cards step aside (they belong to the
-film's moment). Different from the laboratory, which stays the place for hypothetical experiments; the
-laboratory now says what it is for and compares an edited world with the real one.
+film's moment).
+
+**Reflection, from observation to understanding.** The laboratory stays the place for hypothetical
+experiments, and now says so ("What if? Change the conditions, see what the science models say
+would follow, and compare it with the real solar system, which stays as it is"). When a world is
+edited it shows that world beside its real self (mass, size, orbit, year, each "here" against "in
+reality") with one prompt chosen by what changed: a different mass ("watch how its moons and
+neighbours respond"), a different size ("its surface gravity and density change, but its pull from
+far away does not"), a wider or tighter orbit ("Why does the year grow faster than the orbit?",
+"How close could it come before its star's pull tears at it?"), or an escape ("How much slower would
+it need to go to stay?"). The prompts are occasional and carry no theological commentary; Explore
+Mode's cards end at understanding, labelled for what they are, and leave the reflection to the
+visitor.
 
 ## 3. Question-mark help in the navigator
 

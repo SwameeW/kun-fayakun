@@ -180,6 +180,14 @@ research needed, each with its own model, fixtures and measured feasibility firs
 | A new system, revisited exactly | No | IS-5 |
 | A lunar transfer | No | SC-1 to SC-3 |
 
+## The refinement pass (2026-10-26)
+
+Outside the explorer brief's phases, the owner's "Complete Experience Refinement & Educational
+Overhaul" and sound for the film: purpose (SPEC section 0), the film's pacing, Explore Mode's dock,
+the navigator's "?" help, plain-words explanations beside the translation, hadith in two levels,
+creator credits, the laboratory compared with reality, and the film's sound. Item by item, with
+tests and what remains open (the translation's licence above all): docs/REFINEMENT-2026-10-26.md.
+
 ## Budgets
 
 | Area | Budget | Measured (2026-10-26, evening) |
