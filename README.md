@@ -232,7 +232,6 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
 - The explorer's sky: the Bright Star Catalogue (Hoffleit and Warren, NASA Astronomical Data Center;
   public domain), the IAU Catalog of Star Names (CC BY) and d3-celestial's constellations (Olaf
   Frohn, BSD-3-Clause); section 14 of `LICENSES`.
-- Created by Samee and Muhaimin.
 - Later milestones: live
   recitation from the Quran Foundation API (credited, never cached beyond its terms).
 

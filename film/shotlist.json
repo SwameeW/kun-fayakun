@@ -1528,10 +1528,6 @@
   "credits": {
     "seconds": 120,
     "backdrop": "the Planck CMB sky",
-    "createdBy": [
-      "Samee",
-      "Muhaimin"
-    ],
-    "content": "Opens with 'Created by Samee and Muhaimin', then every source, dataset, licence and reviewer from data/sources.json, data/hadith.json and the review record, and the on-screen disclaimer"
+    "content": "Opens with the name Kun Fayakun, then every source, dataset, licence and reviewer from data/sources.json, data/hadith.json and the review record, and the on-screen disclaimer"
   }
 }

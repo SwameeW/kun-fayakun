@@ -125,9 +125,9 @@ weakens, as recent DESI results hint, the expansion could slow, and might even r
 
 ## End credits
 
-Two minutes over the Planck CMB sky. It opens with "Created by Samee and Muhaimin", then every
-source, dataset, licence and reviewer, from data/sources.json, data/hadith.json and the review record,
-and the on-screen disclaimer.
+Two minutes over the Planck CMB sky. It opens with the name Kun Fayakun, then every source,
+dataset, licence and reviewer, from data/sources.json, data/hadith.json and the review record, and
+the on-screen disclaimer.
 
 ## Signature shots
 

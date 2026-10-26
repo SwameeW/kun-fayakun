@@ -3,7 +3,7 @@
   "ui.universe.photoExit": "Show the interface",
   "ui.universe.photoSave": "Save the picture",
   "ui.universe.photoWhere": "{where}, {date} UTC",
-  "ui.universe.photoCredit": "Kun Fayakun, created by Samee and Muhaimin. Every source and its licence is on its Sources page.",
+  "ui.universe.photoCredit": "Kun Fayakun. Every source and its licence is on its Sources page.",
   "ui.universe.photoSaved": "Picture saved, with its credits.",
   "ui.universe.photoSaveFailed": "This browser would not give the picture’s pixels.",
   "ui.universe.photoLens": "Lens",
