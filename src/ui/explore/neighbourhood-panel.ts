@@ -200,7 +200,7 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     placesList,
     scaleNote,
     back,
-    h('p', { class: 'kf-living-hint kf-stars-credit' }, i18n.t('ui.universe.stars.credit')),
+    h('p', { class: 'kf-living-hint kf-stars-credit', 'data-photo-credit': '' }, i18n.t('ui.universe.stars.credit')),
   );
 
   const pc = (value: number): string => f.number(value, value < 10 ? 2 : 1);

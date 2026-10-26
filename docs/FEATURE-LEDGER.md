@@ -150,7 +150,7 @@ platform.
 
 | ID | Feature | Status |
 |---|---|---|
-| CR-1 | Image export from photo mode, with credits | planned |
+| CR-1 | Image export from photo mode, with credits | implemented (2026-10-26): the frame as drawn, a band of credits below it (place and date, what is illustrative, the imagery and data credits on screen, the app and its Sources page), named for the place and the date (`tests/explore/photo.spec.ts`) |
 | CR-2 | Field of view, exposure, target tracking | planned |
 | CR-3 | Camera keyframes, saved shots, video export (feature-detected) | planned |
 | CR-4 | Short lessons on resettable scenarios | planned |

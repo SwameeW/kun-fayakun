@@ -1422,4 +1422,9 @@ export interface App extends AppCommands {
   hud(): HudState;
   /** The explorer's camera and focus while it is on screen, else null (cheap; polled per frame by its UI). */
   universe(): UniverseView | null;
+  /**
+   * The picture on screen as a PNG, as the next frame draws it, with a band below it holding these
+   * lines (its credits); null where the browser cannot give the canvas's pixels.
+   */
+  capturePicture(lines: readonly string[]): Promise<Blob | null>;
 }

@@ -37,7 +37,11 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   Moon's phase, each world's turn, day and night, eclipses, the day's imagery of the Earth. It
   stops at the ends of the Moon's table (2026 to 2035) and runs at real time during a trip.
   Satellites show up to 600 times real time, and earthquakes only near the present.
-- **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back.
+- **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back. "Save
+  the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date, with
+  its credits set in a band below it, never over it: where and when, what in it is illustrative, whose
+  imagery and data it shows (the lines the readouts carry: the planet maps', the streamed imagery's
+  with EOX's link, a walk's or a descent's, the stars'), and the app with its Sources page.
 - **Object information** (SpaceEngine's wiki). "About" the world in view, in the navigator: radius,
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'

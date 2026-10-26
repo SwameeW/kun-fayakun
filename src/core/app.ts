@@ -160,6 +160,8 @@ class Engine implements KunFayakunApp {
   private warming = false;
   /** Set by the __kf.step test hook: frames still render, but only step() advances time. */
   private manualClock = false;
+  /** A picture asked for (capturePicture): taken right after the next frame is drawn, while its pixels are there to copy. */
+  private pendingCapture: { lines: readonly string[]; resolve: (blob: Blob | null) => void } | null = null;
   /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms. */
   private lastGpuMs: number | null = null;
   /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
@@ -445,6 +447,7 @@ class Engine implements KunFayakunApp {
       }
       this.advance(gfx, this.manualClock ? 0 : Math.min(raw, MAX_FRAME_DT));
       gfx.post.render();
+      if (this.pendingCapture) this.takePicture(this.pendingCapture);
       this.measure(gfx);
     } catch (err) {
       this.logOnce('[frame]', err);
@@ -462,6 +465,68 @@ class Engine implements KunFayakunApp {
       this.afterChapterReady(pending);
     }
   };
+
+  capturePicture(lines: readonly string[]): Promise<Blob | null> {
+    this.pendingCapture?.resolve(null);
+    return new Promise((resolve) => {
+      this.pendingCapture = { lines, resolve };
+    });
+  }
+
+  /**
+   * Copies the frame just drawn (still the canvas's current image in this task) into a picture, and
+   * sets its credits in a band below it: white on near-black, a line each, wrapped to the width.
+   */
+  private takePicture(capture: { lines: readonly string[]; resolve: (blob: Blob | null) => void }): void {
+    this.pendingCapture = null;
+    const source = this.canvas;
+    const width = source.width;
+    const height = source.height;
+    const scale = Math.max(1, width / 1600);
+    const fontPx = Math.round(15 * scale);
+    const lineH = Math.round(fontPx * 1.45);
+    const pad = Math.round(14 * scale);
+    const out = document.createElement('canvas');
+    const g = out.getContext('2d');
+    if (!g || width === 0 || height === 0) {
+      capture.resolve(null);
+      return;
+    }
+    g.font = `${String(fontPx)}px system-ui, sans-serif`;
+    // Each line wrapped at word boundaries to the picture's width.
+    const wrapped: string[] = [];
+    for (const line of capture.lines) {
+      let current = '';
+      for (const word of line.split(/\s+/u)) {
+        const next = current === '' ? word : `${current} ${word}`;
+        if (g.measureText(next).width > width - 2 * pad && current !== '') {
+          wrapped.push(current);
+          current = word;
+        } else current = next;
+      }
+      if (current !== '') wrapped.push(current);
+    }
+    const band = wrapped.length > 0 ? pad * 2 + wrapped.length * lineH : 0;
+    out.width = width;
+    out.height = height + band;
+    try {
+      g.drawImage(source, 0, 0);
+    } catch {
+      capture.resolve(null);
+      return;
+    }
+    g.fillStyle = '#07080c';
+    g.fillRect(0, height, width, band);
+    g.fillStyle = 'rgba(255,255,255,0.86)';
+    g.font = `${String(fontPx)}px system-ui, sans-serif`;
+    g.textBaseline = 'top';
+    wrapped.forEach((line, i) => {
+      g.fillText(line, pad, height + pad + i * lineH);
+    });
+    out.toBlob((blob) => {
+      capture.resolve(blob);
+    }, 'image/png');
+  }
 
   /** Moves the active experience (the film clock, or the explorer), the exposure and the grain on by dt seconds. */
   private advance(gfx: Graphics, dt: number): void {

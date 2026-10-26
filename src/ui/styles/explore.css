@@ -1771,28 +1771,33 @@
   }
 }
 
-/* Photo mode: only the view, and a quiet way back. */
-.kf-universe-photo-exit {
+/* Photo mode: only the view, a way to save it, and a quiet way back. */
+.kf-universe-photo-bar {
   display: none;
 }
 
 .kf-photo .kf-header,
 .kf-photo .kf-hud,
-.kf-photo .kf-universe > :not(.kf-universe-photo-exit) {
+.kf-photo .kf-universe > :not(.kf-universe-photo-bar) {
   display: none;
 }
 
-.kf-photo .kf-universe-photo-exit {
-  display: inline-flex;
+.kf-photo .kf-universe-photo-bar {
+  display: flex;
+  gap: var(--kf-space-2);
   position: fixed;
   inset-block-start: var(--kf-space-3);
   inset-inline-end: var(--kf-gutter);
   z-index: 5;
+}
+
+.kf-photo .kf-universe-photo-bar .kf-btn {
+  display: inline-flex;
   opacity: 0.4;
   transition: opacity 200ms var(--kf-ease);
 }
 
-.kf-photo .kf-universe-photo-exit:hover,
-.kf-photo .kf-universe-photo-exit:focus-visible {
+.kf-photo .kf-universe-photo-bar .kf-btn:hover,
+.kf-photo .kf-universe-photo-bar .kf-btn:focus-visible {
   opacity: 1;
 }

@@ -89,7 +89,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
     app.earthCommand({ kind: 'walkEnd' });
   });
   const controls = h('div', { class: 'kf-walk-controls' }, pad, back);
-  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit' });
+  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit', 'data-photo-credit': '' });
   // The suit's figures fold under the title; on a small screen they start folded, leaving the view and the pad.
   const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, credit);
   suit.open = !window.matchMedia(NARROW).matches;

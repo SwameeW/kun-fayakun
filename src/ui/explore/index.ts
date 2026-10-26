@@ -95,6 +95,45 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   photoExit.addEventListener('click', () => {
     setPhoto(false);
   });
+  // Saving the picture (ledger CR-1): the view as drawn, with its credits set below it: where and
+  // when, what in it is illustrative, whose imagery and data it shows (the lines the readouts carry).
+  const photoSave = h('button', { type: 'button', class: 'kf-btn kf-universe-photo-save', 'data-testid': 'universe-photo-save' }, i18n.t('ui.universe.photoSave'));
+  const photoBar = h('div', { class: 'kf-universe-photo-bar' }, photoSave, photoExit);
+  const pictureDate = new Intl.DateTimeFormat(i18n.locale, { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' });
+  const visibleText = (selector: string): string => {
+    for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+      const text = el.textContent.trim();
+      if (text !== '' && el.closest('[hidden]') === null) return text;
+    }
+    return '';
+  };
+  photoSave.addEventListener('click', () => {
+    const view = app.universe();
+    if (!view) return;
+    const where = visibleText('[data-testid="walk-title"]') || visibleText('[data-testid="descent-title"]') || (view.neighbourhood ? visibleText('[data-testid="stars-focus-name"]') : '') || visibleText('.kf-universe-title');
+    const lines = [
+      i18n.t('ui.universe.photoWhere', { where, date: pictureDate.format(new Date(view.unixMs)) }),
+      ...[...document.querySelectorAll<HTMLElement>('[data-photo-credit]')].filter((el) => el.closest('[hidden]') === null).map((el) => el.textContent.trim()).filter((t) => t !== ''),
+      i18n.t('ui.universe.photoCredit'),
+    ];
+    photoSave.disabled = true;
+    void app.capturePicture(lines).then((blob) => {
+      photoSave.disabled = false;
+      if (!blob) {
+        announce(i18n.t('ui.universe.photoSaveFailed'));
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `kun-fayakun-${(where || view.focus).toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '')}-${new Date(view.unixMs).toISOString().slice(0, 10)}.png`;
+      link.click();
+      window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 60_000);
+      announce(i18n.t('ui.universe.photoSaved'));
+    });
+  });
   const notes = createNotes(app, f, announce, () => navigator.layout === 'sheet');
   const navigator = createNavigator(
     app,
@@ -112,7 +151,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     'section',
     { class: 'kf-universe', 'aria-label': i18n.t('ui.universe.label'), 'data-testid': 'universe', tabindex: '-1', hidden: true },
     back,
-    photoExit,
+    photoBar,
     hint,
     loading,
     hud.trip,
