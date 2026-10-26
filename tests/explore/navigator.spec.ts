@@ -117,8 +117,9 @@ test('something seen for the first time gets a quiet toast, and the log says how
   const toast = page.getByTestId('universe-toast');
   // A polite live region, there from the start; it never takes focus.
   await expect(toast).toHaveAttribute('aria-live', 'polite');
-  await expect(toast).toContainText('Saturn’s rings in sunlight');
-  await expect(toast).toContainText('Added to Seen on this visit');
+  // Its title and line together, in one look: the toast is gone again after a few seconds (and a slow
+  // machine's two separate looks could fall either side of its end).
+  await expect(toast).toContainText(/Saturn’s rings in sunlight[\s\S]*Added to Seen on this visit/);
   const summary = page.getByTestId('universe-seen').locator('summary');
   await expect(summary).toContainText(/Seen on this visit \(\d+\)/);
   await expect(summary).not.toContainText(/\/|of \d/);

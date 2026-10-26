@@ -27,11 +27,10 @@
 
 import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
 import { validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
-import { PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
+import { obliquityRad, PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import { julianDateUtc, utcToTdb } from '../astro/time';
 import { createNoiseVolume } from '../chapters/shared/noise-volume';
 import { blackbodyRgb } from '../chapters/shared/blackbody';
-import { createStarfield, type Starfield } from '../chapters/shared/starfield';
 import { DEFAULT_FOV } from '../core/camera';
 import { setHook } from '../core/hooks';
 import { createExposureControl, type EngineExposure } from '../core/post';
@@ -76,6 +75,7 @@ import { lensFor, LENS, nearestAltitude, type Lens, type Sphere } from './space/
 import { FloatingOrigin, km, renderToEcliptic, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretchedDistance, stretchedLight } from './stretch';
+import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile } from './sky';
 import { createSolarSystem, type SolarSystem } from './system';
 import { advanceClock, fasterRate, slowerRate } from './time';
 
@@ -124,10 +124,8 @@ const SUN_FILTER = { fromPx: 12, toPx: 110, refPx: 800, color: [1, 0.5, 0.12], w
  * it still looks the darker of the two, as it is.
  */
 const MOON_EXPOSURE = 1.1;
-/** The starfield's light, and how much of the exposure's adaptation it shows (0 none, 1 all of it). */
+/** The sky's starlight, and how much of the exposure's adaptation it shows (0 none, 1 all of it). */
 const STARS = { light: 0.85, follow: 0.2 } as const;
-/** The starfield holds the most stars any rung draws; each rung draws a prefix (a fair subsample of one random field). */
-const STAR_MAX = Math.max(...EXPLORE_TIERS.map((t) => DETAIL[t].starCount));
 
 /** Points of light for distant bodies: colour (display terms) and size. Visual constants, not measurements. */
 const DOT: Readonly<Record<BodyId, { tint: readonly [number, number, number]; albedo: number; sizePx: number }>> = {
@@ -301,7 +299,8 @@ export default function create(): UniverseModule {
   let compilesPending = 0;
   /** The worker that inflates the raw planet files. */
   let rawDecoder: RawDecoder | null = null;
-  let stars: Starfield | null = null;
+  /** The real sky (./sky): the Bright Star Catalogue's stars, and the constellations and grid when asked for. */
+  let stars: Sky | null = null;
   let orbits: Orbits | null = null;
   let orbitPaths: OrbitPath[] = [];
   const orbitWeights: number[] = [];
@@ -531,6 +530,7 @@ export default function create(): UniverseModule {
     jdTdb: 0,
     unixMs: 0,
     time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0 },
+    sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -567,6 +567,8 @@ export default function create(): UniverseModule {
     v.solarFilter = filterAmount > 0.5;
     v.jdTdb = jdTdb;
     v.unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    if (stars) for (const layer of SKY_LAYERS) v.sky.layers[layer] = stars.layers[layer];
+    v.sky.stars = stars?.object.count ?? 0;
     v.time.rate = timeRate;
     v.time.paused = timePaused;
     v.time.edge = timeEdge;
@@ -644,7 +646,8 @@ export default function create(): UniverseModule {
         governor?.holdOff();
       });
     }
-    if (stars) stars.object.count = Math.min(STAR_MAX, detail.starCount);
+    // The detail's share of the sky: its brightest stars (the catalogue is sorted by magnitude).
+    if (stars) stars.object.count = Math.min(stars.count, detail.starCount);
     if (entered && ctx) {
       ctx.graphics.setBloom(detail.bloom);
       ctx.graphics.setDprCap(detail.dprCap);
@@ -1173,6 +1176,7 @@ export default function create(): UniverseModule {
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
     stars.setLight(STARS.light * adapted ** (STARS.follow - 1));
+    stars.update(dt);
 
     // Orbit lines: the focus's own (and the Moon's around the Earth) up close, the rest as the view
     // widens; each only from where it reads as an orbit; none over the Sun seen through its filter.
@@ -1209,6 +1213,9 @@ export default function create(): UniverseModule {
 
     // Labels first: the ring markers of small bodies come and go with their tags.
     updateLabels(dt, viewportPx, widthPx);
+
+    // Names on the sky (the brightest stars', the constellations'), when shown.
+    stars.labels(labels);
 
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
     if (satellites || quakes) {
@@ -1714,12 +1721,13 @@ export default function create(): UniverseModule {
     async load(c) {
       ctx = c;
       if (system) return;
-      const [planets, moon, physical, volume, manifest] = await Promise.all([
+      const [planets, moon, physical, volume, manifest, skyFile] = await Promise.all([
         c.assets.json<PlanetsFile>('assets/jpl/planets.json'),
         c.assets.json<MoonFile>('assets/jpl/moon.json'),
         c.assets.json<PhysicalFile>(PHYSICAL_URL),
         createNoiseVolume(NOISE.size, NOISE.seed),
         c.assets.json<PlanetsManifest>(PLANETS_MANIFEST_URL),
+        c.assets.json<SkyFile>(SKY_URL),
         c.data.ready,
       ]);
       noise = volume;
@@ -1784,7 +1792,7 @@ export default function create(): UniverseModule {
         tiles: earthTiles,
         compile: (objects) => compileForFrames(objects),
       });
-      stars = createStarfield(STAR_MAX, 400, 7_101, { depthTest: true, dynamicRadius: true });
+      stars = createSky(skyFile, obliquityRad(physical));
       applyDetail(detail);
       // The stars are drawn every frame inside the post pipeline's scene pass: the target bound then is
       // the one the explorer's pipelines must be compiled for (compileForFrames).
@@ -1815,7 +1823,7 @@ export default function create(): UniverseModule {
       orbits = createOrbits(orbitPaths);
       dots = createImpostors(BODY_IDS.length);
       glare = createSunGlare(blackbodyRgb(SUN_KELVIN));
-      root.add(stars.object, orbits.mesh, dots.object, glare.object, ...BODY_IDS.map((id) => bodies?.objects[id]).filter((o): o is Group => o !== undefined), ...bodies.extras);
+      root.add(stars.object, stars.lines, orbits.mesh, dots.object, glare.object, ...BODY_IDS.map((id) => bodies?.objects[id]).filter((o): o is Group => o !== undefined), ...bodies.extras);
       satellites = createSatelliteLayer(c.assets.url('assets/live/active.tle'));
       // The Earth's turn (rad/s) from its rotation model: the prime meridian's rate, degrees per day.
       satellites.setEarthRotation((physical.bodies.Earth.pm[1] * Math.PI) / 180 / SECONDS_PER_DAY);
@@ -2008,6 +2016,10 @@ export default function create(): UniverseModule {
           markerSet = command.set;
           return;
       }
+    },
+
+    sky(command) {
+      stars?.setLayer(command.layer, command.on);
     },
 
     time(command) {

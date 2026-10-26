@@ -1,4 +1,5 @@
-/* The navigator's Living Earth (src/ui/explore/living-earth.ts): imagery, live layers, place search and field notes. */
+/* The navigator's Living Earth (src/ui/explore/living-earth.ts): imagery, live layers, place search and field notes; and About the world in view (src/ui/explore/about.ts). */
+.kf-nav-about,
 .kf-nav-living {
   margin: 0 var(--kf-space-3) var(--kf-space-2);
   border-block-start: 1px solid var(--kf-line);
@@ -6,6 +7,7 @@
   font-size: 0.8125rem;
 }
 
+.kf-nav-about > summary,
 .kf-nav-living > summary,
 .kf-living-prophets-box > summary {
   min-block-size: 2.25rem;
@@ -19,14 +21,79 @@
   cursor: pointer;
 }
 
+.kf-nav-about > summary:hover,
 .kf-nav-living > summary:hover,
 .kf-living-prophets-box > summary:hover {
   color: var(--kf-gold-strong);
 }
 
 /* On a phone's sheet (explore.css orders its parts): after the list, before the log. */
+.kf-nav.is-sheet .kf-nav-about,
 .kf-nav.is-sheet .kf-nav-living {
   order: 2;
+}
+
+.kf-about-body {
+  display: grid;
+  gap: var(--kf-space-3);
+  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
+}
+
+.kf-about-facts {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, max-content) 1fr;
+  gap: var(--kf-space-1) var(--kf-space-3);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.kf-about-facts dt {
+  color: var(--kf-text-muted);
+}
+
+.kf-about-facts dd {
+  margin: 0;
+  color: var(--kf-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-about-compare {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: 0;
+}
+
+.kf-about-drawing {
+  inline-size: 100%;
+  max-inline-size: 16rem;
+  block-size: auto;
+}
+
+.kf-about-disc {
+  fill: var(--kf-gold-faint);
+  stroke: var(--kf-gold);
+  stroke-width: 1;
+}
+
+.kf-about-disc--other {
+  fill: rgb(143 179 217 / 0.2);
+  stroke: var(--kf-hydrogen);
+}
+
+.kf-about-label {
+  fill: var(--kf-text-muted);
+  font-size: 11px;
+}
+
+.kf-about-compare figcaption,
+.kf-about-sources {
+  margin: 0;
+  color: var(--kf-text-muted);
+  line-height: 1.5;
+}
+
+.kf-about-sources {
+  font-size: 0.75rem;
 }
 
 .kf-living-body {
@@ -343,6 +410,7 @@
 
 /* Touch: every control a 44 px target, as the rest of the explorer's are (explore.css). */
 @media (pointer: coarse) {
+  .kf-nav-about > summary,
   .kf-nav-living > summary,
   .kf-living-prophets-box > summary,
   .kf-living-choice,

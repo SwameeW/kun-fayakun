@@ -478,6 +478,8 @@ export interface UniverseView {
   unixMs: number;
   /** The time machine (src/explore/time): its clock's rate and state, and the span of dates it can show. */
   time: UniverseTime;
+  /** The sky (src/explore/sky): which of its layers are shown, and how many stars are drawn. */
+  sky: { layers: Record<SkyLayerName, boolean>; stars: number };
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -693,6 +695,10 @@ export type UniverseTimeCommand =
   | { kind: 'date'; jdUtc: number }
   | { kind: 'rate'; rate: number };
 
+/** The sky's layers: the constellation figures (and their names), their boundaries, the grid (with the equator and the ecliptic), and star names. */
+export type SkyLayerName = 'constellations' | 'boundaries' | 'grid' | 'names';
+export type UniverseSkyCommand = { kind: 'layer'; layer: SkyLayerName; on: boolean };
+
 /** The time machine as the view reports it. */
 export interface UniverseTime {
   /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused (at real time during a trip). */
@@ -751,6 +757,8 @@ export interface UniverseModule extends ExperienceModule {
   earth(command: EarthCommand): void;
   /** Time machine commands (src/explore/time). */
   time(command: UniverseTimeCommand): void;
+  /** The sky's layers (src/explore/sky). */
+  sky(command: UniverseSkyCommand): void;
 }
 
 /** A camera pose around a body, for tests and frame captures. */
@@ -839,6 +847,8 @@ export interface AppCommands {
   earthCommand(command: EarthCommand): void;
   /** In the explorer: a time machine command (pause, faster, slower, backwards, now, a date). */
   universeTime(command: UniverseTimeCommand): void;
+  /** In the explorer: show or hide a layer of the sky. */
+  universeSky(command: UniverseSkyCommand): void;
 }
 
 /* ------------------------------------------------------------------ */

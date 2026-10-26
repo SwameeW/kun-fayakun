@@ -945,6 +945,57 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "yale-bsc5",
+      "kind": "dataset",
+      "title": "The Bright Star Catalogue, 5th Revised Edition (Preliminary Version): the naked-eye stars, to about magnitude 6.5",
+      "author": "Dorrit Hoffleit and Wayne H. Warren Jr. (Yale University Observatory; NASA Goddard Space Flight Center, Astronomical Data Center)",
+      "url": "http://tdc-www.harvard.edu/catalogs/bsc5.html",
+      "version": "BSC5 (1991), ASCII ybsc5 from the Harvard-Smithsonian Telescope Data Center, retrieved 2026-10-25",
+      "license": "Public domain in the United States: prepared by NASA's Astronomical Data Center (NSSDC/ADC, Goddard Space Flight Center), a U.S. Government work",
+      "licenseUrl": "https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/bsc5p.html",
+      "credit": "Stars: The Bright Star Catalogue, 5th Revised Ed. (Hoffleit and Warren 1991, NASA Astronomical Data Center)",
+      "notes": "The explorer's sky (public/assets/sky/sky.json, from scripts/sky/build.py): each star's J2000 position, V magnitude and B-V colour, drawn in its colour (from B-V by Ballesteros 2012) and brightness. The sizes and brightnesses on screen are a display mapping of the real magnitudes.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "iau-wgsn-names",
+      "kind": "dataset",
+      "title": "IAU Catalog of Star Names (IAU-CSN)",
+      "author": "IAU Division C Working Group on Star Names (WGSN)",
+      "url": "https://www.iau.org/public/themes/naming_stars/",
+      "version": "IAU-CSN, last updated 2022-04-04, retrieved 2026-10-25 from https://www.pas.rochester.edu/~emamajek/WGSN/IAU-CSN.txt",
+      "license": "Creative Commons Attribution (all IAU-produced products, as the file states)",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "credit": "Star names: IAU Working Group on Star Names (IAU-CSN)",
+      "notes": "The proper names the explorer can show beside the stars of the Bright Star Catalogue (matched by HR number).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "d3-celestial-constellations",
+      "kind": "dataset",
+      "title": "d3-celestial constellation data: the 88 IAU constellations' names, figures and boundaries (GeoJSON, J2000)",
+      "author": "Olaf Frohn; boundaries from Davenhall and Leggett (1989, CDS VI/49), after Delporte's IAU boundaries (1930)",
+      "url": "https://github.com/ofrohn/d3-celestial",
+      "version": "git commit 7e720a3de062059d4c5400a379146a601d9010e0, data/constellations.json, constellations.lines.json, constellations.bounds.json",
+      "license": "BSD-3-Clause (Copyright (c) 2015, Olaf Frohn; notice in LICENSES section 14)",
+      "licenseUrl": "https://github.com/ofrohn/d3-celestial/blob/master/LICENSE",
+      "credit": "Constellations: d3-celestial by Olaf Frohn (figures after the IAU's charts; boundaries Davenhall and Leggett 1989)",
+      "notes": "The explorer's constellation figures, names and boundaries. The figures are a convention for joining stars (the IAU defines each constellation by its boundary, not its lines).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []

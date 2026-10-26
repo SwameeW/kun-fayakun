@@ -433,6 +433,24 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
 - **Photo mode.** `kf-photo` on the root hides the header, the HUD tags and everything in the
   explorer's interface but "Show the interface"; H toggles it and Esc leaves it (before Esc would
   leave the explorer).
+- **Object information** (`src/explore/about.ts`, `src/ui/explore/about.ts`). `worldFacts(id)` from
+  planets.json (each planet's row of JPL's "Planetary Physical Parameters", kept whole by
+  scripts/jpl/build.py, and its elements) and physical.json (`gmKm3S2` from the DE440 header, NAIF's
+  radii and rotation): the planets as JPL gives them; the Sun's and the Moon's mass by GM over the
+  Earth's GM, gravity GM/R^2, escape speed sqrt(2GM/R). Axial tilts from NAIF's poles at J2000
+  with their periodic terms, retrograde rotators from the other pole. The navigator's "About"
+  section shows it for the world in view, with its distance now and a comparison to scale.
+- **The sky** (`src/explore/sky.ts`, `src/ui/explore/sky-panel.ts`, `public/assets/sky/sky.json` from
+  `scripts/sky/build.py`). The Bright Star Catalogue's stars (brightest first; a detail rung draws
+  its brightest `starCount`), the IAU's names, and d3-celestial's 88 constellations (Serpens in two
+  parts) with figures and boundaries, all J2000; placed by `skyDirection` (ICRF to the ecliptic by
+  the obliquity, then to the render frame) on a sphere that moves with the camera, depth-tested
+  so the worlds hide what is behind them. `UniverseSkyCommand` shows a layer (`constellations`,
+  `names`, `boundaries`, `grid`); `UniverseView.sky` reports them. It replaced the explorer's
+  procedural starfield (the chapters keep theirs).
+- **Messages.** The explorer's strings live in `src/i18n/en.explore.json`, added to the catalogue by
+  its interface (`I18n.extend`) so they never weigh on the shell; the validator reads it with
+  en.json and en.chapters.json (no key in two files).
 - Roadmap for the rest of SpaceEngine's mechanics: `docs/EXPLORER-MECHANICS.md`.
 
 ## Living Earth (explorer)
