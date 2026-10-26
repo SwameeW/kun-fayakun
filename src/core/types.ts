@@ -859,9 +859,15 @@ export interface UniverseLab {
   /** Relative drift since the last intervention. */
   drift: { energy: number; momentum: number; angularMomentum: number };
   interventions: ReadonlyArray<{ step: number; t: number; kind: string; id: string }>;
-  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room) or a graze both carried on from; Leinhardt and Stewart's regime and the speed at contact; a merger's crater on a solid world (src/sim/craters: its final diameter, km, and whether complex); the impact's energy (J). */
-  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean; craterKm: number | null; craterComplex: boolean; energyJ: number }>;
+  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room) or a graze both carried on from; Leinhardt and Stewart's regime and the speed at contact; the crater on a solid world (src/sim/craters: its final diameter and depth, km, and whether complex) and, on a world drawn with its surface, where it is drawn (planetocentric degrees, east positive); the impact's energy (J). */
+  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean; craterKm: number | null; craterDepthKm: number | null; craterComplex: boolean; craterSite: { latDeg: number; lonDeg: number } | null; energyJ: number }>;
   checkpoints: ReadonlyArray<{ step: number; t: number }>;
+  /** Rings and belts of test particles (src/sim/swarms): each one's body, particles left and particles that struck a body. */
+  swarms: ReadonlyArray<{ id: string; name: string; primary: string; count: number; lost: number }>;
+  /** Particles drawn now (all the swarms). */
+  particlesDrawn: number;
+  /** km per au (the explorer's data), for distances the interface offers in au. */
+  auKm: number;
   logLength: number;
   discarded: number;
   prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null; encounters: ReadonlyArray<{ with: string; t: number; distanceKm: number }> } | null;
@@ -940,7 +946,15 @@ export type LabCommand =
   | { kind: 'save' }
   | { kind: 'restoreSaved' }
   | { kind: 'export' }
-  | { kind: 'import'; text: string };
+  | { kind: 'import'; text: string }
+  /**
+   * Rings and belts (ledger IM-6): test particles about a body (semi-major axes from inner to outer,
+   * eccentricities and inclinations up to the limits, in its equator's plane or its orbit's); a
+   * gravitating ring of a few bodies sharing a mass; a swarm removed.
+   */
+  | { kind: 'addSwarm'; primary: string; name: string; count: number; innerKm: number; outerKm: number; eccentricity: number; inclinationDeg: number; plane: 'equator' | 'orbit' }
+  | { kind: 'addRing'; primary: string; name: string; count: number; innerKm: number; outerKm: number; massKg: number; plane: 'equator' | 'orbit' }
+  | { kind: 'removeSwarm'; id: string };
 
 /** The time machine as the view reports it. */
 export interface UniverseTime {

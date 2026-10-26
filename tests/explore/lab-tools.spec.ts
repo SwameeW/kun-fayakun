@@ -286,3 +286,42 @@ test('frames, measurements, a quantity followed, the library, a link that opens 
   await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(10);
   expect(pageErrors).toEqual([]);
 });
+
+test('rings and belts: a main belt about the Sun and a ring about the Earth, drawn as points, kept as they run, removed; a gravitating ring of bodies', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  const rings = page.getByTestId('lab-rings');
+  await rings.locator('summary').click();
+  // Saturn's drawn rings are the decorative kind, and say so.
+  await expect(page.getByTestId('lab-rings-decorative')).toBeVisible();
+  // No body chosen: a ring needs one.
+  await expect(page.getByTestId('lab-ring-preset-ring')).toBeDisabled();
+  await page.getByTestId('lab-ring-preset-asteroid').click();
+  await expect.poll(async () => (await lab(page))?.swarms.map((w) => [w.primary, w.count]), LIVE).toEqual([['sun', 1000]]);
+  await expect.poll(async () => (await lab(page))?.particlesDrawn, LIVE).toBe(1000);
+  await expect(page.getByTestId('lab-rings-list')).toContainText('Main belt: 1,000 test particles about Sun');
+  // A ring about the Earth, 500 particles, in its equator's plane.
+  await page.getByTestId('lab-body-earth').click();
+  await page.getByTestId('lab-ring-count').selectOption('500');
+  await page.getByTestId('lab-ring-preset-ring').click();
+  await expect.poll(async () => (await lab(page))?.swarms.map((w) => [w.primary, w.count]), LIVE).toEqual([['sun', 1000], ['earth', 500]]);
+  await expect.poll(async () => (await lab(page))?.particlesDrawn, LIVE).toBe(1500);
+  await expect(page.getByTestId('lab-history')).toContainText('Ring of Earth added');
+  // Run a few days: the belt and the ring keep their particles (none flung out or struck).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(3 * 86_400);
+  expect((await lab(page))?.swarms.map((w) => w.count + w.lost)).toEqual([1000, 500]);
+  // Removed: gone from the list and the drawing.
+  await page.getByTestId('lab-ring-remove-swarm-1').click();
+  await expect.poll(async () => (await lab(page))?.swarms.map((w) => w.id), LIVE).toEqual(['swarm-2']);
+  await expect.poll(async () => (await lab(page))?.particlesDrawn, LIVE).toBe(500);
+  // A gravitating ring: a dozen bodies about the Earth, each one a body of the experiment.
+  await page.getByTestId('lab-ring-preset-moonlets').click();
+  await expect.poll(async () => (await lab(page))?.bodies.filter((b) => b.id.startsWith('moonlets-1-')).length, LIVE).toBe(12);
+  expect(pageErrors).toEqual([]);
+});

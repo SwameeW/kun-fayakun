@@ -40,6 +40,18 @@ const QUANTITIES: readonly LabQuantity[] = ['distance', 'speed', 'eccentricity',
 const POINTS = ['L1', 'L2', 'L3', 'L4', 'L5'] as const;
 /** The chart's size (SVG units). */
 const CHART = { w: 280, h: 96, pad: 4 } as const;
+/** Particles a ring or belt may have. */
+const RING_COUNTS = [500, 1000, 2000] as const;
+/**
+ * Belts about the most massive body (au; then the largest eccentricity and inclination, degrees): the
+ * main asteroid belt between Jupiter's 4:1 and 2:1 resonances (2.06 to 3.27 au), and the classical
+ * Kuiper belt from the 3:2 resonance with Neptune (39.4 au) to about 48 au.
+ */
+const BELTS = { asteroid: [2.06, 3.27, 0.2, 15], kuiper: [39.4, 48, 0.1, 10] } as const;
+/** A ring of test particles about the chosen body, in its equator's plane (its radii). */
+const RING = { inner: 1.5, outer: 2.5 } as const;
+/** A gravitating ring: its bodies, where (the chosen body's radii: outside a rocky body's Roche limit, about 2.5) and its mass (a share of the chosen body's). */
+const MOONLETS = { count: 12, inner: 2.8, outer: 3.2, massShare: 1e-4 } as const;
 
 export function createLabPanel(app: App, f: Formatters): LabPanel {
   const { i18n } = app;
@@ -56,6 +68,30 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     b.addEventListener('click', onClick);
     return b;
   };
+  /**
+   * Fills a list from keyed items, keeping the elements of keys still listed in place: a button under
+   * the pointer, or holding the focus, stays put while the running clock adds items around it.
+   */
+  const keyedList = (list: HTMLElement): ((items: Array<{ key: string; make: () => HTMLElement }>) => void) => {
+    const made = new Map<string, HTMLElement>();
+    return (items) => {
+      const wanted = new Set(items.map((item) => item.key));
+      for (const [key, el] of made) {
+        if (wanted.has(key)) continue;
+        el.remove();
+        made.delete(key);
+      }
+      items.forEach((item, index) => {
+        let el = made.get(item.key);
+        if (!el) {
+          el = item.make();
+          made.set(item.key, el);
+        }
+        const at = list.children[index] ?? null;
+        if (at !== el) list.insertBefore(el, at);
+      });
+    };
+  };
   const scientific = (value: number): string => {
     if (value === 0) return '0';
     const exponent = Math.floor(Math.log10(Math.abs(value)));
@@ -69,6 +105,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     const mt = joulesValue / MEGATON_J;
     return mt < 1000 ? f.number(mt, mt < 10 ? 2 : 0) : scientific(mt);
   };
+  /** A crater's depth: metres below a kilometre (the distance format starts at whole kilometres). */
+  const depthText = (kmValue: number): string => (kmValue < 1 ? f.keep(i18n.t('ui.universe.lab.metres', { value: f.number(kmValue * 1000, 0) })) : f.keep(i18n.t('ui.universe.lab.km', { value: f.number(kmValue, kmValue < 10 ? 1 : 0) })));
   const days = (s: number): string => f.keep(i18n.t('ui.universe.lab.days', { value: f.number(s / 86_400, s < 864_000 ? 2 : 1) }));
   const speed = (v: number): string => f.keep(i18n.t('ui.universe.lab.kms', { value: f.number(v, v < 10 ? 3 : 2) }));
   const duration = (sec: number): string => (sec < 2 * 86_400 ? f.keep(i18n.t('ui.universe.lab.hours', { value: f.number(sec / 3600, sec < 36_000 ? 2 : 1) })) : sec < 2 * 365.25 * 86_400 ? days(sec) : f.keep(i18n.t('ui.universe.lab.years', { value: f.number(sec / (365.25 * 86_400), 2) })));
@@ -450,6 +488,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const shareNote = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-share-note' });
   const checkpoints = h('ul', { class: 'kf-living-list', 'aria-label': i18n.t('ui.universe.lab.checkpoints'), 'data-testid': 'lab-checkpoints' });
   let checkpointKey = '';
+  const fillCheckpoints = keyedList(checkpoints);
   const tools = details(
     'ui.universe.lab.tools',
     'lab-tools',
@@ -491,6 +530,49 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     })),
   );
 
+  // Rings and belts (ledger IM-6): test particles, or a gravitating ring of a few bodies; Saturn's drawn rings are the third kind, decorative.
+  const ringCount = select('ui.universe.lab.rings.count', 'lab-ring-count', RING_COUNTS.map((n) => [String(n), f.number(n, 0)] as const));
+  ringCount.select.value = '1000';
+  const ringsDecorative = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-rings-decorative', hidden: true }, i18n.t('ui.universe.lab.rings.decorative'));
+  const ringsNeed = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-rings-need' }, i18n.t('ui.universe.lab.rings.need'));
+  const ringsList = h('ul', { class: 'kf-living-list', 'aria-label': i18n.t('ui.universe.lab.rings.title'), 'data-testid': 'lab-rings-list' });
+  const fillRings = keyedList(ringsList);
+  let ringsKey = '';
+  /** The most massive body (a star, in the systems offered): what belts go about. */
+  const heaviest = (): UniverseLabBody | undefined => lab?.bodies.reduce<UniverseLabBody | undefined>((a, b) => (!a || b.gm > a.gm ? b : a), undefined);
+  const ringButton = (which: 'asteroid' | 'kuiper' | 'ring' | 'moonlets'): HTMLButtonElement =>
+    button(i18n.t(`ui.universe.lab.rings.add.${which}`), `lab-ring-preset-${which}`, () => {
+      const l = lab;
+      const count = Number(ringCount.select.value) || 1000;
+      if (!l) return;
+      if (which === 'asteroid' || which === 'kuiper') {
+        const star = heaviest();
+        if (!star) return;
+        const [inner, outer, e, i] = which === 'asteroid' ? BELTS.asteroid : BELTS.kuiper;
+        send({ kind: 'addSwarm', primary: star.id, name: i18n.t(`ui.universe.lab.rings.name.${which}`), count, innerKm: inner * l.auKm, outerKm: outer * l.auKm, eccentricity: e, inclinationDeg: i, plane: 'orbit' });
+        return;
+      }
+      const b = selectedBody();
+      if (!b) return;
+      const name = i18n.t(`ui.universe.lab.rings.name.${which}`, { body: nameOf(b) });
+      if (which === 'ring') send({ kind: 'addSwarm', primary: b.id, name, count, innerKm: RING.inner * b.radiusKm, outerKm: RING.outer * b.radiusKm, eccentricity: 0, inclinationDeg: 0, plane: 'equator' });
+      else send({ kind: 'addRing', primary: b.id, name, count: MOONLETS.count, innerKm: MOONLETS.inner * b.radiusKm, outerKm: MOONLETS.outer * b.radiusKm, massKg: b.massKg * MOONLETS.massShare, plane: 'equator' });
+    });
+  const ringOn = ringButton('ring');
+  const moonletsOn = ringButton('moonlets');
+  const rings = details(
+    'ui.universe.lab.rings.title',
+    'lab-rings',
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.rings.intro')),
+    ringCount.label,
+    ringCount.select,
+    h('div', { class: 'kf-lab-row' }, ringButton('asteroid'), ringButton('kuiper')),
+    h('div', { class: 'kf-lab-row' }, ringOn, moonletsOn),
+    ringsNeed,
+    ringsDecorative,
+    ringsList,
+  );
+
   const element = h(
     'section',
     { class: 'kf-nav-lab', 'data-testid': 'lab-panel', 'aria-label': i18n.t('ui.universe.lab.title'), hidden: true },
@@ -506,6 +588,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     many,
     inspector,
     add,
+    rings,
     viewBox,
     measureBox,
     graphBox,
@@ -773,7 +856,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         ...row(i18n.t('ui.universe.lab.check.angular'), l.drift.angularMomentum.toExponential(1), 'lab-check-angular'),
       );
       constrained.hidden = !l.constrained;
-      const hkey = `${l.interventions.length}:${l.events.length}:${l.discarded}:${l.interventions.at(-1)?.step ?? -1}`;
+      // A crater's place on a world drawn comes a frame after its event: counted, so the line gains it.
+      const hkey = `${l.interventions.length}:${l.events.length}:${l.events.filter((e) => e.craterSite).length}:${l.discarded}:${l.interventions.at(-1)?.step ?? -1}`;
       if (hkey !== historyKey) {
         historyKey = hkey;
         const name = (id: string): string => {
@@ -791,7 +875,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
                 : e.kind === 'graze'
                   ? i18n.t('ui.universe.lab.grazed', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), when: days(e.t) })
                   : i18n.t('ui.universe.lab.impact', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[e.regime]}`), count: e.created, when: days(e.t) })) +
-                (e.craterKm === null ? '' : `; ${i18n.t('ui.universe.lab.crater', { diameter: f.distance(e.craterKm), kind: i18n.t(e.craterComplex ? 'ui.universe.lab.crater.complex' : 'ui.universe.lab.crater.simple'), energy: megatons(e.energyJ) })}`),
+                (e.craterKm === null ? '' : `; ${i18n.t('ui.universe.lab.crater', { diameter: f.distance(e.craterKm), depth: depthText(e.craterDepthKm ?? 0), kind: i18n.t(e.craterComplex ? 'ui.universe.lab.crater.complex' : 'ui.universe.lab.crater.simple'), energy: megatons(e.energyJ) })}`) +
+                (e.craterSite ? i18n.t('ui.universe.lab.craterAt', { place: f.coordinates(e.craterSite.latDeg, e.craterSite.lonDeg) }) : ''),
             ),
           ),
           ...(l.discarded > 0 ? [h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.discarded', { count: l.discarded }))] : []),
@@ -800,12 +885,42 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       const ckey = l.checkpoints.map((c) => c.step).join('|');
       if (ckey !== checkpointKey) {
         checkpointKey = ckey;
-        checkpoints.replaceChildren(
-          ...l.checkpoints.slice(-6).reverse().map((c) =>
-            h('li', {}, button(i18n.t('ui.universe.lab.goBack', { when: days(c.t) }), `lab-checkpoint-${c.step}`, () => {
-              send({ kind: 'seek', step: c.step });
-            })),
-          ),
+        fillCheckpoints(
+          l.checkpoints.slice(-6).reverse().map((c) => ({
+            key: `${c.step}:${c.t}`,
+            make: () =>
+              h('li', {}, button(i18n.t('ui.universe.lab.goBack', { when: days(c.t) }), `lab-checkpoint-${c.step}`, () => {
+                send({ kind: 'seek', step: c.step });
+              })),
+          })),
+        );
+      }
+      // Rings and belts: each one's particles, those lost, and a way to remove it.
+      const ringPrimary = selectedBody();
+      ringOn.disabled = !ringPrimary || !(ringPrimary.gm > 0);
+      moonletsOn.disabled = ringOn.disabled;
+      ringsNeed.hidden = !ringOn.disabled;
+      ringsDecorative.hidden = !l.bodies.some((b) => b.builtIn === 'saturn');
+      const rk = l.swarms.map((w) => `${w.id}:${w.count}:${w.lost}:${w.primary}`).join('|');
+      if (rk !== ringsKey) {
+        ringsKey = rk;
+        const bodyName = (id: string): string => {
+          const found = l.bodies.find((x) => x.id === id);
+          return found ? nameOf(found) : (l.names[id] ?? id);
+        };
+        fillRings(
+          l.swarms.map((w) => ({
+            key: `${w.id}:${w.count}:${w.lost}:${w.primary}`,
+            make: () =>
+              h(
+                'li',
+                { class: 'kf-lab-row', 'data-testid': `lab-ring-${w.id}` },
+                h('span', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.rings.item', { name: w.name, count: f.number(w.count, 0), body: bodyName(w.primary) }) + (w.lost > 0 ? i18n.t('ui.universe.lab.rings.lost', { count: f.number(w.lost, 0) }) : '')),
+                button(i18n.t('ui.universe.lab.rings.remove', { name: w.name }), `lab-ring-remove-${w.id}`, () => {
+                  send({ kind: 'removeSwarm', id: w.id });
+                }),
+              ),
+          })),
         );
       }
       // The library, by name.

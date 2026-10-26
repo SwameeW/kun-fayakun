@@ -137,6 +137,31 @@ test('a breakup in the engine: the remnant keeps the target\u2019s id, and mass,
   expect(events.length).toBe(1);
 });
 
+test('reaccretion: after a slow breakup, a piece thrown off below escape falls back and merges, everything accounted', () => {
+  // A Mars-mass body at 1.1 times the escape speed, a little off centre: partial accretion. The pieces leave at
+  // Chambers's 1.05 times the mutual escape speed, less what the energy the impact gives up allows, so some come back.
+  const o = impactOutcome(EARTH, MARS, 1, 0);
+  const s = stateFrom([spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('impactor', MARS, [EARTH.radiusKm + MARS.radiusKm + 1500, 500, 0], [-1.1 * o.vEscPrime, 0, 0])]);
+  const ref = diagnostics(s);
+  const events: ContactEvent[] = [];
+  const acc: number[] = [];
+  for (let k = 0; k < 3000; k += 1) step(s, 30, acc, events);
+  const [breakup, ...later] = events;
+  expect(breakup?.kind).toBe('fragment');
+  expect(breakup?.regime).toBe('partial-accretion');
+  // Within a day, a piece it made comes down on the Earth again and merges.
+  const back = later.filter((e) => e.kind === 'merge' && e.survivor === 'earth' && (breakup?.created ?? []).includes(e.absorbed));
+  expect(back.length).toBeGreaterThan(0);
+  expect((back[0]?.t ?? Infinity) - (breakup?.t ?? 0)).toBeLessThan(86_400);
+  expect(s.ids).not.toContain(back[0]?.absorbed);
+  // Through it all, mass exactly, momentum and angular momentum (the mergers' spin included) to rounding.
+  const now = diagnostics(s);
+  expect(Math.abs(now.gm - ref.gm) / ref.gm).toBeLessThan(1e-14);
+  const d = drift(ref, now);
+  expect(d.momentum).toBeLessThan(1e-12);
+  expect(d.angularMomentum).toBeLessThan(1e-9);
+});
+
 test('a graze passes on: hit-and-run leaves both bodies, and the pair is not struck again until it has parted', () => {
   // Just above the merging speed, well off centre (b over b_crit = 0.65).
   const o = impactOutcome(EARTH, MARS, 1, 0.8);

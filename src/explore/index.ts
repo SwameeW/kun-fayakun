@@ -71,6 +71,7 @@ import { fineDetailShown } from './bodies/earth';
 import { craterDetailShown } from './bodies/moon';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
+import type { SurfaceMark } from './bodies/marks';
 import { DETAIL, EXPLORE_TIERS, type ExploreDetail, type ExploreTier } from './detail';
 import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
 import { createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
@@ -100,6 +101,9 @@ const WALK_FOV = 70;
 const WALK_LENS = { near: 1e-4, far: 2000 } as const;
 /** On foot the imagery is aimed at the walker's feet as if a pixel there spanned a metre, which asks for its finest level (km). */
 const WALK_FOOTPRINT_KM = 0.001;
+/** The worlds drawn with a solid surface the laboratory's craters mark, and no marks at all. */
+const CRATERED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
+const NO_MARKS: readonly SurfaceMark[] = [];
 /** The narrowest lens over the day's mosaic (its 250 m pixels at about four screen pixels each from the lowest orbit). */
 const TODAY_LENS_MIN_DEG = 6;
 /**
@@ -1375,6 +1379,8 @@ export default function create(): UniverseModule {
       }
       if (lensMin !== nav.lensMinDeg) nav.setLensMin(lensMin);
     }
+    // The laboratory's craters on the worlds drawn solid (none outside an experiment).
+    for (const id of CRATERED) bodies.setMarks(id, lab?.active ? lab.marks(id) : NO_MARKS);
     unit(sunDir, sys.bodies.mercury.position, sun);
     bodies.mercury.update({ time: ambient, sun: sunDir, light: lightAt('mercury'), earth: toEarth, earthLit: 0 }, origin3);
     unit(sunDir, sys.bodies.venus.position, sun);

@@ -399,12 +399,12 @@ test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, 
     if (!box) throw new Error(`${testId} has no box`);
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   };
-  // Forward held for a second walks about a metre and a half.
+  // Forward held walks (about a metre and a half a second): held until it has gone half a metre, since a
+  // slow machine's frames come seldom and each advances the walker at most 0.2 s.
   const before = (await view(page))?.walk;
   await touch(cdp, 'touchStart', [await centre('walk-forward')]);
-  await page.waitForTimeout(1200);
-  await touch(cdp, 'touchEnd', []);
   await expect.poll(async () => (await view(page))?.walk?.walkedM ?? 0, { timeout: 30_000 * SLOW }).toBeGreaterThan(0.5);
+  await touch(cdp, 'touchEnd', []);
   // Let go, the walker stops.
   const stopped = (await view(page))?.walk?.walkedM ?? 0;
   await page.waitForTimeout(500);

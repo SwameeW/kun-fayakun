@@ -30,6 +30,10 @@
  * as the Earth's lit face turned toward the Moon. Real earthshine is about 10^-4 of sunlight, far below
  * what a camera exposed for the day side records; it is shown a few hundred times stronger, as the eye
  * sees it, so the dark disc reads (a visual aid, like the points of light).
+ *
+ * The laboratory's impacts leave their craters here (./marks): fresh rock bright on the Moon and
+ * Mercury (as their young craters' rays are), dark on Mars (where an impact blows the bright dust off
+ * the basalt beneath, as fresh Martian craters show); the colours are illustrative.
  */
 
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Node, type Object3D } from 'three/webgpu';
@@ -40,6 +44,7 @@ import { decodeNormal, mapCoords, mipLevel, sampleSlot, sampleSlotLevel, sampleS
 import { bumpGradient, craters, keepOnSphere, litCosine, sphereFootprint, sunlit, tiltNormal } from './shading';
 import { textureTier } from '../detail';
 import { blendAdditive } from '../render/blending';
+import { createMarks, type SurfaceMark } from './marks';
 
 /** The kit's maps put the near side's centre (east longitude 0) at u = 0.5 (planets.json bodies.moon.uAtLon0). */
 const U_AT_LON0 = 0.5;
@@ -102,12 +107,16 @@ export interface ExploreMoon {
   update(frame: MoonFrame, cameraWorld: Vector3): void;
   prepare(detail: ExploreDetail): Object3D[];
   apply(detail: ExploreDetail): void;
+  /** The laboratory's craters on it (none outside the laboratory). */
+  setMarks(marks: readonly SurfaceMark[]): void;
   dispose(): void;
 }
 
 const node = (x: FloatNode | number): FloatNode => (typeof x === 'number' ? float(x) : x);
 const surge = (phase: FloatNode | number): FloatNode => float(1).add(float(SURGE.amplitude).div(float(1).add(tan(node(phase).mul(0.5)).div(SURGE.width))));
 const lommel = (mu0: FloatNode | number, mu: FloatNode | number): FloatNode => node(mu0).mul(2).div(node(mu0).add(node(mu)).add(1e-3));
+/** Relative luminance (Rec. 709) of a linear colour. */
+const luma = (v: Vec3Node): FloatNode => dot(v, vec3(0.2126, 0.7152, 0.0722));
 
 export interface RockOptions {
   body: 'moon' | 'mercury' | 'mars';
@@ -128,6 +137,10 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
   const colourSlot = textures.slot(options.body, 'colour');
   const normalSlot = textures.slot(options.body, 'normal');
   const standard = lommel(STANDARD.mu0, STANDARD.mu).mul(surge(STANDARD.phase)).mul(Math.exp(-PHASE_DARKENING * STANDARD.phase));
+  // Fresh rock: bright on the Moon and Mercury (rays too: no air or dust to hide them), dark basalt under Mars's dust.
+  // (Of the map's mean, not the colour there, so nothing of the old surface shows through the new.)
+  const exaggeration = textures.manifest.files.find((f) => f.body === options.body && f.map === 'normal')?.reliefExaggeration ?? 1;
+  const marks = options.body === 'mars' ? createMarks(() => colourSlot.mean.rgb.mul(0.45).add(vec3(0.035, 0.035, 0.04)), { exaggeration }) : createMarks(() => vec3(max(luma(colourSlot.mean.rgb).mul(1.5), 0.16)), { rays: true, exaggeration });
 
   const build = (detail: ExploreDetail): MeshBasicNodeMaterial => {
     const point = options.body === 'moon' ? positionLocal : vec3(positionLocal.x, positionLocal.y.mul(options.polar), positionLocal.z);
@@ -136,7 +149,6 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     const c = mapCoords(n, n.y, options.uAtLon0);
     const smooth = detail.tier === 'low';
     const read = smooth ? sampleSlotSmooth : sampleSlot;
-    const luma = (v: Vec3Node): FloatNode => dot(v, vec3(0.2126, 0.7152, 0.0722));
     let albedo: Vec3Node = read(colourSlot, c).rgb;
     if (options.body !== 'mars' && (detail.tier === 'low' || detail.tier === 'medium')) {
       // The fine map's brightness over a coarse level's colour: ETC1S's colour blocks average out there
@@ -173,8 +185,12 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     const keepSmaller = options.body === 'moon' ? keepOnSphere(footprint, cells * CRATERS.second * 3) : float(0);
     relief = tiltNormal(relief, small.gradient.mul(keepSmall).add(smaller.gradient.mul(keepSmaller)), 1);
     // Fresh rims a little brighter, floors a little darker.
-    const marks = small.rim.mul(0.12).sub(small.inside.mul(0.06)).mul(keepSmall).add(smaller.rim.mul(0.1).sub(smaller.inside.mul(0.05)).mul(keepSmaller));
-    albedo = albedo.mul(marks.add(1));
+    const freshRims = small.rim.mul(0.12).sub(small.inside.mul(0.06)).mul(keepSmall).add(smaller.rim.mul(0.1).sub(smaller.inside.mul(0.05)).mul(keepSmaller));
+    albedo = albedo.mul(freshRims.add(1));
+    // The laboratory's craters, at their true size, depth and place.
+    const marked = marks.apply(n, relief, albedo, footprint);
+    relief = marked.normal;
+    albedo = marked.albedo;
     const view = normalize(uEye.sub(options.body === 'moon' ? n : point));
     const nDotL = dot(n, uSun);
     const mu0 = litCosine(dot(relief, uSun));
@@ -236,7 +252,7 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     const earthshine = max(dot(relief, uEarth), 0).mul(uEarthshine);
     const light = vec3(law.mul(terminator).mul(lit)).add(EARTHLIGHT.mul(earthshine));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
-    material.colorNode = albedo.mul(light).mul(uLight);
+    material.colorNode = albedo.mul(light).mul(uLight).add(marked.glow);
     if (options.polar !== 1) material.positionNode = point;
     return material;
   };
@@ -302,6 +318,9 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
       uEarthshine.value = options.body === 'moon' ? EARTHSHINE * frame.earthLit : 0;
       uEye.value.copy(scratch.copy(cameraWorld).applyMatrix4(inverse));
       object.visible = frame.light > 1e-3;
+    },
+    setMarks(list) {
+      marks.set(list);
     },
     prepare(detail) {
       const m = materialFor(detail);

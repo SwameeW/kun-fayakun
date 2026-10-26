@@ -133,6 +133,21 @@ the same G.
   most six debris bodies, with mass, momentum, angular momentum and the closed model's energy kept
   exactly. A grazing hit-and-run leaves both as they were. The heavier body is the target (the Sun
   always keeps its id).
+- **Rings and belts** (`src/sim/swarms.ts`). Test particles, up to 2,000 in a ring or belt and
+  4,000 in all, feel every body and pull nothing, so the bodies run bit for bit the same with them
+  or without. Each is carried relative to the body it was made about: between two half kicks from
+  everything else (the other bodies, every oblate body's J2 term, and the opposite of its primary's
+  own acceleration), it moves exactly along its conic about the primary (`src/sim/kepler.ts`,
+  universal variables). That is the Wisdom and Holman (1991) split, so a ring about the Earth whose
+  particles turn in two and a half hours keeps its shape under the hour-long steps the Earth and the
+  Moon set, and a belt particle under one-day steps follows a ten-minute leapfrog to half a
+  kilometre in two years. A particle within a body's radius strikes it and is counted; one passing
+  through a body within a single step is not caught. If the primary merges away its particles go on
+  about the survivor, if it is removed about the most massive body. They are made from a seed in
+  the log (semi-major axes uniform between the radii given, eccentricities and inclinations up to
+  the limits, in the primary's equator for a ring, its orbit's plane for a belt), so they replay
+  exactly. A gravitating ring is a dozen ordinary bodies sharing a mass. Saturn's drawn rings are the
+  third kind, decorative: Cassini's measurements, drawn, not simulated, and the panel says so.
 - **Seed.** The solar-system fork takes positions from the explorer's ephemeris (JPL's
   approximate planetary elements, Standish and Williams, and the Horizons Moon table) at the
   explorer's date, clamped inside the Moon table's span; velocities by central differences over
@@ -195,7 +210,7 @@ plus its log.
 | `seedNote` | How the start was made, and its approximations |
 | `integrator` | `eta`, step bounds (s), `retimeSteps`, or a `fixedDtS` |
 | `bodies[]` | `id` (stable, unique), `name` (text, at most 60 characters), `gm` (km³ s⁻², 0 for a test particle), `radiusKm`, `pos` (km), `vel` (km/s), `origin` (`observed`, `modelled` or `user-edited`), `sourceIds` (ids in `data/sources.json`); optional `spin` (`{periodS, pole}`, prograde about the pole), `j2`, `inertia` (I / MR², 0.4 when absent) |
-| `log[]` | `{ step, command }`, commands `setMass {id, gm}`, `setVelocity {id, vel}`, `setState {id, pos, vel}`, `setRadius {id, radiusKm, gm?}`, `setSpin {id, periodS, pole}`, `setFixed {id, fixed}`, `rename {id, name}`, `add {body}`, `remove {id}` |
+| `log[]` | `{ step, command }`, commands `setMass {id, gm}`, `setVelocity {id, vel}`, `setState {id, pos, vel}`, `setRadius {id, radiusKm, gm?}`, `setSpin {id, periodS, pole}`, `setFixed {id, fixed}`, `rename {id, name}`, `add {body}`, `remove {id}`, `addSwarm {swarm: {id, name, primary, count, innerKm, outerKm, eccentricity, inclinationDeg, normal, seed}}`, `removeSwarm {id}`, `addRing {ring: {id, name, primary, count, innerKm, outerKm, gm, radiusKm, normal, seed}}` (its bodies `<id>-1` on) |
 | `persistentIds` | Bodies that keep their id in any merger and cannot be removed |
 
 Saved in IndexedDB (database `kf-lab`, store `scenarios`, key `current`) and exported as
@@ -239,10 +254,11 @@ These are deliberate simplifications; the interface does not claim otherwise.
   velocities are differenced, so the copy departs from the real system from the start (measured
   below). That departure is the model's, not the Sun's.
 - **Collisions are scaling laws, not hydrodynamics.** The outcome and the remnants' masses follow
-  Leinhardt and Stewart (2012); the debris's directions and launch speeds are a documented placeholder
-  (a cone about the impact site, 1.05 to 1.6 times the remnant's escape speed), not yet their fitted
-  speed distribution; a hit-and-run projectile is not eroded. No craters or melt: the heat is a number,
-  not a temperature.
+  Leinhardt and Stewart (2012); the pieces leave at 1.05 times the pair's mutual escape speed, evenly
+  spaced round the collision's plane (Chambers 2013), not at the paper's own fitted speed distribution;
+  a hit-and-run projectile is not eroded. A cratering impact's crater is drawn on the Earth's land,
+  the Moon, Mercury and Mars by its scaling law, its glow and rays illustrative
+  ([IMPACTS.md](IMPACTS.md#craters-and-energy)); the heat is otherwise a number, not a temperature.
 - **No climate or materials.** Changing a world's mass or orbit does not change its temperature,
   atmosphere or appearance; the Earth is shown with its static imagery, not the day's.
 - **Light.** The Sun lights the scene wherever it is; a body added as a star does not shine.
@@ -301,6 +317,8 @@ no external integrator's fixture (REBOUND) is pinned yet.
 | Orbital elements round trip; Lagrange points are equilibria; a Trojan stays at L4 for ten Jovian years; Roche limits, breakup period, measurements | `tests/unit/elements.spec.ts` |
 | Oblateness: nodal regression at the textbook rate; the axis precesses with angular momentum kept; held bodies; radius, spin, state and name edits; undo and redo bit for bit (also through edits sharing a step); encounters; the seeded rotations (the Earth's 23.44° and sidereal day) | `tests/unit/lab-engine.spec.ts` |
 | An external reference: REBOUND 5.2.2's IAS15 over a year, within measured bounds, converging as the step squared | `tests/unit/rebound.spec.ts` (fixture `tests/fixtures/rebound/`, script `scripts/rebound/`) |
+| The two-body drift: a quarter turn, Kepler's equation solved independently, a thousand periods, hyperbolas, reversibility | `tests/unit/kepler.spec.ts` |
+| Rings and belts: they pull nothing (bit for bit); a ring about the Earth stays a ring under hour-long steps; a belt particle against a fine reference; replay through save and load; carried over when the primary merges; refused when impossible; a gravitating ring's bodies | `tests/unit/swarms.spec.ts`; in the browser `tests/explore/lab-tools.spec.ts` |
 | The tools in the browser: the inspector's numbers, held edits, rename, hold, undo and redo; a push, elements, rotation, accuracy, encounters, Lagrange points and L4; the palette, placing with the pointer, dragging the arrow; frames, measurements, a chart, the library, a link that reopens it, several bodies at once | `tests/explore/lab-tools.spec.ts` |
 | Predictions: the live state untouched, a closed orbit, stopping at a merger, a moon about its planet | the same |
 | Pause stops the physics, not just the drawing | `tests/explore/lab.spec.ts` |

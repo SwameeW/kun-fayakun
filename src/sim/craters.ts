@@ -13,6 +13,15 @@
  *   transition. On the Earth the transition is a final diameter of 3.2 km (so D_c = 3.2 / 1.25 =
  *   2.56 km); elsewhere it is scaled inversely with surface gravity, as the transition is observed
  *   to scale (about 19 km on the Moon, 8.5 km on Mars).
+ * - The depth, rim crest to floor: a simple crater's from its breccia lens (eqs. 23 to 26: the
+ *   transient crater D_tc / (2 sqrt 2) deep, a lens of 0.032 D^3 filling it back), a complex one's
+ *   from Herrick et al.'s fit to the fresh craters of Venus, 0.4 D^0.3 km (eq. 28), which the paper
+ *   takes for the Earth's too, as their gravities are alike. Fresh complex craters are deeper on
+ *   lighter worlds (the Moon's, 1.044 D^0.301 km: Pike 1977), so on other worlds it is scaled by
+ *   (g_Earth / g)^0.533, the power that carries the Earth's law onto the Moon's: an interpolation
+ *   between the two fits by surface gravity, not a law of its own.
+ * - The rim's height above the ground around: the ejecta's thickness at the final rim, 0.07 D_tc^4 /
+ *   D^3 (eq. 48), which falls off as the cube of the distance beyond it (eq. 47).
  *
  * These are fits for rock struck by rock or iron at kilometres a second. Beyond a crater about the
  * target's own radius, the target is reshaped, not cratered: `crater` returns null, and the impact
@@ -24,6 +33,8 @@
 
 /** The fits' constants, and the Earth's transition (a final diameter, m, at its surface gravity, m/s^2). */
 export const CRATER = { coefficient: 1.161, simple: 1.25, complexCoefficient: 1.17, complexExponent: 0.13, earthTransitionM: 3200, earthGravity: 9.81 } as const;
+/** A complex crater's depth (km, for D in km): Herrick et al.'s fit at the Earth's gravity, and the power of g_Earth / g that gives Pike's (1977) lunar fit at the Moon's (1.62 m/s^2). */
+export const COMPLEX_DEPTH = { coefficient: 0.4, exponent: 0.3, gravityExponent: Math.log(1.044 / 0.4) / Math.log(9.81 / 1.62) } as const;
 
 export interface CraterInput {
   /** The projectile's diameter (m) and density (kg/m^3). */
@@ -44,6 +55,9 @@ export interface Crater {
   finalM: number;
   /** Past the simple-to-complex transition (central peaks, terraces), on this world's gravity. */
   complex: boolean;
+  /** Rim crest to floor (m), and the rim's height above the ground around (m). */
+  depthM: number;
+  rimM: number;
 }
 
 /** G (CODATA 2018), m^3 kg^-1 s^-2. */
@@ -81,15 +95,24 @@ export function crater(input: CraterInput): Crater | null {
   const transientAtTransition = transitionFinalM / CRATER.simple;
   const finalM = complex ? (CRATER.complexCoefficient * transientM ** (1 + CRATER.complexExponent)) / transientAtTransition ** CRATER.complexExponent : simpleM;
   if (finalM > targetRadiusM) return null;
-  return { transientM, finalM, complex };
+  const rimM = (0.07 * transientM ** 4) / finalM ** 3;
+  let depthM: number;
+  if (complex) depthM = COMPLEX_DEPTH.coefficient * (finalM / 1000) ** COMPLEX_DEPTH.exponent * (CRATER.earthGravity / gravity) ** COMPLEX_DEPTH.gravityExponent * 1000;
+  else {
+    // The transient crater's depth, and the breccia lens that falls back into it (bulked 10%, parabolic on top).
+    const transientDepthM = transientM / (2 * Math.SQRT2);
+    const lensM = (2.8 * 0.032 * finalM ** 3 * (transientDepthM + rimM)) / (transientDepthM * finalM ** 2);
+    depthM = transientDepthM + rimM - lensM;
+  }
+  return { transientM, finalM, complex, depthM, rimM };
 }
 
 /**
  * The crater of a contact in the laboratory's units (GM in km^3 s^-2, km, km/s; b the impact
- * parameter, 0 head-on): the final diameter (km) and whether it is complex, or null where no crater
- * is drawn (a giant, a star, a test particle, a giant impact).
+ * parameter, 0 head-on): the final diameter, depth and rim height (km) and whether it is complex, or
+ * null where no crater is drawn (a giant, a star, a test particle, a giant impact).
  */
-export function contactCrater(target: { gm: number; radiusKm: number }, projectile: { gm: number; radiusKm: number }, speedKmS: number, b: number): { diameterKm: number; complex: boolean } | null {
+export function contactCrater(target: { gm: number; radiusKm: number }, projectile: { gm: number; radiusKm: number }, speedKmS: number, b: number): { diameterKm: number; complex: boolean; depthKm: number; rimKm: number } | null {
   if (!(target.gm > 0 && projectile.gm > 0 && target.radiusKm > 0 && projectile.radiusKm > 0) || target.gm > SOLID_MAX_GM) return null;
   const c = crater({
     impactorM: 2 * projectile.radiusKm * 1000,
@@ -101,5 +124,5 @@ export function contactCrater(target: { gm: number; radiusKm: number }, projecti
     // From the horizontal: b is the sine of the angle from the line of centres.
     angle: Math.acos(Math.min(1, Math.max(0, b))),
   });
-  return c ? { diameterKm: c.finalM / 1000, complex: c.complex } : null;
+  return c ? { diameterKm: c.finalM / 1000, complex: c.complex, depthKm: c.depthM / 1000, rimKm: c.rimM / 1000 } : null;
 }

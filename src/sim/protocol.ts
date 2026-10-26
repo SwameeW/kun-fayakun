@@ -54,6 +54,8 @@ export interface LabSnapshot {
   interventions: Array<{ step: number; t: number; kind: Command['kind']; id: string }>;
   events: MergeEvent[];
   checkpoints: Array<{ step: number; t: number }>;
+  /** Rings and belts: their particles' places relative to each one's primary (km, three per particle; single precision is ample to draw). */
+  swarms: Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array }>;
   logLength: number;
   discarded: number;
 }

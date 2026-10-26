@@ -55,8 +55,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     b.addEventListener('click', onClick);
     return b;
   };
-  const coords = (lat: number, lon: number): string =>
-    `${i18n.t(lat >= 0 ? 'ui.universe.living.latN' : 'ui.universe.living.latS', { value: f.number(Math.abs(lat), 1) })}, ${i18n.t(lon >= 0 ? 'ui.universe.living.lonE' : 'ui.universe.living.lonW', { value: f.number(Math.abs(lon), 1) })}`;
+  const coords = (lat: number, lon: number): string => f.coordinates(lat, lon);
   const ago = (ms: number): string => {
     const minutes = Math.max(0, Math.round((Date.now() - ms) / 60_000));
     return minutes < 60 ? i18n.t('ui.universe.living.ago.min', { value: minutes }) : i18n.t('ui.universe.living.ago.h', { value: Math.round(minutes / 60) });

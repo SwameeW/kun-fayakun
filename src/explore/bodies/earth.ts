@@ -41,6 +41,7 @@ import { sunTransmittance, transmittanceToTop, type AirModel } from '../render/a
 import { blendPremultiplied } from '../render/blending';
 import { decodeNormal, magnification, mapCoords, sampleSlot, shiftCoords, tangentFrame, type FloatNode, type MapCoords, type Vec3Node } from '../render/sampling';
 import { createAir, type AirUniforms, type ExploreAir } from './atmosphere';
+import { createMarks, type SurfaceMark } from './marks';
 import { bumpGradient, keepOnSphere, litCosine, noiseIfKept, sphereFootprint, sunlit, tiltNormal } from './shading';
 
 /** Blue Marble and the other Earth maps put Greenwich at u = 0.5 (planets.json bodies.earth.uAtLon0). */
@@ -104,6 +105,8 @@ export interface ExploreEarth {
   /** Builds what a detail level needs; returns the meshes whose materials should compile before apply(). */
   prepare(detail: ExploreDetail): Object3D[];
   apply(detail: ExploreDetail): void;
+  /** The laboratory's craters on it (none outside the laboratory). */
+  setMarks(marks: readonly SurfaceMark[]): void;
   dispose(): void;
 }
 
@@ -139,6 +142,8 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   object.name = 'explore-earth';
   const uTime = uniform(0);
   const uLight = uniform(1);
+  // Fresh rock and ash on land: a grey brown (illustrative); relief as the ETOPO map's is drawn.
+  const marks = createMarks(() => vec3(0.2, 0.17, 0.14), { exaggeration: textures.manifest.files.find((f) => f.body === 'earth' && f.map === 'normal')?.reliefExaggeration ?? 1 });
   const uSun = uniform(new Vector3(1, 0, 0));
   const uEye = uniform(new Vector3(0, 0, 3));
   const uMoon = uniform(new Vector3(0, 0, 1));
@@ -271,8 +276,12 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     }
     // The grain is strongest on rough ground and where the map itself varies (deserts, mountains, fields).
     const variation = clamp(dot(albedoMap.sub(blurred).abs(), vec3(3)).add(rough.mul(0.6)), 0.25, 1);
-    const albedo = sharpened.mul(ground.value.mul(land).mul(variation).add(1));
+    let albedo: Vec3Node = sharpened.mul(ground.value.mul(land).mul(variation).add(1));
     normal = tiltNormal(normal, bumpGradient(positionLocal, n, ground.value.mul(land).mul(rough).mul(FINE.relief)), 1);
+    // The laboratory's craters (./marks), on land only: the sea closes over an ocean impact's.
+    const marked = marks.apply(n, normal, albedo, footprint);
+    albedo = mix(albedo, marked.albedo, land);
+    normal = normalize(mix(normal, marked.normal, land));
     const nDotL = dot(n, uSun);
     const sunColour = sunAt(scatter, 1, nDotL).mul(sunlit(nDotL, 0.004));
     const lambert = max(dot(normal, uSun), 0).mul(0.85).add(litCosine(nDotL).mul(0.15));
@@ -314,6 +323,7 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       const dark = smoothstep(0.06, -0.12, nDotL);
       colour = colour.add(vec3(...CITY.tint).mul(lights.mul(dark).mul(float(1).sub(cover.mul(0.85))).mul(CITY.strength)));
     }
+    colour = colour.add(marked.glow.mul(land));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = colour.mul(uLight);
     return material;
@@ -442,6 +452,9 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       uMoonLight.value = NIGHT.moonlight * frame.moonLit;
       uEye.value.copy(cameraWorld).applyMatrix4(inverse);
       object.visible = frame.light > 1e-3;
+    },
+    setMarks(list) {
+      marks.set(list);
     },
     prepare(detail) {
       const out: Object3D[] = [];

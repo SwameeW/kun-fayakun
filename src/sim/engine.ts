@@ -19,7 +19,9 @@ import {
   type Diagnostics,
   type MergeEvent,
   type SimState,
+  successorIn,
 } from './nbody';
+import { makeSwarm, particleCount, rehomeSwarms, ringPlaces, SWARM_LIMITS, swarmHomes, type SwarmSpec } from './swarms';
 
 /**
  * The orbital laboratory's engine: a scenario (its bodies at an epoch, its integrator settings
@@ -87,7 +89,33 @@ export type Command =
   | { kind: 'setFixed'; id: string; fixed: boolean }
   | { kind: 'rename'; id: string; name: string }
   | { kind: 'add'; body: BodySpec }
-  | { kind: 'remove'; id: string };
+  | { kind: 'remove'; id: string }
+  /** A ring or belt of test particles (./swarms), and its removal. */
+  | { kind: 'addSwarm'; swarm: SwarmSpec }
+  | { kind: 'removeSwarm'; id: string }
+  /** A gravitating ring: `count` bodies of `gm` in all, on near-circular orbits (ids `<id>-1` on). */
+  | { kind: 'addRing'; ring: RingSpec };
+
+/** A gravitating ring as made: its bodies are ordinary bodies from then on. */
+export interface RingSpec {
+  id: string;
+  name: string;
+  primary: string;
+  count: number;
+  innerKm: number;
+  outerKm: number;
+  /** All its bodies' GM together (km^3 s^-2), and each one's radius (km). */
+  gm: number;
+  radiusKm: number;
+  normal: [number, number, number];
+  seed: number;
+}
+
+/** The most bodies a gravitating ring makes. */
+export const RING_MAX_BODIES = 24;
+
+/** The body, swarm or ring an edit is about. */
+export const commandId = (c: Command): string => (c.kind === 'add' ? c.body.id : c.kind === 'addSwarm' ? c.swarm.id : c.kind === 'addRing' ? c.ring.id : c.id);
 
 export interface LoggedCommand {
   step: number;
@@ -223,6 +251,7 @@ export class Engine {
   private execute(command: Command): void {
     const before = diagnostics(this.state);
     const s = this.state;
+    const homes = s.swarms.length > 0 ? swarmHomes(s) : null;
     switch (command.kind) {
       case 'setMass': {
         const i = indexOf(s, command.id);
@@ -297,9 +326,38 @@ export class Engine {
         if (i >= 0 && !this.keep(command.id)) removeAt(s, i);
         break;
       }
+      case 'addSwarm': {
+        if (s.swarms.some((w) => w.id === command.swarm.id)) break;
+        // As many as the limits leave room for.
+        const room = Math.min(SWARM_LIMITS.perSwarm, SWARM_LIMITS.total - particleCount(s));
+        const made = room > 0 ? makeSwarm(s, { ...command.swarm, count: Math.min(command.swarm.count, room) }) : null;
+        if (made) s.swarms.push(made);
+        break;
+      }
+      case 'removeSwarm': {
+        const k = s.swarms.findIndex((w) => w.id === command.id);
+        if (k >= 0) s.swarms.splice(k, 1);
+        break;
+      }
+      case 'addRing': {
+        const r = command.ring;
+        const p = indexOf(s, r.primary);
+        const places = ringPlaces(s, { ...r, count: Math.min(r.count, RING_MAX_BODIES, MAX_BODIES - s.ids.length) });
+        if (p < 0 || !places) break;
+        places.forEach((place, k) => {
+          const id = `${r.id}-${k + 1}`;
+          if (indexOf(s, id) >= 0) return;
+          const pos = [0, 1, 2].map((c) => (s.pos[p * 3 + c] ?? 0) + (place.pos[c] ?? 0));
+          const vel = [0, 1, 2].map((c) => (s.vel[p * 3 + c] ?? 0) + (place.vel[c] ?? 0));
+          addBody(s, { id, name: `${r.name} ${k + 1}`.slice(0, IMPORT_LIMITS.nameLength), gm: r.gm / places.length, radiusKm: r.radiusKm, pos, vel });
+        });
+        break;
+      }
     }
     // Bodies placed touching one another merge before any force is felt.
     resolveContacts(s, 0, null, this.events, this.keep);
+    // Rings whose primary was removed or merged go on about another body.
+    if (homes) rehomeSwarms(s, homes, successorIn(this.events));
     this.acc.length = 0;
     this.retime();
     const after = diagnostics(s);
@@ -494,7 +552,8 @@ export class Prediction {
     readonly maxSteps: number,
     accuracy = 1,
   ) {
-    this.copy = cloneState(engine.state);
+    // Test particles pull nothing, so the bodies' future is the same without them.
+    this.copy = cloneState(engine.state, false);
     this.start = this.copy.t;
     this.g = engine.scenario.integrator;
     this.eta = this.g.eta * accuracy;
@@ -629,7 +688,7 @@ function cloneBody(b: BodySpec): BodySpec {
 }
 
 /** Limits on an imported scenario (a file could ask for anything). */
-export const IMPORT_LIMITS = { bodies: MAX_BODIES, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7, periodS: 1e12 } as const;
+export const IMPORT_LIMITS = { bodies: MAX_BODIES, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7, periodS: 1e12, particles: SWARM_LIMITS.perSwarm, ringBodies: RING_MAX_BODIES } as const;
 
 /**
  * A scenario from a parsed file, or the reasons it is refused: unsupported version, missing or
@@ -680,6 +739,7 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
   if (!Array.isArray(raw.log)) errors.push('no edit log');
   if (log.length > L.log) errors.push(`${log.length} edits (at most ${L.log})`);
   let lastStep = 0;
+  const swarmIds = new Set<string>();
   log.slice(0, L.log).forEach((e, i) => {
     const where = `log[${i}]`;
     if (!obj(e) || !num(e.step, 0, 1e12) || !obj(e.command)) {
@@ -694,6 +754,27 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
         if (ids.has(c.body.id)) errors.push(`${where}: adds an id that already exists (${c.body.id})`);
         ids.add(c.body.id);
       }
+    } else if (c.kind === 'addSwarm' || c.kind === 'addRing') {
+      const spec = c.kind === 'addSwarm' ? c.swarm : c.ring;
+      const ring = c.kind === 'addRing';
+      const made = obj(spec) && typeof spec.primary === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(spec.primary);
+      const shape =
+        obj(spec) && typeof spec.id === 'string' && /^[a-z0-9-]{1,40}$/u.test(spec.id) &&
+        typeof spec.name === 'string' && spec.name.length > 0 && spec.name.length <= L.nameLength &&
+        typeof spec.primary === 'string' && (ids.has(spec.primary) || made) &&
+        Number.isInteger(spec.count) && num(spec.count, ring ? 2 : 1, ring ? L.ringBodies : L.particles) &&
+        num(spec.innerKm, 1e-3, L.coordinateKm) && num(spec.outerKm, typeof spec.innerKm === 'number' ? spec.innerKm : 0, L.coordinateKm) &&
+        vec(spec.normal, 1e6) && Math.hypot(...(spec.normal as number[])) > 0 &&
+        Number.isInteger(spec.seed) && num(spec.seed, 0, 4294967295) &&
+        (ring ? num(spec.gm, 0, L.gm) && num(spec.radiusKm, 1e-6, L.radiusKm) : num(spec.eccentricity, 0, 0.95) && num(spec.inclinationDeg, 0, 180));
+      if (!shape) errors.push(`${where}: ${ring ? 'ring' : 'swarm'} values missing or out of range`);
+      else if (ring) for (let k = 1; k <= (spec.count as number); k += 1) ids.add(`${spec.id as string}-${k}`);
+      else {
+        if (swarmIds.has(spec.id as string)) errors.push(`${where}: adds a swarm id that already exists (${spec.id as string})`);
+        swarmIds.add(spec.id as string);
+      }
+    } else if (c.kind === 'removeSwarm') {
+      if (typeof c.id !== 'string' || !swarmIds.has(c.id)) errors.push(`${where}: names a swarm that does not exist`);
     } else if (c.kind === 'setMass' || c.kind === 'setVelocity' || c.kind === 'remove' || c.kind === 'setState' || c.kind === 'setRadius' || c.kind === 'setSpin' || c.kind === 'setFixed' || c.kind === 'rename') {
       // Bodies a collision made (src/sim/nbody fragment()) exist only once the run reaches it: their ids are checked for form, not presence.
       const made = typeof c.id === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(c.id);

@@ -132,6 +132,8 @@ export interface SolarSystem {
   readonly auKm: number;
   /** Moves every body to the date (TDB Julian date). */
   update(jdTdb: number): void;
+  /** A body's basis (as BodyState's) on another date, into `out`, leaving the bodies where they are. */
+  basisAt(id: BodyId, jdTdb: number, out: number[]): number[];
 }
 
 export function createSolarSystem(planets: PlanetsFile, moon: MoonFile, physical: PhysicalFile): SolarSystem {
@@ -159,9 +161,8 @@ export function createSolarSystem(planets: PlanetsFile, moon: MoonFile, physical
   const turned = km();
 
   /** basis = W B P: W the ecliptic-to-render turn, B body-to-ecliptic, P the mesh's axes in the body frame. */
-  const orient = (id: BodyId, jd: number): void => {
+  const orient = (id: BodyId, jd: number, out: number[] = bodies[id].basis): number[] => {
     bodyToEcliptic(orientationAt(physical.bodies[ROTATING[id]], jd, orientation), obliquity, toEcliptic);
-    const out = bodies[id].basis;
     // Mesh x -> body x (prime meridian), mesh y -> body z (pole), mesh z -> -body y.
     const columns: ReadonlyArray<readonly [number, number]> = [
       [0, 1],
@@ -177,6 +178,7 @@ export function createSolarSystem(planets: PlanetsFile, moon: MoonFile, physical
       out[3 * c + 1] = turned.y;
       out[3 * c + 2] = turned.z;
     });
+    return out;
   };
 
   return {
@@ -199,6 +201,9 @@ export function createSolarSystem(planets: PlanetsFile, moon: MoonFile, physical
       eclipticToRender(ephemeris.planetKm(jupiter, jd, ecl), bodies.jupiter.position);
       eclipticToRender(ephemeris.planetKm(saturn, jd, ecl), bodies.saturn.position);
       for (const id of BODY_IDS) orient(id, jd);
+    },
+    basisAt(id, jd, out) {
+      return orient(id, jd, out);
     },
   };
 }

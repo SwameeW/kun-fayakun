@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { Engine, Prediction, type Command } from './engine';
+import { commandId, Engine, Prediction } from './engine';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
 
 /**
@@ -60,6 +60,7 @@ function snapshot(): void {
   const pos = Float64Array.from(s.pos);
   const vel = Float64Array.from(s.vel);
   const spin = Float64Array.from(s.spin);
+  const swarms = s.swarms.map((w) => ({ id: w.id, name: w.name, primary: w.primary, lost: w.lost, rel: Float32Array.from(w.pos) }));
   const reply: LabSnapshot = {
     type: 'snapshot',
     generation,
@@ -85,16 +86,16 @@ function snapshot(): void {
     achievedRate: achieved,
     paused,
     failure: engine.failure,
-    interventions: engine.interventions.slice(-40).map((i) => ({ step: i.step, t: i.t, kind: i.command.kind, id: idOf(i.command) })),
+    interventions: engine.interventions.slice(-40).map((i) => ({ step: i.step, t: i.t, kind: i.command.kind, id: commandId(i.command) })),
     events: engine.events.slice(-40),
     checkpoints: engine.checkpoints.map((c) => ({ step: c.step, t: c.t })),
+    swarms,
     logLength: engine.scenario.log.length,
     discarded: engine.discarded,
   };
-  post(reply, [pos.buffer, vel.buffer, spin.buffer]);
+  post(reply, [pos.buffer, vel.buffer, spin.buffer, ...swarms.map((w) => w.rel.buffer)]);
 }
 
-const idOf = (c: Command): string => (c.kind === 'add' ? c.body.id : c.id);
 
 function tick(): void {
   const now = performance.now();

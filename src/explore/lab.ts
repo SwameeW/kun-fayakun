@@ -2,15 +2,17 @@ import type { Object3D } from 'three/webgpu';
 import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
 import { BODY_IDS, type BodyId, type LabCommand, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
-import { validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
+import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
 import { bulkDensity, joules } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
-import { circularOrbit, consumes, primaryOf, type SimState } from '../sim/nbody';
+import { circularOrbit, consumes, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
+import { SWARM_LIMITS } from '../sim/swarms';
 import { presets as presetList, type Preset } from '../sim/presets';
 import { decodeScenario, encodeScenario } from '../sim/share';
 import type { LabReply, LabRequest, LabSnapshot } from '../sim/protocol';
 import { seedLaboratory, seedSolarSystem, type Shapes } from '../sim/seed';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
+import type { SurfaceMark } from './bodies/marks';
 import { createOrbits, type OrbitFrame, type OrbitPath, type Orbits } from './orbits';
 import { km, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
@@ -68,6 +70,8 @@ export interface Lab {
   jdTdb(): number;
   /** Puts the built-in worlds where the experiment has them; returns those it no longer has. */
   applyBuiltIns(sys: SolarSystem, hidden: Set<BodyId>): void;
+  /** The craters to draw on a world (in its own frame), eased in and their glow fading (flash-safe); none outside the laboratory. */
+  marks(body: BodyId): SurfaceMark[];
   update(frame: LabFrame, relative: (abs: Km, out: Km) => Km): void;
   labels(out: SceneLabel[]): void;
   /** The requested rate and pause (the time machine's controls drive them here). */
@@ -122,7 +126,21 @@ const drawnBasis = (d: { t: number; basis: number[]; pole: Vec3; periodS: number
 
 const TRAIL_SLOTS = 24;
 const TRAIL_POINTS = 384;
-const DOT_SLOTS = 32;
+const DOT_SLOTS = MAX_BODIES;
+/** Rings and belts as drawn: a belt about a star warm grey, a ring about anything else icy; their points' size (CSS px) and strength (added light: dense parts brighten). */
+const PARTICLES = { belt: [0.62, 0.55, 0.45], ring: [0.72, 0.76, 0.82], sizePx: 3.2, opacity: 1 } as const;
+/**
+ * Decorative dust (ledger IM-4): a plume of points thrown up from each impact and falling back, drawn
+ * for a few seconds of the wall clock whatever the experiment's rate, and no part of its physics (the
+ * debris that is, are bodies). Its height from the crater (four times its width, at least 20 km, at
+ * most the target's radius) or, with none, half the target's radius; its spread a 40 degree cone. It
+ * fades in and out, dim (flash safety).
+ */
+const DUST = { perImpact: 240, plumes: 3, seconds: 4, cone: (40 * Math.PI) / 180, color: [0.78, 0.7, 0.6], sizePx: 3, opacity: 0.85 } as const;
+/** A body more massive than this (GM, km^3 s^-2: about 80 Jupiters, the least a star can be) is a star: its belts are drawn as rock. */
+const STAR_GM = 1e10;
+/** A gravitating ring's bodies (ids `moonlets-<n>-<k>`): named on screen only when chosen, so twenty-four labels do not crowd the view. */
+const RING_MEMBER = /^moonlets-\d+-\d+$/u;
 const DEFAULT_HORIZON_S = 60 * 86_400;
 const SAVE_KEY = 'current';
 /** Scenarios saved by name in this browser's library: their keys in the store. */
@@ -133,6 +151,14 @@ const STORE = 'scenarios';
 const ACCURACY = { fast: 4, normal: 1, precise: 0.25 } as const;
 /** A tracked quantity keeps at most this many samples (then every other one goes: the record coarsens, never ends). */
 const GRAPH_POINTS = 480;
+/** The worlds drawn with a solid surface for the laboratory's craters to mark (./bodies/marks). */
+const MARKED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
+/**
+ * A crater's drawing over time: how fast it may appear and its glow rise and fall (shares a second of
+ * the wall clock: never a step in brightness, so never a flash), and the simulated time in which its
+ * melt's surface crusts over and stops glowing (illustrative: a lava surface crusts within hours).
+ */
+const MARK_EASE = { appearPerS: 0.7, glowUpPerS: 2, glowDownPerS: 0.35, crustS: 2 * 3600 } as const;
 /** A share link carries its scenario up to this many characters. */
 const SHARE_MAX_CHARS = 8000;
 /** Colours (display terms) of the Lagrange points, the encounters and the placing preview. */
@@ -262,6 +288,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let refocus: BodyId | null = null;
   const edited = new Set<string>();
   const seenEvents = new Set<string>();
+  /** Craters placed on the worlds drawn, by event: where (the world's own frame, as its surface stood at the impact), and as drawn now. */
+  const craterMarks = new Map<string, { body: BodyId; site: Vec3; latDeg: number; lonDeg: number; appear: number; glow: number; at: number }>();
+  const eventKey = (e: { step: number; absorbed: string; kind: string }): string => `${e.step}:${e.absorbed}:${e.kind}`;
   /** Every body's name seen in this scenario, kept after it merges or is removed (for the history). */
   const knownNames = new Map<string, string>();
   const palette: Preset[] = presetList(physical);
@@ -306,6 +335,18 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   markers.object.visible = false;
   const markerList: ImpostorDot[] = Array.from({ length: MARKER_SLOTS }, () => ({ position: km(), color: [1, 1, 1] as const, opacity: 0, sizePx: 0, marker: 0 }));
   const dotList: ImpostorDot[] = Array.from({ length: DOT_SLOTS }, () => ({ position: km(), color: [1, 0.9, 0.75] as const, opacity: 0, sizePx: 0, marker: 0 }));
+  // Rings and belts: a point for every particle.
+  const particles: Impostors = createImpostors(SWARM_LIMITS.total);
+  particles.object.visible = false;
+  const particleList: ImpostorDot[] = Array.from({ length: SWARM_LIMITS.total }, () => ({ position: km(), color: PARTICLES.belt, opacity: 0, sizePx: PARTICLES.sizePx, marker: 0 }));
+  let particlesDrawn = 0;
+  // Dust plumes: where each began (its body, and the site in the scenario's frame), when, how high, and its points' throws.
+  const dust: Impostors = createImpostors(DUST.perImpact * DUST.plumes);
+  dust.object.visible = false;
+  const dustList: ImpostorDot[] = Array.from({ length: DUST.perImpact * DUST.plumes }, () => ({ position: km(), color: DUST.color, opacity: 0, sizePx: DUST.sizePx, marker: 0 }));
+  const plumes: Array<{ key: string; body: string; site: Vec3; born: number; heightKm: number; throws: Float64Array }> = [];
+  /** The worlds' bases now (render frame), so a plume rises from its crater as the world turns. */
+  const basisNow = new Map<BodyId, number[]>();
   const labelList: SceneLabel[] = [];
   const scratch = km();
   const abs = km();
@@ -334,6 +375,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     trails.clear();
     edited.clear();
     seenEvents.clear();
+    craterMarks.clear();
     knownNames.clear();
     if (!worker) {
       worker = new Worker(new URL('../sim/worker.ts', import.meta.url), { type: 'module' });
@@ -389,12 +431,29 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       snap = msg;
       snapAt = performance.now();
       msg.ids.forEach((id, i) => knownNames.set(id, msg.names[i] ?? id));
+      for (const w of msg.swarms) knownNames.set(w.id, w.name);
       sampleTrails(msg);
       sampleTracked(msg);
       for (const e of msg.events) {
-        const key = `${e.step}:${e.absorbed}:${e.kind}`;
+        const key = eventKey(e);
         if (seenEvents.has(key)) continue;
         seenEvents.add(key);
+        // Dust from the impact (decorative): its throws fixed now, so each plume is the same however it is drawn.
+        const ti = msg.ids.indexOf(e.survivor);
+        const radiusKm = ti >= 0 ? (msg.radius[ti] ?? 0) : 0;
+        if (e.kind !== 'graze' && radiusKm > 0) {
+          let r = (Math.imul(e.step + 1, 2654435761) ^ e.absorbed.length * 40503) >>> 0;
+          const next = (): number => ((r = (Math.imul(r, 1664525) + 1013904223) >>> 0) / 4294967296);
+          const throws = new Float64Array(DUST.perImpact * 3);
+          for (let k = 0; k < DUST.perImpact; k += 1) {
+            throws[k * 3] = DUST.cone * Math.sqrt(next());
+            throws[k * 3 + 1] = 2 * Math.PI * next();
+            throws[k * 3 + 2] = 0.3 + 0.7 * next();
+          }
+          const heightKm = e.crater ? Math.min(radiusKm, Math.max(20, 4 * e.crater.diameterKm)) : 0.5 * radiusKm;
+          plumes.push({ key, body: e.survivor, site: [e.site[0], e.site[1], e.site[2]], born: performance.now(), heightKm, throws });
+          while (plumes.length > DUST.plumes) plumes.shift();
+        }
         // A graze leaves both bodies; a merger or a breakup ends the projectile (the target keeps its id).
         if (!consumes(e)) continue;
         trails.delete(e.absorbed);
@@ -450,8 +509,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const edit = (command: Command): void => {
     sentEdits += 1;
     send({ type: 'command', generation, command });
-    if (command.kind !== 'add') edited.add(command.id);
-    else edited.add(command.body.id);
+    edited.add(commandId(command));
   };
 
   /** A fresh id for a new body, never used before in this scenario. */
@@ -488,6 +546,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     step: s.step,
     internal: 0,
     passing: [],
+    swarms: [],
   });
 
   /** Body i relative to its primary (scenario frame): the primary's index, position and velocity, and the pair's GM; null without one. */
@@ -574,7 +633,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   };
 
   const lab: Lab = {
-    objects: [lines.mesh, dots.object, markers.object],
+    objects: [lines.mesh, dots.object, markers.object, particles.object, dust.object],
     get active() {
       return active;
     },
@@ -587,6 +646,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       lines.mesh.visible = true;
       dots.object.visible = true;
       markers.object.visible = true;
+      particles.object.visible = true;
+      dust.object.visible = true;
       refreshLibrary();
     },
     stop() {
@@ -600,6 +661,10 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       lines.mesh.visible = false;
       dots.object.visible = false;
       markers.object.visible = false;
+      particles.object.visible = false;
+      particlesDrawn = 0;
+      dust.object.visible = false;
+      plumes.length = 0;
       placing = null;
       dragging = null;
       spinDrawn.clear();
@@ -654,6 +719,45 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         const out = drawnBasis(d, tNow);
         for (let k = 0; k < 9; k += 1) basis[k] = out[k] ?? 0;
       }
+      // Each crater on a world drawn solid, placed once: where the surface stood at the moment of impact
+      // (turning as the IAU models have it, or as the visitor set it from then on), in the world's own frame.
+      const epoch = seedScenario?.epochJdTdb ?? 0;
+      for (const e of s.events) {
+        const body = e.crater ? builtIn(e.survivor) : null;
+        if (!body || !MARKED.includes(body) || craterMarks.has(eventKey(e))) continue;
+        const d = spinDrawn.get(body);
+        const basis = d && d.t <= e.t ? drawnBasis(d, e.t) : sys.basisAt(body, epoch + e.t / 86_400, new Array<number>(9).fill(0));
+        const r = toRender(e.site[0], e.site[1], e.site[2], km());
+        const site: Vec3 = [0, 1, 2].map((c) => r.x * (basis[c * 3] ?? 0) + r.y * (basis[c * 3 + 1] ?? 0) + r.z * (basis[c * 3 + 2] ?? 0)) as Vec3;
+        // Mesh y is the pole, x the prime meridian, z the body's -y (90 degrees west): planetocentric, east positive.
+        craterMarks.set(eventKey(e), { body, site, latDeg: Math.asin(Math.max(-1, Math.min(1, site[1]))) / DEG, lonDeg: Math.atan2(-site[2], site[0]) / DEG, appear: 0, glow: 0, at: performance.now() });
+      }
+      for (const p of plumes) {
+        const b = builtIn(p.body);
+        if (b) basisNow.set(b, [...sys.bodies[b].basis]);
+      }
+    },
+    marks(body) {
+      const s = snap;
+      if (!active || !s) return [];
+      const i = s.ids.indexOf(body);
+      const radius = i >= 0 ? (s.radius[i] ?? 0) : 0;
+      if (!(radius > 0)) return [];
+      const now = s.t + extrapolation();
+      const wall = performance.now();
+      const out: SurfaceMark[] = [];
+      for (const e of s.events) {
+        const m = e.crater ? craterMarks.get(eventKey(e)) : undefined;
+        if (!m || !e.crater || m.body !== body) continue;
+        // Eased toward where it should be, never faster than the rates allow.
+        const dtS = Math.min(0.25, Math.max(0, (wall - m.at) / 1000));
+        m.at = wall;
+        m.appear = Math.min(1, m.appear + dtS * MARK_EASE.appearPerS);
+        const target = Math.exp(-Math.max(0, now - e.t) / MARK_EASE.crustS);
+        m.glow = target > m.glow ? Math.min(target, m.glow + dtS * MARK_EASE.glowUpPerS) : Math.max(target, m.glow - dtS * MARK_EASE.glowDownPerS);
+        out.push({ site: m.site, angle: e.crater.diameterKm / 2 / radius, depth: e.crater.depthKm / radius, rim: e.crater.rimKm / radius, complex: e.crater.complex, appear: m.appear, glow: m.glow });
+      }
+      return out;
     },
     update(frame, relative) {
       lastRelative = relative;
@@ -821,7 +925,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         dot.sizePx = Math.max(4, Math.min(40, discPx * 2));
         dot.opacity = 1;
         dot.marker = id === selected ? 1 : 0;
-        labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.9, offset: [10, -10] });
+        if (!RING_MEMBER.test(id) || id === selected) labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.9, offset: [10, -10] });
         d += 1;
       }
       for (let k = d; k < DOT_SLOTS; k += 1) {
@@ -829,6 +933,81 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         if (dot) dot.opacity = 0;
       }
       dots.update(dotList, frame.compensation);
+
+      // Rings and belts: each particle where the snapshot had it about its primary, the primary where it is now.
+      let q = 0;
+      for (const w of s.swarms) {
+        const p = s.ids.indexOf(w.primary);
+        if (p < 0) continue;
+        const primaryAt = posNow(s, p, ahead);
+        const color = (s.gm[p] ?? 0) > STAR_GM ? PARTICLES.belt : PARTICLES.ring;
+        const m = w.rel.length / 3;
+        for (let k = 0; k < m && q < SWARM_LIMITS.total; k += 1) {
+          const dot = particleList[q];
+          if (!dot) break;
+          toRender(primaryAt[0] + (w.rel[k * 3] ?? 0), primaryAt[1] + (w.rel[k * 3 + 1] ?? 0), primaryAt[2] + (w.rel[k * 3 + 2] ?? 0), abs);
+          relative(abs, rel);
+          placeScaled(rel, 1, frame.far, dot.position);
+          dot.color = color;
+          dot.opacity = PARTICLES.opacity;
+          q += 1;
+        }
+      }
+      for (let k = q; k < particlesDrawn; k += 1) {
+        const dot = particleList[k];
+        if (dot) dot.opacity = 0;
+      }
+      particlesDrawn = q;
+      particles.update(particleList, frame.compensation);
+
+      // Dust plumes: up from the crater (turning with its world) and back down, fading, over a few seconds.
+      const wallNow = performance.now();
+      while (plumes.length > 0 && (wallNow - (plumes[0]?.born ?? 0)) / 1000 > DUST.seconds) plumes.shift();
+      let u = 0;
+      for (const plume of plumes) {
+        const p = s.ids.indexOf(plume.body);
+        if (p < 0) continue;
+        const x = Math.min(1, (wallNow - plume.born) / 1000 / DUST.seconds);
+        const fade = DUST.opacity * (1 - x) ** 2 * Math.min(1, x * 8);
+        // The site's way up now: through the world's own frame where it is drawn turning, else as it struck.
+        const mark = craterMarks.get(plume.key);
+        const b = builtIn(plume.body);
+        const basis = b ? basisNow.get(b) : undefined;
+        const up: Vec3 = mark && basis ? unit3([0, 1, 2].map((r) => (basis[r] ?? 0) * mark.site[0] + (basis[3 + r] ?? 0) * mark.site[1] + (basis[6 + r] ?? 0) * mark.site[2])) : unit3([plume.site[0], plume.site[2], -plume.site[1]]);
+        const helper: Vec3 = Math.abs(up[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+        const t1 = unit3(cross3(up, helper));
+        const t2 = cross3(up, t1);
+        const centre = posNow(s, p, ahead);
+        toRender(centre[0], centre[1], centre[2], scratch);
+        const radiusKm = s.radius[p] ?? 0;
+        const rise = 4 * x * (1 - x);
+        for (let k = 0; k < DUST.perImpact && u < dustList.length; k += 1) {
+          const dot = dustList[u];
+          if (!dot) break;
+          const tilt = plume.throws[k * 3] ?? 0;
+          const turn = plume.throws[k * 3 + 1] ?? 0;
+          const reach = (plume.throws[k * 3 + 2] ?? 0) * plume.heightKm;
+          const across = Math.sin(tilt);
+          const along = Math.cos(tilt);
+          // Each point thrown along its cone direction, its height rising and falling, its spread growing.
+          for (let c = 0; c < 3; c += 1) {
+            const way = (up[c] ?? 0) * along * rise + ((t1[c] ?? 0) * Math.cos(turn) + (t2[c] ?? 0) * Math.sin(turn)) * across * x * 1.5;
+            const value = (c === 0 ? scratch.x : c === 1 ? scratch.y : scratch.z) + (up[c] ?? 0) * radiusKm + way * reach;
+            if (c === 0) abs.x = value;
+            else if (c === 1) abs.y = value;
+            else abs.z = value;
+          }
+          relative(abs, rel);
+          placeScaled(rel, 1, frame.far, dot.position);
+          dot.opacity = fade;
+          u += 1;
+        }
+      }
+      for (let k = u; k < dustList.length; k += 1) {
+        const dot = dustList[k];
+        if (dot) dot.opacity = 0;
+      }
+      dust.update(dustList, frame.compensation);
 
       // Markers: the Lagrange points of the chosen body and its primary, the prediction's encounters, the
       // placing preview and the velocity arrow's handle.
@@ -1114,6 +1293,38 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         case 'removeMany':
           for (const id of c.ids) lab.command({ kind: 'remove', id });
           return;
+        case 'addSwarm':
+        case 'addRing': {
+          if (!s) return;
+          const p = s.ids.indexOf(c.primary);
+          if (p < 0 || !(s.gm[p] ?? 0) || ![c.innerKm, c.outerKm, c.count].every(Number.isFinite) || !(c.innerKm > (s.radius[p] ?? 0)) || !(c.outerKm >= c.innerKm) || !(c.count >= 1)) return;
+          // Its plane: the primary's equator (its spin's pole) or its orbit's; the ecliptic where it has neither.
+          const spin = spinOf(s, p);
+          const pole = c.plane === 'equator' && norm3(spin) > 0 ? unit3(spin) : unit3(poleOf(s, p));
+          const normal: [number, number, number] = [pole[0], pole[1], pole[2]];
+          // A seed from the moment and the count so far: the same edit replays the same particles.
+          const seed = (Math.imul(s.step + 1, 2654435761) + (s.swarms.length + s.ids.length) * 97) >>> 0;
+          const name = c.name.slice(0, 60);
+          if (c.kind === 'addSwarm') {
+            const used = new Set(s.swarms.map((w) => w.id));
+            let n = 1;
+            while (used.has(`swarm-${n}`)) n += 1;
+            edit({ kind: 'addSwarm', swarm: { id: `swarm-${n}`, name, primary: c.primary, count: Math.min(Math.round(c.count), SWARM_LIMITS.perSwarm), innerKm: c.innerKm, outerKm: c.outerKm, eccentricity: Math.min(Math.max(c.eccentricity, 0), 0.95), inclinationDeg: Math.min(Math.max(c.inclinationDeg, 0), 180), normal, seed } });
+          } else {
+            if (!(c.massKg > 0)) return;
+            const base = freshId('moonlets');
+            const count = Math.min(Math.round(c.count), RING_MAX_BODIES);
+            // Each body as dense as icy rock (1,500 kg/m^3: illustrative), from its share of the mass.
+            const radiusKm = Math.cbrt((3 * (c.massKg / count)) / (4 * Math.PI * 1500)) / 1000;
+            knownNames.set(base, name);
+            edit({ kind: 'addRing', ring: { id: base, name, primary: c.primary, count, innerKm: c.innerKm, outerKm: c.outerKm, gm: c.massKg * gPerKg, radiusKm, normal, seed } });
+          }
+          requestPrediction();
+          return;
+        }
+        case 'removeSwarm':
+          if (s?.swarms.some((w) => w.id === c.id)) edit({ kind: 'removeSwarm', id: c.id });
+          return;
         case 'duplicateMany':
           for (const id of c.ids) lab.command({ kind: 'duplicate', id });
           return;
@@ -1359,8 +1570,14 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         selected,
         drift: s?.drift ?? { energy: 0, momentum: 0, angularMomentum: 0 },
         interventions: s?.interventions ?? [],
-        events: (s?.events ?? []).map((e) => ({ t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0, craterKm: e.crater?.diameterKm ?? null, craterComplex: e.crater?.complex ?? false, energyJ: joules(e.energy) })),
+        events: (s?.events ?? []).map((e) => {
+          const m = craterMarks.get(eventKey(e));
+          return { t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0, craterKm: e.crater?.diameterKm ?? null, craterDepthKm: e.crater?.depthKm ?? null, craterComplex: e.crater?.complex ?? false, craterSite: m ? { latDeg: m.latDeg, lonDeg: m.lonDeg } : null, energyJ: joules(e.energy) };
+        }),
         checkpoints: s?.checkpoints ?? [],
+        swarms: (s?.swarms ?? []).map((w) => ({ id: w.id, name: w.name, primary: w.primary, count: w.rel.length / 3, lost: w.lost })),
+        particlesDrawn,
+        auKm: physical.auKm,
         logLength: s?.logLength ?? 0,
         discarded: s?.discarded ?? 0,
         prediction:

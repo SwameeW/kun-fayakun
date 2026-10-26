@@ -1,5 +1,6 @@
 import { contactCrater } from './craters';
 import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts';
+import { cloneSwarm, driftSwarms, kickSwarms, loseStruck, rehomeSwarms, swarmHomes, type Swarm } from './swarms';
 
 /**
  * The orbital laboratory's gravity: direct, pairwise Newtonian N-body. Every massive body pulls
@@ -20,10 +21,12 @@ import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts'
  *   orbital angular momentum kept as the survivor's spin, the energy the merger takes moved into
  *   `internal` (below);
  * - fragment() when the impact breaks bodies up: the largest remnant (keeping the target's id), the
- *   second, and at most MAX_DEBRIS debris bodies, placed just clear of the remnant and launched past its
- *   escape speed, deterministically, with mass, momentum and angular momentum conserved exactly and the
- *   energy given up moved into `internal`; debris that would pass MAX_BODIES is returned to the largest
- *   remnant and reported;
+ *   second, and at most MAX_DEBRIS equal debris bodies, placed just clear of the remnant and launched
+ *   at 1.05 times the pair's mutual escape speed (Chambers 2013), the second remnant downrange and the
+ *   debris spaced evenly round the collision's plane (their momenta cancelling), deterministically,
+ *   so after a slow breakup some come back and merge again; mass, momentum and angular momentum conserved exactly
+ *   and the energy given up moved into `internal`; debris that would pass MAX_BODIES is returned to
+ *   the largest remnant and reported;
  * - a hit-and-run graze leaves both bodies as they are (the projectile's own erosion is not modelled),
  *   and the pair is not tested again until it has parted.
  * So bodies collide within the step in which they would touch, never later; nothing is softened, and
@@ -69,6 +72,8 @@ export interface SimState {
   internal: number;
   /** Pairs (ids joined by "|", in order) that grazed and passed on: not tested for contact again until they have parted. */
   passing: string[];
+  /** Rings and belts of test particles (./swarms): moved by the bodies' gravity, pulling nothing. */
+  swarms: Swarm[];
 }
 
 /** A collision: what happened to the target (it keeps its id) and the projectile. */
@@ -92,8 +97,10 @@ export interface ContactEvent {
   heat: number;
   /** The impact's energy: the pair's kinetic energy at contact in their centre of mass frame, 0.5 mu v^2 (G units), the fall included. */
   energy: number;
-  /** The crater a merger or a breakup leaves on a solid target (./craters): its final diameter (km) and whether it is complex; null for a graze, a giant's or a star's surface, or a giant impact. */
-  crater: { diameterKm: number; complex: boolean } | null;
+  /** The crater a merger or a breakup leaves on a solid target (./craters): its final diameter, depth and rim height (km) and whether it is complex; null for a graze, a giant's or a star's surface, or a giant impact. */
+  crater: { diameterKm: number; complex: boolean; depthKm: number; rimKm: number } | null;
+  /** Where the projectile touched: a unit vector from the target's centre, in the scenario's frame, at the moment of contact. */
+  site: [number, number, number];
 }
 /** The engine's and the interface's earlier name for it. */
 export type MergeEvent = ContactEvent;
@@ -105,24 +112,34 @@ export const consumes = (e: ContactEvent): boolean => e.kind !== 'graze';
 export const MAX_BODIES = 64;
 /** Debris bodies one collision may make, besides the second remnant. */
 export const MAX_DEBRIS = 6;
-/** Debris leaves the largest remnant at these multiples of its surface escape speed, spread evenly. */
-const DEBRIS_SPEED = [1.05, 1.6] as const;
-/** The cone the debris leaves the impact site in (half-angle, radians). */
-const DEBRIS_CONE = Math.PI / 3;
+/**
+ * Every piece leaves at this multiple of the pair's mutual escape speed at contact, sqrt(2 (GM_t + GM_p) / (R_t + R_p)),
+ * the convention of Chambers (2013, Icarus 224, 43) for N-body fragmentation: just enough to get away, so some come back.
+ */
+const CHAMBERS_SPEED = 1.05;
 /** Pieces are placed this much further out than touching the remnant, so they start clear of it. */
 const CLEARANCE = 1.05;
 
 export const count = (s: SimState): number => s.ids.length;
 
 /** A deep copy (the engine's checkpoints and predictions run on copies). */
-export function cloneState(s: SimState): SimState {
-  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing] };
+export function cloneState(s: SimState, withSwarms = true): SimState {
+  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [] };
 }
 
 /** An empty state. */
 export function emptyState(): SimState {
-  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [] };
+  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [] };
 }
+
+/** The body a gone body merged into (the latest collision that ended it), or null. */
+export const successorIn = (events: readonly ContactEvent[]) => (gone: string): string | null => {
+  for (let k = events.length - 1; k >= 0; k -= 1) {
+    const e = events[k];
+    if (e && consumes(e) && e.absorbed === gone) return e.survivor;
+  }
+  return null;
+};
 
 /** A uniform sphere's moment of inertia factor: the default where a body's own is not known. */
 export const UNIFORM_INERTIA = 0.4;
@@ -347,6 +364,24 @@ function closest(px: number, py: number, pz: number, wx: number, wy: number, wz:
 
 const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
+/**
+ * Where on the target a projectile at `r` from it (km), closing at `u` (km/s), first touches within
+ * `dt`: the unit vector from the target's centre through that point, along the straight path the
+ * contact test uses (already touching: the line of centres; never reaching: the closest approach).
+ */
+export function contactSite(rx: number, ry: number, rz: number, ux: number, uy: number, uz: number, reach: number, dt: number): [number, number, number] {
+  const r2 = rx * rx + ry * ry + rz * rz;
+  const u2 = ux * ux + uy * uy + uz * uz;
+  const ru = rx * ux + ry * uy + rz * uz;
+  let tau = 0;
+  if (r2 > reach * reach && u2 > 0) {
+    const disc = ru * ru - u2 * (r2 - reach * reach);
+    tau = disc >= 0 ? (-ru - Math.sqrt(disc)) / u2 : -ru / u2;
+    tau = Math.min(Math.max(tau, 0), Math.max(dt, 0));
+  }
+  return unitOf(rx + ux * tau, ry + uy * tau, rz + uz * tau, [1, 0, 0]);
+}
+
 /** A unit vector (and its length), or the fallback where it has none. */
 function unitOf(x: number, y: number, z: number, fallback: readonly [number, number, number]): [number, number, number] {
   const l = Math.hypot(x, y, z);
@@ -392,34 +427,40 @@ export function fragment(s: SimState, t: number, p: number, o: ImpactOutcome): {
   // The impact site's outward normal (from the target toward the projectile), and the projectile's way on (downrange).
   const n = unitOf((xp[0] ?? 0) - (xt[0] ?? 0), (xp[1] ?? 0) - (xt[1] ?? 0), (xp[2] ?? 0) - (xt[2] ?? 0), [1, 0, 0]);
   const down = unitOf((vp[0] ?? 0) - (vt[0] ?? 0), (vp[1] ?? 0) - (vt[1] ?? 0), (vp[2] ?? 0) - (vt[2] ?? 0), [-n[0], -n[1], -n[2]]);
-  // Two axes across the normal, for the debris cone.
+  // The collision's plane (the impact normal and the way the projectile came, through the centre of mass): its second axis.
+  const along = (n[0] * down[0] + n[1] * down[1] + n[2] * down[2]);
   const helper: readonly [number, number, number] = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
-  const u = unitOf(n[1] * helper[2] - n[2] * helper[1], n[2] * helper[0] - n[0] * helper[2], n[0] * helper[1] - n[1] * helper[0], [0, 1, 0]);
-  const w = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+  const across = [n[1] * helper[2] - n[2] * helper[1], n[2] * helper[0] - n[0] * helper[2], n[0] * helper[1] - n[1] * helper[0]];
+  const u = unitOf(down[0] - along * n[0], down[1] - along * n[1], down[2] - along * n[2], unitOf(across[0] ?? 0, across[1] ?? 0, across[2] ?? 0, [0, 1, 0]));
   // The pieces: the second remnant, then the debris in as many bodies as there is room for (else returned to the remnant).
   const room = Math.max(0, MAX_BODIES - (count(s) - 2) - 1 - (o.second > 0 ? 1 : 0));
   const pieces = o.debris > 0 ? Math.min(MAX_DEBRIS, room) : 0;
   const unresolved = pieces > 0 ? 0 : o.debris;
   const largest = o.largest + unresolved;
   const masses: number[] = [...(o.second > 0 ? [o.second] : []), ...Array.from({ length: pieces }, () => o.debris / pieces)];
-  // Every piece at the pair's bulk density; the largest remnant's surface escape speed sets the launch speeds.
+  // Every piece at the pair's bulk density, leaving at 1.05 times the pair's mutual escape speed (Chambers 2013):
+  // the second remnant on downrange, the debris spaced evenly round the collision's plane from the impact site.
   const pairRadius = Math.cbrt((s.radius[t] ?? 0) ** 3 + (s.radius[p] ?? 0) ** 3);
   const radiusOf = (m: number): number => pairRadius * Math.cbrt(m / total);
   const rl = radiusOf(largest);
-  const escape = Math.sqrt((2 * largest) / Math.max(rl, 1e-9));
-  const dirs: number[][] = [];
-  const speeds: number[] = [];
-  if (o.second > 0) {
-    dirs.push(down);
-    speeds.push(DEBRIS_SPEED[0] * escape);
-  }
-  for (let k = 0; k < pieces; k += 1) {
-    const phi = (2 * Math.PI * k) / pieces;
-    dirs.push([0, 1, 2].map((i) => Math.cos(DEBRIS_CONE) * (n[i] ?? 0) + Math.sin(DEBRIS_CONE) * (Math.cos(phi) * (u[i] ?? 0) + Math.sin(phi) * (w[i] ?? 0))));
-    speeds.push((DEBRIS_SPEED[0] + ((DEBRIS_SPEED[1] - DEBRIS_SPEED[0]) * k) / Math.max(1, pieces - 1)) * escape);
-  }
-  // Each piece just clear of the remnant; the remnant set back (and slowed) so the centre of mass and the momentum stay as they were.
-  const offsets = masses.map((m, k) => (dirs[k] ?? n).map((x) => x * (rl + radiusOf(m)) * CLEARANCE));
+  const launch = CHAMBERS_SPEED * Math.sqrt((2 * total) / Math.max((s.radius[t] ?? 0) + (s.radius[p] ?? 0), 1e-9));
+  // The second remnant on downrange itself; the debris evenly spaced round the plane (their momenta cancel,
+  // so only the second remnant's sets the largest back), turned half a step off downrange so none follows it.
+  const downrange = Math.atan2(down[0] * u[0] + down[1] * u[1] + down[2] * u[2], along);
+  const inPlane = (phi: number): number[] => [0, 1, 2].map((i) => Math.cos(phi) * (n[i] ?? 0) + Math.sin(phi) * (u[i] ?? 0));
+  const dirs = [...(o.second > 0 ? [inPlane(downrange)] : []), ...Array.from({ length: pieces }, (_, k) => inPlane(downrange + (Math.PI * (2 * k + 1)) / pieces))];
+  const speeds = masses.map(() => launch);
+  // Each piece just clear of the remnant, and moved out further until clear of the pieces placed before it too;
+  // the remnant set back (and slowed) so the centre of mass and the momentum stay as they were.
+  const offsets: number[][] = [];
+  masses.forEach((m, k) => {
+    const r = radiusOf(m);
+    const dir = dirs[k] ?? n;
+    let reach = (rl + r) * CLEARANCE;
+    const clear = (): boolean => offsets.every((o2, j) => Math.hypot(...[0, 1, 2].map((i) => (dir[i] ?? 0) * reach - (o2[i] ?? 0))) > (r + radiusOf(masses[j] ?? 0)) * CLEARANCE);
+    for (let tries = 0; tries < 64 && !clear(); tries += 1) reach *= 1.1;
+    offsets.push(dir.map((x) => x * reach));
+  });
   const xl = [0, 1, 2].map((i) => (com[i] ?? 0) - masses.reduce((sum, m, k) => sum + m * (offsets[k]?.[i] ?? 0), 0) / total);
   const kick = [0, 1, 2].map((i) => masses.reduce((sum, m, k) => sum + m * (speeds[k] ?? 0) * (dirs[k]?.[i] ?? 0), 0) / largest);
   const names = { target: s.names[t] ?? '', projectile: s.names[p] ?? '' };
@@ -527,10 +568,11 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
     const speed = Math.sqrt(Math.max(0, ux * ux + uy * uy + uz * uz + (dist > reach ? 2 * gmPair * (1 / reach - 1 / dist) : 0)));
     const h = Math.hypot(ry * uz - rz * uy, rz * ux - rx * uz, rx * uy - ry * ux);
     const bImpact = speed > 0 ? Math.min(1, h / (Math.max(reach, 1e-9) * speed)) : 0;
+    const site = contactSite(rx, ry, rz, ux, uy, uz, reach, dt);
     // Test particles have no mass to break: they merge.
     const outcome = (s.gm[t] ?? 0) > 0 && (s.gm[p] ?? 0) > 0 ? impactOutcome({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact) : null;
     const mu = gmPair > 0 ? ((s.gm[t] ?? 0) * (s.gm[p] ?? 0)) / gmPair : 0;
-    const base = { step: s.step, t: s.t, survivor: ids.survivor, absorbed: ids.absorbed, speedKmS: speed, b: bImpact, energy: 0.5 * mu * speed * speed };
+    const base = { step: s.step, t: s.t, survivor: ids.survivor, absorbed: ids.absorbed, speedKmS: speed, b: bImpact, energy: 0.5 * mu * speed * speed, site };
     // The crater it leaves, where the target keeps its surface (none for a graze, a giant or a giant impact).
     const crater = outcome?.regime === 'hit-and-run' ? null : contactCrater({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact);
     if (!outcome || outcome.regime === 'merge') {
@@ -556,22 +598,33 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
 export function step(s: SimState, dt: number, acc: number[], events: MergeEvent[], keep?: (id: string) => boolean): number {
   let n = count(s);
   if (acc.length !== n * 6) accelerations(s, acc);
+  const homes = s.swarms.length > 0 ? swarmHomes(s) : null;
   // Contacts the coming drift would make, merged now, at the whole step.
   if (resolveContacts(s, dt, acc, events, keep)) {
     n = count(s);
     accelerations(s, acc);
+    // Rings whose primary merged away go on about the body it merged into.
+    if (homes) rehomeSwarms(s, homes, successorIn(events));
   }
   // Held bodies stay where they are (a merger may have given one a velocity).
   for (const id of s.fixed) {
     const i = s.ids.indexOf(id);
     if (i >= 0) for (let k = 0; k < 3; k += 1) s.vel[i * 3 + k] = 0;
   }
+  // Test particles: half a kick from everything but their primary's central pull, with the bodies where they start.
+  if (s.swarms.length > 0) kickSwarms(s, acc, dt * 0.5);
   for (let k = 0; k < n * 3; k += 1) s.vel[k] = (s.vel[k] ?? 0) + (acc[k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.spin[k] = (s.spin[k] ?? 0) + (acc[n * 3 + k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.pos[k] = (s.pos[k] ?? 0) + (s.vel[k] ?? 0) * dt;
   s.t += dt;
   s.step += 1;
   const shortest = accelerations(s, acc);
+  if (s.swarms.length > 0) {
+    // Along their conics about the primary, then the second half kick with the bodies where they end.
+    driftSwarms(s, dt);
+    kickSwarms(s, acc, dt * 0.5);
+    loseStruck(s);
+  }
   for (let k = 0; k < n * 3; k += 1) s.vel[k] = (s.vel[k] ?? 0) + (acc[k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.spin[k] = (s.spin[k] ?? 0) + (acc[n * 3 + k] ?? 0) * dt * 0.5;
   return shortest;
