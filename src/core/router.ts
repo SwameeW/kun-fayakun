@@ -4,14 +4,17 @@ import { BODY_IDS, type AppEvents, type BodyId, type ChapterId, type EventBus, t
 
 const CHAPTER_ROUTE = /^#?\/ch\/(\d{1,2})\/?(?:\?(.*))?$/;
 const UNIVERSE_ROUTE = /^#?\/universe(?:\/([a-z]*))?\/?(?:\?(.*))?$/i;
+/** The orbital laboratory's address inside the explorer's. */
+const LAB = 'lab';
 
 function chapterIdFromNumber(n: number): ChapterId | null {
   return CHAPTERS.find((c) => c.number === n)?.id ?? null;
 }
 
 /**
- * Parses "#/", "#/ch/<n>?t=<seconds>", "#/sources" and "#/universe[/<body>][?jd=<Julian date>]";
- * anything else is home. An unknown body still opens the explorer, on its default view.
+ * Parses "#/", "#/ch/<n>?t=<seconds>", "#/sources", "#/universe[/<body>][?jd=<Julian date>]" and
+ * "#/universe/lab[?jd=...]" (the orbital laboratory, forked at that date); anything else is home. An
+ * unknown body still opens the explorer, on its default view.
  */
 export function parseHash(hash: string): Route {
   const h = hash.trim();
@@ -29,7 +32,8 @@ export function parseHash(hash: string): Route {
   if (u) {
     const name = (u[1] ?? '').toLowerCase();
     const body = BODY_IDS.find((b) => b === name) ?? null;
-    return { name: 'universe', body, jd: parseJulianDate(new URLSearchParams(u[2] ?? '').get('jd')) };
+    const jd = parseJulianDate(new URLSearchParams(u[2] ?? '').get('jd'));
+    return name === LAB ? { name: 'universe', body: null, jd, lab: true } : { name: 'universe', body, jd };
   }
   return { name: 'home' };
 }
@@ -46,7 +50,8 @@ export function formatRoute(route: Route): string {
     }
     case 'universe': {
       const body: BodyId | null = route.body;
-      return `#/universe${body ? `/${body}` : ''}${route.jd === null ? '' : `?jd=${route.jd}`}`;
+      const where = route.lab ? `/${LAB}` : body ? `/${body}` : '';
+      return `#/universe${where}${route.jd === null ? '' : `?jd=${route.jd}`}`;
     }
   }
 }

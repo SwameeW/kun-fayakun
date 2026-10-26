@@ -217,7 +217,8 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 - Routes (hash): `#/` home, `#/ch/<n>?t=<seconds>` chapter deep link, `#/sources`,
   `#/universe[/<body>][?jd=<Julian date>]` the solar-system explorer (`body` one of sun, earth,
   moon, jupiter, saturn; an unknown body opens the default view; `jd` is UTC and wins over the
-  `?jd=` query parameter). One parser (`src/core/router.ts`) serves the engine and the UI.
+  `?jd=` query parameter), `#/universe/lab` the orbital laboratory (`Route.universe.lab`). One
+  parser (`src/core/router.ts`) serves the engine and the UI.
 - Query: `?forceWebGL=1`, `?tier=high|mid|low`, `?reducedMotion=1|0`, `?autoplay=1`
   (skip the intro overlay and start playing), `?fps=1` (show a small fps readout), `?profile=1`
   (GPU timestamp queries where supported: `frameStats()` then reports `gpuMedianMs`/`gpuP95Ms`;
@@ -500,6 +501,61 @@ Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Ea
   one-pixel tile, five real element sets moved to the test's day, three earthquakes ending now);
   `tests/unit/living-earth.spec.ts` covers the pure parts and `tests/explore/living-earth.spec.ts`
   the panel, tours, layers and the Makkah framing.
+
+## Orbital laboratory (explorer)
+
+The explorer's experiment mode; the full description, scenario schema, limitations and measured
+numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LEDGER.md`.
+
+- **Separation.** The real explorer's data is never written. `src/explore/lab.ts` (a lazy chunk,
+  `createLab`) forks a scenario, runs it in `src/sim/worker.ts`, and during an experiment places the
+  ten worlds from its snapshots (`Lab.applyBuiltIns`; their rotation stays the IAU models'), hides
+  removed ones, and draws new bodies as impostor dots with labels (`lab-<id>`). Entering puts aside
+  the explorer's time, imagery and markers and turns off satellites, earthquakes and discoveries;
+  leaving gives them back. Real orbit lines are hidden in an experiment.
+- **Engine** (`src/sim`, no DOM, no three.js). `nbody.ts`: state in km, s and GM (km³ s⁻²), direct
+  pairwise gravity, KDK leapfrog, swept contacts and conservative mergers (mass, momentum, centre of
+  mass; orbital angular momentum into spin; lost kinetic energy into `internal`, reported as heat),
+  `primaryOf` (the heavier body with the smallest distance over GM^(1/3)). `engine.ts`: `Engine`
+  (scenario, edit log applied at recorded steps, checkpoints, `seek`, `replayFromStart`, `drift`
+  since the last intervention), `Prediction` (a copy integrated ahead in slices, with its primary's
+  path for drawing), `validateScenario` and `IMPORT_LIMITS`; `ENGINE_VERSION` `kf-nbody-1`,
+  `SCHEMA_VERSION` 1. `seed.ts`: `seedSolarSystem` (from the explorer's ephemeris; the Sun in
+  `persistentIds`), `seedLaboratory`.
+- **Worker protocol** (`src/sim/protocol.ts`). Requests `load`, `run` (rate, paused), `command`,
+  `predict` (id, horizon), `seek`, `replay`, `save`; replies `snapshot` (ids, names, GM, radii,
+  positions, velocities, step, dt, drift, requested and achieved rate, failure, merger events,
+  interventions, checkpoints), `prediction` (path, merger, frame and its path), `saved`, `error`. Every message
+  carries the scenario's `generation`; replies from an older one are dropped, and snapshots by
+  `seq`. Budgets per 16 ms tick: 8 ms of steps (owed time carried up to 0.25 s), 3 ms of prediction;
+  snapshots every 33 ms.
+- **App and module.** `app.openLab()` / `app.closeLab()` (history: back returns to the explorer
+  exactly as it was), `app.universeLab(command: LabCommand)`; `UniverseModule.lab()`;
+  `UniverseView.lab: UniverseLab | null` (seed, elapsed and simulated date, step and dt, requested
+  and achieved rate, paused, bodies as `UniverseLabBody` with mass, radius, speeds, primary,
+  relative velocity and escape speed, the selection, its prediction, drift, history, checkpoints,
+  status). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
+  `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
+  `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`. Following a
+  world is the explorer's own focus. The time machine's commands drive the experiment's clock
+  (`toggle`, `faster`, `slower`, `rate`); `reverse`, `now` and `date` are disabled in it.
+- **Persistence.** IndexedDB database `kf-lab`, store `scenarios`, key `current`; export as
+  `kun-fayakun-<name>.json`; import through `validateScenario` (refused with reasons, nothing
+  changed).
+- **Interface** (`src/ui/explore/lab-panel.ts`, lazy, in the navigator's `labSlot`). Test ids:
+  `lab-open` (in the navigator), `lab-panel`, `lab-note`, `lab-clock`, `lab-rates`, `lab-failure`,
+  `lab-back`, `lab-bodies`, `lab-body-<id>`, `lab-inspector`, `lab-fact-*`, `lab-mass-input`,
+  `lab-mass-apply`, `lab-mass-double`, `lab-mass-halve`, `lab-vel-x|y|z`, `lab-vel-apply`,
+  `lab-duplicate`, `lab-remove`, `lab-follow`, `lab-horizon`, `lab-prediction`, `lab-add`,
+  `lab-add-name|mass|radius|primary|distance`, `lab-add-orbit`, `lab-add-pos-x|y|z`,
+  `lab-add-vel-x|y|z`, `lab-add-state`, `lab-checks`, `lab-history`, `lab-tools`, `lab-save`,
+  `lab-restore-saved`, `lab-export`, `lab-import-file`, `lab-status`, `lab-checkpoints`,
+  `lab-checkpoint-<step>`, `lab-replay`, `lab-reset`, `lab-preset-solar|two|three`. In an
+  experiment the navigator hides About, Living Earth and the rows of removed worlds.
+- **Budget.** `scripts/check-bundle.ts` holds the laboratory's lazy files (adapter, panel, worker)
+  to 250,000 bytes gzipped, apart from the explorer's 150,000.
+- **Messages.** `ui.universe.lab.*` in `src/i18n/en.explore.json`; the validator's "reflection, not
+  proof" phrasing rule applies to them too (paths are "integrated ahead", never "predicted").
 
 ## Browsers and local testing (measured on this machine)
 

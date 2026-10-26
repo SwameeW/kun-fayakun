@@ -81,6 +81,24 @@ export function removeAt(s: SimState, i: number): void {
 
 export const indexOf = (s: SimState, id: string): number => s.ids.indexOf(id);
 
+/** The body that body `i` moves about: of the heavier ones, the one with the smallest distance over GM^(1/3) (its sphere of influence, roughly); -1 for none. */
+export function primaryOf(gm: ArrayLike<number>, pos: ArrayLike<number>, i: number): number {
+  let best = -1;
+  let bestScore = Number.POSITIVE_INFINITY;
+  const g = gm[i] ?? 0;
+  for (let j = 0; j < gm.length; j += 1) {
+    const gj = gm[j] ?? 0;
+    if (j === i || gj <= g) continue;
+    const d = Math.hypot((pos[j * 3] ?? 0) - (pos[i * 3] ?? 0), (pos[j * 3 + 1] ?? 0) - (pos[i * 3 + 1] ?? 0), (pos[j * 3 + 2] ?? 0) - (pos[i * 3 + 2] ?? 0));
+    const score = d / Math.cbrt(gj);
+    if (score < bestScore) {
+      bestScore = score;
+      best = j;
+    }
+  }
+  return best;
+}
+
 /**
  * Accelerations (km s^-2) of every body into `out` (three per body). Returns the shortest dynamical
  * timescale of the massive pairs, found on the way (see timescale()).

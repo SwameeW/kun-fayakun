@@ -20,6 +20,7 @@ are in [docs/CONTRACTS.md](docs/CONTRACTS.md) and [src/core/types.ts](src/core/t
 | M3 | Chapters 7 to 10, JPL ephemerides, the letter analysis, end credits | Done, pending review |
 | Film and simulator brief | Screenplay and shot list ([film/](film/)), then film mode, simulators, sound and showcase features | Screenplay and shot list written; the rest is planned |
 | M4 | Recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded | Not started |
+| Explorer: Universe Sandbox and SpaceEngine brief | Phase 1, the orbital laboratory; Phases 2 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phase 1 done, pending review; the rest planned |
 
 Not for public release until the reviews in [Review process](#review-process) are recorded.
 
@@ -47,6 +48,13 @@ planets and the Moon. Real radii, positions, poles and rotations come from JPL/I
 Mercury uses visible-band monochrome MDIS imaging, Mars uses Viking colour and MOLA relief,
 and Venus, Uranus and Neptune use explicitly labelled uniform cloud-colour models.
 See [the five-planet extension](docs/FIVE-PLANETS.md) for sources and display limits.
+
+The orbital laboratory (`#/universe/lab`, "Experiment with this system" in the navigator) copies
+the solar system at the explorer's date into an N-body integration you can change: masses,
+velocities, new bodies, collisions, with predictions, conservation checks, and save, reset and
+replay. It is kept apart from the real data. See [the laboratory](docs/LAB.md) for its model,
+scenario format and limitations, and [the feature ledger](docs/FEATURE-LEDGER.md) for what the
+Universe Sandbox and SpaceEngine brief asks for and where each part stands.
 
 ### Routes and URL options
 
@@ -104,6 +112,7 @@ projects:
 | `tests/keyboard.spec.ts` | Keyboard-only run-through with visible focus. |
 | `tests/reduced-motion.spec.ts` | `prefers-reduced-motion` is detected and verses only cross-fade. |
 | `tests/perf/*.spec.ts` (`@perf`) | 60 s auto-play frame stats and first contentful paint on slow 4G. |
+| `tests/unit/sim.spec.ts`, `tests/explore/lab.spec.ts` | The orbital laboratory: orbits against Kepler and an independent RK4, convergence, conservation, mergers, no tunnelling, replay and branching, imports refused; in the browser, pause stopping the physics, edits that change the motion, predictions, save, reset, checkpoints, the camera leaving a removed world, and round trips back to the explorer and the film with GPU memory level. Numbers: `node --import tsx scripts/sim-report.ts`. |
 | `tests/explore/planet-textures.spec.ts` | Every planet texture in `planets.json` decodes through the app's KTX2 loader with its size, mips and colour space; the raw maps put Tokyo, the Pacific and the B ring where the manifest says, and the ring strip keeps straight alpha; the compressed maps, decoded by the app's Basis transcoder, put the Sahara, the Himalaya, Tycho, the Great Red Spot and Saturn's bluer south where it says; every planet credit shows on the Sources page. (`tests/unit/planets.spec.ts` checks the manifest, the KTX2 headers and the coordinate helpers without a browser.) |
 
 Useful variables: `KF_SKIP_BUILD=1` serves the existing `dist/` without rebuilding.

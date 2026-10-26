@@ -39,6 +39,7 @@ import type {
   EarthCommand,
   UniverseTimeCommand,
   UniverseSkyCommand,
+  LabCommand,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -133,6 +134,8 @@ class Engine implements KunFayakunApp {
    * page here, or reached again with Forward), so closing it is a step back in the history.
    */
   private universeBack = false;
+  /** The laboratory's address sits right on top of the explorer's (Back returns to it). */
+  private labBack = false;
   /** The router reports the initial address first; anything after that is navigation within the app. */
   private routed = false;
 
@@ -689,7 +692,8 @@ class Engine implements KunFayakunApp {
       // Reached from one of our pages (Forward, or an address typed over one): back is that page.
       // On the first address (a deep link) there is nothing of ours behind it.
       this.universeBack = !initial && !this.universeHost.requested;
-      this.enterUniverse(route.body, route.jd);
+      if (!route.lab) this.labBack = false;
+      this.enterUniverse(route.body, route.jd, route.lab === true);
       return;
     }
     if (route.name === 'sources') {
@@ -744,7 +748,7 @@ class Engine implements KunFayakunApp {
    * Opens the explorer for a route (or applies the route to it when it is already open). The
    * film's position is remembered the first time, so closing the explorer can return to it.
    */
-  private enterUniverse(body: BodyId | null, jd: number | null): void {
+  private enterUniverse(body: BodyId | null, jd: number | null, lab = false): void {
     const fresh = !this.universeHost.requested;
     if (fresh) {
       const chapter = this.timeline.chapter;
@@ -761,7 +765,7 @@ class Engine implements KunFayakunApp {
     // From Chapter 7's compressed solar system, with no body or date asked for, the explorer opens on
     // that view and stretches it out to true scale.
     const stretch = fresh && this.origin?.chapter === 'ch07' && body === null && jd === null;
-    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced, stretch });
+    void this.universeHost.open({ body, jdUtc: jd ?? this.params.jd, reducedMotion: this.reduced, stretch: stretch && !lab, lab });
   }
 
   private returnToOrigin(origin: FilmOrigin, history: NavOptions['history']): void {
@@ -910,6 +914,29 @@ class Engine implements KunFayakunApp {
 
   universeSky(command: UniverseSkyCommand): void {
     this.universeHost.sky(command);
+  }
+
+  universeLab(command: LabCommand): void {
+    this.universeHost.lab(command);
+  }
+
+  openLab(): void {
+    if (!this.universeHost.requested) return;
+    const before = window.location.hash;
+    this.router.navigate({ name: 'universe', body: null, jd: null, lab: true });
+    this.labBack = window.location.hash !== before;
+    void this.universeHost.open({ body: null, jdUtc: null, reducedMotion: this.reduced, lab: true });
+  }
+
+  closeLab(): void {
+    if (this.labBack) {
+      // Back to the explorer's own entry: the history as it was before the experiment.
+      this.labBack = false;
+      history.back();
+      return;
+    }
+    this.router.navigate({ name: 'universe', body: null, jd: null }, { replace: true });
+    void this.universeHost.open({ body: null, jdUtc: null, reducedMotion: this.reduced, lab: false });
   }
 
   universe(): UniverseView | null {

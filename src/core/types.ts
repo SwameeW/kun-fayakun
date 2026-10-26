@@ -480,6 +480,8 @@ export interface UniverseView {
   time: UniverseTime;
   /** The sky (src/explore/sky): which of its layers are shown, and how many stars are drawn. */
   sky: { layers: Record<SkyLayerName, boolean>; stars: number };
+  /** The orbital laboratory (src/explore/lab, src/sim) while an experiment runs; null in the real explorer. */
+  lab: UniverseLab | null;
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -699,6 +701,80 @@ export type UniverseTimeCommand =
 export type SkyLayerName = 'constellations' | 'boundaries' | 'grid' | 'names';
 export type UniverseSkyCommand = { kind: 'layer'; layer: SkyLayerName; on: boolean };
 
+/** One body of an experiment as the view reports it (masses in kg by one G: the Earth's GM over its mass). */
+export interface UniverseLabBody {
+  id: string;
+  name: string;
+  /** Which of the explorer's ten worlds it is, if any. */
+  builtIn: BodyId | null;
+  gm: number;
+  massKg: number;
+  radiusKm: number;
+  /** Speed in the scenario's frame, and relative to the body it moves about (its primary), and the distance to it. */
+  speedKmS: number;
+  primary: string | null;
+  relativeSpeedKmS: number | null;
+  distanceKm: number | null;
+  /** Its velocity relative to the primary (with none, in the scenario's frame), x, y, z: what the velocity fields edit. */
+  relativeVelKmS: [number, number, number];
+  escapeKmS: number;
+  /** Changed or made by the visitor in this experiment. */
+  edited: boolean;
+  /** Keeps its identity in mergers and cannot be removed (the scene's light). */
+  persistent: boolean;
+}
+
+/** The orbital laboratory as the view reports it. */
+export interface UniverseLab {
+  name: string;
+  seedNote: string;
+  frame: string;
+  epochJdTdb: number;
+  /** Simulated seconds since the epoch, steps taken and the current step (s). */
+  elapsedS: number;
+  step: number;
+  dtS: number;
+  /** Requested and achieved simulated seconds per real second. */
+  requestedRate: number;
+  achievedRate: number;
+  paused: boolean;
+  failure: string | null;
+  bodies: UniverseLabBody[];
+  selected: string | null;
+  /** Relative drift since the last intervention. */
+  drift: { energy: number; momentum: number; angularMomentum: number };
+  interventions: ReadonlyArray<{ step: number; t: number; kind: string; id: string }>;
+  events: ReadonlyArray<{ t: number; survivor: string; absorbed: string }>;
+  checkpoints: ReadonlyArray<{ step: number; t: number }>;
+  logLength: number;
+  discarded: number;
+  prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null } | null;
+  horizonS: number;
+  /** The last save, load, export or reset, or a refusal with its reasons. */
+  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error'; detail: string[] } | null;
+  /** Every body's name seen in this scenario (by id), kept after it merges or is removed. */
+  names: Readonly<Record<string, string>>;
+}
+
+/** What the laboratory's interface asks of it. Masses in kg, distances km, velocities km/s relative to a body. */
+export type LabCommand =
+  | { kind: 'start'; seed: 'solar' | 'two' | 'three' }
+  | { kind: 'select'; id: string | null }
+  | { kind: 'mass'; id: string; massKg: number }
+  | { kind: 'velocity'; id: string; relativeKmS: [number, number, number] }
+  | { kind: 'addOrbit'; primary: string; distanceKm: number; massKg: number; radiusKm: number; name: string }
+  | { kind: 'addState'; relativeTo: string; posKm: [number, number, number]; velKmS: [number, number, number]; massKg: number; radiusKm: number; name: string }
+  | { kind: 'duplicate'; id: string }
+  | { kind: 'remove'; id: string }
+  | { kind: 'seek'; step: number }
+  | { kind: 'replay' }
+  | { kind: 'reset' }
+  | { kind: 'horizon'; seconds: number }
+  | { kind: 'save' }
+  | { kind: 'restoreSaved' }
+  | { kind: 'export' }
+  | { kind: 'import'; text: string };
+
 /** The time machine as the view reports it. */
 export interface UniverseTime {
   /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused (at real time during a trip). */
@@ -733,7 +809,7 @@ export interface UniverseModule extends ExperienceModule {
   load(ctx: UniverseContext): Promise<void>;
   enter(ctx: UniverseContext): void;
   /** Applies a route: a body to show (null: the explorer's default) and a pinned UTC Julian date (null: now). */
-  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean; stretch?: boolean }): void;
+  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean; stretch?: boolean; lab?: boolean }): void;
   /** Flies to a body: an eased flight in log distance, never a jump (a dimmed cut with reduced motion). */
   focus(body: BodyId): void;
   view(): UniverseView;
@@ -759,6 +835,8 @@ export interface UniverseModule extends ExperienceModule {
   time(command: UniverseTimeCommand): void;
   /** The sky's layers (src/explore/sky). */
   sky(command: UniverseSkyCommand): void;
+  /** The orbital laboratory (src/explore/lab). */
+  lab(command: LabCommand): void;
 }
 
 /** A camera pose around a body, for tests and frame captures. */
@@ -780,8 +858,8 @@ export type Route =
   | { name: 'home' }
   | { name: 'chapter'; chapter: ChapterId; t: number | null }
   | { name: 'sources' }
-  /** The solar-system explorer, optionally on a body and at a pinned UTC Julian date. */
-  | { name: 'universe'; body: BodyId | null; jd: number | null };
+  /** The solar-system explorer, optionally on a body and at a pinned UTC Julian date; or its orbital laboratory. */
+  | { name: 'universe'; body: BodyId | null; jd: number | null; lab?: boolean };
 
 export interface AppEvents {
   route: { route: Route };
@@ -849,6 +927,11 @@ export interface AppCommands {
   universeTime(command: UniverseTimeCommand): void;
   /** In the explorer: show or hide a layer of the sky. */
   universeSky(command: UniverseSkyCommand): void;
+  /** In the laboratory: an edit, a seek, a save (src/explore/lab). */
+  universeLab(command: LabCommand): void;
+  /** Opens the orbital laboratory on a copy of the system the explorer shows; closes it back to the explorer. */
+  openLab(): void;
+  closeLab(): void;
 }
 
 /* ------------------------------------------------------------------ */

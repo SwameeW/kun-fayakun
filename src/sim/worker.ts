@@ -26,11 +26,14 @@ const scope = self as unknown as DedicatedWorkerGlobalScope;
 let engine: Engine | null = null;
 let generation = 0;
 let seq = 0;
+let applied = 0;
 let rate = 86_400;
 let paused = false;
 let lastTick = performance.now();
 let lastSnapshot = 0;
 let achieved = 0;
+/** Simulated time asked for and not yet stepped (a step can be longer than a tick's share). */
+let owed = 0;
 let recent: Array<{ wall: number; sim: number }> = [];
 let job: { revision: number; prediction: Prediction } | null = null;
 let revision = 0;
@@ -59,6 +62,7 @@ function snapshot(): void {
     type: 'snapshot',
     generation,
     seq: (seq += 1),
+    applied,
     t: s.t,
     step: s.step,
     dt: engine.dt,
@@ -90,11 +94,17 @@ function tick(): void {
   lastTick = now;
   if (engine && !paused && !engine.failure) {
     const t0 = engine.state.t;
-    const target = t0 + rate * wall;
+    // Owed time carries over, but never more than a quarter-second's worth and a step: a slow machine runs slower, it does not pile up a backlog.
+    owed = Math.min(owed + rate * wall, rate * MAX_WALL_S + engine.dt);
     const started = performance.now();
-    while (engine.state.t + engine.dt <= target && performance.now() - started < STEP_BUDGET_MS && !engine.failure) engine.stepOnce();
+    while (owed >= engine.dt && performance.now() - started < STEP_BUDGET_MS && !engine.failure) {
+      const dt = engine.dt;
+      engine.stepOnce();
+      owed -= dt;
+    }
     recent.push({ wall, sim: engine.state.t - t0 });
   } else {
+    owed = 0;
     recent.push({ wall, sim: 0 });
   }
   // The achieved rate over about the last second.
@@ -113,7 +123,8 @@ function tick(): void {
     if (done) {
       const r = job.prediction.result();
       const path = Float64Array.from(r.path);
-      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, path, merged: r.merged }, [path.buffer]);
+      const framePath = Float64Array.from(r.framePath);
+      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, path, merged: r.merged, frame: r.frame, framePath }, [path.buffer, framePath.buffer]);
       job = null;
     }
   }
@@ -130,8 +141,10 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       generation = msg.generation;
       engine = new Engine(msg.scenario);
       seq = 0;
+      applied = 0;
       job = null;
       recent = [];
+      owed = 0;
       snapshot();
       startPrediction();
       return;
@@ -144,6 +157,7 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         paused = msg.paused;
         break;
       case 'command':
+        applied += 1;
         engine.apply(msg.command);
         startPrediction();
         snapshot();

@@ -8,6 +8,12 @@ One rule carries over from `docs/SPEC.md`: the explorer shows what has been obse
 from cited data, and labels anything drawn beyond the data as illustrative. So it takes SpaceEngine's
 mechanics, not its invented worlds.
 
+Since the Universe Sandbox and SpaceEngine brief, the explorer has two domains, kept apart: the
+**real-data explorer** (this page's subject) and the **orbital laboratory** (`#/universe/lab`), a
+sandbox where a copy of the system is changed and moved by its own gravity (`docs/LAB.md`). Nothing
+done in the laboratory reaches the explorer's data, and the laboratory never presents its results
+as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LEDGER.md`.
+
 ## Already in the explorer
 
 | SpaceEngine | The explorer |
@@ -43,6 +49,12 @@ mechanics, not its invented worlds.
   constellation figures and names, the brightest stars' IAU names, the IAU boundaries, and a grid
   with the celestial equator and the ecliptic. The Milky Way's glow waits for an all-sky map with a
   clear licence.
+- **The orbital laboratory** (Universe Sandbox's core, the brief's Phase 1). "Experiment with this
+  system" forks the solar system at the explorer's date into an N-body integration in a worker: edit
+  masses and velocities, add bodies (on a circular orbit or at a given state), duplicate and
+  remove them, see trails and the path integrated ahead, watch conservation, and save, export,
+  reset, go back to a checkpoint or replay. Collisions merge, with the energy accounted. The time
+  machine drives its clock; leaving gives the real explorer back as it was.
 
 ## Planned, in this order (each from cited data)
 
@@ -51,7 +63,12 @@ mechanics, not its invented worlds.
 2. **Beyond the Sun.** Flights to the nearest stars (catalogue parallaxes), systems with known
    exoplanets (NASA Exoplanet Archive), out of the Milky Way (the film's model), the Local Group,
    the SDSS cosmic web (Chapter 5's 420,000 galaxies) and the Planck CMB (Chapter 1): from a street
-   on the Earth to the edge of the observable universe, without a cut.
+   on the Earth to the edge of the observable universe, without a cut. The sky now supplies the
+   stars' directions only. Travelling among them also needs their distances (parallaxes, one
+   identity per star so the sky never draws a star twice) and hierarchical coordinates (galaxy,
+   system, body and surface frames, each in Float64, giving small camera-relative values to the
+   GPU): the explorer's kilometre floating origin cannot simply be stretched to light-years
+   without losing the precision of the surface.
 3. **Down to the ground.** Real terrain near the surface (the Earth's terrain tiles, LOLA, MOLA), a
    view from the ground with the real sky, the next eclipses found from the ephemeris to fly to, and
    saved, shareable locations (place, view and time).
@@ -59,6 +76,8 @@ mechanics, not its invented worlds.
 
 ## Not planned
 
-- **Procedurally generated stars, planets and galaxies.** SpaceEngine fills uncharted space with
-  invented objects. The explorer invents none: past what is catalogued, space stays as observed.
+- **Invented objects shown as real.** SpaceEngine fills uncharted space with invented objects. The
+  brief allows generated systems only where nothing is catalogued, deterministic (the same seed,
+  the same world, however it is reached) and always marked "generated", never mixed into the
+  catalogue's views or given measured-looking values (ledger IS-5). Anything else stays as observed.
 - **SpaceEngine's music, addons, VR, aerodynamics and warp drives.** Outside this project's scope.

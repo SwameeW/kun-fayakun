@@ -6,6 +6,7 @@ import {
   drift,
   healthy,
   indexOf,
+  primaryOf,
   removeAt,
   resolveContacts,
   step,
@@ -116,6 +117,9 @@ export interface PredictionResult {
   /** Positions of the body (km, three per sample) every horizon / samples seconds from now; and where a merger ended the path. */
   path: number[];
   merged: { t: number; with: string; pos: [number, number, number] } | null;
+  /** The body it moved about at the start (its primary, followed through mergers), with its positions at the same samples, so the path can be drawn as an orbit about it; null and empty for none. */
+  frame: string | null;
+  framePath: number[];
 }
 
 const MAX_CHECKPOINTS = 48;
@@ -320,6 +324,10 @@ export class Prediction {
   private k = 1;
   private readonly path: number[] = [];
   private merged: PredictionResult['merged'] = null;
+  private readonly frame: string | null;
+  private follow: string | null;
+  private readonly framePath: number[] = [];
+  private frameAt: [number, number, number] = [0, 0, 0];
   done = false;
 
   constructor(
@@ -334,7 +342,12 @@ export class Prediction {
     this.dt = engine.dt;
     this.g = engine.scenario.integrator;
     this.keep = engine.keep;
-    if (indexOf(this.copy, id) < 0) this.done = true;
+    const i = indexOf(this.copy, id);
+    if (i < 0) this.done = true;
+    const p = i < 0 ? -1 : primaryOf(this.copy.gm, this.copy.pos, i);
+    this.frame = p < 0 ? null : (this.copy.ids[p] ?? null);
+    this.follow = this.frame;
+    if (p >= 0) this.frameAt = [this.copy.pos[p * 3] ?? 0, this.copy.pos[p * 3 + 1] ?? 0, this.copy.pos[p * 3 + 2] ?? 0];
   }
 
   /** Up to `budget` more steps; true when the prediction is complete. */
@@ -350,26 +363,41 @@ export class Prediction {
         used += 1;
         // The same retiming as the live run's.
         if (g.fixedDtS === null && (g.eta * shortest < 0.5 * this.dt || copy.step % g.retimeSteps === 0)) this.dt = Math.min(g.dtMaxS, Math.max(g.dtMinS, g.eta * shortest));
+        // The frame merged: its survivor carries on as the frame (should that be the body itself, the frame stays where it was).
+        const lost = this.follow === null ? undefined : this.events.find((ev) => ev.absorbed === this.follow);
+        if (lost) this.follow = lost.survivor === this.id ? null : lost.survivor;
         const e = this.events.find((ev) => ev.absorbed === this.id);
         if (e) {
           const i = indexOf(copy, e.survivor);
           this.merged = { t: copy.t - this.start, with: e.survivor, pos: [copy.pos[i * 3] ?? 0, copy.pos[i * 3 + 1] ?? 0, copy.pos[i * 3 + 2] ?? 0] };
           this.path.push(...this.merged.pos);
+          this.sampleFrame();
           this.done = true;
         }
         continue;
       }
       // A sample, then on to the next (or done: the horizon reached, or the step budget spent).
       const i = indexOf(copy, this.id);
-      if (i >= 0) this.path.push(copy.pos[i * 3] ?? 0, copy.pos[i * 3 + 1] ?? 0, copy.pos[i * 3 + 2] ?? 0);
+      if (i >= 0) {
+        this.path.push(copy.pos[i * 3] ?? 0, copy.pos[i * 3 + 1] ?? 0, copy.pos[i * 3 + 2] ?? 0);
+        this.sampleFrame();
+      }
       this.k += 1;
       if (this.k > this.samples || this.steps >= this.maxSteps || i < 0) this.done = true;
     }
     return this.done;
   }
 
+  /** The frame body's place at this sample (its last place, once it has merged into the body itself). */
+  private sampleFrame(): void {
+    if (this.frame === null) return;
+    const f = this.follow === null ? -1 : indexOf(this.copy, this.follow);
+    if (f >= 0) this.frameAt = [this.copy.pos[f * 3] ?? 0, this.copy.pos[f * 3 + 1] ?? 0, this.copy.pos[f * 3 + 2] ?? 0];
+    this.framePath.push(...this.frameAt);
+  }
+
   result(): PredictionResult {
-    return { id: this.id, path: [...this.path], merged: this.merged };
+    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath] };
   }
 }
 

@@ -94,7 +94,6 @@ test('convergence: halving the step quarters the energy error on an eccentric or
 test('an eccentric orbit (e = 0.6) follows the exact Kepler solution', () => {
   const e = 0.6;
   const { state, period, a } = circularPair(0.4 * AU, e);
-  const mu = GM_SUN + GM_EARTH;
   const steps = 20_000;
   const dt = period / steps;
   // The exact relative position at mean anomaly M (Kepler's equation by Newton's method).
@@ -114,7 +113,6 @@ test('an eccentric orbit (e = 0.6) follows the exact Kepler solution', () => {
     const ry = (s.pos[4] ?? 0) - (s.pos[1] ?? 0);
     worst = Math.max(worst, Math.hypot(rx - x, ry - y) / a);
   });
-  expect(Math.sqrt(mu) > 0).toBe(true);
   expect(worst).toBeLessThan(2e-4);
 });
 
@@ -319,8 +317,8 @@ test('imports that are not valid scenarios are refused, quickly, with reasons', 
     return r.ok ? [] : r.errors;
   };
   expect(bad((s) => (s.schemaVersion = 99))[0]).toMatch(/schema version/);
-  expect(bad((s) => ((s.bodies as BodySpec[])[0]!.gm = Number.NaN))).not.toEqual([]);
-  expect(bad((s) => ((s.bodies as BodySpec[])[1]!.id = 'star'))).toContainEqual(expect.stringMatching(/duplicate id/));
+  expect(bad((s) => (s.bodies = (s.bodies as BodySpec[]).map((b, i) => (i === 0 ? { ...b, gm: Number.NaN } : b))))).not.toEqual([]);
+  expect(bad((s) => (s.bodies = (s.bodies as BodySpec[]).map((b, i) => (i === 1 ? { ...b, id: 'star' } : b))))).toContainEqual(expect.stringMatching(/duplicate id/));
   expect(bad((s) => (s.log = [{ step: 0, command: { kind: 'remove', id: 'nobody' } }]))).toContainEqual(expect.stringMatching(/does not exist/));
   const started = performance.now();
   expect(bad((s) => (s.bodies = Array.from({ length: 100_000 }, (_, i) => ({ ...(s.bodies as BodySpec[])[0], id: `b${i}` }))))).toContainEqual(expect.stringMatching(/at most 64/));
@@ -339,8 +337,13 @@ test('the solar system seed: ten bodies at the barycentre, at rest, the epoch in
   const d = diagnostics(stateFrom(s.bodies));
   expect(Math.hypot(...d.momentum) / d.momentumScale).toBeLessThan(1e-12);
   // The Moon about 384,000 km from the Earth, moving about 1 km/s relative to it.
-  const e = s.bodies.find((b) => b.id === 'earth')!;
-  const m = s.bodies.find((b) => b.id === 'moon')!;
+  const body = (id: string): BodySpec => {
+    const b = s.bodies.find((x) => x.id === id);
+    if (!b) throw new Error(`no ${id}`);
+    return b;
+  };
+  const e = body('earth');
+  const m = body('moon');
   const r = Math.hypot(m.pos[0] - e.pos[0], m.pos[1] - e.pos[1], m.pos[2] - e.pos[2]);
   const v = Math.hypot(m.vel[0] - e.vel[0], m.vel[1] - e.vel[1], m.vel[2] - e.vel[2]);
   expect(r).toBeGreaterThan(356_000);
@@ -371,4 +374,21 @@ test('a prediction integrates a copy ahead (the live state untouched), closing a
   const hit = e.predict('planet', year, 360, 1_000_000);
   expect(hit.merged?.with).toBe('star');
   expect(hit.path.length).toBeLessThan(360 * 3);
+  expect(hit.frame).toBe('star');
+
+  // A moon's path comes with its planet's, so it can be drawn as an orbit about the planet: over a month
+  // the Moon stays between perigee and apogee of the Earth, while about the barycentre it travels some
+  // 70 million km.
+  const eph = createEphemeris(readJson('public/assets/jpl/planets.json') as PlanetsFile, readJson('public/assets/jpl/moon.json') as MoonFile, physical);
+  const month = new Engine(seedSolarSystem(eph, physical, 2461336.75)).predict('moon', 30 * 86_400, 120, 1_000_000);
+  expect(month.frame).toBe('earth');
+  expect(month.framePath.length).toBe(month.path.length);
+  const apart = (k: number): number => Math.hypot((month.path[k] ?? 0) - (month.framePath[k] ?? 0), (month.path[k + 1] ?? 0) - (month.framePath[k + 1] ?? 0), (month.path[k + 2] ?? 0) - (month.framePath[k + 2] ?? 0));
+  for (let k = 0; k < month.path.length; k += 3) {
+    expect(apart(k)).toBeGreaterThan(350_000);
+    expect(apart(k)).toBeLessThan(410_000);
+  }
+  const [x0 = 0, y0 = 0, z0 = 0] = month.path;
+  const [x1 = 0, y1 = 0, z1 = 0] = month.path.slice(-3);
+  expect(Math.hypot(x1 - x0, y1 - y0, z1 - z0)).toBeGreaterThan(5e7);
 });

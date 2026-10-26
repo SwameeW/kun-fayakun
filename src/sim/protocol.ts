@@ -21,6 +21,8 @@ export interface LabSnapshot {
   type: 'snapshot';
   generation: number;
   seq: number;
+  /** Edits received in this generation: a snapshot with fewer than the page has sent was taken before its latest edit. */
+  applied: number;
   /** Simulated seconds since the epoch, steps taken, the current step (s). */
   t: number;
   step: number;
@@ -48,6 +50,6 @@ export interface LabSnapshot {
 
 export type LabReply =
   | LabSnapshot
-  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null }
+  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array }
   | { type: 'saved'; generation: number; requestId: number; scenario: Scenario }
   | { type: 'error'; generation: number; message: string };

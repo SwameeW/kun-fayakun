@@ -26,7 +26,7 @@
  */
 
 import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
-import { validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
+import { createEphemeris, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { obliquityRad, PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import { julianDateUtc, utcToTdb } from '../astro/time';
 import { createNoiseVolume } from '../chapters/shared/noise-volume';
@@ -55,6 +55,7 @@ import { createUploader } from './assets/upload';
 import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createEarthTiles, type EarthTiles } from './earth-tiles';
 import { lastWholeDay } from './earth-tiles/sources';
+import type { Lab } from './lab';
 import { composeBulletin } from './field-notes/bulletin';
 import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes/data';
 import { centralAngle, loadPlaces, type Place } from './field-notes/places';
@@ -320,6 +321,18 @@ export default function create(): UniverseModule {
   let input: ExploreInput | null = null;
   let world: NavWorld | null = null;
   let range = { startJd: 0, endJd: Infinity };
+  /**
+   * The orbital laboratory (./lab): while an experiment runs it owns the worlds' positions and the
+   * clock; the bodies it removed are hidden; and the explorer's own time and imagery wait, to be put
+   * back exactly as they were when it ends.
+   */
+  let lab: Lab | null = null;
+  /** What the laboratory is made from (kept from loading; the laboratory's own code loads only when one starts). */
+  let labInputs: { planets: PlanetsFile; moon: MoonFile; physical: PhysicalFile } | null = null;
+  let labLoading = false;
+  let wantLab = false;
+  const hiddenBodies = new Set<BodyId>();
+  let beforeLab: { rate: number; paused: boolean; jdTdb: number; jdUtc: number; imagery: 'clear' | 'today'; markers: 'atlas' | 'prophets' | null } | null = null;
   /** The time machine (./time): the rate set, whether paused, the end it stopped at, and the rate the clock ran at this frame. */
   let timeRate = 1;
   let timePaused = false;
@@ -531,6 +544,7 @@ export default function create(): UniverseModule {
     unixMs: 0,
     time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0 },
     sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
+    lab: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -569,9 +583,11 @@ export default function create(): UniverseModule {
     v.unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     if (stars) for (const layer of SKY_LAYERS) v.sky.layers[layer] = stars.layers[layer];
     v.sky.stars = stars?.object.count ?? 0;
-    v.time.rate = timeRate;
-    v.time.paused = timePaused;
-    v.time.edge = timeEdge;
+    // In the laboratory the time controls run the experiment's clock.
+    v.time.rate = lab?.active ? lab.rate : timeRate;
+    v.time.paused = lab?.active ? lab.paused : timePaused;
+    v.time.edge = lab?.active ? null : timeEdge;
+    v.lab = lab?.view() ?? null;
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -803,6 +819,52 @@ export default function create(): UniverseModule {
     return { altitudeKm: floor, lensDeg: MathUtils.radToDeg(2 * Math.atan(viewKm / 2 / floor)) };
   };
 
+  /** Into or out of the laboratory, as the route asks: in, the explorer's time, imagery and names wait; out, they come back as they were. */
+  const applyLab = (): void => {
+    if (!system) return;
+    if (wantLab && !lab) {
+      // The laboratory's own chunk (its engine runs in a worker it starts), loaded the first time it is asked for.
+      if (labLoading || !labInputs) return;
+      labLoading = true;
+      const { planets, moon, physical } = labInputs;
+      import('./lab')
+        .then(({ createLab }) => {
+          labLoading = false;
+          // The laboratory seeds from the explorer's ephemeris; kilograms by the Earth's GM over JPL's mass of the Earth.
+          const earthMassKg = (planets.bodies.find((b) => b.name === 'Earth')?.physical.massE24Kg ?? 0) * 1e24;
+          lab = createLab(createEphemeris(planets, moon, physical), physical, earthMassKg, {});
+          root.add(...lab.objects);
+          applyLab();
+        })
+        .catch(() => {
+          // Its code did not arrive (offline, a new deployment): asking again tries again.
+          labLoading = false;
+        });
+      return;
+    }
+    if (!lab) return;
+    if (wantLab && !lab.active) {
+      beforeLab = { rate: timeRate, paused: timePaused, jdTdb, jdUtc, imagery: earthTiles?.mode ?? 'clear', markers: markerSet };
+      // The day's imagery is a record of the real Earth's weather: an experiment's Earth shows only its cloud-free map.
+      earthTiles?.setMode('clear');
+      markerSet = null;
+      lab.start('solar', jdTdb);
+      lab.setRun(86_400, false);
+    } else if (!wantLab && lab.active) {
+      lab.stop();
+      hiddenBodies.clear();
+      if (beforeLab) {
+        timeRate = beforeLab.rate;
+        timePaused = beforeLab.paused;
+        jdTdb = beforeLab.jdTdb;
+        jdUtc = beforeLab.jdUtc;
+        earthTiles?.setMode(beforeLab.imagery);
+        markerSet = beforeLab.markers;
+      }
+      beforeLab = null;
+    }
+  };
+
   /** Whether a point on the Earth (degrees) is near enough to Makkah that the view keeps its distance (MAKKAH_FRAME). */
   const nearMakkah = (sys: SolarSystem, lat: number, lon: number): boolean => {
     const makkah = site('mecca');
@@ -922,16 +984,30 @@ export default function create(): UniverseModule {
     nav.reducedMotion = c.reducedMotion;
     adaptation.setReducedMotion(c.reducedMotion);
     ambient += c.reducedMotion ? 0 : dt;
-    // The time machine: the clock at its rate (real time during a trip), kept in the data's span.
-    clockRate = timePaused ? 0 : nav.busy ? Math.sign(timeRate) : timeRate;
-    const clock = advanceClock(jdTdb, dt, clockRate, range.startJd, range.endJd);
-    jdUtc += clock.jd - jdTdb;
-    jdTdb = clock.jd;
-    if (clock.edge) {
-      timePaused = true;
-      timeEdge = clock.edge;
+    if (lab?.active) {
+      // The experiment's clock (its epoch plus the simulated time), with no data span to keep to.
+      const jd = lab.jdTdb();
+      clockRate = lab.paused ? 0 : lab.rate;
+      jdUtc += jd - jdTdb;
+      jdTdb = jd;
+    } else {
+      // The time machine: the clock at its rate (real time during a trip), kept in the data's span.
+      clockRate = timePaused ? 0 : nav.busy ? Math.sign(timeRate) : timeRate;
+      const clock = advanceClock(jdTdb, dt, clockRate, range.startJd, range.endJd);
+      jdUtc += clock.jd - jdTdb;
+      jdTdb = clock.jd;
+      if (clock.edge) {
+        timePaused = true;
+        timeEdge = clock.edge;
+      }
     }
     sys.update(jdTdb);
+    // In the laboratory the experiment puts the worlds where it has them (their turn still the IAU models').
+    if (lab?.active) {
+      lab.applyBuiltIns(sys, hiddenBodies);
+      const refocus = lab.takeRefocus();
+      if (refocus && !hiddenBodies.has(refocus)) nav.flyTo(world, refocus);
+    }
     advanceStretch(dt);
     warpSystem(sys);
     for (const path of orbitPaths) path.setDate(jdTdb);
@@ -1051,6 +1127,7 @@ export default function create(): UniverseModule {
       const radiusKm = spec.radiusKm * grow[id];
       p.radiusPx = pxPerTan * Math.tan(Math.asin(Math.min(1, radiusKm / Math.max(p.distance, radiusKm))));
       const object = bodies.objects[id];
+      object.visible = !hiddenBodies.has(id);
       object.position.set(p.drawn.x, p.drawn.y, p.drawn.z);
       object.scale.setScalar(radiusKm * p.k);
       const b = sys.bodies[id].basis;
@@ -1191,7 +1268,8 @@ export default function create(): UniverseModule {
       const nearBody = smoothstep(ORBIT_NEAR_BODY.from * size, ORBIT_NEAR_BODY.to * size, placed[path.body].distance);
       const fromCentre = Math.hypot(path.centre.x - origin.camera.x, path.centre.y - origin.camera.y, path.centre.z - origin.camera.z);
       const outside = smoothstep(ORBIT_INSIDE.from * size, ORBIT_INSIDE.to * size, fromCentre);
-      const want = (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
+      // The worlds' real orbits are the ephemeris's: not drawn over an experiment (its trails are).
+      const want = lab?.active ? 0 : (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
       const current = orbitWeights[i] ?? 0;
       orbitWeights[i] = current + (want - current) * (entering ? 1 : orbitSettle);
     });
@@ -1217,6 +1295,15 @@ export default function create(): UniverseModule {
     // Names on the sky (the brightest stars', the constellations'), when shown.
     stars.labels(labels);
 
+    // The experiment's trails, prediction and new bodies (with their names).
+    if (lab?.active) {
+      lab.update(
+        { camera: origin.camera, forward, near: lens.near, far: lens.far, pxPerTan, focus: sys.bodies[nav.focus].position, focusRadius: sys.specs[nav.focus].radiusKm, focusDistance: placed[nav.focus].distance, compensation: adapted },
+        (abs, out) => origin.relative(abs, out),
+      );
+      lab.labels(labels);
+    }
+
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
     if (satellites || quakes) {
       const pe = placed.earth;
@@ -1229,8 +1316,10 @@ export default function create(): UniverseModule {
       living.sun.y = scratch.y;
       living.sun.z = scratch.z;
       const unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
-      satellites?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, sun: living.sun, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && Math.abs(clockRate) <= SATELLITE_MAX_RATE });
-      quakes?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && Math.abs(unixMs - Date.now()) < QUAKES_WITHIN_MS, time: ambient, reducedMotion: c.reducedMotion });
+      // Observations of the real Earth are not shown around an experiment's (its Earth may not be ours).
+      const real = !lab?.active;
+      satellites?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, sun: living.sun, earthRadiusKm: sys.specs.earth.radiusKm, visible: real && near && Math.abs(clockRate) <= SATELLITE_MAX_RATE });
+      quakes?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, earthRadiusKm: sys.specs.earth.radiusKm, visible: real && near && Math.abs(unixMs - Date.now()) < QUAKES_WITHIN_MS, time: ambient, reducedMotion: c.reducedMotion });
       if (satellites) for (const l of satellites.labels()) labels.push(l);
       if (quakes) for (const l of quakes.labels()) labels.push(l);
       pushMarkers(sys, near && pe.distance < MARKER_RANGE_KM, pxPerTan);
@@ -1277,7 +1366,7 @@ export default function create(): UniverseModule {
         const brightness = 0.22 + 2.1 * style.albedo * phase;
         dot.color = [style.tint[0] * brightness, style.tint[1] * brightness, style.tint[2] * brightness];
       }
-      dot.opacity = smoothstep(2.8, 1.2, p.radiusPx);
+      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx);
       dot.sizePx = style.sizePx;
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
@@ -1501,7 +1590,8 @@ export default function create(): UniverseModule {
     input.sunCameraKm = Math.hypot(origin.camera.x - sun.x, origin.camera.y - sun.y, origin.camera.z - sun.z);
     input.sunlight = v.sunlight;
     input.solarFilter = v.solarFilter;
-    discovery = discoveries.update(input);
+    // The notes are about the real worlds: none over an experiment.
+    discovery = lab?.active ? null : discoveries.update(input);
   };
 
   /** The data-travel hook: "flying" while a trip is under way, then "arrived" or "stopped". */
@@ -1560,7 +1650,7 @@ export default function create(): UniverseModule {
       const inFront = anchor.z < 1 && anchor.z > -1;
       const sx = ((anchor.x + 1) / 2) * widthPx;
       const sy = ((1 - anchor.y) / 2) * viewportPx;
-      const wanted = inFront && p.radiusPx < LABEL.maxDiscPx && !occluded(id);
+      const wanted = inFront && p.radiusPx < LABEL.maxDiscPx && !occluded(id) && !hiddenBodies.has(id);
       // Which form: the tag at its right; at its left (no room on the right); or a pointer at the edge
       // (its point is out of the clear view). Each holds until the body is a margin past the line.
       const hold = (form: LabelForm): number => (state.form === form ? LABEL.holdPx : -LABEL.holdPx);
@@ -1735,6 +1825,7 @@ export default function create(): UniverseModule {
       const valid = validRange(moon);
       range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
       system = createSolarSystem(planets, moon, physical);
+      labInputs = { planets, moon, physical };
       world = navBodies(system);
       ringSphere.innerKm = physical.saturnRings.innerKm;
       ringSphere.outerKm = physical.saturnRings.outerKm;
@@ -1879,6 +1970,8 @@ export default function create(): UniverseModule {
     },
 
     configure(options) {
+      wantLab = options.lab === true;
+      if (entered) applyLab();
       if (options.jdUtc !== null || !entered) pinnedUtc = options.jdUtc;
       if (entered && options.jdUtc !== null) setDate(options.jdUtc);
       nav.reducedMotion = options.reducedMotion;
@@ -1950,6 +2043,7 @@ export default function create(): UniverseModule {
       wasTravelling = false;
       // The log of what was seen lasts the whole visit to the page; the note starts afresh.
       discovery = null;
+      applyLab();
       input?.attach();
       // Place everything once, then let the warm-up compile every material, in view or not (for the
       // target the frames draw into, so no body compiles again when it first comes into view).
@@ -2022,7 +2116,19 @@ export default function create(): UniverseModule {
       stars?.setLayer(command.layer, command.on);
     },
 
+    lab(command) {
+      lab?.command(command);
+    },
+
     time(command) {
+      // In the laboratory: pause, faster and slower drive the experiment; going back is by its checkpoints, not a reversed clock.
+      if (lab?.active) {
+        if (command.kind === 'toggle') lab.setRun(lab.rate, !lab.paused);
+        else if (command.kind === 'faster') lab.setRun(fasterRate(lab.rate), false);
+        else if (command.kind === 'slower') lab.setRun(slowerRate(lab.rate), false);
+        else if (command.kind === 'rate') lab.setRun(command.rate === 0 ? lab.rate : Math.abs(command.rate), command.rate === 0);
+        return;
+      }
       // A change of rate or direction sets the clock running; a new date keeps it as it was.
       if (command.kind !== 'date' && command.kind !== 'toggle') timePaused = false;
       timeEdge = null;
@@ -2100,6 +2206,9 @@ export default function create(): UniverseModule {
     },
 
     exit() {
+      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back).
+      wantLab = false;
+      applyLab();
       root.removeFromParent();
       input?.detach();
       // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
@@ -2134,6 +2243,8 @@ export default function create(): UniverseModule {
       rawDecoder = null;
       bodies = null;
       stars = null;
+      lab?.dispose();
+      lab = null;
       orbits = null;
       dots = null;
       glare = null;
