@@ -83,7 +83,7 @@ platform.
 
 | ID | Feature | Model / approximation | Depends on | Status |
 |---|---|---|---|---|
-| IM-1 | Outcome by regime (merge, graze, disrupt) | A cited scaling regime map, labelled | SB-10 | research needed |
+| IM-1 | Outcome by regime (merge, partial accretion, hit-and-run, erosion, super-catastrophic) | Leinhardt and Stewart (2012) scaling laws (`src/sim/impacts.ts`, `docs/IMPACTS.md`) | SB-10 | in progress: the model and its tests done; the engine's use of it next |
 | IM-2 | Impact heating and a persistent surface mark | Heat already accounted (SB-10); per-surface mark | IM-1, WR-1 | planned |
 | IM-3 | Crater geometry | Documented crater scaling law on a height field | GR-1 | planned |
 | IM-4 | Bounded physical ejecta, separate decorative dust | Fragments as bodies; unresolved mass reservoir | IM-1 | planned |
