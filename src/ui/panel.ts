@@ -122,11 +122,12 @@ export function createPanel(app: App): Panel {
 
   /*
    * Finding the letter analysis: besides its quiet button at the end of the scholarly layer, a
-   * button right under the verse it reads (in the text layer, where the reader is), and on the stage,
-   * while that verse's cue plays, an invitation under the verse itself. Either opens the notes if
-   * they are closed and then the analysis, scrolled into view.
+   * button under the last verse of the text layer (the verse the analysis is introduced under:
+   * 21:33 in Chapter 7), where the reader is, and on the stage, while that verse's cue plays, an
+   * invitation under the verse itself. Either opens the notes if they are closed and then the
+   * analysis, scrolled into view. Neither loads the analysis: it still loads when it opens.
    */
-  let inviteKeys: string[] = [];
+  let inviteKey: string | null = null;
   let inviteTimer = 0;
   const invite = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-invite', 'data-testid': 'discovery-invite', 'aria-hidden': 'true', tabindex: '-1' }, i18n.t('ui.discovery.invite'));
   const showInvite = (shown: boolean): void => {
@@ -228,23 +229,15 @@ export function createPanel(app: App): Panel {
       body.scrollTop = 0;
       renderedChapter = chapter;
       showInvite(false);
-      inviteKeys = [];
-      const analysis = discovery;
-      // Once its asset says which verses it reads: a button under the last of them, and the stage invitation's keys.
-      analysis?.verses().then(
-        (keys) => {
-          if (discovery !== analysis) return;
-          inviteKeys = keys;
-          // The last of them as the notes order them (not as the asset lists them).
-          const articles = [...body.querySelectorAll('[data-verse]')].filter((a) => keys.includes(a.getAttribute('data-verse') ?? ''));
-          const last = articles[articles.length - 1];
-          if (!last) return;
-          const inline = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-inline', 'data-testid': 'discovery-inline' }, i18n.t('ui.discovery.inline'));
-          inline.addEventListener('click', openAnalysis);
-          last.after(inline);
-        },
-        () => undefined,
-      );
+      inviteKey = null;
+      const verses = sections.get('text')?.querySelectorAll('[data-verse]');
+      const last = verses?.[verses.length - 1];
+      if (discovery && last) {
+        inviteKey = last.getAttribute('data-verse');
+        const inline = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-inline', 'data-testid': 'discovery-inline' }, i18n.t('ui.discovery.inline'));
+        inline.addEventListener('click', openAnalysis);
+        last.after(inline);
+      }
       if (pendingSection?.chapter === chapter) focusSection(pendingSection.section);
       pendingSection = null;
     } catch (err) {
@@ -293,7 +286,7 @@ export function createPanel(app: App): Panel {
   });
   app.events.on('cue', ({ chapter, cue, active }) => {
     // The stage invitation follows the cue of a verse the analysis reads, lingering a little after it.
-    if (cue.type === 'verse' && chapter === renderedChapter && inviteKeys.includes(cue.key)) {
+    if (cue.type === 'verse' && chapter === renderedChapter && cue.key === inviteKey) {
       if (active) showInvite(true);
       else
         inviteTimer = window.setTimeout(() => {
