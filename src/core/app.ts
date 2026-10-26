@@ -521,6 +521,14 @@ class Engine implements KunFayakunApp {
     }
   };
 
+  setExposureBias(stops: number): void {
+    this.exposure.setBias(stops);
+  }
+
+  get exposureBiasStops(): number {
+    return this.exposure.biasStops;
+  }
+
   capturePicture(lines: readonly string[]): Promise<Blob | null> {
     this.pendingCapture?.resolve(null);
     return new Promise((resolve) => {

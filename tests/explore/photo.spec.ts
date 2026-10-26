@@ -1,12 +1,13 @@
 /**
- * Saving the picture from photo mode (ledger CR-1), in the browser: the view as drawn, a PNG named for
- * the world and the date, with a band of credits below the picture (where and when, whose imagery,
- * the app and its Sources page), and the interface left out of it.
+ * Photo mode in the browser: the picture saved (ledger CR-1), the view as drawn, a PNG named for the
+ * world and the date, with a band of credits below the picture (where and when, whose imagery, the
+ * app and its Sources page) and the interface left out of it; a video recorded (CR-3); the lens and
+ * the exposure (CR-2), each given back on leaving.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '../support/fixtures';
 import { SLOW } from '../support/env';
-import { JD, view, waitForUniverse } from '../support/universe';
+import { JD, place, view, waitForUniverse } from '../support/universe';
 
 const LIVE = { timeout: 60_000 * SLOW };
 
@@ -79,6 +80,109 @@ test('photo mode’s lens sets the camera’s field of view, and leaving gives t
   await page.getByTestId('universe-photo-exit').click();
   await expect.poll(async () => (await view(page))?.lensFov, LIVE).toBeNull();
   await expect.poll(fov, LIVE).toBeCloseTo(framed, 6);
+  expect(pageErrors).toEqual([]);
+});
+
+test('photo mode’s exposure: whole stops through the flash-safe limiter, said in the picture’s credits, given back on leaving', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000 * SLOW);
+  await kf.open('/universe/mars', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // The engine's applied exposure and its bias (the app's, through the test hook).
+  const exposure = (): Promise<{ current: number; bias: number }> =>
+    page.evaluate(() => {
+      const app = (window as unknown as { __kf: { app: { exposure: { current: number }; exposureBiasStops: number } } }).__kf.app;
+      return { current: app.exposure.current, bias: app.exposureBiasStops };
+    });
+  await page.getByTestId('universe-photo').click();
+  // The view settled: the explorer's own exposure, steady.
+  let before = 0;
+  await expect
+    .poll(async () => {
+      const now = (await exposure()).current;
+      const steady = before > 0 && Math.abs(now / before - 1) < 0.002;
+      before = now;
+      return steady;
+    }, LIVE)
+    .toBe(true);
+  // One stop brighter: twice the light, reached by the limiter's ramp, not at once.
+  await page.getByTestId('universe-photo-exposure').selectOption('1');
+  expect((await exposure()).bias).toBe(1);
+  await expect.poll(async () => (await exposure()).current / before, LIVE).toBeGreaterThan(1.98);
+  expect((await exposure()).current / before).toBeLessThan(2.02);
+  // The picture's credits say how it was exposed.
+  await page.evaluate(() => {
+    const w = window as unknown as { __kf: { app: { capturePicture(lines: readonly string[]): Promise<Blob | null> } }; kfLines?: readonly string[] };
+    const app = w.__kf.app;
+    const capture = app.capturePicture.bind(app);
+    app.capturePicture = (lines) => {
+      w.kfLines = lines;
+      return capture(lines);
+    };
+  });
+  await Promise.all([page.waitForEvent('download', { timeout: 30_000 * SLOW }), page.getByTestId('universe-photo-save').click()]);
+  const lines = await page.evaluate(() => (window as unknown as { kfLines?: readonly string[] }).kfLines ?? []);
+  expect(lines).toContain('Exposed 1 stop brighter than the explorer’s own exposure');
+  // Two stops darker, then leaving: the explorer's own exposure again.
+  await page.getByTestId('universe-photo-exposure').selectOption('-2');
+  await expect.poll(async () => (await exposure()).current / before, LIVE).toBeLessThan(0.26);
+  await page.getByTestId('universe-photo-exit').click();
+  expect((await exposure()).bias).toBe(0);
+  await expect.poll(async () => Math.abs((await exposure()).current / before - 1), LIVE).toBeLessThan(0.02);
+  expect(pageErrors).toEqual([]);
+});
+
+test('photo mode keeps a body in its place in the frame as it moves round the world in view', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // The Earth in view, the Moon beside it a little behind (100,000 km out, turned 12 degrees off the line to it).
+  await place(page, { body: 'earth', distanceKm: 100_000, from: 'moon', azimuthDeg: 12, elevationDeg: 3 });
+  // The Moon on screen relative to the Earth (photo mode frees the screen, and the Earth eases to its middle).
+  const moonOnScreen = async (): Promise<{ x: number; y: number; inView: boolean; unixMs: number; earthX: number }> => {
+    const v = await view(page);
+    const m = v?.bodies.find((b) => b.id === 'moon')?.screen;
+    const e = v?.bodies.find((b) => b.id === 'earth')?.screen;
+    return { x: (m?.x ?? Number.NaN) - (e?.x ?? 0), y: (m?.y ?? Number.NaN) - (e?.y ?? 0), inView: m?.inView ?? false, unixMs: v?.unixMs ?? 0, earthX: e?.x ?? 0 };
+  };
+  const rate = (r: number): Promise<void> =>
+    page.evaluate((x) => {
+      (window as unknown as { __kf: { app: { universeTime(c: { kind: 'rate'; rate: number }): void } } }).__kf.app.universeTime({ kind: 'rate', rate: x });
+    }, r);
+  await page.getByTestId('universe-photo').click();
+  await page.getByTestId('universe-photo-track').selectOption('moon');
+  await expect.poll(async () => (await view(page))?.tracking, LIVE).toBe('moon');
+  // The framing settled after the interface left.
+  let lastX = Number.NaN;
+  await expect
+    .poll(async () => {
+      const x = (await moonOnScreen()).earthX;
+      const settled = Math.abs(x - lastX) < 0.5;
+      lastX = x;
+      return settled;
+    }, LIVE)
+    .toBe(true);
+  const from = await moonOnScreen();
+  expect(from.inView).toBe(true);
+  // Two days at a day a second: the Moon goes some 26 degrees round the Earth, and keeps its place in the frame.
+  await rate(86_400);
+  await expect.poll(async () => (await moonOnScreen()).unixMs - from.unixMs, LIVE).toBeGreaterThan(2 * 86_400_000);
+  await rate(0);
+  const held = await moonOnScreen();
+  expect(held.inView).toBe(true);
+  // Within a few pixels (the Moon's distance and the tilt of its orbit change a little in two days).
+  expect(Math.hypot(held.x - from.x, held.y - from.y)).toBeLessThan(15);
+  // Kept no longer: two more days and it has gone its own way across the view.
+  await page.getByTestId('universe-photo-track').selectOption('');
+  await expect.poll(async () => (await view(page))?.tracking, LIVE).toBeNull();
+  await rate(86_400);
+  await expect.poll(async () => (await moonOnScreen()).unixMs - held.unixMs, LIVE).toBeGreaterThan(2 * 86_400_000);
+  await rate(0);
+  const free = await moonOnScreen();
+  expect(!free.inView || Math.hypot(free.x - held.x, free.y - held.y) > 100).toBe(true);
+  // Leaving photo mode ends it.
+  await page.getByTestId('universe-photo-track').selectOption('moon');
+  await page.getByTestId('universe-photo-exit').click();
+  await expect.poll(async () => (await view(page))?.tracking, LIVE).toBeNull();
   expect(pageErrors).toEqual([]);
 });
 

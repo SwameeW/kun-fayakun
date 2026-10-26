@@ -164,6 +164,12 @@ export interface EngineExposure extends ExposureControl {
   jump(): void;
   /** True once the applied exposure is effectively black. */
   readonly dark: boolean;
+  /**
+   * Photo mode's compensation (ledger CR-2): every target scaled by 2^stops (whole stops, -3 to 3),
+   * reached through the same slew limiter as any change of target, so it is flash-safe too.
+   */
+  setBias(stops: number): void;
+  readonly biasStops: number;
   update(dt: number): void;
 }
 
@@ -202,6 +208,7 @@ const SNAP_STOPS = 0.005;
 
 export function createExposureControl(options: { reducedMotion: boolean }): EngineExposure {
   let target = 1;
+  let biasStops = 0;
   let fade = 0;
   let reduced = options.reducedMotion;
   let u = FLOOR_STOPS;
@@ -229,8 +236,14 @@ export function createExposureControl(options: { reducedMotion: boolean }): Engi
     setReducedMotion(on) {
       reduced = on;
     },
+    get biasStops() {
+      return biasStops;
+    },
+    setBias(stops) {
+      biasStops = Number.isFinite(stops) ? Math.max(-3, Math.min(3, Math.round(stops))) : 0;
+    },
     jump() {
-      u = Math.max(FLOOR_STOPS, Math.log2(Math.max(target * fade, Number.MIN_VALUE)));
+      u = Math.max(FLOOR_STOPS, Math.log2(Math.max(Math.min(MAX_EXPOSURE, target * 2 ** biasStops) * fade, Number.MIN_VALUE)));
       current = u <= FLOOR_STOPS ? 0 : 2 ** u;
       // A fresh start: no change to hold still after.
       lastDirection = 0;
@@ -238,7 +251,7 @@ export function createExposureControl(options: { reducedMotion: boolean }): Engi
     },
     update(dt) {
       if (dt <= 0) return;
-      const goal = target * fade;
+      const goal = Math.min(MAX_EXPOSURE, target * 2 ** biasStops) * fade;
       const goalU = Math.max(FLOOR_STOPS, Math.log2(Math.max(goal, Number.MIN_VALUE)));
       const scale = reduced ? REDUCED_MOTION_SCALE : 1;
       const step = (goalU - u) * (1 - Math.exp(-dt / SMOOTHING_SECONDS));

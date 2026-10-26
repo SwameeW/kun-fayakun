@@ -512,6 +512,8 @@ export interface UniverseView {
   sound: { on: boolean; playing: 'wind' | 'suit' | null };
   /** Photo mode's lens (degrees of field), or null for the explorer's own framing. */
   lensFov: number | null;
+  /** The body photo mode keeps in its place in the frame, or null. */
+  tracking: BodyId | null;
   /**
    * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
    * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
@@ -1252,6 +1254,8 @@ export type EarthCommand =
   | { kind: 'sound'; on: boolean }
   /** Photo mode's lens: a field of view (degrees, top to bottom) in place of the explorer's own, or null to give it back. */
   | { kind: 'lens'; fovDeg: number | null }
+  /** Photo mode's tracking (ledger CR-2): the view turned about the focus as this body moves, so it keeps its place in the frame; null to stop. */
+  | { kind: 'track'; body: BodyId | null }
   | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` }
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
@@ -1483,4 +1487,10 @@ export interface App extends AppCommands {
   startRecording(lines: () => readonly string[]): boolean;
   /** Stops it: the video, or null. */
   stopRecording(): Promise<Blob | null>;
+  /**
+   * Photo mode's exposure compensation (ledger CR-2): whole stops brighter (positive) or darker than
+   * what the scene asks for, -3 to 3, through the engine's flash-safe limiter; 0 to stop.
+   */
+  setExposureBias(stops: number): void;
+  readonly exposureBiasStops: number;
 }

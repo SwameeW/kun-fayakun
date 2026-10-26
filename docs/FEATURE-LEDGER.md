@@ -152,7 +152,7 @@ platform.
 | ID | Feature | Status |
 |---|---|---|
 | CR-1 | Image export from photo mode, with credits | implemented (2026-10-26): the frame as drawn, a band of credits below it (place and date, what is illustrative, the imagery and data credits on screen, the app and its Sources page), named for the place and the date (`tests/explore/photo.spec.ts`) |
-| CR-2 | Field of view, exposure, target tracking | partial (2026-10-26): photo mode's lens, 90 to 5 degrees of view in place of the explorer's framing (`tests/explore/photo.spec.ts`); exposure and target tracking not yet |
+| CR-2 | Field of view, exposure, target tracking | implemented (2026-10-26): photo mode's lens, 90 to 5 degrees of view in place of the explorer's framing; its exposure, whole stops either way through the flash-safe limiter and named in the picture's credits; and "Keep in view", a body held in its place in the frame as it moves round the world in view (`tests/explore/photo.spec.ts`: the Moon beside the Earth within 15 px over two days, against some 480 px without) |
 | CR-3 | Camera keyframes, saved shots, video export (feature-detected) | partial (2026-10-26): video recording from photo mode with its credits below (MediaRecorder, feature-detected; `tests/explore/photo.spec.ts`); saved shots are the saved views (GR-4); keyframed camera moves not yet |
 | CR-4 | Short lessons on resettable scenarios | implemented (2026-10-26, [LAB.md](LAB.md)): Kepler's third law, escape speed, a Hohmann transfer and the Roche limit, each set up again from the start, each step an edit with the expected number beside the experiment's (`tests/explore/lessons.spec.ts`) |
 | CR-5 | Declarative, versioned addons (no imported code) | deferred |

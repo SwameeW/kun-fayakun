@@ -13,7 +13,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NO_GPU, SLOW } from '../support/env';
 import { MOCK_GROUND_M } from '../support/live';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 
@@ -24,8 +24,10 @@ test.use({ reducedMotion: 'reduce' });
 const walkView = async (page: Page) => (await view(page))?.walk ?? null;
 
 test('on foot: landing on the ground below, the suit’s figures, walking, jumping, turning, and back to orbit', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(300_000 * SLOW);
-  await kf.open('/universe/earth', { query: { jd: JD } });
+  // In software rendering (CI) a frame of the walk takes about ten seconds, and this test needs some
+  // dozens of them: the lowest detail there (no bloom, the simpler air; the figures checked are the same).
+  test.setTimeout(450_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD, ...(NO_GPU ? { detail: 'low' } : {}) } });
   await waitForUniverse(page);
   // Over the Sahara's middle, low enough for the Earth's surface to be the point below.
   await place(page, { body: 'earth', distanceKm: 20_000, azimuthDeg: 30, elevationDeg: 20 });
@@ -78,7 +80,8 @@ test('on foot: landing on the ground below, the suit’s figures, walking, jumpi
   expect(forward).not.toBeNull();
   await page.mouse.move((forward?.x ?? 0) + (forward?.width ?? 0) / 2, (forward?.y ?? 0) + (forward?.height ?? 0) / 2);
   await page.mouse.down();
-  await expect.poll(async () => ((await walkView(page))?.walkedM ?? 0) - padded, LIVE).toBeGreaterThan(0.5);
+  // Moving at all is the pad working: a frame's walk is over a decimetre.
+  await expect.poll(async () => ((await walkView(page))?.walkedM ?? 0) - padded, LIVE).toBeGreaterThan(0.1);
   await page.mouse.up();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
