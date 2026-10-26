@@ -44,6 +44,7 @@ import { decodeNormal, mapCoords, mipLevel, sampleSlot, sampleSlotLevel, sampleS
 import { bumpGradient, craters, keepOnSphere, litCosine, sphereFootprint, sunlit, tiltNormal } from './shading';
 import { textureTier } from '../detail';
 import { blendAdditive } from '../render/blending';
+import { createClimateView } from './climate-view';
 import { createMarks, type SurfaceMark } from './marks';
 
 /** The kit's maps put the near side's centre (east longitude 0) at u = 0.5 (planets.json bodies.moon.uAtLon0). */
@@ -109,6 +110,8 @@ export interface ExploreMoon {
   apply(detail: ExploreDetail): void;
   /** The laboratory's craters on it (none outside the laboratory). */
   setMarks(marks: readonly SurfaceMark[]): void;
+  /** The laboratory's climate on it (./climate-view): its bands' temperatures, the temperature view on or off (null: none). */
+  setClimate(bandsK: readonly number[] | null, temperature: boolean): void;
   dispose(): void;
 }
 
@@ -139,6 +142,7 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
   const standard = lommel(STANDARD.mu0, STANDARD.mu).mul(surge(STANDARD.phase)).mul(Math.exp(-PHASE_DARKENING * STANDARD.phase));
   // Fresh rock: bright on the Moon and Mercury (rays too: no air or dust to hide them), dark basalt under Mars's dust.
   // (Of the map's mean, not the colour there, so nothing of the old surface shows through the new.)
+  const climate = createClimateView();
   const exaggeration = textures.manifest.files.find((f) => f.body === options.body && f.map === 'normal')?.reliefExaggeration ?? 1;
   const marks = options.body === 'mars' ? createMarks(() => colourSlot.mean.rgb.mul(0.45).add(vec3(0.035, 0.035, 0.04)), { exaggeration }) : createMarks(() => vec3(max(luma(colourSlot.mean.rgb).mul(1.5), 0.16)), { rays: true, exaggeration });
 
@@ -191,6 +195,7 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     const marked = marks.apply(n, relief, albedo, footprint);
     relief = marked.normal;
     albedo = marked.albedo;
+    const climateNow = climate.apply(n.y, albedo);
     const view = normalize(uEye.sub(options.body === 'moon' ? n : point));
     const nDotL = dot(n, uSun);
     const mu0 = litCosine(dot(relief, uSun));
@@ -252,7 +257,9 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     const earthshine = max(dot(relief, uEarth), 0).mul(uEarthshine);
     const light = vec3(law.mul(terminator).mul(lit)).add(EARTHLIGHT.mul(earthshine));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
-    material.colorNode = albedo.mul(light).mul(uLight).add(marked.glow);
+    // The temperature view: the map's colour lit the same way, a fifth of it showing on the night side.
+    const shown = mix(albedo.mul(light), climateNow.map.mul(light.add(0.2)), climateNow.mapShare);
+    material.colorNode = shown.mul(uLight).add(marked.glow);
     if (options.polar !== 1) material.positionNode = point;
     return material;
   };
@@ -321,6 +328,9 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
     },
     setMarks(list) {
       marks.set(list);
+    },
+    setClimate(bandsK, temperature) {
+      climate.set(bandsK, temperature, false);
     },
     prepare(detail) {
       const m = materialFor(detail);

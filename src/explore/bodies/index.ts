@@ -62,6 +62,8 @@ export interface Bodies {
   credits(body: BodyId): string[];
   /** The laboratory's craters on a solid world drawn (the Earth, the Moon, Mercury, Mars); the others have no surface to mark here. */
   setMarks(body: BodyId, marks: readonly SurfaceMark[]): void;
+  /** The laboratory's climate on a solid world drawn: its bands' temperatures (null: none) and the temperature view. */
+  setClimate(body: BodyId, bandsK: readonly number[] | null, temperature: boolean): void;
   dispose(): void;
 }
 
@@ -165,6 +167,10 @@ export function createBodies(options: BodiesOptions): Bodies {
     setMarks(body, marks) {
       const solid = { earth, moon, mercury, mars } as const;
       if (body in solid) solid[body as keyof typeof solid].setMarks(marks);
+    },
+    setClimate(body, bandsK, temperature) {
+      const solid = { earth, moon, mercury, mars } as const;
+      if (body in solid) solid[body as keyof typeof solid].setClimate(bandsK, temperature);
     },
     dispose() {
       for (const body of all) body.dispose();

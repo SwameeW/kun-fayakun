@@ -20,7 +20,7 @@ test.use({ reducedMotion: 'reduce' });
 const walkView = async (page: Page) => (await view(page))?.walk ?? null;
 
 test('on foot: landing on the ground below, the suit’s figures, walking, jumping, turning, and back to orbit', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(180_000 * SLOW);
+  test.setTimeout(300_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   // Over the Sahara's middle, low enough for the Earth's surface to be the point below.
@@ -81,8 +81,11 @@ test('on foot: landing on the ground below, the suit’s figures, walking, jumpi
   // Esc: back to orbit, where the camera was.
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await view(page))?.walk, LIVE).toBeNull();
-  await expect(page.getByTestId('walk-hud')).toBeHidden();
-  await expect(page.getByTestId('universe-readout')).toBeVisible();
+  // The interface follows on the next frame drawn; in software rendering (CI) the first frame back in
+  // orbit compiles the globe's materials again and can take most of a minute.
+  const NEXT_FRAME = { timeout: 120_000 * SLOW };
+  await expect(page.getByTestId('walk-hud')).toBeHidden(NEXT_FRAME);
+  await expect(page.getByTestId('universe-readout')).toBeVisible(NEXT_FRAME);
   await expect.poll(async () => (await view(page))?.altitudeKm ?? 0, LIVE).toBeGreaterThan((above?.altitudeKm ?? 0) * 0.9);
   expect(pageErrors).toEqual([]);
 });

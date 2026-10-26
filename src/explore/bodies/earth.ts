@@ -41,6 +41,7 @@ import { sunTransmittance, transmittanceToTop, type AirModel } from '../render/a
 import { blendPremultiplied } from '../render/blending';
 import { decodeNormal, magnification, mapCoords, sampleSlot, shiftCoords, tangentFrame, type FloatNode, type MapCoords, type Vec3Node } from '../render/sampling';
 import { createAir, type AirUniforms, type ExploreAir } from './atmosphere';
+import { createClimateView } from './climate-view';
 import { createMarks, type SurfaceMark } from './marks';
 import { bumpGradient, keepOnSphere, litCosine, noiseIfKept, sphereFootprint, sunlit, tiltNormal } from './shading';
 
@@ -107,6 +108,8 @@ export interface ExploreEarth {
   apply(detail: ExploreDetail): void;
   /** The laboratory's craters on it (none outside the laboratory). */
   setMarks(marks: readonly SurfaceMark[]): void;
+  /** The laboratory's climate on it (./climate-view): its bands' temperatures (its ice drawn from them), the temperature view on or off (null: none). */
+  setClimate(bandsK: readonly number[] | null, temperature: boolean): void;
   dispose(): void;
 }
 
@@ -142,6 +145,7 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   object.name = 'explore-earth';
   const uTime = uniform(0);
   const uLight = uniform(1);
+  const climate = createClimateView();
   // Fresh rock and ash on land: a grey brown (illustrative); relief as the ETOPO map's is drawn.
   const marks = createMarks(() => vec3(0.2, 0.17, 0.14), { exaggeration: textures.manifest.files.find((f) => f.body === 'earth' && f.map === 'normal')?.reliefExaggeration ?? 1 });
   const uSun = uniform(new Vector3(1, 0, 0));
@@ -282,6 +286,9 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     const marked = marks.apply(n, normal, albedo, footprint);
     albedo = mix(albedo, marked.albedo, land);
     normal = normalize(mix(normal, marked.normal, land));
+    // The climate's ice, over land and sea alike.
+    const climateNow = climate.apply(n.y, albedo);
+    albedo = climateNow.albedo;
     const nDotL = dot(n, uSun);
     const sunColour = sunAt(scatter, 1, nDotL).mul(sunlit(nDotL, 0.004));
     const lambert = max(dot(normal, uSun), 0).mul(0.85).add(litCosine(nDotL).mul(0.15));
@@ -324,6 +331,8 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       colour = colour.add(vec3(...CITY.tint).mul(lights.mul(dark).mul(float(1).sub(cover.mul(0.85))).mul(CITY.strength)));
     }
     colour = colour.add(marked.glow.mul(land));
+    // The temperature view: the map's colour lit as the ground is, a fifth of it showing at night.
+    colour = mix(colour, climateNow.map.mul(sunColour.mul(lambert).add(0.2)), climateNow.mapShare);
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = colour.mul(uLight);
     return material;
@@ -361,7 +370,8 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     }
     const material = blendPremultiplied(new MeshBasicNodeMaterial({ side: FrontSide, transparent: true, depthWrite: false, fog: false }));
     // Close in the shell fades, so the ground the view zoomed to shows; with the day's mosaic its clouds are the real ones.
-    const kept = tiles ? opacity.mul(tiles.clouds) : opacity;
+    // The clouds step aside while the climate's temperature view shows the ground.
+    const kept = (tiles ? opacity.mul(tiles.clouds) : opacity).mul(float(1).sub(climate.mapShare));
     material.colorNode = colour.mul(kept);
     material.opacityNode = kept;
     return material;
@@ -455,6 +465,9 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     },
     setMarks(list) {
       marks.set(list);
+    },
+    setClimate(bandsK, temperature) {
+      climate.set(bandsK, temperature, true);
     },
     prepare(detail) {
       const out: Object3D[] = [];

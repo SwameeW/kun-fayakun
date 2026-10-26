@@ -1,6 +1,7 @@
 import type { Ephemeris } from '../astro/ephemeris';
 import { obliquityRad, type PhysicalFile } from '../astro/physical';
 import { icrfToEcliptic, orientationAt, poleIcrf } from '../astro/rotation';
+import type { ClimateSpec } from './climate';
 import { DEFAULT_INTEGRATOR, ENGINE_VERSION, SCHEMA_VERSION, type BodySpec, type Scenario } from './engine';
 
 /**
@@ -24,7 +25,7 @@ import { DEFAULT_INTEGRATOR, ENGINE_VERSION, SCHEMA_VERSION, type BodySpec, type
  */
 
 /** A world's flattening and the spread of its mass: its J2 and moment of inertia factor (either unknown). */
-export type Shapes = Readonly<Record<string, { j2?: number | null; inertia?: number | null } | undefined>>;
+export type Shapes = Readonly<Record<string, { j2?: number | null; inertia?: number | null; climate?: ClimateSpec | null; luminosityW?: number | null } | undefined>>;
 
 export const VELOCITY_STEP_DAYS = 1 / 24;
 export const SOLAR_FRAME = 'barycentre of the ten bodies, at rest; ecliptic and equinox of J2000; km, km/s';
@@ -93,6 +94,8 @@ export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jd
       spin: rotationAt(physical, key, epoch),
       ...(shape?.j2 ? { j2: shape.j2 } : {}),
       ...(shape?.inertia ? { inertia: shape.inertia } : {}),
+      ...(shape?.climate ? { climate: { ...shape.climate } } : {}),
+      ...(shape?.luminosityW ? { luminosityW: shape.luminosityW } : {}),
     };
   });
   // To the barycentre, at rest.
@@ -124,7 +127,7 @@ export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jd
  * wider circular orbit; the bodies' GM and radii are the Sun's and the Earth's (and Jupiter's for the
  * third) from physical.json, labelled as a laboratory, not the solar system.
  */
-export function seedLaboratory(physical: PhysicalFile, third: boolean): Scenario {
+export function seedLaboratory(physical: PhysicalFile, third: boolean, shapes: Shapes = {}): Scenario {
   const au = physical.auKm;
   const mean = (r: readonly number[]): number => ((r[0] ?? 0) + (r[1] ?? 0) + (r[2] ?? 0)) / 3;
   const star = physical.gmKm3S2.Sun;
@@ -136,8 +139,12 @@ export function seedLaboratory(physical: PhysicalFile, third: boolean): Scenario
     const v = Math.sqrt((star + gm) / r);
     bodies.push({ id, name, gm, radiusKm, pos: [r, 0, 0], vel: [0, v, 0], origin: 'user-edited', sourceIds: ['jpl-de440', 'naif-pck00011'] });
   };
-  bodies.push({ id: 'star', name: 'Star', gm: star, radiusKm: mean(physical.bodies.Sun.radiiKm), pos: [0, 0, 0], vel: [0, 0, 0], origin: 'user-edited', sourceIds: ['jpl-de440', 'naif-pck00011'] });
+  bodies.push({ id: 'star', name: 'Star', gm: star, radiusKm: mean(physical.bodies.Sun.radiiKm), pos: [0, 0, 0], vel: [0, 0, 0], origin: 'user-edited', sourceIds: ['jpl-de440', 'naif-pck00011'], ...(shapes.sun?.luminosityW ? { luminosityW: shapes.sun.luminosityW } : {}) });
   orbit('planet', 'Planet', planet, mean(physical.bodies.Earth.radiiKm), au);
+  // The planet has the Earth's mass, size and climate (no tilt: no seasons).
+  const planetClimate = shapes.earth?.climate;
+  const made = bodies[bodies.length - 1];
+  if (planetClimate && made) made.climate = { ...planetClimate };
   if (third) orbit('giant', 'Giant', giant, mean(physical.bodies.Jupiter.radiiKm), 2.5 * au);
   const total = bodies.reduce((s, b) => s + b.gm, 0);
   const c = [0, 1, 2].map((k) => bodies.reduce((s, b) => s + b.gm * (b.pos[k] ?? 0), 0) / total);

@@ -1,3 +1,4 @@
+import type { ClimateSpec } from './climate';
 import type { Command, Encounter, Scenario } from './engine';
 import type { MergeEvent } from './nbody';
 
@@ -54,6 +55,9 @@ export interface LabSnapshot {
   interventions: Array<{ step: number; t: number; kind: Command['kind']; id: string }>;
   events: MergeEvent[];
   checkpoints: Array<{ step: number; t: number }>;
+  /** Each solid world's climate (./climate): its bands' temperatures (K, south to north) and what it is set to; every star's luminosity now (W). */
+  climate: Array<{ id: string; t: number[]; spec: ClimateSpec }>;
+  light: Record<string, number>;
   /** Rings and belts: their particles' places relative to each one's primary (km, three per particle; single precision is ample to draw). */
   swarms: Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array }>;
   logLength: number;

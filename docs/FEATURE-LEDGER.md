@@ -73,7 +73,7 @@ platform.
 | SB-30 | Camera frames: inertial, body-fixed, two-body co-rotating | Paths drawn about each primary, in the scenario frame, turning with a pair, or turning with the primary's own rotation (over its ground); never the physics | SB-8 | Trajectories identical across frames | implemented (`lab-tools.spec`) |
 | SB-31 | Lagrange points | The five points of a pair at its present separation (collinear ones by Newton's method), drawn and labelled; a body placed at one co-rotating | SB-30 | L4/L5 Trojan stays | implemented (`elements.spec`: equilibria, a Trojan at Jupiter's L4 for ten Jovian years) |
 | SB-32 | Roche-limit and spin-breakup indicators | Rigid and fluid Roche limits, breakup period, said when crossed | SB-25 | | implemented (`elements.spec`, `lab-tools.spec`) |
-| SB-33 | J2 and tidal spin | J2 about the spin axis with its reaction and torque (axis precession), the fact sheets' J2s | SB-26 | Precession rate against theory | partial (J2 done: nodal regression at the textbook rate; tides research needed) |
+| SB-33 | J2 and tidal spin | J2 about the spin axis with its reaction and torque (axis precession), the fact sheets' J2s; tidal disruption inside the fluid Roche limit (a ring of pieces and dust, [CLIMATE.md](CLIMATE.md#tidal-disruption-sb-33)) | SB-26 | Precession rate against theory; disruption's accounting | partial (J2 and tidal disruption done, 2026-10-26; tidal friction and spin-down research needed: each world's tidal lag is not settled enough to cite) |
 | SB-34 | Measurements (distance, angle, light time, angular size) | Between any two bodies, and an angle seen from a third | SB-8 | | implemented (`elements.spec`, `lab-tools.spec`) |
 | SB-35 | Graphs over time that survive a merger | A tracked quantity per id, following the survivor through a merger; coarsening, never ending | SB-12 | | implemented (`lab-tools.spec`) |
 | SB-36 | Pinned external reference fixture | REBOUND 5.2.2 IAS15, one year of the seed (data only; the code is GPL) | SB-4 | Fixture hash and agreement recorded | implemented (`rebound.spec`; `docs/LAB.md` gives the agreement) |
@@ -94,12 +94,12 @@ platform.
 
 | ID | Feature | Model / approximation | Depends on | Status |
 |---|---|---|---|---|
-| WR-1 | Materials with sourced properties | Mass fractions per reservoir | none | research needed |
-| WR-2 | Global energy balance from the active light sources | Absorbed flux, emission, heat capacity | ST-2 | planned |
-| WR-3 | Surface grid: latitude, seasons, day and night | Coarse grid, slower than gravity | WR-2 | planned |
-| WR-4 | Water and ice inventories, phase changes | Stored state, not an overlay | WR-1 | planned |
-| WR-5 | Atmospheres (thin and thick, greenhouse labelled) | Parameterised greenhouse | WR-1 | planned |
-| WR-6 | Data views (temperature, liquid, pressure, composition) | | WR-3 | planned |
+| WR-1 | Materials with sourced properties | Mass fractions per reservoir | none | partial (2026-10-26: Bond albedos, surface pressures, the air's main gases and the hydrosphere's mass from the fact sheets; interiors and reservoirs research needed) |
+| WR-2 | Global energy balance from the active light sources | Absorbed flux, emission, heat capacity: North, Cahalan and Coakley's (1981) model for the Earth, a calibrated grey atmosphere elsewhere, every star's light (`src/sim/climate.ts`, [CLIMATE.md](CLIMATE.md)) | ST-2 | implemented (2026-10-26: `tests/unit/climate.spec.ts`, `tests/explore/lab-tools.spec.ts`) |
+| WR-3 | Surface grid: latitude, seasons, day and night | Eighteen latitude bands, the day's mean light by season from each world's spin axis, stepped daily after gravity | WR-2 | implemented, the day's mean (no day and night within it) |
+| WR-4 | Water and ice inventories, phase changes | Ice where the year is below -10 C (with its albedo's feedback: snowball and hysteresis), liquid water where it could lie (triple point to boiling at the pressure) | WR-1 | partial (ice and where liquid could be, 2026-10-26; the water's inventory moving between reservoirs not modelled) |
+| WR-5 | Atmospheres (thin and thick, greenhouse labelled) | Parameterised greenhouse: a grey atmosphere calibrated to the measured mean, or a forcing on the Earth's (CO2 doubled: 3.93 W/m^2, IPCC AR6); thickened, thinned or given (logged edits) | WR-1 | implemented (2026-10-26) |
+| WR-6 | Data views (temperature, liquid, pressure, composition) | The Climate section (starlight, temperatures, ice, liquid water, greenhouse, pressure, gases) and a temperature map on the globe (`src/explore/bodies/climate-view.ts`) | WR-3 | implemented (2026-10-26) |
 | WR-7 | Winds | Only with tested conservation | WR-5 | research needed |
 
 ## Phase 4: orbit to ground (SE)
@@ -170,8 +170,8 @@ research needed, each with its own model, fixtures and measured feasibility firs
 | Change the Sun's mass | Yes | (SB-6) |
 | A second Moon | Yes: add, watch, go back to a checkpoint, try again | (SB-7, SB-11) |
 | A rogue world striking a planet | Yes: aim, prediction, the breakup, its debris and their fall back; a smaller body's crater, drawn where it struck with its depth, rays and glow, and the impact's energy | (heating beyond the crater: WR-2) |
-| An Earth-like world farther out | No | WR-2 to WR-4 |
-| A ring under tidal stress | Partly: a ring of test particles (or a gravitating ring) about a world, scattered by a world sent past it | (tides on the ring's bodies: SB-33) |
+| An Earth-like world farther out | Yes: moved out to 1.3 au the Earth freezes over, its globe white; brought back it stays frozen | (water's inventory: WR-4) |
+| A ring under tidal stress | Yes: the Moon sent inside the Earth's Roche limit is torn into pieces and a ring of dust; rings of test particles or a gravitating ring scattered by a passing world | (moons gathering again outside the limit: not modelled) |
 | Binary sunset | No | ST-3 |
 | From orbit to a crater floor | No | GR-1 to GR-3 |
 | An equal-mass dark Sun | Orbits yes (mass is all gravity sees); the light no | ST-2 |

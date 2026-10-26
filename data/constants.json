@@ -1331,6 +1331,500 @@
         "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/sunfact.html",
         "accessed": "2026-10-26"
       }
+    },
+    {
+      "id": "sun.luminosity",
+      "description": "The Sun's luminosity: the power it radiates",
+      "value": 3.828e+26,
+      "uncertainty": null,
+      "unit": "W",
+      "qualifier": "the IAU 2015 nominal value",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Sun Fact Sheet: luminosity 382.8 x 10^24 J/s (the IAU 2015 Resolution B3 nominal value, Prsa et al. 2016)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/sunfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.bondAlbedo",
+      "description": "The Earth's Bond albedo: the share of all sunlight it reflects",
+      "value": 0.294,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: Bond albedo 0.294",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.bondAlbedo",
+      "description": "Venus's Bond albedo",
+      "value": 0.77,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: Bond albedo 0.77",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.bondAlbedo",
+      "description": "Mars's Bond albedo",
+      "value": 0.25,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: Bond albedo 0.250",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mercury.bondAlbedo",
+      "description": "Mercury's Bond albedo",
+      "value": 0.068,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mercury Fact Sheet: Bond albedo 0.068",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "moon.bondAlbedo",
+      "description": "The Moon's Bond albedo",
+      "value": 0.11,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Moon Fact Sheet: Bond albedo 0.11",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.solarIrradiance",
+      "description": "Sunlight at the Earth's mean distance",
+      "value": 1361.0,
+      "uncertainty": null,
+      "unit": "W/m^2",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: solar irradiance 1361.0 W/m2",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.solarIrradiance",
+      "description": "Sunlight at Venus's mean distance",
+      "value": 2601.3,
+      "uncertainty": null,
+      "unit": "W/m^2",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: solar irradiance 2601.3 W/m2",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.solarIrradiance",
+      "description": "Sunlight at Mars's mean distance",
+      "value": 586.2,
+      "uncertainty": null,
+      "unit": "W/m^2",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: solar irradiance 586.2 W/m2",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.averageTemperature",
+      "description": "Average temperature at Venus's surface",
+      "value": 737,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: average temperature 737 K (464 C)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.averageTemperature",
+      "description": "Average temperature at Mars's surface",
+      "value": 214,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "approximate (the fact sheet's ~214 K)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: average temperature ~214 K (-59 C)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.surfacePressure",
+      "description": "Surface pressure on Venus",
+      "value": 9200,
+      "uncertainty": null,
+      "unit": "kPa",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: surface pressure 92 bars",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.surfacePressure",
+      "description": "Surface pressure on Mars at its mean radius",
+      "value": 0.636,
+      "uncertainty": null,
+      "unit": "kPa",
+      "qualifier": "it varies from 0.40 to 0.87 kPa with the seasons",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: surface pressure 6.36 mb at mean radius (4.0 to 8.7 mb by season)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "moon.surfaceTemperature.equatorMax",
+      "description": "The Moon's equator at noon",
+      "value": 390,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Moon Fact Sheet: diurnal temperature range (equator) 95 K to 390 K",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "moon.surfaceTemperature.equatorMin",
+      "description": "The Moon's equator before dawn",
+      "value": 95,
+      "uncertainty": null,
+      "unit": "K",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Moon Fact Sheet: diurnal temperature range (equator) 95 K to 390 K",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.atmosphere.n2",
+      "description": "Nitrogen in the Earth's dry air",
+      "value": 78.08,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: 78.08% nitrogen (N2)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.atmosphere.o2",
+      "description": "Oxygen in the Earth's dry air",
+      "value": 20.95,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: 20.95% oxygen (O2)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.atmosphere.ar",
+      "description": "Argon in the Earth's dry air",
+      "value": 0.934,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: argon 9340 ppm",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.atmosphere.co2",
+      "description": "Carbon dioxide in the Earth's dry air",
+      "value": 0.042,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it; it rises year by year",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: carbon dioxide 420 ppm",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.atmosphere.co2",
+      "description": "Carbon dioxide in Venus's air near the surface",
+      "value": 96.5,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: 96.5% carbon dioxide (CO2)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.atmosphere.n2",
+      "description": "Nitrogen in Venus's air near the surface",
+      "value": 3.5,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: 3.5% nitrogen (N2)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.atmosphere.co2",
+      "description": "Carbon dioxide in Mars's air",
+      "value": 95.1,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: carbon dioxide 95.1%",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.atmosphere.n2",
+      "description": "Nitrogen in Mars's air",
+      "value": 2.59,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: nitrogen 2.59%",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.atmosphere.ar",
+      "description": "Argon in Mars's air",
+      "value": 1.94,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: argon 1.94%",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.atmosphere.o2",
+      "description": "Oxygen in Mars's air",
+      "value": 0.16,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: oxygen 0.16%",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.atmosphere.co",
+      "description": "Carbon monoxide in Mars's air",
+      "value": 0.06,
+      "uncertainty": null,
+      "unit": "% by volume",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: carbon monoxide 0.06%",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.hydrosphere.mass",
+      "description": "The mass of the Earth's water: oceans, ice and the rest",
+      "value": 1.4e+21,
+      "uncertainty": null,
+      "unit": "kg",
+      "qualifier": "as the fact sheet gives it, without an uncertainty",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: hydrosphere 1.4 x 10^21 kg",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.oceanFraction",
+      "description": "The share of the Earth's surface the ocean covers",
+      "value": 0.71,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "about 71 per cent",
+      "citation": {
+        "text": "NOAA, \"How much water is in the ocean?\": the ocean covers about 71 percent of the Earth's surface",
+        "url": "https://oceanservice.noaa.gov/facts/oceanwater.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.budykoA",
+      "description": "Budyko's outgoing longwave radiation at 0 C, the intercept of OLR = A + B T (T in degrees C), for the northern hemisphere",
+      "value": 203.3,
+      "uncertainty": null,
+      "unit": "W/m^2",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.budykoB",
+      "description": "Budyko's outgoing longwave radiation's rise per degree, the slope of OLR = A + B T",
+      "value": 2.09,
+      "uncertainty": null,
+      "unit": "W/m^2/C",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.diffusion",
+      "description": "The poleward transport of heat as a diffusion in x = sin(latitude), D d/dx[(1 - x^2) dT/dx]",
+      "value": 0.649,
+      "uncertainty": null,
+      "unit": "W/m^2/C",
+      "qualifier": "D / B = 0.310",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.coAlbedo0",
+      "description": "The ice-free co-albedo's mean (its Legendre coefficient a0): the share of sunlight absorbed",
+      "value": 0.681,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.coAlbedo2",
+      "description": "The ice-free co-albedo's fall toward the poles (its Legendre coefficient a2, on P2(x))",
+      "value": -0.202,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.iceCoAlbedo",
+      "description": "The co-albedo where ice covers",
+      "value": 0.38,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.iceLine",
+      "description": "The ice line: the year's mean isotherm poleward of which the surface is ice",
+      "value": -10,
+      "uncertainty": null,
+      "unit": "C",
+      "qualifier": "Budyko's",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.oceanHeatCapacity",
+      "description": "The heat capacity of the oceans' mixed layer, as a time in units of B",
+      "value": 4.7,
+      "uncertainty": null,
+      "unit": "B years",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.ebm.landHeatCapacity",
+      "description": "The heat capacity of land, as a time in units of B",
+      "value": 0.16,
+      "uncertainty": null,
+      "unit": "B years",
+      "qualifier": "a model parameter as the paper gives it, without an uncertainty",
+      "citation": {
+        "text": "North, Cahalan and Coakley 1981, Rev. Geophys. Space Phys. 19, 91, \"Energy balance climate models\" (notation table and section 2)",
+        "url": "https://doi.org/10.1029/RG019i001p00091",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "climate.forcing.co2Doubling",
+      "description": "The effective radiative forcing of doubling the air's carbon dioxide",
+      "value": 3.93,
+      "uncertainty": 0.47,
+      "unit": "W/m^2",
+      "qualifier": "IPCC AR6's assessment (likely range)",
+      "citation": {
+        "text": "Forster et al. 2021, in Climate Change 2021: The Physical Science Basis (IPCC AR6 WG1), Chapter 7, executive summary: ERF for a doubling of CO2 3.93 +/- 0.47 W m-2",
+        "url": "https://www.ipcc.ch/report/ar6/wg1/chapter/chapter-7/",
+        "accessed": "2026-10-26"
+      }
     }
   ]
 }

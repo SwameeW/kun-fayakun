@@ -52,6 +52,8 @@ export interface Swarm {
   vel: number[];
   /** Particles that struck a body and are gone. */
   lost: number;
+  /** A torn body's dust: it neither feels nor strikes that body's pieces (`rubble`), as the pieces do not one another. */
+  torn?: boolean;
 }
 
 /** The most particles in one swarm, and in a scenario. */
@@ -67,6 +69,7 @@ interface Bodies {
   spin: number[];
   j2: number[];
   swarms: Swarm[];
+  rubble: string[];
 }
 
 /** Mulberry32: a small, fast, well-mixed 32-bit generator; the same seed gives the same numbers on every machine. */
@@ -168,6 +171,7 @@ export function kickSwarms(s: Bodies, acc: readonly number[], h: number): void {
     const apy = acc[p * 3 + 1] ?? 0;
     const apz = acc[p * 3 + 2] ?? 0;
     const m = w.pos.length / 3;
+    const skip = w.torn ? s.ids.map((id) => s.rubble.includes(id)) : null;
     for (let k = 0; k < m; k += 1) {
       const rx = w.pos[k * 3] ?? 0;
       const ry = w.pos[k * 3 + 1] ?? 0;
@@ -177,7 +181,7 @@ export function kickSwarms(s: Bodies, acc: readonly number[], h: number): void {
       let az = -apz;
       for (let j = 0; j < n; j += 1) {
         const g = s.gm[j] ?? 0;
-        if (g <= 0) continue;
+        if (g <= 0 || skip?.[j]) continue;
         // From the particle to body j, through the primary (no large numbers subtracted).
         const dx = (s.pos[j * 3] ?? 0) - px - rx;
         const dy = (s.pos[j * 3 + 1] ?? 0) - py - ry;
@@ -242,6 +246,7 @@ export function loseStruck(s: Bodies): void {
     const py = s.pos[p * 3 + 1] ?? 0;
     const pz = s.pos[p * 3 + 2] ?? 0;
     const m = w.pos.length / 3;
+    const skip = w.torn ? s.ids.map((id) => s.rubble.includes(id)) : null;
     let kept = 0;
     for (let k = 0; k < m; k += 1) {
       const rx = w.pos[k * 3] ?? 0;
@@ -249,6 +254,7 @@ export function loseStruck(s: Bodies): void {
       const rz = w.pos[k * 3 + 2] ?? 0;
       let struck = false;
       for (let j = 0; j < n && !struck; j += 1) {
+        if (skip?.[j]) continue;
         const R = s.radius[j] ?? 0;
         const dx = j === p ? rx : rx + px - (s.pos[j * 3] ?? 0);
         const dy = j === p ? ry : ry + py - (s.pos[j * 3 + 1] ?? 0);

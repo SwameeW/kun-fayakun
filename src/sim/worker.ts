@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { luminosities } from './climate';
 import { commandId, Engine, Prediction } from './engine';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
 
@@ -90,6 +91,8 @@ function snapshot(): void {
     events: engine.events.slice(-40),
     checkpoints: engine.checkpoints.map((c) => ({ step: c.step, t: c.t })),
     swarms,
+    climate: Object.entries(s.climate).map(([id, c]) => ({ id, t: [...c.t], spec: { ...c.spec } })),
+    light: luminosities(s),
     logLength: engine.scenario.log.length,
     discarded: engine.discarded,
   };

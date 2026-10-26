@@ -1,3 +1,4 @@
+import { cloneClimate, type ClimateState, type StarLight } from './climate';
 import { contactCrater } from './craters';
 import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts';
 import { cloneSwarm, driftSwarms, kickSwarms, loseStruck, rehomeSwarms, swarmHomes, type Swarm } from './swarms';
@@ -74,19 +75,26 @@ export interface SimState {
   passing: string[];
   /** Rings and belts of test particles (./swarms): moved by the bodies' gravity, pulling nothing. */
   swarms: Swarm[];
+  /** Stars' light (./climate), by id: each one's luminosity at the GM it was given (it follows its mass from there). */
+  stars: Record<string, StarLight>;
+  /** Each solid world's climate (./climate), by id, and the time it was last stepped (s). */
+  climate: Record<string, ClimateState>;
+  climateAt: number;
+  /** Pieces of tidally disrupted bodies (they are not torn apart again). */
+  rubble: string[];
 }
 
-/** A collision: what happened to the target (it keeps its id) and the projectile. */
+/** A collision (what happened to the target, which keeps its id, and the projectile), or a tidal disruption (the body that held, and the body torn apart). */
 export interface ContactEvent {
-  /** 'merge': the projectile absorbed; 'fragment': both broken into the largest remnant, a second and debris; 'graze': a hit-and-run, both carrying on. */
-  kind: 'merge' | 'fragment' | 'graze';
+  /** 'merge': the projectile absorbed; 'fragment': both broken into the largest remnant, a second and debris; 'graze': a hit-and-run, both carrying on; 'disrupt': torn apart by the survivor's tides. */
+  kind: 'merge' | 'fragment' | 'graze' | 'disrupt';
   step: number;
   t: number;
   /** The target (the more massive, or the one kept) and the projectile. */
   survivor: string;
   absorbed: string;
   /** Leinhardt and Stewart's regime, the speed at contact (km/s) and the impact parameter (0 head-on). */
-  regime: ImpactRegime;
+  regime: ImpactRegime | 'tidal';
   speedKmS: number;
   b: number;
   /** Bodies the collision made: the second remnant first, then the debris. */
@@ -124,12 +132,12 @@ export const count = (s: SimState): number => s.ids.length;
 
 /** A deep copy (the engine's checkpoints and predictions run on copies). */
 export function cloneState(s: SimState, withSwarms = true): SimState {
-  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [] };
+  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [], stars: Object.fromEntries(Object.entries(s.stars).map(([id, l]) => [id, { ...l }])), climate: Object.fromEntries(Object.entries(s.climate).map(([id, c]) => [id, cloneClimate(c)])), climateAt: s.climateAt, rubble: [...s.rubble] };
 }
 
 /** An empty state. */
 export function emptyState(): SimState {
-  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [] };
+  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [], stars: {}, climate: {}, climateAt: 0, rubble: [] };
 }
 
 /** The body a gone body merged into (the latest collision that ended it), or null. */
@@ -221,6 +229,7 @@ export function accelerations(s: SimState, out: number[]): number {
   out.length = n * 6;
   out.fill(0);
   let shortest = Number.POSITIVE_INFINITY;
+  const torn = tornPieces(s);
   for (let i = 0; i < n; i += 1) {
     const xi = s.pos[i * 3] ?? 0;
     const yi = s.pos[i * 3 + 1] ?? 0;
@@ -228,7 +237,7 @@ export function accelerations(s: SimState, out: number[]): number {
     const gi = s.gm[i] ?? 0;
     for (let j = i + 1; j < n; j += 1) {
       const gj = s.gm[j] ?? 0;
-      if (gi === 0 && gj === 0) continue;
+      if ((gi === 0 && gj === 0) || (torn[i] && torn[j])) continue;
       const dx = (s.pos[j * 3] ?? 0) - xi;
       const dy = (s.pos[j * 3 + 1] ?? 0) - yi;
       const dz = (s.pos[j * 3 + 2] ?? 0) - zi;
@@ -511,6 +520,130 @@ export function fragment(s: SimState, t: number, p: number, o: ImpactOutcome): {
 }
 
 /**
+ * Tidal disruption (ledger SB-33): a body big enough that its own gravity, not its strength, holds it
+ * together (at least TIDAL.minRadiusKm across its radius) and no more than a tenth of a neighbour's
+ * mass, inside that neighbour's fluid Roche limit (2.44 R (rho_neighbour / rho_body)^(1/3)) on an
+ * orbit about it that does not strike it (a body falling onto it strikes before the tide has the time
+ * to pull it apart: that is the impact model's), is torn apart: into TIDAL.pieces equal pieces strung along the line to the neighbour (where the tide
+ * stretches it), each moving as the body turned with its orbit (its outer pieces faster than a
+ * circular orbit there, its inner slower, so they shear into an arc and then a ring), and a ring of
+ * test particles of its dust about the neighbour (./swarms), where there is room. Mass and momentum
+ * are kept exactly, angular momentum by the first piece's spin, and the energy the split takes moved
+ * into `internal`, as a breakup's is. Pieces never disrupt again, and between two of them there is no
+ * gravity and no merging (they are listed in `rubble`; the tide that tore them outpulls what held
+ * them, so each goes its own way): a coarse stand-in for a body drawn out into a ring, which cannot
+ * gather again into a moon outside the Roche limit. They pull, are pulled by, and can strike anything
+ * else.
+ * Returns whether any body was torn apart.
+ */
+export const TIDAL = { minRadiusKm: 100, massRatio: 10, pieces: 8, dust: 600 } as const;
+
+export function tidalDisruptions(s: SimState, events: ContactEvent[], keep: (id: string) => boolean = () => false): boolean {
+  let changed = false;
+  for (let i = 0; i < count(s); i += 1) {
+    const id = s.ids[i] ?? '';
+    const gi = s.gm[i] ?? 0;
+    const ri = s.radius[i] ?? 0;
+    if (!(gi > 0) || ri < TIDAL.minRadiusKm || s.rubble.includes(id) || keep(id) || s.fixed.includes(id)) continue;
+    // The neighbour whose tide reaches deepest: the heaviest body (a tenth or more heavier) whose fluid Roche limit it is inside.
+    let j = -1;
+    for (let k = 0; k < count(s); k += 1) {
+      const gk = s.gm[k] ?? 0;
+      if (k === i || gk < TIDAL.massRatio * gi) continue;
+      const rk = s.radius[k] ?? 0;
+      const limit = 2.44 * rk * Math.cbrt((gk / rk ** 3) / (gi / ri ** 3));
+      const rx = (s.pos[i * 3] ?? 0) - (s.pos[k * 3] ?? 0);
+      const ry = (s.pos[i * 3 + 1] ?? 0) - (s.pos[k * 3 + 1] ?? 0);
+      const rz = (s.pos[i * 3 + 2] ?? 0) - (s.pos[k * 3 + 2] ?? 0);
+      const d = Math.hypot(rx, ry, rz);
+      if (!(d < limit && d > rk + ri) || (j >= 0 && gk <= (s.gm[j] ?? 0))) continue;
+      // Only on an orbit about it that does not strike it: a body falling onto it strikes before the tide can pull it apart (the impact model's).
+      const ux = (s.vel[i * 3] ?? 0) - (s.vel[k * 3] ?? 0);
+      const uy = (s.vel[i * 3 + 1] ?? 0) - (s.vel[k * 3 + 1] ?? 0);
+      const uz = (s.vel[i * 3 + 2] ?? 0) - (s.vel[k * 3 + 2] ?? 0);
+      const mu = gk + gi;
+      const energyPer = 0.5 * (ux * ux + uy * uy + uz * uz) - mu / d;
+      const h2 = (ry * uz - rz * uy) ** 2 + (rz * ux - rx * uz) ** 2 + (rx * uy - ry * ux) ** 2;
+      const e = Math.sqrt(Math.max(0, 1 + (2 * energyPer * h2) / (mu * mu)));
+      const periapsis = h2 / (mu * (1 + e));
+      if (energyPer < 0 && periapsis > rk + ri) j = k;
+    }
+    if (j < 0) continue;
+    // Room for the pieces (the body itself makes one of them).
+    const pieces = Math.min(TIDAL.pieces, MAX_BODIES - count(s) + 1);
+    if (pieces < 2) continue;
+    const before = energy(s);
+    const L0 = angularMomentum(s);
+    const at = (arr: number[], k: number): number[] => [arr[k * 3] ?? 0, arr[k * 3 + 1] ?? 0, arr[k * 3 + 2] ?? 0];
+    const [xi, vi, xj, vj] = [at(s.pos, i), at(s.vel, i), at(s.pos, j), at(s.vel, j)];
+    const r = [0, 1, 2].map((k) => (xi[k] ?? 0) - (xj[k] ?? 0));
+    const v = [0, 1, 2].map((k) => (vi[k] ?? 0) - (vj[k] ?? 0));
+    const d = Math.hypot(r[0] ?? 0, r[1] ?? 0, r[2] ?? 0);
+    const radial = r.map((x) => x / d);
+    // Its orbit's turn (angular velocity, rad/s, about r x v): the pieces keep it, as a body locked to its orbit does.
+    const h = [(r[1] ?? 0) * (v[2] ?? 0) - (r[2] ?? 0) * (v[1] ?? 0), (r[2] ?? 0) * (v[0] ?? 0) - (r[0] ?? 0) * (v[2] ?? 0), (r[0] ?? 0) * (v[1] ?? 0) - (r[1] ?? 0) * (v[0] ?? 0)];
+    const omega = h.map((x) => x / (d * d));
+    const name = s.names[i] ?? id;
+    const spin = [0, 1, 2].map((k) => s.spin[i * 3 + k] ?? 0);
+    const m = gi / pieces;
+    const rp = ri / Math.cbrt(pieces);
+    const created: string[] = [];
+    removeAt(s, i);
+    for (let k = 0; k < pieces; k += 1) {
+      // Strung along the radial line through the body's own extent (they overlap: torn pieces neither pull nor merge with one another).
+      const offset = pieces > 1 ? (k / (pieces - 1) - 0.5) * 2 * (ri - rp) : 0;
+      const pos = [0, 1, 2].map((c) => (xi[c] ?? 0) + (radial[c] ?? 0) * offset);
+      const lever = radial.map((x) => x * offset);
+      const turn = [(omega[1] ?? 0) * (lever[2] ?? 0) - (omega[2] ?? 0) * (lever[1] ?? 0), (omega[2] ?? 0) * (lever[0] ?? 0) - (omega[0] ?? 0) * (lever[2] ?? 0), (omega[0] ?? 0) * (lever[1] ?? 0) - (omega[1] ?? 0) * (lever[0] ?? 0)];
+      const vel = [0, 1, 2].map((c) => (vi[c] ?? 0) + (turn[c] ?? 0));
+      const pid = freshId(s, `${id}-piece-${k + 1}`.slice(0, 36));
+      addBody(s, { id: pid, name: `${name} ${k + 1}`.slice(0, 60), gm: m, radiusKm: rp, pos, vel });
+      s.rubble.push(pid);
+      created.push(pid);
+    }
+    // The angular momentum the pieces do not carry goes to the first piece's spin, so the total is kept exactly.
+    const first = indexOf(s, created[0] ?? '');
+    for (let c = 0; c < 3; c += 1) s.spin[first * 3 + c] = spin[c] ?? 0;
+    const L1 = angularMomentum(s);
+    for (let c = 0; c < 3; c += 1) s.spin[first * 3 + c] = (s.spin[first * 3 + c] ?? 0) + (L0[c] ?? 0) - (L1[c] ?? 0);
+    const heat = before - energy(s);
+    s.internal += heat;
+    // Its dust, about the neighbour: test particles where it broke, a little spread in speed (they pull nothing).
+    const jNow = indexOf(s, s.ids[j > i ? j - 1 : j] ?? '');
+    const survivor = s.ids[jNow] ?? '';
+    const room = Math.min(TIDAL.dust, 4000 - s.swarms.reduce((n, w) => n + w.pos.length / 3, 0));
+    if (room > 0 && jNow >= 0) {
+      const dust = { id: freshSwarmId(s, `dust-${id}`), name: `${name} dust`.slice(0, 60), primary: survivor, pos: [] as number[], vel: [] as number[], lost: 0, torn: true };
+      for (let k = 0; k < room; k += 1) {
+        // On a shell just outside the body (a Fibonacci spiral over the sphere, 1.1 to 1.6 of its radius), with its orbit's turn.
+        const z = 1 - (2 * (k + 0.5)) / room;
+        const around = k * Math.PI * (3 - Math.sqrt(5));
+        const rho = Math.sqrt(Math.max(0, 1 - z * z));
+        const reach = ri * (1.1 + 0.5 * ((k * 0.618034) % 1));
+        const lever = [rho * Math.cos(around) * reach, rho * Math.sin(around) * reach, z * reach];
+        const turn = [(omega[1] ?? 0) * (lever[2] ?? 0) - (omega[2] ?? 0) * (lever[1] ?? 0), (omega[2] ?? 0) * (lever[0] ?? 0) - (omega[0] ?? 0) * (lever[2] ?? 0), (omega[0] ?? 0) * (lever[1] ?? 0) - (omega[1] ?? 0) * (lever[0] ?? 0)];
+        for (let c = 0; c < 3; c += 1) {
+          dust.pos.push((r[c] ?? 0) + (lever[c] ?? 0));
+          dust.vel.push((v[c] ?? 0) + (turn[c] ?? 0));
+        }
+      }
+      s.swarms.push(dust);
+    }
+    events.push({ kind: 'disrupt', step: s.step, t: s.t, survivor, absorbed: id, regime: 'tidal', speedKmS: Math.hypot(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0), b: 0, created, unresolved: 0, heat, energy: 0, crater: null, site: [(radial[0] ?? 0), (radial[1] ?? 0), (radial[2] ?? 0)] });
+    changed = true;
+    i = -1;
+  }
+  return changed;
+}
+
+/** A swarm id not in use. */
+function freshSwarmId(s: SimState, base: string): string {
+  let id = base.slice(0, 36);
+  for (let n = 1; s.swarms.some((w) => w.id === id); n += 1) id = `${base.slice(0, 33)}-${n}`;
+  return id;
+}
+
+/**
  * Collides every pair that touches now or would touch during a drift of `dt` (its straight path at
  * the velocities after the half kick `acc` gives), repeatedly: the more massive is the target (or the
  * one `keep` names: a scenario's light source keeps its identity). With dt 0 (or no accelerations)
@@ -543,7 +676,9 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
           const wz = (s.vel[j * 3 + 2] ?? 0) - (s.vel[i * 3 + 2] ?? 0) + a(2);
           d = closest(px, py, pz, wx, wy, wz, dt);
         }
-        if (d < reach && !s.passing.includes(pairKey(s.ids[i] ?? '', s.ids[j] ?? ''))) {
+        // Two pieces of a torn body pass rather than gather again: the tide that tore them outpulls their mutual gravity.
+        const rubble = s.rubble.includes(s.ids[i] ?? '') && s.rubble.includes(s.ids[j] ?? '');
+        if (d < reach && !rubble && !s.passing.includes(pairKey(s.ids[i] ?? '', s.ids[j] ?? ''))) {
           hit = [i, j];
           break;
         }
@@ -599,8 +734,10 @@ export function step(s: SimState, dt: number, acc: number[], events: MergeEvent[
   let n = count(s);
   if (acc.length !== n * 6) accelerations(s, acc);
   const homes = s.swarms.length > 0 ? swarmHomes(s) : null;
-  // Contacts the coming drift would make, merged now, at the whole step.
-  if (resolveContacts(s, dt, acc, events, keep)) {
+  // Contacts the coming drift would make, merged now, at the whole step; then bodies the tides tear apart.
+  const struck = resolveContacts(s, dt, acc, events, keep);
+  const torn = tidalDisruptions(s, events, keep);
+  if (struck || torn) {
     n = count(s);
     accelerations(s, acc);
     // Rings whose primary merged away go on about the body it merged into.
@@ -633,11 +770,12 @@ export function step(s: SimState, dt: number, acc: number[], events: MergeEvent[
 /** The shortest dynamical timescale (s): over massive pairs sqrt(r^3 / (GM_i + GM_j)), and the time to close each pair's gap at its relative speed. */
 export function timescale(s: SimState): number {
   const n = count(s);
+  const torn = tornPieces(s);
   let best = Number.POSITIVE_INFINITY;
   for (let i = 0; i < n; i += 1) {
     for (let j = i + 1; j < n; j += 1) {
       const g = (s.gm[i] ?? 0) + (s.gm[j] ?? 0);
-      if (g <= 0) continue;
+      if (g <= 0 || (torn[i] && torn[j])) continue;
       const dx = (s.pos[j * 3] ?? 0) - (s.pos[i * 3] ?? 0);
       const dy = (s.pos[j * 3 + 1] ?? 0) - (s.pos[i * 3 + 1] ?? 0);
       const dz = (s.pos[j * 3 + 2] ?? 0) - (s.pos[i * 3 + 2] ?? 0);
@@ -666,16 +804,28 @@ export interface Diagnostics {
 
 export function energy(s: SimState): number {
   const n = count(s);
+  const torn = tornPieces(s);
   let e = oblatePotential(s);
   for (let i = 0; i < n; i += 1) {
     const g = s.gm[i] ?? 0;
     e += 0.5 * g * ((s.vel[i * 3] ?? 0) ** 2 + (s.vel[i * 3 + 1] ?? 0) ** 2 + (s.vel[i * 3 + 2] ?? 0) ** 2);
     for (let j = i + 1; j < n; j += 1) {
+      if (torn[i] && torn[j]) continue;
       const r = Math.hypot((s.pos[j * 3] ?? 0) - (s.pos[i * 3] ?? 0), (s.pos[j * 3 + 1] ?? 0) - (s.pos[i * 3 + 1] ?? 0), (s.pos[j * 3 + 2] ?? 0) - (s.pos[i * 3 + 2] ?? 0));
       e -= (g * (s.gm[j] ?? 0)) / r;
     }
   }
   return e;
+}
+
+/**
+ * Which bodies are pieces of a torn body (`rubble`). Between two of them there is no gravity: inside
+ * the Roche limit the tide outpulls what holds them to one another, so each goes its own way (and
+ * they pass rather than merge); they pull, and are pulled by, everything else.
+ */
+function tornPieces(s: SimState): boolean[] {
+  if (s.rubble.length === 0) return new Array<boolean>(count(s)).fill(false);
+  return s.ids.map((id) => s.rubble.includes(id));
 }
 
 export function diagnostics(s: SimState): Diagnostics {

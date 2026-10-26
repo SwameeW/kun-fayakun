@@ -574,7 +574,10 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   and achieved rate, paused, bodies as `UniverseLabBody` with mass, radius, speeds, primary,
   relative velocity and escape speed, the selection, its prediction, drift, history (each collision's
   crater diameter and depth, and on a world drawn solid its place, planetocentric degrees),
-  checkpoints, status). `Bodies.setMarks(body, marks)` draws the laboratory's craters
+  checkpoints, status; each body's starlight, a star's luminosity, and a solid world's climate:
+  its bands, mean and range, ice, liquid water, greenhouse, pressure and gases; the temperature view).
+  `Bodies.setClimate(body, bandsK, temperature)` draws a world's climate (its ice always in the
+  laboratory, its temperatures on request); `Bodies.setMarks(body, marks)` draws the laboratory's craters
   (`src/explore/bodies/marks.ts`) on the Earth, the Moon, Mercury and Mars; `Lab.marks(body)` gives
   them, placed in each world's own frame at the moment of impact (`SolarSystem.basisAt`). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
   `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
