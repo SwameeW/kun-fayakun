@@ -196,6 +196,13 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   // The inspector.
   const inspectorTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'lab-selected-name' });
   const facts = h('dl', { class: 'kf-about-facts', 'data-testid': 'lab-facts' });
+  // Compared with reality: a built-in world moved away from its real figures, beside them, and one
+  // plain question about the largest change (the real world goes on as it is).
+  const compareTitle = h('h4', { class: 'kf-living-subtitle' });
+  const compareFacts = h('dl', { class: 'kf-about-facts', 'data-testid': 'lab-compare-facts' });
+  const comparePrompt = h('p', { class: 'kf-living-hint kf-lab-prompt', 'data-testid': 'lab-compare-prompt' });
+  const compare = h('section', { class: 'kf-living-notes-part kf-lab-compare', 'data-testid': 'lab-compare', hidden: true }, compareTitle, compareFacts, comparePrompt, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.compare.note')));
+  let compareKey = '';
   const warning = h('p', { class: 'kf-lab-warning', 'data-testid': 'lab-warning', hidden: true });
   const rename = field('ui.universe.lab.renameLabel', 'lab-rename-input', '', 'text');
   const renameApply = button(i18n.t('ui.universe.lab.rename'), 'lab-rename-apply', () => {
@@ -440,6 +447,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     inspectorTitle,
     facts,
     warning,
+    compare,
     climateBox,
     h('div', { class: 'kf-living-group' }, rename.label, h('div', { class: 'kf-lab-row' }, rename.input, renameApply)),
     massGroup,
@@ -744,6 +752,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     'section',
     { class: 'kf-nav-lab', 'data-testid': 'lab-panel', 'aria-label': i18n.t('ui.universe.lab.title'), hidden: true },
     withHelp(app, title, 'lab'),
+    h('p', { class: 'kf-living-hint kf-lab-purpose', 'data-testid': 'lab-purpose' }, i18n.t('ui.universe.lab.purpose')),
     note,
     lessons.element,
     withHelp(app, clock, 'labClock', i18n.t('ui.help.label.labClock')),
@@ -794,6 +803,48 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   let choosing: { id: string | null } | null = null;
 
   const row = (term: string, detail: string, testId: string, topic?: string): HTMLElement[] => [h('dt', {}, term, topic ? helpFor(topic, term) : null), h('dd', { 'data-testid': testId }, detail)];
+  /**
+   * The comparison with reality: shown once a built-in world's mass or size has been changed by a
+   * thousandth, or its orbit's size or year by 3 per cent (beyond the slow drift of the osculating
+   * elements the other worlds' pulls cause); one question, about the largest change.
+   */
+  const showCompare = (b: UniverseLabBody, name: string): void => {
+    const base = b.baseline;
+    const o = b.orbit;
+    const ratio = (now: number, real: number): number => (real > 0 ? now / real : 1);
+    const mass = base ? ratio(b.massKg, base.massKg) : 1;
+    const size = base ? ratio(b.radiusKm, base.radiusKm) : 1;
+    const a = base?.aKm && o?.bound ? ratio(o.aKm, base.aKm) : 1;
+    const year = base?.periodS && o?.periodS ? ratio(o.periodS, base.periodS) : 1;
+    const changed = { mass: Math.abs(mass - 1) > 1e-3, size: Math.abs(size - 1) > 1e-3, orbit: Math.abs(a - 1) > 0.03 || Math.abs(year - 1) > 0.03 };
+    const on = base !== null && (changed.mass || changed.size || changed.orbit || (o !== null && !o.bound && base.aKm !== null));
+    compare.hidden = !on;
+    if (!on) return;
+    const times = (r: number): string => i18n.t('ui.universe.lab.compare.times', { n: f.number(r, r < 0.1 || r > 10 ? 3 : 2) });
+    const key = `${b.id}:${mass.toPrecision(4)}:${size.toPrecision(4)}:${a.toPrecision(3)}:${year.toPrecision(3)}:${String(o?.bound ?? false)}`;
+    if (key === compareKey) return;
+    compareKey = key;
+    write(compareTitle, i18n.t('ui.universe.lab.compare.title', { name }));
+    compareFacts.replaceChildren(
+      ...(changed.mass ? row(i18n.t('ui.universe.lab.mass'), i18n.t('ui.universe.lab.compare.value', { now: `${scientific(b.massKg)} kg`, real: `${scientific(base.massKg)} kg`, times: times(mass) }), 'lab-compare-mass') : []),
+      ...(changed.size ? row(i18n.t('ui.universe.lab.radius'), i18n.t('ui.universe.lab.compare.value', { now: f.distance(b.radiusKm), real: f.distance(base.radiusKm), times: times(size) }), 'lab-compare-radius') : []),
+      ...(base.aKm !== null && o ? row(i18n.t('ui.universe.lab.compare.orbit'), o.bound ? i18n.t('ui.universe.lab.compare.value', { now: f.distance(o.aKm), real: f.distance(base.aKm), times: times(a) }) : i18n.t('ui.universe.lab.compare.unbound', { real: f.distance(base.aKm) }), 'lab-compare-orbit') : []),
+      ...(base.periodS !== null && o?.periodS ? row(i18n.t('ui.universe.lab.period'), i18n.t('ui.universe.lab.compare.value', { now: duration(o.periodS), real: duration(base.periodS), times: times(year) }), 'lab-compare-period') : []),
+    );
+    // One question, about the largest change.
+    const prompt =
+      o !== null && !o.bound
+        ? 'escaped'
+        : changed.mass && Math.abs(Math.log(mass)) >= Math.max(Math.abs(Math.log(size)), Math.abs(Math.log(a)))
+          ? 'mass'
+          : changed.size && Math.abs(Math.log(size)) >= Math.abs(Math.log(a))
+            ? 'size'
+            : a > 1
+              ? 'wider'
+              : 'tighter';
+    write(comparePrompt, i18n.t(`ui.universe.lab.compare.prompt.${prompt}`, { name }));
+  };
+
   /** The options of a body select (keeping what was chosen, where it still exists). */
   const fillBodies = (s: HTMLSelectElement, bodies: readonly UniverseLabBody[], blank: string | null): void => {
     const keep = s.value;
@@ -967,6 +1018,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           ...(b.roche ? row(i18n.t('ui.universe.lab.roche'), i18n.t('ui.universe.lab.rocheValue', { fluid: f.distance(b.roche.fluidKm), rigid: f.distance(b.roche.rigidKm) }), 'lab-fact-roche', 'roche') : []),
           ...(b.j2 > 0 ? row(i18n.t('ui.universe.lab.j2'), scientific(b.j2), 'lab-fact-j2', 'j2') : []),
         );
+        // Compared with the real world it began as, when it has moved away from it.
+        showCompare(b, nameOf(b));
         // Its climate, or the light it gives.
         const c = b.climate;
         const celsius = (k: number): string => f.keep(i18n.t('ui.universe.lab.climate.celsius', { value: f.number(k - 273.15, 0) }));

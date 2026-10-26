@@ -287,6 +287,28 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let generation = 0;
   let active = false;
   let seedScenario: Scenario | null = null;
+  /** Whether the seed is the real solar system (JPL's states at the fork), the baseline edits are compared with. */
+  let realSeed = false;
+  let baselines: { from: Scenario; byId: Map<string, NonNullable<UniverseLabBody['baseline']>> } | null = null;
+  /** A built-in world's real mass, size and orbit at the fork (the real seed's), or null. */
+  const baselineOf = (id: string): UniverseLabBody['baseline'] => {
+    const seed = seedScenario;
+    if (!seed || !realSeed || !builtIn(id)) return null;
+    if (baselines?.from !== seed) {
+      const gm = seed.bodies.map((b) => b.gm);
+      const pos = seed.bodies.flatMap((b) => [...b.pos]);
+      const byId = new Map<string, NonNullable<UniverseLabBody['baseline']>>();
+      seed.bodies.forEach((b, i) => {
+        const p = primaryOf(gm, pos, i);
+        const q = seed.bodies[p];
+        const el = q ? elementsFromState(sub3(b.pos, q.pos), sub3(b.vel, q.vel), b.gm + q.gm) : null;
+        const orbit = el?.bound ? el : null;
+        byId.set(b.id, { massKg: b.gm / gPerKg, radiusKm: b.radiusKm, aKm: orbit ? orbit.a : null, e: orbit ? orbit.e : null, periodS: orbit ? orbit.periodS : null });
+      });
+      baselines = { from: seed, byId };
+    }
+    return baselines.byId.get(id) ?? null;
+  };
   let snap: LabSnapshot | null = null;
   let snapAt = 0;
   let rate = 86_400;
@@ -761,6 +783,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       selected = null;
       status = null;
       seedScenario = seed === 'solar' ? seedSolarSystem(ephemeris, physical, jdTdb, names, shapes) : seedLaboratory(physical, seed === 'three', shapes);
+      realSeed = seed === 'solar';
       load(seedScenario);
       lines.mesh.visible = true;
       dots.object.visible = true;
@@ -1699,6 +1722,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
             return;
           }
           seedScenario = checked.scenario;
+          // A scenario from a file or a link: an experiment of its own, not the real system to compare with.
+          realSeed = false;
           selected = null;
           load(checked.scenario);
           status = { kind: 'loaded', detail: [] };
@@ -1769,6 +1794,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
             relativeVelKmS: rel3,
             escapeKmS: Math.sqrt((2 * gm) / Math.max(s.radius[i] ?? 1, 1e-9)),
             edited: edited.has(id),
+            baseline: baselineOf(id),
             persistent: seedScenario.persistentIds?.includes(id) ?? false,
             ship: shipOf(s, id),
           });

@@ -38,6 +38,8 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   const before = await view(page);
   await openLab(page);
   await expect(page.getByTestId('lab-note')).toContainText('not JPL’s predictions');
+  // What it is for: a thought experiment beside the real system, which stays as it is.
+  await expect(page.getByTestId('lab-purpose')).toContainText('compare it with the real solar system, which stays as it is');
   await expect(page.getByTestId('universe-living')).toBeHidden();
   await expect(page.getByTestId('universe-readout')).toContainText('An experiment');
 
@@ -54,8 +56,15 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   // Twice the Sun's mass: the Earth, too slow for the new pull, falls inward (logged as an edit, not drift).
   await page.getByTestId('lab-body-sun').click();
   await expect(page.getByTestId('lab-inspector')).toBeVisible();
+  // As it really is, nothing to compare.
+  await expect(page.getByTestId('lab-compare')).toBeHidden();
   await page.getByTestId('lab-mass-double').click();
   await expect(page.getByTestId('lab-history')).toContainText('Sun: mass changed');
+  // Compared with reality: its mass here and in reality, and one question about what changed.
+  await expect(page.getByTestId('lab-compare')).toBeVisible();
+  await expect(page.getByTestId('lab-compare')).toContainText('Compared with the real Sun');
+  await expect(page.getByTestId('lab-compare-mass')).toContainText('in reality (2 times)');
+  await expect(page.getByTestId('lab-compare-prompt')).toContainText('What changed?');
   const d0 = (await body(page, 'earth'))?.distanceKm ?? 0;
   // The button keeps the focus, and Space on a focused button presses it: away from it, Space runs the clock again.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());

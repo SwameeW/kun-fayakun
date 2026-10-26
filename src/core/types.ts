@@ -1011,6 +1011,12 @@ export interface UniverseLabBody {
   escapeKmS: number;
   /** Changed or made by the visitor in this experiment. */
   edited: boolean;
+  /**
+   * The real world this body began as (a built-in world in an experiment begun from the real solar
+   * system): its mass and radius, and its orbit about its primary at the fork, from the ephemeris.
+   * What an edited world is compared with; null for anything else.
+   */
+  baseline: { massKg: number; radiusKm: number; aKm: number | null; e: number | null; periodS: number | null } | null;
   /** Keeps its identity in mergers and cannot be removed (the scene's light). */
   persistent: boolean;
   /** Its bulk density (kg/m^3). */
