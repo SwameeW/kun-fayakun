@@ -133,14 +133,15 @@
   font-size: 0.75rem;
 }
 
-.kf-living-go:disabled {
+.kf-living-go:disabled,
+.kf-living-go[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
 .kf-living-choice:hover,
 .kf-living-switch:hover,
-.kf-living-go:hover:not(:disabled),
+.kf-living-go:hover:not(:disabled, [aria-disabled="true"]),
 .kf-living-place:hover {
   border-color: var(--kf-gold-soft);
   background: var(--kf-surface-raised);
@@ -338,6 +339,24 @@
   text-decoration: underline;
   text-decoration-color: var(--kf-gold-soft);
   text-underline-offset: 2px;
+}
+
+/* Touch: every control a 44 px target, as the rest of the explorer's are (explore.css). */
+@media (pointer: coarse) {
+  .kf-nav-living > summary,
+  .kf-living-prophets-box > summary,
+  .kf-living-choice,
+  .kf-living-switch,
+  .kf-living-go,
+  .kf-living-place,
+  .kf-living-input,
+  .kf-living-tour-start {
+    min-block-size: 2.75rem;
+  }
+
+  .kf-living-go {
+    min-inline-size: 2.75rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

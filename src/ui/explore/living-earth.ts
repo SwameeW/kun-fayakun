@@ -199,26 +199,29 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     write(tourSubtitle, stop.subtitle ?? '');
     write(tourText, stop.text);
     write(tourStep, i18n.t('ui.universe.field.step', { n: f.number(tour.at + 1), total: f.number(tour.stops.length) }));
-    tourPrevious.disabled = tour.at === 0;
-    tourNext.disabled = tour.at === tour.stops.length - 1;
+    // aria-disabled, not disabled: a button that disables itself under the keyboard would drop its focus.
+    tourPrevious.setAttribute('aria-disabled', String(tour.at === 0));
+    tourNext.setAttribute('aria-disabled', String(tour.at === tour.stops.length - 1));
     go(stop.place.lat, stop.place.lon, stop.place.viewKm, false);
   };
   const startTour = (kind: 'atlas' | 'prophets'): void => {
     tour = { kind, stops: kind === 'atlas' ? atlasStops() : prophetStops(), at: 0 };
     tourBox.hidden = false;
-    // The tour's box sits with the list it tours.
-    (kind === 'atlas' ? atlasBox : prophetsBody).append(tourBox);
+    // The tour's box sits just under the button that began it.
+    (kind === 'atlas' ? atlasTour : prophetsTour).after(tourBox);
     showStop();
     markers();
     tourBox.focus({ preventScroll: true });
     tourBox.scrollIntoView({ block: 'nearest' });
   };
   tourPrevious.addEventListener('click', () => {
-    if (tour && tour.at > 0) tour.at -= 1;
+    if (!tour || tour.at === 0) return;
+    tour.at -= 1;
     showStop();
   });
   tourNext.addEventListener('click', () => {
-    if (tour && tour.at < tour.stops.length - 1) tour.at += 1;
+    if (!tour || tour.at === tour.stops.length - 1) return;
+    tour.at += 1;
     showStop();
   });
   const endTour = (): void => {
