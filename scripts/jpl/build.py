@@ -9,6 +9,9 @@ Steps (run in order by scripts/preprocess-jpl.sh, or one at a time):
     sources   -> the JPL, NAIF and Cassini entries of data/sources.json
     reference -> tests/support/astro/horizons-reference.json: Horizons vectors at a few dates,
               which tests/unit/ephemeris.spec.ts checks src/astro against (not run by the script)
+    deep      -> tests/support/astro/horizons-deep.json: Horizons vectors from 1600 to 2400, outside
+              the Moon's table, which tests/unit/analytic.spec.ts checks the published theories
+              (src/astro/analytic: Meeus's Moon, Standish's Table 2) against (not run by the script)
 
 Planets: the Keplerian elements and their rates of Table 1 of "Approximate Positions of the
 Planets" (E. M. Standish and J. G. Williams; mean ecliptic and equinox of J2000, valid 1800 to
@@ -123,6 +126,25 @@ REFERENCE = ROOT / "tests" / "support" / "astro" / "horizons-reference.json"
 # Julian dates (TDB): the Moon table's first row and first mid-day; three mid-days inside it
 # (12:00 on 2026-03-15, 2029-07-04 and 2033-11-20); its last mid-day and its last row.
 REFERENCE_EPOCHS = ["2461041.5", "2461042.0", "2461115.0", "2462322.0", "2463922.0", "2464693.0", "2464693.5"]
+# Julian dates (TDB) outside the Moon's table: 1600, 1700, 1800, 1850, 1900 and 1950 on 1 January,
+# Meeus's example 47.a (1992-04-12 0h), 2000-01-01 12h, 2000-08-04, 2025-12-25, 2036-01-08, then
+# 2050, 2100, 2150, 2200, 2300 and 2400 on 1 January.
+DEEP = ROOT / "tests" / "support" / "astro" / "horizons-deep.json"
+DEEP_EPOCHS = [
+    "2305447.5", "2341972.5", "2378496.5", "2396758.5", "2415020.5", "2433282.5", "2448724.5", "2451545.0",
+    "2451760.5", "2461034.5", "2464700.5", "2469807.5", "2488069.5", "2506331.5", "2524593.5", "2561117.5", "2597641.5",
+]
+DEEP_VECTORS = {
+    "moonGeo": ("301", "500@399", "the Moon relative to the Earth's centre"),
+    "mercuryHelio": ("199", "500@10", "Mercury relative to the Sun"),
+    "venusHelio": ("299", "500@10", "Venus relative to the Sun"),
+    "embHelio": ("3", "500@10", "the Earth-Moon barycentre relative to the Sun's centre"),
+    "marsHelio": ("4", "500@10", "the Mars barycentre relative to the Sun"),
+    "jupiterHelio": ("5", "500@10", "the Jupiter barycentre relative to the Sun"),
+    "saturnHelio": ("6", "500@10", "the Saturn barycentre relative to the Sun"),
+    "uranusHelio": ("7", "500@10", "the Uranus barycentre relative to the Sun"),
+    "neptuneHelio": ("8", "500@10", "the Neptune barycentre relative to the Sun"),
+}
 REFERENCE_VECTORS = {
     "mercuryHelio": ("199", "500@10", "Mercury relative to the Sun"),
     "venusHelio": ("299", "500@10", "Venus relative to the Sun"),
@@ -618,17 +640,17 @@ def _vectors(result: str) -> list[tuple[float, list[float]]]:
     return rows
 
 
-def step_reference() -> None:
-    """Horizons vectors at REFERENCE_EPOCHS, at full precision, for the unit tests of src/astro."""
+def step_reference(epochs: list[str] = REFERENCE_EPOCHS, wanted: dict[str, tuple[str, str, str]] = REFERENCE_VECTORS, out: Path = REFERENCE, step: str = "reference", spec: str = "tests/unit/ephemeris.spec.ts checks src/astro/ephemeris.ts") -> None:
+    """Horizons vectors at the epochs, at full precision, for the unit tests of src/astro."""
     queries: dict[str, Any] = {}
     vectors: dict[str, Any] = {}
     version = None
-    for name, (command, center, what) in REFERENCE_VECTORS.items():
+    for name, (command, center, what) in wanted.items():
         params = {
             **MOON_QUERY,
             "COMMAND": f"'{command}'",
             "CENTER": f"'{center}'",
-            "TLIST": " ".join(f"'{jd}'" for jd in REFERENCE_EPOCHS),
+            "TLIST": " ".join(f"'{jd}'" for jd in epochs),
             "TLIST_TYPE": "'JD'",
             "TIME_TYPE": "'TDB'",
         }
@@ -638,29 +660,34 @@ def step_reference() -> None:
         payload = json.loads(get(url))
         result = payload["result"]
         rows = _vectors(result)
-        if [jd for jd, _ in rows] != [float(jd) for jd in REFERENCE_EPOCHS]:
+        if [jd for jd, _ in rows] != [float(jd) for jd in epochs]:
             raise SystemExit(f"horizons {name}: got epochs {[jd for jd, _ in rows]}")
         source = re.search(r"Target body name:.*\{source: ([^}]+)\}", result)
         queries[name] = {"target": command, "center": center, "what": what, "ephemeris": source.group(1) if source else None, "params": params, "url": url}
         vectors[name] = [xyz for _, xyz in rows]
         version = payload.get("signature", {}).get("version")
     fixture = {
-        "$comment": "Written by scripts/jpl/build.py reference. Geometric Horizons vectors that tests/unit/ephemeris.spec.ts checks src/astro/ephemeris.ts against.",
+        "$comment": f"Written by scripts/jpl/build.py {step}. Geometric Horizons vectors that {spec} against.",
         "retrieved": date.today().isoformat(),
         "horizonsVersion": version,
         "frame": "ecliptic and mean equinox of J2000 (REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF)",
         "timeScale": "TDB",
         "units": "km",
-        "epochsJdTdb": [float(jd) for jd in REFERENCE_EPOCHS],
+        "epochsJdTdb": [float(jd) for jd in epochs],
         "queries": queries,
         "vectors": vectors,
     }
-    REFERENCE.parent.mkdir(parents=True, exist_ok=True)
-    REFERENCE.write_text(json.dumps(fixture, indent=2) + "\n")
-    print(f"wrote {REFERENCE}: {', '.join(vectors)} at {len(REFERENCE_EPOCHS)} epochs")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(fixture, indent=2) + "\n")
+    print(f"wrote {out}: {', '.join(vectors)} at {len(epochs)} epochs")
 
 
-STEPS = {"fetch": step_fetch, "build": step_build, "sources": step_sources, "reference": step_reference}
+def step_deep() -> None:
+    """Horizons vectors from 1600 to 2400 (DEEP_EPOCHS), for the unit tests of src/astro/analytic."""
+    step_reference(DEEP_EPOCHS, DEEP_VECTORS, DEEP, "deep", "tests/unit/analytic.spec.ts checks src/astro/analytic.ts")
+
+
+STEPS = {"fetch": step_fetch, "build": step_build, "sources": step_sources, "reference": step_reference, "deep": step_deep}
 
 
 def main() -> None:

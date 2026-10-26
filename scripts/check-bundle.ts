@@ -16,7 +16,7 @@
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
  * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
  * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode,
- * the film's sound, Explore Mode's dock), each
+ * the published theories beyond JPL's tables, the film's sound, Explore Mode's dock), each
  * against its own budget.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -77,6 +77,10 @@ const WALK_BUDGET_BYTES = 30_000;
 const PHOTO_SOURCES = ['src/ui/explore/photo-bar.ts'] as const;
 /** What photo mode's controls may add beyond the shell and the explorer, gzipped. */
 const PHOTO_BUDGET_BYTES = 10_000;
+/** The published theories beyond JPL's tables (loaded as the explorer's clock heads past them): Meeus's Moon, Standish's long-span elements. */
+const THEORY_SOURCES = ['src/astro/analytic.ts'] as const;
+/** What they may add beyond the shell and the explorer, gzipped. */
+const THEORY_BUDGET_BYTES = 6_000;
 /** The film's sound (loaded the first time a chapter plays with sound on): its voices and score. */
 const FILM_SOUND_SOURCES = ['src/core/film-score.ts'] as const;
 /** What the film's sound may add beyond the shell, gzipped. */
@@ -260,6 +264,14 @@ function main(): void {
   const photoBytes = photoRows.reduce((sum, row) => sum + row.gzip, 0);
   const photoOk = photoRows.length > 0 && photoBytes <= PHOTO_BUDGET_BYTES;
   console.log(`${photoOk ? 'PASS' : 'FAIL'}: photo mode (lazy, ${photoRows.length} files) = ${formatBytes(photoBytes)} bytes gzipped (budget ${formatBytes(PHOTO_BUDGET_BYTES)})`);
+  // The published theories, beyond the shell and the explorer: what the clock's first trip past JPL's tables adds.
+  const theoryRows = measure(exploreFiles(manifest, loaded, THEORY_SOURCES));
+  for (const row of [...theoryRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`theory  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const theoryBytes = theoryRows.reduce((sum, row) => sum + row.gzip, 0);
+  const theoryOk = theoryRows.length > 0 && theoryBytes <= THEORY_BUDGET_BYTES;
+  console.log(`${theoryOk ? 'PASS' : 'FAIL'}: the published theories (lazy, ${theoryRows.length} files) = ${formatBytes(theoryBytes)} bytes gzipped (budget ${formatBytes(THEORY_BUDGET_BYTES)})`);
   // The film's sound, beyond the shell: what the first chapter played with sound on adds.
   const soundRows = measure(exploreFiles(manifest, shellFiles, FILM_SOUND_SOURCES));
   for (const row of [...soundRows].sort((a, b) => b.gzip - a.gzip)) {
@@ -276,7 +288,7 @@ function main(): void {
   const discoverBytes = discoverRows.reduce((sum, row) => sum + row.gzip, 0);
   const discoverOk = discoverRows.length > 0 && discoverBytes <= DISCOVER_BUDGET_BYTES;
   console.log(`${discoverOk ? 'PASS' : 'FAIL'}: Explore Mode's dock (lazy, ${discoverRows.length} files) = ${formatBytes(discoverBytes)} bytes gzipped (budget ${formatBytes(DISCOVER_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !soundOk || !discoverOk) process.exitCode = 1;
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !theoryOk || !soundOk || !discoverOk) process.exitCode = 1;
 }
 
 try {

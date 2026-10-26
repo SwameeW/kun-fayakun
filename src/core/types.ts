@@ -1118,10 +1118,14 @@ export interface UniverseLab {
   elapsedS: number;
   step: number;
   dtS: number;
-  /** Requested and achieved simulated seconds per real second. */
+  /** Requested and achieved simulated seconds per real second (negative: its history played backwards). */
   requestedRate: number;
   achievedRate: number;
+  /** The worker could not keep up with the rate asked for (its step budget was spent): the achieved rate is the most this experiment allows here. */
+  budgetBound: boolean;
   paused: boolean;
+  /** Going to a moment (a date, or now): the simulated seconds since the epoch it is running or replaying to, or null. */
+  seekingS: number | null;
   failure: string | null;
   bodies: UniverseLabBody[];
   selected: string | null;
@@ -1251,11 +1255,17 @@ export type LabBurnDirection = 'prograde' | 'retrograde' | 'normal' | 'antinorma
 
 /** The time machine as the view reports it. */
 export interface UniverseTime {
-  /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused (at real time during a trip). */
+  /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused or held (`held`). */
   rate: number;
   paused: boolean;
-  /** The clock stopped at an end of the data's span, or null. */
+  /** The clock stopped at an end of the span (in the laboratory: back at the experiment's start), or null. */
   edge: 'start' | 'end' | null;
+  /** What holds the clock below the rate set when it is above the limit: a trip (real time), or being on foot or on the way down (src/explore/time FOOT_MAX_RATE); null when nothing does. */
+  held: 'trip' | 'foot' | null;
+  /** Where the date shown is beyond JPL's tables (src/astro/ephemeris): the Moon from Meeus's theory (outside 2026 to 2035), the planets from the long-span elements (outside 1800 to 2050). */
+  beyond: { moon: boolean; planets: boolean };
+  /** The world in view turns too fast to show at this rate (more than 30 degrees a frame): it is drawn at one hour of its day (src/explore/index spinHold). */
+  spinHeld: boolean;
   /** The span of dates the explorer can show (Unix ms). */
   startMs: number;
   endMs: number;

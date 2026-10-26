@@ -26,7 +26,7 @@
  */
 
 import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
-import { createEphemeris, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
+import { createEphemeris, installTheories, tableRange, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { obliquityRad, PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import type { RotatingBody } from '../astro/rotation';
 import { julianDateUtc, utcToTdb } from '../astro/time';
@@ -94,7 +94,7 @@ import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretch
 import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile } from './sky';
 import { createSoundscape, type Soundscape, type SoundState } from './sound';
 import { createSolarSystem, type SolarSystem } from './system';
-import { advanceClock, fasterRate, slowerRate } from './time';
+import { advanceClock, applyTimeCommand, FOOT_MAX_RATE, heldRate, validTimeCommand } from './time';
 
 const DEFAULT_BODY: BodyId = 'earth';
 const NOISE = { size: 64, seed: 31_415 } as const;
@@ -155,6 +155,10 @@ const MARKER_RANGE_KM = 60_000;
 const MARKER_SPACING_PX = 64;
 const MARKER_EASE = 0.12;
 const UNIX_EPOCH_JD = 2440587.5;
+/** A world's turn is held (spinHold) past this many degrees a frame, let go under the second (radians), and caught up at this rate (per second). */
+const SPIN_HOLD = (30 * Math.PI) / 180;
+const SPIN_FREE = (20 * Math.PI) / 180;
+const SPIN_CATCH_UP = 4;
 
 /** Exposure adapts to sunlight as r^EXPOSURE_POWER (2 would be full adaptation), r in au. */
 const EXPOSURE_POWER = 1.8;
@@ -375,6 +379,12 @@ export default function create(): UniverseModule {
   let input: ExploreInput | null = null;
   let world: NavWorld | null = null;
   let range = { startJd: 0, endJd: Infinity };
+  /** JPL's tables' own spans (positions beyond them come from the published theories: UniverseTime.beyond). */
+  let tables: ReturnType<typeof tableRange> | null = null;
+  /** The published theories beyond the tables (src/astro/analytic, their own chunk): not asked for, on the way, or in. */
+  let theoryState: 'none' | 'loading' | 'ready' = 'none';
+  /** A date asked for beyond the tables before the theories came (UTC), and whether the clock was paused before it. */
+  let pendingDate: { utc: number; paused: boolean } | null = null;
   /**
    * The orbital laboratory (./lab): while an experiment runs it owns the worlds' positions and the
    * clock; the bodies it removed are hidden; and the explorer's own time and imagery wait, to be put
@@ -519,6 +529,15 @@ export default function create(): UniverseModule {
   const stretch = { active: false, t: 0, amount: 1, rush: false, steered: false, then: DEFAULT_BODY };
   /** Each body's drawn size over its true one this frame, and its true distance from the Sun (for its light). */
   const grow = Object.fromEntries(BODY_IDS.map((id) => [id, 1])) as Record<BodyId, number>;
+  /**
+   * Fast time and the worlds' turn: past SPIN_HOLD degrees a frame a world's turn cannot be shown (it
+   * would strobe, even seem to turn backwards: at a week a second the Earth turns 42 degrees a frame), so
+   * it is drawn at one hour of its own day, the Sun held at the longitude it had there (its seasons
+   * still go on); under SPIN_FREE it turns again, catching up forwards, never back. Each world's IAU
+   * spin (degrees a day), and its hold: the Sun's longitude held, and the turn still to catch up.
+   */
+  const spinRate = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
+  const spinHold = new Map<BodyId, { lon: number | null; turn: number }>();
   const trueSunKm = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
   const earthTrue = km();
   /** The film's scene unit, km (set on the way in). */
@@ -528,6 +547,8 @@ export default function create(): UniverseModule {
   let jdUtc = 0;
   /** Seconds of the bodies' own illustrative motion (drifting clouds and bands, the Sun's surface): still with reduced motion. */
   let ambient = 0;
+  /** Seconds since the explorer was entered (the theories' chunk comes a few seconds in, off the first frames). */
+  let shownFor = 0;
   /** The camera's height above the nearest surface (rings included), km: the depth range and the turn rate follow it. */
   let nearestKm = Infinity;
   /** The Earth's air model (its limb reddens the Sun seen through it). */
@@ -606,14 +627,61 @@ export default function create(): UniverseModule {
   const focusBodies: BodyId[] = [];
   const sunTint: [number, number, number] = [1, 1, 1];
 
-  const setDate = (utc: number | null): void => {
-    if (!timeConstants) return;
+  /** Goes to a date (UTC; null: now). A date outside the explorer's span is shown at its nearest end, which is returned (null inside it). */
+  const setDate = (utc: number | null): 'start' | 'end' | null => {
+    if (!timeConstants) return null;
     const wanted = utc ?? julianDateUtc(Date.now());
     const tdb = utcToTdb(wanted, timeConstants);
-    // The Moon's table spans 2026 to 2035: dates outside are shown at its nearest edge.
     jdTdb = Math.min(range.endJd, Math.max(range.startJd, tdb));
     jdUtc = wanted + (jdTdb - tdb);
+    return tdb < range.startJd ? 'start' : tdb > range.endJd ? 'end' : null;
   };
+  /** The span the clock keeps to: where both the planets' and the Moon's positions are good. */
+  const spanOf = (moon: MoonFile): void => {
+    const valid = validRange(moon);
+    range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
+  };
+  /**
+   * The theories' chunk, loaded when the clock heads beyond the tables (backwards, fast, near an end,
+   * or a date beyond asked for). Once in, the span widens to theirs: a clock held at a table's end goes
+   * on, and a date asked for beyond is gone to. Offline, the tables' span stays.
+   */
+  const loadTheories = (): void => {
+    const inputs = labInputs;
+    if (theoryState !== 'none' || !inputs) return;
+    theoryState = 'loading';
+    import('../astro/analytic').then(
+      (m) => {
+        installTheories(m.theories);
+        theoryState = 'ready';
+        spanOf(inputs.moon);
+        const asked = pendingDate;
+        pendingDate = null;
+        if (asked) goToDate(asked.utc, asked.paused);
+        else if (timeEdge && jdTdb > range.startJd && jdTdb < range.endJd) {
+          timeEdge = null;
+          timePaused = false;
+        }
+      },
+      () => {
+        theoryState = 'none';
+      },
+    );
+  };
+  /** Goes to a date (UTC), running or paused as given; beyond the span, stopped at its end (which says why), and the theories asked for. */
+  const goToDate = (utc: number, paused: boolean): void => {
+    const outside = setDate(utc);
+    timeEdge = outside;
+    timePaused = outside ? true : paused;
+    if (outside && theoryState !== 'ready') {
+      pendingDate = { utc, paused };
+      loadTheories();
+    }
+  };
+  /** A TDB Julian date as UTC (TDB runs about a minute ahead of UTC), for the span's ends as dates. */
+  const tdbToUtc = (tdb: number): number => (timeConstants ? tdb - (utcToTdb(tdb, timeConstants) - tdb) : tdb);
+  /** What holds the clock below the rate set: a trip (real time), or being on foot or on the way down (FOOT_MAX_RATE); null when nothing does. */
+  const clockHold = (): 'trip' | 'foot' | null => (nav.travelling ? 'trip' : walk?.active || descent?.active ? 'foot' : null);
 
   const exposureFor = (id: BodyId): number => {
     if (!system || id === 'sun') return 1;
@@ -680,7 +748,7 @@ export default function create(): UniverseModule {
     solarFilter: false,
     jdTdb: 0,
     unixMs: 0,
-    time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0, hijri: null },
+    time: { rate: 1, paused: false, edge: null, held: null, beyond: { moon: false, planets: false }, spinHeld: false, startMs: 0, endMs: 0, hijri: null },
     sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
     lab: null,
     islamic: null,
@@ -757,7 +825,11 @@ export default function create(): UniverseModule {
     // In the laboratory the time controls run the experiment's clock.
     v.time.rate = lab?.active ? lab.rate : timeRate;
     v.time.paused = lab?.active ? lab.paused : timePaused;
-    v.time.edge = lab?.active ? null : timeEdge;
+    v.time.edge = lab?.active ? lab.edge : timeEdge;
+    v.time.held = lab?.active ? null : clockHold();
+    v.time.spinHeld = spinHold.get(focus)?.lon != null;
+    v.time.beyond.moon = !lab?.active && tables !== null && (jdTdb < tables.moon.startJd || jdTdb > tables.moon.endJd);
+    v.time.beyond.planets = !lab?.active && tables !== null && (jdTdb < tables.planets.startJd || jdTdb > tables.planets.endJd);
     v.lab = lab?.view() ?? null;
     // The Umm al-Qura date of the day shown (looked up once a day of the clock); none over an experiment.
     const day = Math.floor(v.unixMs / 86_400_000);
@@ -777,9 +849,9 @@ export default function create(): UniverseModule {
     v.descent = descent?.view() ?? null;
     v.neighbourhood = hoodShown ? (hood?.view() ?? null) : null;
     v.sound = soundView;
-    // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
-    v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
-    v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
+    // The span (TDB), as the UTC dates the clock shows at its ends.
+    v.time.startMs = (tdbToUtc(range.startJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    v.time.endMs = Number.isFinite(range.endJd) ? (tdbToUtc(range.endJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
     v.mode = navOut.mode;
     v.speedKmS = navOut.speedKmS;
     const trip = nav.tripState;
@@ -1094,6 +1166,49 @@ export default function create(): UniverseModule {
       }
       beforeLab = null;
     }
+  };
+
+  /** A world's basis turned about its pole by `a` (radians, eastward: the Sun's longitude on it falls by a); and that longitude. */
+  const turnBasis = (m: number[], a: number): void => {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    for (let k = 0; k < 3; k += 1) {
+      const x = m[k] ?? 0;
+      const z = m[6 + k] ?? 0;
+      m[k] = x * c - z * s;
+      m[6 + k] = z * c + x * s;
+    }
+  };
+  const sunLongitude = (sys: SolarSystem, id: BodyId): number => {
+    const m = sys.bodies[id].basis;
+    const p = sys.bodies[id].position;
+    const sun = sys.bodies.sun.position;
+    const d = [sun.x - p.x, sun.y - p.y, sun.z - p.z];
+    const dot = (o: number): number => (d[0] ?? 0) * (m[o] ?? 0) + (d[1] ?? 0) * (m[o + 1] ?? 0) + (d[2] ?? 0) * (m[o + 2] ?? 0);
+    return Math.atan2(-dot(6), dot(0));
+  };
+  /** The hold (spinHold) for one world this frame, given how far it turns a frame (degrees). */
+  const holdSpin = (sys: SolarSystem, id: BodyId, perFrame: number, dt: number): void => {
+    const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+    let h = spinHold.get(id);
+    if (!h && perFrame > SPIN_HOLD && id !== 'sun') spinHold.set(id, (h = { lon: sunLongitude(sys, id), turn: 0 }));
+    if (!h) return;
+    const sign = Math.sign(spinRate[id]) || 1;
+    if (h.lon !== null && perFrame < SPIN_FREE) {
+      // Let go: the turn held back, caught up forwards (a whole turn at most, ahead of the true one, shrinking).
+      const behind = wrap(sunLongitude(sys, id) - h.lon);
+      h.turn = sign > 0 ? (behind > 0 ? behind - 2 * Math.PI : behind) : behind < 0 ? behind + 2 * Math.PI : behind;
+      h.lon = null;
+    }
+    if (h.lon !== null) h.turn = wrap(sunLongitude(sys, id) - h.lon);
+    else {
+      h.turn *= Math.exp(-SPIN_CATCH_UP * Math.min(0.1, dt));
+      if (Math.abs(h.turn) < 1e-3) {
+        spinHold.delete(id);
+        return;
+      }
+    }
+    turnBasis(sys.bodies[id].basis, h.turn);
   };
 
   /** Whether a point on the Earth (degrees) is near enough to Makkah that the view keeps its distance (MAKKAH_FRAME). */
@@ -1429,15 +1544,19 @@ export default function create(): UniverseModule {
     nav.reducedMotion = c.reducedMotion;
     adaptation.setReducedMotion(c.reducedMotion);
     ambient += c.reducedMotion ? 0 : dt;
+    shownFor += dt;
     if (lab?.active) {
-      // The experiment's clock (its epoch plus the simulated time), with no data span to keep to.
+      // The experiment's clock as drawn (its epoch plus the simulated time: ./lab-clock), with no data span to keep to.
+      lab.tick(performance.now());
       const jd = lab.jdTdb();
       clockRate = lab.paused ? 0 : lab.rate;
       jdUtc += jd - jdTdb;
       jdTdb = jd;
     } else {
-      // The time machine: the clock at its rate (real time during a trip), kept in the data's span.
-      clockRate = timePaused ? 0 : nav.busy ? Math.sign(timeRate) : timeRate;
+      // The time machine: the clock at its rate, held to real time during a trip (not the arrival's glide,
+      // which follows its own world) and to FOOT_MAX_RATE on foot or on the way down, kept in the span.
+      clockRate = timePaused ? 0 : heldRate(timeRate, clockHold());
+      if (theoryState === 'none' && (shownFor > 3 || clockRate < 0 || clockRate >= 86_400 || jdTdb - range.startJd < 120 || range.endJd - jdTdb < 120)) loadTheories();
       const clock = advanceClock(jdTdb, dt, clockRate, range.startJd, range.endJd);
       jdUtc += clock.jd - jdTdb;
       jdTdb = clock.jd;
@@ -1500,6 +1619,7 @@ export default function create(): UniverseModule {
       const refocus = lab.takeRefocus();
       if (refocus && !hiddenBodies.has(refocus)) nav.flyTo(world, refocus);
     }
+    for (const id of BODY_IDS) holdSpin(sys, id, Math.abs((spinRate[id] * clockRate * dt) / 86_400) * (Math.PI / 180), dt);
     advanceStretch(dt);
     warpSystem(sys);
     for (const path of orbitPaths) path.setDate(jdTdb);
@@ -2511,8 +2631,9 @@ export default function create(): UniverseModule {
       ]);
       noise = volume;
       timeConstants = physical.time;
-      const valid = validRange(moon);
-      range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
+      for (const id of BODY_IDS) spinRate[id] = physical.bodies[(id.charAt(0).toUpperCase() + id.slice(1)) as keyof PhysicalFile['bodies']].pm[1];
+      tables = tableRange(moon);
+      spanOf(moon);
       system = createSolarSystem(planets, moon, physical);
       labInputs = { planets, moon, physical };
       skyData = skyFile;
@@ -2781,7 +2902,7 @@ export default function create(): UniverseModule {
       if (options.labShare) pendingShare = options.labShare;
       if (entered) applyLab();
       if (options.jdUtc !== null || !entered) pinnedUtc = options.jdUtc;
-      if (entered && options.jdUtc !== null) setDate(options.jdUtc);
+      if (entered && options.jdUtc !== null) goToDate(options.jdUtc, timePaused);
       nav.reducedMotion = options.reducedMotion;
       if (entered && options.body && world) nav.flyTo(world, options.body);
       else wantBody = options.body;
@@ -2803,7 +2924,9 @@ export default function create(): UniverseModule {
       root.visible = true;
       entered = true;
       ambient = 0;
-      setDate(pinnedUtc);
+      shownFor = 0;
+      if (pinnedUtc === null) setDate(null);
+      else goToDate(pinnedUtc, timePaused);
       system.update(jdTdb);
       nav.reducedMotion = c.reducedMotion;
       // Framing needs the view before the first pose is chosen.
@@ -3025,43 +3148,25 @@ export default function create(): UniverseModule {
       lab?.command(command);
     },
 
-    time(command) {
-      // In the laboratory: pause, faster and slower drive the experiment; going back is by its checkpoints, not a reversed clock.
+    time(asked) {
+      // Checked at the boundary: a rate or a date that is not a finite number is refused, a rate's size held to the ladder's.
+      const command = validTimeCommand(asked);
+      if (!command) return;
+      // In the laboratory the commands drive the experiment's clock (./lab: backwards by replaying its history).
       if (lab?.active) {
-        if (command.kind === 'toggle') lab.setRun(lab.rate, !lab.paused);
-        else if (command.kind === 'faster') lab.setRun(fasterRate(lab.rate), false);
-        else if (command.kind === 'slower') lab.setRun(slowerRate(lab.rate), false);
-        else if (command.kind === 'rate') lab.setRun(command.rate === 0 ? lab.rate : Math.abs(command.rate), command.rate === 0);
+        lab.time(command);
         return;
       }
-      // A change of rate or direction sets the clock running; a new date keeps it as it was.
-      if (command.kind !== 'date' && command.kind !== 'toggle') timePaused = false;
-      timeEdge = null;
-      switch (command.kind) {
-        case 'toggle':
-          timePaused = !timePaused;
-          return;
-        case 'faster':
-          timeRate = fasterRate(timeRate);
-          return;
-        case 'slower':
-          timeRate = slowerRate(timeRate);
-          return;
-        case 'reverse':
-          timeRate = -timeRate;
-          return;
-        case 'now':
-          timeRate = 1;
-          setDate(null);
-          return;
-        case 'date':
-          setDate(command.jdUtc);
-          return;
-        case 'rate':
-          if (command.rate === 0) timePaused = true;
-          else timeRate = command.rate;
-          return;
-      }
+      // The pure reducer (./time): a change of rate or direction sets the clock running, a new date keeps it as it
+      // was; at an end, play, faster and slower turn it round. On foot faster stops at FOOT_MAX_RATE.
+      const next = applyTimeCommand({ rate: timeRate, paused: timePaused, edge: timeEdge }, command, clockHold() === 'foot' ? FOOT_MAX_RATE : undefined).state;
+      timeRate = next.rate;
+      timePaused = next.paused;
+      timeEdge = next.edge;
+      pendingDate = null;
+      if (command.kind === 'now') setDate(null);
+      // A date outside the span is shown at its nearest end, stopped there, and the end says why.
+      else if (command.kind === 'date') goToDate(command.jdUtc, next.paused);
     },
 
     focus(body) {

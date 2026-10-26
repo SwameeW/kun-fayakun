@@ -245,6 +245,7 @@ export class Engine {
   private acc: number[] = [];
   /** Log entries applied so far (the rest replay as the steps reach them). */
   private logIndex = 0;
+  /** Checkpoints in order of step (at most MAX_CHECKPOINTS, spread over the whole run: see checkpoint()). */
   readonly checkpoints: Checkpoint[] = [];
   readonly interventions: Intervention[] = [];
   readonly events: MergeEvent[] = [];
@@ -261,13 +262,36 @@ export class Engine {
   /** Whether a body keeps its identity in a merger (Scenario.persistentIds). */
   readonly keep = (id: string): boolean => this.scenario.persistentIds?.includes(id) ?? false;
 
-  constructor(scenario: Scenario) {
+  /**
+   * A scenario run from its start; or, given `from` (one of another engine's checkpoints for the same
+   * scenario), a replica that goes on from that checkpoint exactly as the run did, without touching
+   * that engine (./rewind replays history with one). A replica only reads the scenario's log.
+   */
+  constructor(scenario: Scenario, from?: Checkpoint) {
     this.scenario = scenario;
+    if (from) {
+      this.state = cloneState(from.state);
+      this.dt = from.dt;
+      this.logIndex = from.logIndex;
+      this.lastPeriodic = from.step;
+      this.reference = diagnostics(this.state);
+      return;
+    }
     this.state = stateFrom(scenario.bodies);
     resolveContacts(this.state, 0, null, this.events, this.keep);
     this.retime();
     this.reference = diagnostics(this.state);
     this.checkpoint();
+  }
+
+  /** Log entries applied so far: what a checkpoint taken now would record. */
+  get applied(): number {
+    return this.logIndex;
+  }
+
+  /** The state now as a checkpoint (a deep copy; without the rings' particles when `withSwarms` is false). */
+  snapshotNow(withSwarms = true): Checkpoint {
+    return { step: this.state.step, t: this.state.t, state: cloneState(this.state, withSwarms), dt: this.dt, logIndex: this.logIndex };
   }
 
   /** The step size the state calls for now (or for a timescale already found). */
@@ -277,10 +301,31 @@ export class Engine {
     if (!Number.isFinite(this.dt)) this.dt = g.dtMaxS;
   }
 
+  /**
+   * Takes a checkpoint, kept in order of step (a run gone back over and run again takes them again:
+   * one already held for the same step and edits is not repeated). Bounded: past MAX_CHECKPOINTS, the
+   * one whose loss leaves the shortest gap goes, so they stay spread over the whole run (going back
+   * anywhere replays at most a gap's steps); the first (the scenario's start) and the latest stay.
+   */
   private checkpoint(): void {
-    this.checkpoints.push({ step: this.state.step, t: this.state.t, state: cloneState(this.state), dt: this.dt, logIndex: this.logIndex });
-    // Bounded: the oldest periodic checkpoints go first; the first (the scenario's start) stays.
-    while (this.checkpoints.length > MAX_CHECKPOINTS) this.checkpoints.splice(1, 1);
+    const list = this.checkpoints;
+    const { step } = this.state;
+    if (list.some((c) => c.step === step && c.logIndex === this.logIndex)) return;
+    let at = list.length;
+    while (at > 0 && (list[at - 1]?.step ?? 0) > step) at -= 1;
+    list.splice(at, 0, this.snapshotNow());
+    while (list.length > MAX_CHECKPOINTS) {
+      let drop = 1;
+      let shortest = Number.POSITIVE_INFINITY;
+      for (let k = 1; k < list.length - 1; k += 1) {
+        const gap = (list[k + 1]?.step ?? 0) - (list[k - 1]?.step ?? 0);
+        if (gap < shortest) {
+          shortest = gap;
+          drop = k;
+        }
+      }
+      list.splice(drop, 1);
+    }
   }
 
   /** Applies the logged edits due at the current step. */
@@ -544,7 +589,8 @@ export class Engine {
     }
     if (!healthy(this.state)) {
       this.failure = 'non-finite';
-      this.restore(this.checkpoints[this.checkpoints.length - 1]?.step ?? 0, false);
+      // The last good checkpoint: the latest at or before this step.
+      this.restore(this.state.step, false);
       return;
     }
     // Shrink at once for a tightening encounter; otherwise retime (and grow) only every retimeSteps.
@@ -561,7 +607,14 @@ export class Engine {
     let best: Checkpoint | undefined;
     for (const c of this.checkpoints) if (c.step <= targetStep && c.logIndex <= maxLogIndex && (!best || c.step > best.step || (c.step === best.step && c.logIndex >= best.logIndex))) best = c;
     const c = best ?? this.checkpoints[0];
-    if (!c) return;
+    if (c) this.restoreFrom(c, replayTo ? targetStep : c.step);
+  }
+
+  /**
+   * Goes to `targetStep` from a given checkpoint of this run (one of its own, or one a replica took:
+   * ./rewind), replaying the log from it; exactly the state the run had there.
+   */
+  restoreFrom(c: Checkpoint, targetStep = c.step): void {
     this.state = cloneState(c.state);
     this.dt = c.dt;
     this.logIndex = c.logIndex;
@@ -572,7 +625,7 @@ export class Engine {
     this.reference = diagnostics(this.state);
     this.lastPeriodic = this.state.step;
     // Checkpoints later than this one belong to a future that is no longer certain: keep them (the log replays the same way) unless a new edit branches.
-    if (replayTo) while (this.state.step < targetStep && !this.failure) this.stepOnce();
+    while (this.state.step < targetStep && !this.failure) this.stepOnce();
   }
 
   /** The visitor going back (or forward) to a step: clears a stop for non-finite numbers, then restores and replays. */
@@ -585,6 +638,15 @@ export class Engine {
   replayFromStart(): void {
     this.failure = null;
     this.restore(0, false);
+  }
+
+  /** Back to the latest checkpoint at or before simulated time `t` (s), not replayed: the caller steps on toward `t` (a few steps at a time). */
+  restoreBefore(t: number): void {
+    this.failure = null;
+    let best: Checkpoint | undefined;
+    for (const c of this.checkpoints) if (c.t <= t && c.logIndex <= this.scenario.log.length && (!best || c.step > best.step)) best = c;
+    const c = best ?? this.checkpoints[0];
+    if (c) this.restoreFrom(c);
   }
 
   /** Integrates a copy of the current state `horizonS` ahead with the same rules, sampling body `id` `samples` times (all at once: see Prediction for the sliced form). */
@@ -639,7 +701,11 @@ export class Prediction {
   private readonly eta: number;
   done = false;
 
-  /** `accuracy` scales the step (eta): 0.25 four times finer than the live run, 4 four times coarser and faster. */
+  /**
+   * `accuracy` scales the step (eta): 0.25 four times finer than the live run, 4 four times coarser and
+   * faster. `from`: a moment of the run's history shown instead of its state now (while it is played
+   * backwards: ./rewind), with the step it had there.
+   */
   constructor(
     engine: Engine,
     readonly id: string,
@@ -647,13 +713,14 @@ export class Prediction {
     readonly samples: number,
     readonly maxSteps: number,
     accuracy = 1,
+    from: { state: SimState; dt: number } = engine,
   ) {
     // Test particles pull nothing, so the bodies' future is the same without them.
-    this.copy = cloneState(engine.state, false);
+    this.copy = cloneState(from.state, false);
     this.start = this.copy.t;
     this.g = engine.scenario.integrator;
     this.eta = this.g.eta * accuracy;
-    this.dt = this.g.fixedDtS ?? Math.min(this.g.dtMaxS, Math.max(this.g.dtMinS, engine.dt * accuracy));
+    this.dt = this.g.fixedDtS ?? Math.min(this.g.dtMaxS, Math.max(this.g.dtMinS, from.dt * accuracy));
     this.keep = engine.keep;
     const i = indexOf(this.copy, id);
     if (i < 0) this.done = true;

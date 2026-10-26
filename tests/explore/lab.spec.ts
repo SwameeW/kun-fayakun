@@ -115,12 +115,12 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   await page.locator('body').press('Space');
   await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(false);
   await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(n0 + 1);
-  // Back to a checkpoint: the clock goes back to it (paused first, so no new checkpoint slides the list as it is chosen).
+  // Back to a checkpoint (the oldest of the latest six, the list oldest first): the clock goes back to it.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.locator('body').press('Space');
   await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
   const now = (await lab(page))?.elapsedS ?? 0;
-  const first = page.getByTestId('lab-checkpoints').getByRole('button').last();
+  const first = page.getByTestId('lab-checkpoints').getByRole('button').first();
   await first.click();
   await expect.poll(async () => (await lab(page))?.elapsedS ?? Infinity, LIVE).toBeLessThan(now);
   await page.getByTestId('lab-replay').click();

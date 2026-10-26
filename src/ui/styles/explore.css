@@ -1756,9 +1756,33 @@
   color: var(--kf-gold-strong);
 }
 
-.kf-universe-time-button:hover,
-.kf-universe-time-now:hover {
+.kf-universe-time-button:not([aria-disabled="true"]):hover,
+.kf-universe-time-now:not([aria-disabled="true"]):hover {
   border-color: var(--kf-gold-soft);
+}
+
+/* A control that cannot act now: dimmed, still focusable, and a press says why (in the note below). */
+.kf-universe-time-button[aria-disabled="true"],
+.kf-universe-time-now[aria-disabled="true"] {
+  border-color: var(--kf-line);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.kf-universe-time-now[hidden] {
+  display: none;
+}
+
+.kf-universe-time-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.kf-universe-time-note[hidden] {
+  display: none;
 }
 
 .kf-universe-time-rate {
