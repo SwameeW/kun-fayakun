@@ -129,10 +129,10 @@ platform.
 
 | ID | Feature | Model | Depends on | Status |
 |---|---|---|---|---|
-| ST-1 | Star parameters (mass, radius, luminosity, temperature) | Cited relations, valid ranges stated | none | planned |
+| ST-1 | Star parameters (mass, radius, luminosity, temperature) | Cited relations, valid ranges stated | none | partial (2026-10-26): every placed star's temperature (Ballesteros 2012 from B-V) and light in V against the Sun's; a planet host's radius, mass and luminosity as the Exoplanet Archive gives them (`tests/explore/stars.spec.ts`); masses from relations (Eker et al. 2018) wait for a bolometric correction to cite |
 | ST-2 | Several light sources; a star that does not shine | Light from the model, not a fixed Sun | ST-1 | planned |
 | ST-3 | Binaries, double sunsets, circumbinary worlds | | ST-2 | planned |
-| ST-4 | Evolution tracks and an HR diagram | Cited tracks or labelled interpolation | ST-1 | research needed |
+| ST-4 | Evolution tracks and an HR diagram | Cited tracks or labelled interpolation | ST-1 | partial (2026-10-26): the Hertzsprung-Russell diagram of the 9,140 stars Hipparcos places with a colour, the Sun and the star in view marked (`tests/explore/stars.spec.ts`); evolution tracks need cited tracks (MIST or PARSEC, licence to check) |
 | ST-5 | Remnants: white dwarfs, neutron stars, supernovae | Flash-safe | ST-4 | deferred |
 | ST-6 | Black holes: horizon scale, labelled lensing | Newtonian orbits, separate light model | ST-2 | research needed |
 
@@ -155,7 +155,7 @@ platform.
 | CR-3 | Camera keyframes, saved shots, video export (feature-detected) | planned |
 | CR-4 | Short lessons on resettable scenarios | planned |
 | CR-5 | Declarative, versioned addons (no imported code) | deferred |
-| CR-6 | Audio, within the owner's decisions | deferred |
+| CR-6 | Audio, within the owner's decisions | implemented (2026-10-26; the owner allowed sound): sound only where there is air (the wind by the air's dynamic pressure on foot and on the way down; the suit's fans on airless worlds), no music or voice, silenced under a recitation, off at the navigator's foot and kept (`tests/explore/sound.spec.ts`) |
 | CR-7 | WebXR | deferred |
 
 ## Research extensions

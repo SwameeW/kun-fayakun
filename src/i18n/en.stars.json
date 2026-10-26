@@ -71,5 +71,22 @@
   "ui.universe.stars.beyond.scale.galaxy": "The Milky Way here is a model, not a picture: its arms where the parallaxes of star-forming regions trace them (Reid et al. 2019), continued more faintly beyond; its disc and bar at their measured sizes (Bland-Hawthorn and Gerhard 2016). Its stars are not individually known.",
   "ui.universe.stars.beyond.scale.local-group": "The galaxies of the Local Group where McConnachie’s catalogue (2012) puts them, each a glow its own size and brightness; the four largest as discs of points at their measured sizes and tilts (which side of each is nearer is not known). The Milky Way is the model.",
   "ui.universe.stars.beyond.scale.universe": "Each point a galaxy the Sloan Digital Sky Survey measured ({count} drawn), placed by its redshift (Planck 2018’s cosmology). The survey covers part of the sky and takes fewer galaxies farther out: the outline is the survey’s, the filaments and voids the universe’s.",
-  "ui.universe.stars.beyond.scale.loading": "Fetching the survey’s galaxies…"
+  "ui.universe.stars.beyond.scale.loading": "Fetching the survey’s galaxies…",
+  "ui.universe.stars.hr.title": "The stars by colour and brightness",
+  "ui.universe.stars.hr.colour": "Colour (B−V): bluer to redder",
+  "ui.universe.stars.hr.brightness": "Brightness from 10 parsecs (absolute V)",
+  "ui.universe.stars.hr.mainSequence": "Main sequence",
+  "ui.universe.stars.hr.giants": "Giants",
+  "ui.universe.stars.hr.whiteDwarfs": "White dwarfs",
+  "ui.universe.stars.hr.sun": "Sun",
+  "ui.universe.stars.hr.label": "A Hertzsprung–Russell diagram: {count} stars by colour and brightness from 10 parsecs, the Sun circled{marked}.",
+  "ui.universe.stars.hr.labelMarked": " and {name} ringed",
+  "ui.universe.stars.hr.caption": "A Hertzsprung–Russell diagram of {count} stars placed in space, each by its colour and its brightness from 10 parsecs (Hipparcos). Most lie along the main sequence, fusing hydrogen in their cores; the giants have left it and swollen; white dwarfs are cores left behind. The Sun is circled, the star in view ringed.",
+  "ui.universe.stars.hr.captionOff": "A Hertzsprung–Russell diagram of {count} stars placed in space, each by its colour and its brightness from 10 parsecs (Hipparcos). {name} is not on it: its colour, or its distance, is not known well enough.",
+  "ui.universe.stars.lightV": "Its light in V, the Sun’s as 1",
+  "ui.universe.stars.sunsTimes": "{n}",
+  "ui.universe.stars.radius": "Radius, the Sun’s as 1",
+  "ui.universe.stars.mass": "Mass, the Sun’s as 1",
+  "ui.universe.stars.luminosity": "All its light, the Sun’s as 1",
+  "ui.universe.stars.archiveStar": "Radius, mass and light as the NASA Exoplanet Archive gives them for a planet’s star."
 }

@@ -92,12 +92,23 @@ import { FloatingOrigin, km, renderToEcliptic, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretchedDistance, stretchedLight } from './stretch';
 import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile } from './sky';
+import { createSoundscape, type Soundscape, type SoundState } from './sound';
 import { createSolarSystem, type SolarSystem } from './system';
 import { advanceClock, fasterRate, slowerRate } from './time';
 
 const DEFAULT_BODY: BodyId = 'earth';
 const NOISE = { size: 64, seed: 31_415 } as const;
 const SECONDS_PER_DAY = 86_400;
+
+/**
+ * Sound where there is air (./sound), in display terms: an illustrative breeze on each world with air
+ * (m/s; the walks know no wind, and Venus's surface winds are slow), and how far up in pitch the wind's
+ * noise reaches there (Hz): Mars's thin carbon dioxide takes high pitches first (Perseverance's
+ * microphones, Maurice et al. 2022).
+ */
+const SOUND_BREEZE: Partial<Record<WalkableWorld, number>> = { earth: 5, mars: 5, venus: 1 };
+const SOUND_BRIGHT: Partial<Record<WalkableWorld | 'jupiter', number>> = { earth: 1800, mars: 500, venus: 1200, jupiter: 2000 };
+
 /** Above this height (km) with the lens at rest, the view stops turning with the Earth (it is no longer held over a place). */
 const PLACE_LOCK_KM = 3000;
 /** How near (CSS px) a double click must be to a satellite to choose it. */
@@ -437,6 +448,11 @@ export default function create(): UniverseModule {
   let labShapes: Record<string, { j2: number | null; inertia: number | null }> = {};
   /** The sourced constants, for the laboratory's climates (built in its own chunk). */
   let labFigure: (id: string) => number | null = () => null;
+  /** Each walkable world's air: its mean molar mass (kg/mol) from its composition (for the air's density at the feet), null without air. */
+  let airMolar: Partial<Record<WalkWorld, number>> = {};
+  /** Sound where there is air (./sound): made with the context. */
+  let soundscape: Soundscape | null = null;
+  const soundView: UniverseView['sound'] = { on: true, playing: null };
   let islamicLoading = false;
   const islamicWaiting: UniverseIslamicCommand[] = [];
   let hijriDay = Number.NaN;
@@ -664,6 +680,7 @@ export default function create(): UniverseModule {
     place: null,
     descent: null,
     neighbourhood: null,
+    sound: { on: true, playing: null },
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -678,6 +695,29 @@ export default function create(): UniverseModule {
     imagery: null,
     living: null,
     lens: null,
+  };
+
+  /**
+   * What the air carries where the visitor is (./sound): on foot, the air's density at the feet (its
+   * pressure there, the world's mean temperature and its air's molar mass, by the ideal gas law) and
+   * an illustrative breeze; on the way down, the probe's own density and wind; on an airless world,
+   * the suit's fans; anywhere else (space, the stars, an experiment), nothing.
+   */
+  const soundState = (): SoundState | null => {
+    const w = viewState.walk;
+    if (walkShown && w) {
+      const molar = airMolar[w.world];
+      if (w.pressureKpa === null || molar === undefined) return { air: null, suit: true };
+      const densityKgM3 = (w.pressureKpa * 1000 * molar) / (8.314462618 * ((w.meanTempC ?? 15) + 273.15));
+      return { air: { densityKgM3, windMs: SOUND_BREEZE[w.world] ?? 5, brightHz: SOUND_BRIGHT[w.world] ?? 1500 }, suit: false };
+    }
+    const d = viewState.descent;
+    if (descentShown && d) return { air: { densityKgM3: d.densityKgM3, windMs: Math.abs(d.windMs ?? SOUND_BREEZE.venus ?? 1), brightHz: SOUND_BRIGHT[d.world] ?? 1500 }, suit: false };
+    return null;
+  };
+  /** Browsers let sound begin only after the visitor touches the page. */
+  const unlockSound = (): void => {
+    soundscape?.unlock();
   };
 
   const refreshView = (): void => {
@@ -724,6 +764,7 @@ export default function create(): UniverseModule {
     v.place = placeBelow;
     v.descent = descent?.view() ?? null;
     v.neighbourhood = hoodShown ? (hood?.view() ?? null) : null;
+    v.sound = soundView;
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -2565,6 +2606,20 @@ export default function create(): UniverseModule {
         walkFigures.venus = { surfaceKpa: figure('venus.surfacePressure'), scaleHeightKm: figure('venus.atmosphere.scaleHeight'), meanTempC: celsius('venus.averageTemperature'), dayRangeC: null };
         labShapes = Object.fromEntries(BODY_IDS.map((id) => [id, { j2: figure(`${id}.j2`), inertia: figure(`${id}.momentOfInertia`) }]));
         labFigure = figure;
+        // The air's mean molar mass from its composition by volume (IUPAC standard atomic weights, kg/mol).
+        const molar = { n2: 0.028014, o2: 0.031998, ar: 0.039948, co2: 0.044009, co: 0.02801 } as const;
+        const meanMolar = (world: string, gases: ReadonlyArray<keyof typeof molar>): number | undefined => {
+          let sum = 0;
+          let share = 0;
+          for (const g of gases) {
+            const v = figure(`${world}.atmosphere.${g}`);
+            if (v === null) continue;
+            sum += v * molar[g];
+            share += v;
+          }
+          return share > 0 ? sum / share : undefined;
+        };
+        airMolar = { earth: meanMolar('earth', ['n2', 'o2', 'ar', 'co2']), mars: meanMolar('mars', ['co2', 'n2', 'ar', 'o2', 'co']), venus: meanMolar('venus', ['co2', 'n2']) };
         lightKmS = facts.lightKmS;
         discoveries = new Discoveries(facts);
       } catch (err) {
@@ -2700,6 +2755,12 @@ export default function create(): UniverseModule {
 
     enter(c) {
       ctx = c;
+      if (!soundscape) {
+        soundscape = createSoundscape(c.audio);
+        soundscape.setEnabled(soundView.on);
+        window.addEventListener('pointerdown', unlockSound);
+        window.addEventListener('keydown', unlockSound);
+      }
       if (!system || !world) return;
       c.scene.add(root);
       c.scene.add(starsRoot);
@@ -2782,6 +2843,8 @@ export default function create(): UniverseModule {
         if (warming === 0) setCulling(true);
       }
       frame(dt);
+      soundscape?.update(soundState(), dt);
+      soundView.playing = soundscape?.playing ?? null;
     },
 
     setQuality() {
@@ -2850,6 +2913,10 @@ export default function create(): UniverseModule {
           return;
         case 'starsPlace':
           hood?.goToPlace(command.place);
+          return;
+        case 'sound':
+          soundView.on = command.on;
+          soundscape?.setEnabled(command.on);
           return;
         case 'starsSearch':
           hood?.search(command.text);
@@ -3000,7 +3067,8 @@ export default function create(): UniverseModule {
     },
 
     exit() {
-      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back) and a walk.
+      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back) and a walk; its sound goes quiet.
+      soundscape?.update(null, 0);
       wantLab = false;
       applyLab();
       endWalk(true);
@@ -3019,6 +3087,10 @@ export default function create(): UniverseModule {
     },
 
     dispose() {
+      soundscape?.dispose();
+      soundscape = null;
+      window.removeEventListener('pointerdown', unlockSound);
+      window.removeEventListener('keydown', unlockSound);
       root.removeFromParent();
       input?.detach();
       bodies?.dispose();

@@ -20,7 +20,14 @@ and `src/ui/explore/neighbourhood-panel.ts` (its own chunk too); the data in
 - **The panel** gives the star in view: its distance from the Sun (light years and parsecs, and how
   well its parallax is known), its spectral type, its surface temperature (the Exoplanet Archive's for
   a planet host, else from its B-V colour, Ballesteros 2012), its brightness from the Earth and from
-  10 parsecs; its known planets; and the stars nearest it.
+  10 parsecs, and its light in V against the Sun's (both from 10 parsecs); for a planet's star, its
+  radius, mass and whole light as the archive gives them (ledger ST-1); its known planets; and the
+  stars nearest it.
+- **The stars by colour and brightness** (ledger ST-4): a Hertzsprung-Russell diagram of every star
+  placed in space with a colour (9,140), each by its B-V and its absolute magnitude, as Hipparcos
+  measured them, with the Sun circled and the star in view ringed. The main sequence, the giants and
+  the white dwarfs are named where they gather; no region is drawn as a boundary, and no evolutionary
+  track is drawn (that waits for cited tracks).
 
 ## The data
 

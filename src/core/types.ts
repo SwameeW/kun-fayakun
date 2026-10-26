@@ -333,6 +333,16 @@ export interface ChapterContext {
   assets: AssetLoader;
   data: DataStore;
   exposure: ExposureControl;
+  /** The app's sound (src/core/audio.ts): its ambient bus is silenced under a recitation. Absent in tests that build a context by hand. */
+  audio?: AudioBuses;
+}
+
+/**
+ * The app's sound as a scene sees it (src/core/audio.ts's AudioEngine): a bus to play through, a Web
+ * Audio node (typed loosely here, so the shared types need no DOM).
+ */
+export interface AudioBuses {
+  bus(kind: 'ambient' | 'scene'): unknown;
 }
 
 /**
@@ -498,6 +508,8 @@ export interface UniverseView {
   descent: UniverseDescent | null;
   /** Among the stars around the Sun, while there; else null. */
   neighbourhood: UniverseNeighbourhood | null;
+  /** Sound where there is air (src/explore/sound.ts): whether it is on, and what plays (the wind, a suit's fans, or nothing). */
+  sound: { on: boolean; playing: 'wind' | 'suit' | null };
   /**
    * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
    * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
@@ -868,6 +880,10 @@ export interface UniverseNeighbourhood {
     planets: NeighbourPlanet[];
     host: string | null;
     starsInSystem: number;
+    /** A planet host's radius, mass and luminosity as the NASA Exoplanet Archive gives them (in the Sun's), else null. */
+    radiusSun: number | null;
+    massSun: number | null;
+    luminositySun: number | null;
   };
   /** The camera's distance from the star in view (pc, km) and from the Sun (pc, light years). */
   cameraPc: number;
@@ -1182,6 +1198,8 @@ export type EarthCommand =
   | { kind: 'starsGoTo'; hip: number | null }
   | { kind: 'starsStop' }
   /** A place beyond the stars, or a galaxy of the Local Group as `galaxy:` and its catalogue name. */
+  /** Sound where there is air, on or off (the visitor's choice; the interface keeps it). */
+  | { kind: 'sound'; on: boolean }
   | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` }
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }

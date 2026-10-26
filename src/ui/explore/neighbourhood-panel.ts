@@ -1,4 +1,7 @@
+import { blackbodyRgb } from '../../chapters/shared/blackbody';
 import type { App, NeighbourPlanet, UniverseNeighbourhood, UniverseView } from '../../core/types';
+import type { NeighbourhoodFile } from '../../explore/neighbourhood/data';
+import { bvKelvin } from '../../explore/sky';
 import starsMessages from '../../i18n/en.stars.json';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
@@ -16,6 +19,10 @@ import type { Formatters } from './format';
  */
 
 type PlaceId = UniverseNeighbourhood['places'][number]['id'];
+/** The Hertzsprung-Russell diagram's ranges: colour (B-V) and absolute magnitude, brightest at the top; its size in canvas pixels. */
+const HR = { bv: [-0.4, 2.1], mag: [-8, 17], width: 600, height: 440, pad: { left: 56, right: 14, top: 14, bottom: 46 } } as const;
+/** The Sun among them: its absolute magnitude and colour (data/constants.json's, as the scene takes them). */
+const SUN_ON_HR = { bv: 0.653, mag: 4.81 } as const;
 /** Light years per kiloparsec. */
 const LY_PER_KPC = 3261.5638;
 
@@ -36,6 +43,7 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
   };
   const name = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'stars-focus-name' });
   const facts = h('dl', { class: 'kf-about-facts', 'data-testid': 'stars-facts' });
+  const archiveNote = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-archive-note', hidden: true }, i18n.t('ui.universe.stars.archiveStar'));
   const planetsTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'stars-planets-title', hidden: true });
   const planets = h('ul', { class: 'kf-stars-planets', 'data-testid': 'stars-planets' });
   const planetsNote = h('p', { class: 'kf-living-hint', hidden: true }, i18n.t('ui.universe.stars.planetsNote'));
@@ -58,6 +66,101 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
   const results = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-results' });
   const nearestList = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-nearest' });
   const nearestTitle = h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.nearest'));
+  // The Hertzsprung-Russell diagram (ledger ST-4): every star placed in space by its colour and its
+  // brightness from 10 parsecs (Hipparcos), the Sun and the star in view marked.
+  const hr = h('canvas', { class: 'kf-stars-hr', width: String(HR.width), height: String(HR.height), role: 'img', 'data-testid': 'stars-hr' });
+  const hrCaption = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-hr-caption' });
+  let hrStars: Array<{ hip: number; bv: number; mag: number; rgb: readonly number[] }> | null = null;
+  let hrBase: HTMLCanvasElement | null = null;
+  let hrMarked = '';
+  const hrX = (bv: number): number => HR.pad.left + ((bv - HR.bv[0]) / (HR.bv[1] - HR.bv[0])) * (HR.width - HR.pad.left - HR.pad.right);
+  const hrY = (mag: number): number => HR.pad.top + ((mag - HR.mag[0]) / (HR.mag[1] - HR.mag[0])) * (HR.height - HR.pad.top - HR.pad.bottom);
+  const drawHrBase = (): void => {
+    if (!hrStars) return;
+    const base = document.createElement('canvas');
+    base.width = HR.width;
+    base.height = HR.height;
+    const g = base.getContext('2d');
+    if (!g) return;
+    g.strokeStyle = 'rgba(255,255,255,0.25)';
+    g.fillStyle = 'rgba(255,255,255,0.6)';
+    g.font = '15px system-ui, sans-serif';
+    g.lineWidth = 1;
+    g.strokeRect(HR.pad.left, HR.pad.top, HR.width - HR.pad.left - HR.pad.right, HR.height - HR.pad.top - HR.pad.bottom);
+    // Ticks: colour every half, magnitude every five.
+    g.textAlign = 'center';
+    for (let bv = 0; bv <= 2; bv += 0.5) g.fillText(f.number(bv, 1), hrX(bv), HR.height - HR.pad.bottom + 18);
+    g.textAlign = 'right';
+    for (let m = -5; m <= 15; m += 5) g.fillText(f.number(m, 0), HR.pad.left - 8, hrY(m) + 5);
+    g.textAlign = 'center';
+    g.fillText(i18n.t('ui.universe.stars.hr.colour'), (HR.pad.left + HR.width - HR.pad.right) / 2, HR.height - 6);
+    g.save();
+    g.translate(16, (HR.pad.top + HR.height - HR.pad.bottom) / 2);
+    g.rotate(-Math.PI / 2);
+    g.fillText(i18n.t('ui.universe.stars.hr.brightness'), 0, 0);
+    g.restore();
+    for (const s of hrStars) {
+      g.fillStyle = `rgba(${String(Math.round(255 * (s.rgb[0] ?? 1)))},${String(Math.round(255 * (s.rgb[1] ?? 1)))},${String(Math.round(255 * (s.rgb[2] ?? 1)))},0.75)`;
+      g.fillRect(hrX(s.bv) - 1.2, hrY(s.mag) - 1.2, 2.4, 2.4);
+    }
+    // Where the kinds of star gather (names only; the regions are not drawn as boundaries).
+    g.fillStyle = 'rgba(255,255,255,0.75)';
+    g.textAlign = 'left';
+    // Below the sequence's upper end, where no stars are.
+    g.fillText(i18n.t('ui.universe.stars.hr.mainSequence'), hrX(-0.36), hrY(7.5));
+    g.fillText(i18n.t('ui.universe.stars.hr.giants'), hrX(1.25), hrY(-3.2));
+    g.fillText(i18n.t('ui.universe.stars.hr.whiteDwarfs'), hrX(-0.3), hrY(15.6));
+    hrBase = base;
+  };
+  const drawHr = (focus: { hip: number | null; name: string | null } | null): void => {
+    const g = hr.getContext('2d');
+    if (!g || !hrBase || !hrStars) return;
+    g.clearRect(0, 0, HR.width, HR.height);
+    g.drawImage(hrBase, 0, 0);
+    // The Sun: a circle with a point at its centre.
+    g.strokeStyle = 'rgba(255,214,120,1)';
+    g.fillStyle = 'rgba(255,214,120,1)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(hrX(SUN_ON_HR.bv), hrY(SUN_ON_HR.mag), 7, 0, 2 * Math.PI);
+    g.stroke();
+    g.fillRect(hrX(SUN_ON_HR.bv) - 1.5, hrY(SUN_ON_HR.mag) - 1.5, 3, 3);
+    g.font = '15px system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.fillText(i18n.t('ui.universe.stars.hr.sun'), hrX(SUN_ON_HR.bv) + 10, hrY(SUN_ON_HR.mag) + 5);
+    const s = focus?.hip === null || focus?.hip === undefined ? undefined : hrStars.find((x) => x.hip === focus.hip);
+    if (s) {
+      // White on a dark edge, to show on stars of any colour.
+      for (const [style, width] of [
+        ['rgba(0,0,0,0.85)', 5],
+        ['rgba(255,255,255,1)', 2.5],
+      ] as const) {
+        g.strokeStyle = style;
+        g.lineWidth = width;
+        g.beginPath();
+        g.arc(hrX(s.bv), hrY(s.mag), 11, 0, 2 * Math.PI);
+        g.stroke();
+      }
+    }
+    hr.dataset.marked = s ? (focus?.name ?? '') : '';
+    hr.setAttribute('aria-label', i18n.t('ui.universe.stars.hr.label', { count: hrStars.length, marked: s ? i18n.t('ui.universe.stars.hr.labelMarked', { name: focus?.name ?? '' }) : '' }));
+    write(hrCaption, i18n.t(s || !focus?.name || focus.hip === null ? 'ui.universe.stars.hr.caption' : 'ui.universe.stars.hr.captionOff', { count: f.number(hrStars.length, 0), name: focus?.name ?? '' }));
+  };
+  void app.assets
+    .json<NeighbourhoodFile>('assets/stars/neighbourhood.json')
+    .then((file) => {
+      // Only the stars placed in space (parallax at least five times its error) with a colour: absolute magnitude V + 5 log10(parallax / 100 mas).
+      hrStars = file.stars
+        .filter(([, , , , , plx, ePlx, , bv]) => bv !== null && plx > 0 && plx / ePlx >= 5)
+        .map(([hip, , , , , plx, , vmag, bv]) => ({ hip, bv: bv ?? 0, mag: vmag + 5 * Math.log10(plx / 100), rgb: blackbodyRgb(bvKelvin(bv ?? 0)) }))
+        .filter((x) => x.bv >= HR.bv[0] && x.bv <= HR.bv[1] && x.mag >= HR.mag[0] && x.mag <= HR.mag[1]);
+      hr.dataset.count = String(hrStars.length);
+      drawHrBase();
+      hrMarked = '';
+    })
+    .catch(() => {
+      hr.hidden = true;
+    });
   // Beyond the stars: places to go, and what the scale in view shows.
   const placesList = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-places' });
   const scaleNote = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-scale-note' });
@@ -81,6 +184,7 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     where,
     name,
     facts,
+    archiveNote,
     planetsTitle,
     planets,
     planetsNote,
@@ -88,6 +192,9 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: searchId }, i18n.t('ui.universe.stars.search')), search, results),
     nearestTitle,
     nearestList,
+    h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.hr.title')),
+    hr,
+    hrCaption,
     h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.beyond.title')),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.beyond.intro')),
     placesList,
@@ -161,6 +268,11 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
       }
       const s = n.focus;
       const pl = n.place;
+      const marked = `${String(s.hip)}:${String(s.name)}:${String(hrBase !== null)}`;
+      if (marked !== hrMarked && hrBase) {
+        hrMarked = marked;
+        drawHr({ hip: s.hip, name: s.name });
+      }
       const key = `${String(s.hip)}:${String(s.name)}:${pl?.id ?? ''}:${pl?.galaxy ?? ''}`;
       if (key === shownFor) return;
       shownFor = key;
@@ -177,6 +289,7 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
         else if (pl.radiusKpc !== null) rows.push(...row(i18n.t('ui.universe.stars.galaxyRadius'), i18n.t('ui.universe.stars.kpcRadius', { n: f.number(pl.radiusKpc, pl.radiusKpc < 1 ? 2 : 1) }), 'galaxy-radius'));
         if (pl.group) rows.push(...row(i18n.t('ui.universe.stars.galaxyGroup'), i18n.t(`ui.universe.stars.group.${pl.group === 'MW' ? 'mw' : pl.group === 'M31' ? 'm31' : 'rest'}`), 'galaxy-group'));
         facts.replaceChildren(...rows);
+        archiveNote.hidden = true;
         planetsTitle.hidden = true;
         planetsNote.hidden = true;
         planets.replaceChildren();
@@ -191,6 +304,15 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
       if (s.temperatureK !== null) items.push(...row(i18n.t('ui.universe.stars.temperature'), i18n.t('ui.universe.stars.kelvin', { k: f.number(Math.round(s.temperatureK / 10) * 10, 0) }), 'temperature'));
       if (s.vmag !== null) items.push(...row(i18n.t('ui.universe.stars.vmag'), f.number(s.vmag, 2), 'vmag'));
       if (s.absoluteV !== null) items.push(...row(i18n.t('ui.universe.stars.absolute'), f.number(s.absoluteV, 2), 'absolute'));
+      // Its light in V against the Sun's (both from 10 parsecs); a planet host's size, mass and whole light as the archive gives them.
+      if (s.absoluteV !== null && s.distPc !== null && s.distPc > 0) {
+        const suns = 10 ** (-0.4 * (s.absoluteV - SUN_ON_HR.mag));
+        items.push(...row(i18n.t('ui.universe.stars.lightV'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(suns, suns < 0.01 ? 5 : suns < 10 ? 3 : 0) }), 'light'));
+      }
+      if (s.radiusSun !== null) items.push(...row(i18n.t('ui.universe.stars.radius'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.radiusSun, 3) }), 'radius'));
+      if (s.massSun !== null) items.push(...row(i18n.t('ui.universe.stars.mass'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.massSun, 3) }), 'mass'));
+      if (s.luminositySun !== null) items.push(...row(i18n.t('ui.universe.stars.luminosity'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.luminositySun, s.luminositySun < 0.01 ? 5 : 3) }), 'luminosity'));
+      archiveNote.hidden = s.radiusSun === null && s.massSun === null && s.luminositySun === null;
       if (s.starsInSystem > 1) items.push(...row(i18n.t('ui.universe.stars.multiple'), f.number(s.starsInSystem, 0), 'multiple'));
       facts.replaceChildren(...items);
       planetsTitle.hidden = s.planets.length === 0;

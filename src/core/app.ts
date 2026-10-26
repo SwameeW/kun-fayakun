@@ -408,6 +408,7 @@ class Engine implements KunFayakunApp {
       assets,
       data: this.data,
       exposure: exposure ?? this.chapterExposure,
+      audio: this.audio,
     };
   }
 

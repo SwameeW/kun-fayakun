@@ -35,6 +35,17 @@ test('out among the stars: the Sun’s neighbours, Proxima Centauri and its plan
   await expect(page.getByTestId('stars-distance')).toContainText('4.23 light years');
   await expect(page.getByTestId('stars-planets')).toContainText('Proxima Cen b');
   await expect(page.getByTestId('stars-planets')).toContainText('(calculated)');
+  // The Hertzsprung-Russell diagram: every star placed with a colour, Proxima Centauri ringed, faint and red.
+  await expect(page.getByTestId('stars-hr')).toHaveAttribute('data-marked', 'Proxima Centauri');
+  expect(Number(await page.getByTestId('stars-hr').getAttribute('data-count'))).toBeGreaterThan(8000);
+  await expect(page.getByTestId('stars-hr-caption')).toContainText('Hertzsprung–Russell diagram');
+  await expect(page.getByTestId('stars-hr')).toHaveAttribute('aria-label', /Proxima Centauri ringed/u);
+  // Its light in V against the Sun's (about 1/18,000), and its size and mass as the archive gives them.
+  const light = Number((await page.getByTestId('stars-light').textContent())?.replace(/,/gu, ''));
+  expect(light).toBeGreaterThan(3e-5);
+  expect(light).toBeLessThan(9e-5);
+  await expect(page.getByTestId('stars-radius')).toHaveText(/^0\.1\d+$/u);
+  await expect(page.getByTestId('stars-archive-note')).toBeVisible();
   // Search: Sirius, and a flight there.
   await page.getByTestId('stars-search').fill('Sirius');
   await expect(page.getByTestId('stars-results')).toContainText('Sirius');

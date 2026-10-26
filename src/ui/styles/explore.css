@@ -984,6 +984,10 @@
   margin: 0 var(--kf-space-3);
 }
 
+.kf-nav-sound {
+  margin-block-start: var(--kf-space-2);
+}
+
 .kf-nav-detail-button {
   display: flex;
   inline-size: 100%;

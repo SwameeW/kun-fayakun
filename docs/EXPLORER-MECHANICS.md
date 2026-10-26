@@ -73,6 +73,19 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   look). Going back to one sets its date, travels to its world if the camera is elsewhere, glides
   over its place, and on foot begins the walk again (`src/ui/explore/saved-views.ts`).
 
+- **Sound where there is air** (ledger CR-6; `src/explore/sound.ts`). Space is silent, and so is the
+  explorer there. On foot on a world with air, and on the way down through Venus's or Jupiter's, the
+  wind: noise as loud as the air's dynamic pressure (half its density times the wind's speed squared;
+  the density at the feet from the pressure there, the world's mean temperature and its air's molar
+  mass, by the ideal gas law, from `data/constants.json`; on the way down, the probe's own density and
+  wind), and as bright as the air lets high pitches carry (Mars's thin carbon dioxide takes them first,
+  as Perseverance's microphones found: Maurice et al. 2022). The walks' breeze is illustrative (5 m/s
+  on the Earth and Mars, 1 m/s on Venus): they know no wind. On the Moon and Mercury, only the suit's
+  own fans, as the Apollo crews heard theirs. No music, no voice; it plays through the app's ambient
+  bus, so a recitation silences it, and begins only after the visitor first touches the page (as
+  browsers require). "Sound" at the navigator's foot turns it off, and the choice is kept in this
+  browser.
+
 ## Planned, in this order (each from cited data)
 
 1. **More worlds.** The major moons (JPL's satellite mean elements; NASA and USGS maps), Pluto and

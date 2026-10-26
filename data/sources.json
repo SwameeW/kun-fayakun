@@ -1185,6 +1185,23 @@
       }
     },
     {
+      "id": "maurice-2022-mars-sound",
+      "kind": "paper",
+      "title": "In situ recording of Mars soundscape",
+      "author": "S. Maurice et al. (2022), Nature 605, 653-658",
+      "url": "https://doi.org/10.1038/s41586-022-04679-0",
+      "version": "read 2026-10-26",
+      "license": "Facts only, credited",
+      "licenseUrl": null,
+      "credit": "Maurice et al. (2022)",
+      "notes": "Why the explorer's wind on Mars is quieter and duller than on the Earth (src/explore/sound.ts): Perseverance's microphones found sound there weaker, and its high pitches taken by the thin carbon dioxide within metres. The sound itself is a display of the conditions, not a recording.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "hipparcos-van-leeuwen-2007",
       "kind": "dataset",
       "title": "Hipparcos, the New Reduction of the Raw Data (CDS I/311/hip2)",
