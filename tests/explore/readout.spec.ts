@@ -95,7 +95,7 @@ for (const [label, viewport] of [
           });
           return alphas.length > 0 ? Math.min(...alphas) : 0;
         });
-      await expect.poll(backdrop, { timeout: 5000 }).toBeGreaterThanOrEqual(0.7);
+      await expect.poll(backdrop, { timeout: 5000 * SLOW }).toBeGreaterThanOrEqual(0.7);
       expect(pageErrors).toEqual([]);
     });
   });

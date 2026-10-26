@@ -71,7 +71,7 @@ test('a pinch zooms in log distance, two fingers pan, and touch-action is none o
   const before = (await view(page))?.altitudeKm ?? 0;
   // Fingers 80 px apart spread to 240 px: three times closer (in height above the surface).
   await twoFingers(cdp, [{ x: c.x - 40, y: c.y }, { x: c.x + 40, y: c.y }], [{ x: c.x - 120, y: c.y }, { x: c.x + 120, y: c.y }]);
-  await expect.poll(async () => (await view(page))?.altitudeKm ?? 0, { timeout: 5000 }).toBeLessThan(before * 0.45);
+  await expect.poll(async () => (await view(page))?.altitudeKm ?? 0, { timeout: 5000 * SLOW }).toBeLessThan(before * 0.45);
   await page.waitForTimeout(800);
   const pinched = (await view(page))?.altitudeKm ?? 0;
   expect(pinched / before).toBeGreaterThan(0.2);
@@ -107,7 +107,7 @@ test('a double tap on a world flies there; one finger orbits', async ({ page, kf
   await tap(cdp, at);
   await page.waitForTimeout(80);
   await tap(cdp, at);
-  await expect.poll(async () => (await view(page))?.focus, { timeout: 5000 }).toBe('earth');
+  await expect.poll(async () => (await view(page))?.focus, { timeout: 5000 * SLOW }).toBe('earth');
   expect((await view(page))?.travelling).toBe(true);
   await expect(page).toHaveURL(/#\/universe\/earth/);
   await expect(page.locator('html')).toHaveAttribute('data-travel', 'arrived', { timeout: 30_000 });
@@ -381,7 +381,8 @@ test('the qibla and the new moon on a phone: opened from the sheet, every contro
 });
 
 test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(150_000 * SLOW);
+  // In software rendering (CI) on a phone's screen every frame of the walk is slow: about eight minutes in all.
+  test.setTimeout(300_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await page.evaluate(() => {
