@@ -1,6 +1,7 @@
 import { julianDateUtc } from '../../astro/time';
 import labMessages from '../../i18n/en.lab.json';
 import type { App, LabCommand, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
+import { BURN_DIRECTIONS } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 
@@ -316,6 +317,53 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   });
   const climateBox = details('ui.universe.lab.climate.title', 'lab-climate', climateFacts, climateNote, h('div', { class: 'kf-lab-row' }, climateMore, climateLess), climateView, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.climate.scale')));
 
+  // A ship's rocket (ledger SC-1, SC-3): what is left, a burn to plan by its change of speed, the burns to come.
+  const shipReadout = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-readout' });
+  const shipDirection = select('ui.universe.lab.ship.direction', 'lab-ship-direction', BURN_DIRECTIONS.map((d) => [d, i18n.t(`ui.universe.lab.ship.dir.${d}`)] as const));
+  const shipRef = select('ui.universe.lab.ship.ref', 'lab-ship-ref', []);
+  const shipDv = field('ui.universe.lab.ship.dv', 'lab-ship-dv', '100');
+  const shipIn = field('ui.universe.lab.ship.in', 'lab-ship-in', '0');
+  const shipThrottle = field('ui.universe.lab.ship.throttle', 'lab-ship-throttle', '100');
+  const shipPlan = button(i18n.t('ui.universe.lab.ship.plan'), 'lab-ship-plan', () => {
+    const dv = num(shipDv.input);
+    const minutes = num(shipIn.input);
+    const throttle = num(shipThrottle.input) / 100;
+    const direction = BURN_DIRECTIONS.find((d) => d === shipDirection.select.value) ?? 'prograde';
+    if (selectedId && shipRef.select.value && dv > 0 && minutes >= 0 && throttle > 0 && throttle <= 1) send({ kind: 'burn', id: selectedId, direction, ref: shipRef.select.value, deltaVMs: dv, inS: minutes * 60, throttle });
+  }, 'kf-btn kf-living-tour-start');
+  const shipRound = button(i18n.t('ui.universe.lab.ship.circularise'), 'lab-ship-circularise', () => {
+    if (selectedId) send({ kind: 'circularise', id: selectedId });
+  });
+  const shipRoundText = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-circularise-text' });
+  const shipBurns = h('ul', { class: 'kf-living-list', 'data-testid': 'lab-ship-burns' });
+  const shipCancel = button(i18n.t('ui.universe.lab.ship.cancel'), 'lab-ship-cancel', () => {
+    if (selectedId) send({ kind: 'cancelBurns', id: selectedId });
+  });
+  let shipBurnsKey = '';
+  let shipRefKey = '';
+  const shipBox = h(
+    'fieldset',
+    { class: 'kf-living-group kf-lab-fieldset', 'data-testid': 'lab-ship', hidden: true },
+    h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.ship.title')),
+    shipReadout,
+    shipDirection.label,
+    shipDirection.select,
+    shipRef.label,
+    shipRef.select,
+    shipDv.label,
+    shipDv.input,
+    shipIn.label,
+    shipIn.input,
+    shipThrottle.label,
+    shipThrottle.input,
+    shipPlan,
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.ship.planHint')),
+    shipRound,
+    shipRoundText,
+    shipBurns,
+    shipCancel,
+  );
+
   const inspector = h(
     'section',
     { class: 'kf-living-notes-part', 'data-testid': 'lab-inspector', hidden: true },
@@ -345,6 +393,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.dragHint')),
     ),
     h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.impulse')), ...pushes.flatMap((x) => [x.label, x.input]), pushApply),
+    shipBox,
     elementsBox,
     h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply),
     h('div', { class: 'kf-lab-row' }, fixedBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: fixedId }, i18n.t('ui.universe.lab.fixed'))),
@@ -426,6 +475,30 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   search.input.addEventListener('input', () => {
     paletteKey = '';
   });
+  // Add a ship: its numbers (illustrative defaults: a storable-propellant engine's specific impulse), on a circular orbit.
+  const shipName = field('ui.universe.lab.ship.name', 'lab-ship-name', i18n.t('ui.universe.lab.ship.defaultName'), 'text');
+  const shipDry = field('ui.universe.lab.ship.dry', 'lab-ship-dry', '10000');
+  const shipFuel = field('ui.universe.lab.ship.fuel', 'lab-ship-fuel', '10000');
+  const shipThrust = field('ui.universe.lab.ship.thrust', 'lab-ship-thrust', '50000');
+  const shipIsp = field('ui.universe.lab.ship.isp', 'lab-ship-isp', '320');
+  const shipPrimaryId = uniqueId('lab-ship-primary');
+  const shipPrimary = h('select', { id: shipPrimaryId, class: 'kf-living-input', 'data-testid': 'lab-ship-primary' });
+  const shipDistance = field('ui.universe.lab.ship.distance', 'lab-ship-distance', '7000');
+  const shipAdd = button(i18n.t('ui.universe.lab.ship.add'), 'lab-ship-add', () => {
+    const v = [shipDry, shipFuel, shipThrust, shipIsp, shipDistance].map((x) => num(x.input));
+    if (shipPrimary.value && v.every(Number.isFinite)) send({ kind: 'addShip', primary: shipPrimary.value, distanceKm: v[4] ?? 0, name: shipName.input.value.trim(), dryKg: v[0] ?? 0, fuelKg: v[1] ?? 0, thrustN: v[2] ?? 0, ispS: v[3] ?? 0 });
+  }, 'kf-btn kf-living-tour-start');
+  const addShip = details(
+    'ui.universe.lab.ship.addTitle',
+    'lab-add-ship',
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.ship.intro')),
+    ...[shipName, shipDry, shipFuel, shipThrust, shipIsp].flatMap((x) => [x.label, x.input]),
+    h('label', { class: 'kf-living-label', for: shipPrimaryId }, i18n.t('ui.universe.lab.ship.primary')),
+    shipPrimary,
+    shipDistance.label,
+    shipDistance.input,
+    shipAdd,
+  );
 
   // How paths are drawn.
   const viewSelect = select('ui.universe.lab.view', 'lab-view', [
@@ -472,6 +545,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   // Checks and history.
   const checks = h('dl', { class: 'kf-about-facts', 'data-testid': 'lab-checks' });
   const constrained = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-constrained', hidden: true }, i18n.t('ui.universe.lab.constrained'));
+  const thrusting = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-thrusting', hidden: true }, i18n.t('ui.universe.lab.thrusting'));
   const historyList = h('ul', { class: 'kf-living-list', 'aria-label': i18n.t('ui.universe.lab.history'), 'data-testid': 'lab-history' });
   let historyKey = '';
 
@@ -620,6 +694,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     many,
     inspector,
     add,
+    addShip,
     rings,
     viewBox,
     measureBox,
@@ -627,6 +702,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.checks')),
     checks,
     constrained,
+    thrusting,
     historyList,
     tools,
   );
@@ -715,6 +791,9 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         fillBodies(measureTo.select, l.bodies, none);
         fillBodies(measureVia.select, l.bodies, none);
         fillBodies(graphBody.select, l.bodies, none);
+        const keepShip = shipPrimary.value;
+        shipPrimary.replaceChildren(...l.bodies.filter((b) => b.ship === null).map((b) => h('option', { value: b.id }, nameOf(b))));
+        shipPrimary.value = l.bodies.some((b) => b.id === keepShip && b.ship === null) ? keepShip : l.bodies.some((b) => b.id === 'earth') ? 'earth' : (l.bodies.find((b) => b.ship === null)?.id ?? '');
       }
       // The palette, by kind, narrowed by the search.
       const q = search.input.value.trim().toLowerCase();
@@ -761,6 +840,43 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       inspector.hidden = !b || choosing !== null;
       if (b) {
         write(inspectorTitle, nameOf(b));
+        // A ship's rocket: its propellant and change of speed left, and the burns to come.
+        const ship = b.ship;
+        shipBox.hidden = ship === null;
+        if (ship) {
+          write(shipReadout, `${i18n.t('ui.universe.lab.ship.readout', { fuel: f.number(ship.fuelKg, 0), dv: f.number(ship.deltaVLeftMs, 0), thrust: f.number(ship.thrustN, 0), isp: f.number(ship.ispS, 0) })}${ship.burning ? ` ${i18n.t('ui.universe.lab.ship.burningNow')}` : ''}`);
+          const rk = `${b.id}:${l.bodies.map((x) => x.id).join('|')}`;
+          if (rk !== shipRefKey) {
+            shipRefKey = rk;
+            shipRef.select.replaceChildren(...l.bodies.filter((x) => x.id !== b.id).map((x) => h('option', { value: x.id }, nameOf(x))));
+            shipRef.select.value = b.primary ?? l.bodies.find((x) => x.id !== b.id)?.id ?? '';
+          }
+          const bk = ship.burns.map((x) => `${Math.round(x.inS)}:${Math.round(x.deltaVMs)}:${x.direction}:${x.ref}`).join('|');
+          if (bk !== shipBurnsKey) {
+            shipBurnsKey = bk;
+            shipBurns.replaceChildren(
+              ...ship.burns.map((x) =>
+                h(
+                  'li',
+                  { class: 'kf-living-line' },
+                  i18n.t(x.inS > 0 ? 'ui.universe.lab.ship.burn' : 'ui.universe.lab.ship.burnNow', {
+                    when: lightTime(Math.max(0, x.inS)),
+                    dv: f.number(x.deltaVMs, x.deltaVMs < 10 ? 1 : 0),
+                    direction: i18n.t(`ui.universe.lab.ship.dirShort.${x.direction}`),
+                    ref: l.bodies.find((y) => y.id === x.ref) ? nameOf(l.bodies.find((y) => y.id === x.ref) as UniverseLabBody) : x.ref,
+                    duration: lightTime(x.durationS),
+                  }),
+                ),
+              ),
+            );
+          }
+          shipCancel.hidden = ship.burns.length === 0;
+          // The autopilot: what it would do, and whether the propellant allows it.
+          const round = ship.circularise;
+          shipRound.hidden = round === null;
+          shipRound.disabled = !round?.possible;
+          write(shipRoundText, round ? i18n.t(round.possible ? 'ui.universe.lab.ship.circulariseText' : 'ui.universe.lab.ship.circulariseShort', { dv: f.number(round.deltaVMs, round.deltaVMs < 10 ? 1 : 0), when: lightTime(round.inS) }) : '');
+        }
         const primary = b.primary ? l.bodies.find((x) => x.id === b.primary) : undefined;
         const pName = primary ? nameOf(primary) : '';
         const o = b.orbit;
@@ -910,6 +1026,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         ...row(i18n.t('ui.universe.lab.check.angular'), l.drift.angularMomentum.toExponential(1), 'lab-check-angular'),
       );
       constrained.hidden = !l.constrained;
+      thrusting.hidden = !l.thrusting;
       // A crater's place on a world drawn comes a frame after its event: counted, so the line gains it.
       const hkey = `${l.interventions.length}:${l.events.length}:${l.events.filter((e) => e.craterSite).length}:${l.discarded}:${l.interventions.at(-1)?.step ?? -1}`;
       if (hkey !== historyKey) {

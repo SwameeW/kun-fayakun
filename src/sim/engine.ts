@@ -22,6 +22,7 @@ import {
   successorIn,
 } from './nbody';
 import { brightestStar, CLIMATE_STEP_S, mainSequenceLuminosityW, settleClimate, STAR_MIN_GM, startingBands, stepClimates, SUN_GM, type ClimateSpec } from './climate';
+import { BURN_DIRECTIONS, burnStep, planBurn, type Burn, type ShipSpec } from './ships';
 import { makeSwarm, particleCount, rehomeSwarms, ringPlaces, SWARM_LIMITS, swarmHomes, type SwarmSpec } from './swarms';
 
 /**
@@ -83,6 +84,8 @@ export interface BodySpec {
   luminosityW?: number;
   /** A solid world's climate (./climate); none: no climate is kept for it. */
   climate?: ClimateSpec;
+  /** A ship (./ships): its dry mass and propellant (kg), its engine's thrust (N) and specific impulse (s); it should weigh nothing in GM (a test particle). */
+  ship?: ShipSpec;
 }
 
 export type Command =
@@ -101,7 +104,10 @@ export type Command =
   /** A gravitating ring: `count` bodies of `gm` in all, on near-circular orbits (ids `<id>-1` on). */
   | { kind: 'addRing'; ring: RingSpec }
   /** A world's atmosphere changed (./climate): a grey atmosphere's infrared optical depth, a greenhouse forcing (W/m^2) on the Earth's model, its surface pressure (Pa). */
-  | { kind: 'setAtmosphere'; id: string; tau?: number; forcing?: number; pressurePa?: number };
+  | { kind: 'setAtmosphere'; id: string; tau?: number; forcing?: number; pressurePa?: number }
+  /** A ship's burn (./ships), planned for its start time (at once if that has passed), and all its planned burns called off. */
+  | { kind: 'burn'; id: string; burn: Burn }
+  | { kind: 'cancelBurns'; id: string };
 
 /** A gravitating ring as made: its bodies are ordinary bodies from then on. */
 export interface RingSpec {
@@ -363,8 +369,21 @@ export class Engine {
           addBody(s, bodyOf(command.body));
           const made = lightAndClimate(s, command.body);
           if (made) settle(s, [made]);
+          const ship = command.body.ship;
+          if (ship) s.ships[command.body.id] = { dryKg: ship.dryKg, fuelKg: ship.fuelKg, thrustN: ship.thrustN, ispS: ship.ispS, burns: [] };
         }
         break;
+      case 'burn': {
+        const ship = s.ships[command.id];
+        const b = command.burn;
+        if (ship && Number.isFinite(b.durationS) && b.durationS > 0 && b.throttle > 0 && b.throttle <= 1) planBurn(ship, { ...b, startT: Math.max(b.startT, s.t) });
+        break;
+      }
+      case 'cancelBurns': {
+        const ship = s.ships[command.id];
+        if (ship) ship.burns.length = 0;
+        break;
+      }
       case 'remove': {
         const i = indexOf(s, command.id);
         if (i >= 0 && !this.keep(command.id)) removeAt(s, i);
@@ -499,7 +518,8 @@ export class Engine {
   stepOnce(): void {
     this.applyDue();
     const before = this.events.length;
-    const shortest = step(this.state, this.dt, this.acc, this.events, this.keep);
+    // A ship's burn begins and ends on time, in short steps while it runs.
+    const shortest = step(this.state, burnStep(this.state, this.dt), this.acc, this.events, this.keep);
     const s = this.state;
     if (this.events.length !== before) pruneGone(s);
     // The climates, slower than gravity: stepped once a day of the experiment's clock (or sooner after a long step).
@@ -636,7 +656,7 @@ export class Prediction {
     while (!this.done && used < budget) {
       const until = this.start + (this.horizonS * this.k) / this.samples;
       if (copy.t + this.dt <= until && this.steps < this.maxSteps) {
-        const shortest = step(copy, this.dt, this.acc, this.events, this.keep);
+        const shortest = step(copy, burnStep(copy, this.dt), this.acc, this.events, this.keep);
         this.steps += 1;
         used += 1;
         // The same retiming as the live run's (at its own accuracy).
@@ -739,13 +759,15 @@ function structuredCloneCommand(c: Command): Command {
       return { kind: 'setState', id: c.id, pos: [...c.pos], vel: [...c.vel] };
     case 'setSpin':
       return { kind: 'setSpin', id: c.id, periodS: c.periodS, pole: [...c.pole] };
+    case 'burn':
+      return { kind: 'burn', id: c.id, burn: { ...c.burn } };
     default:
       return { ...c };
   }
 }
 
 function cloneBody(b: BodySpec): BodySpec {
-  return { ...b, pos: [...b.pos], vel: [...b.vel], sourceIds: [...b.sourceIds], ...(b.spin ? { spin: { periodS: b.spin.periodS, pole: [...b.spin.pole] } } : {}) };
+  return { ...b, pos: [...b.pos], vel: [...b.vel], sourceIds: [...b.sourceIds], ...(b.spin ? { spin: { periodS: b.spin.periodS, pole: [...b.spin.pole] } } : {}), ...(b.ship ? { ship: { ...b.ship } } : {}) };
 }
 
 /** Limits on an imported scenario (a file could ask for anything). */
@@ -786,7 +808,8 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
       typeof b.name === 'string' && b.name.length > 0 && b.name.length <= L.nameLength &&
       num(b.gm, 0, L.gm) && num(b.radiusKm, 1e-6, L.radiusKm) && vec(b.pos, L.coordinateKm) && vec(b.vel, L.speedKmS) &&
       (b.origin === 'observed' || b.origin === 'modelled' || b.origin === 'user-edited') && Array.isArray(b.sourceIds) && b.sourceIds.every((x) => typeof x === 'string') &&
-      spinOk && (b.j2 === undefined || num(b.j2, 0, 0.5)) && (b.inertia === undefined || num(b.inertia, 0.01, 0.67));
+      spinOk && (b.j2 === undefined || num(b.j2, 0, 0.5)) && (b.inertia === undefined || num(b.inertia, 0.01, 0.67)) &&
+      (b.ship === undefined || (obj(b.ship) && num(b.ship.dryKg, 1, 1e9) && num(b.ship.fuelKg, 0, 1e10) && num(b.ship.thrustN, 1e-3, 1e10) && num(b.ship.ispS, 1, 1e5)));
     if (!ok) errors.push(`${where}: a value is missing, not finite or out of range`);
     return ok;
   };
@@ -836,6 +859,11 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
       }
     } else if (c.kind === 'removeSwarm') {
       if (typeof c.id !== 'string' || !swarmIds.has(c.id)) errors.push(`${where}: names a swarm that does not exist`);
+    } else if (c.kind === 'burn' || c.kind === 'cancelBurns') {
+      if (typeof c.id !== 'string' || !ids.has(c.id)) errors.push(`${where}: names a ship that does not exist`);
+      const b: unknown = c.kind === 'burn' ? c.burn : null;
+      if (c.kind === 'burn' && !(obj(b) && num(b.startT, -1e12, 1e13) && num(b.durationS, 1e-3, 1e9) && num(b.throttle, 1e-3, 1) && typeof b.ref === 'string' && typeof b.direction === 'string' && (BURN_DIRECTIONS as readonly string[]).includes(b.direction)))
+        errors.push(`${where}: not a burn`);
     } else if (c.kind === 'setMass' || c.kind === 'setVelocity' || c.kind === 'remove' || c.kind === 'setState' || c.kind === 'setRadius' || c.kind === 'setSpin' || c.kind === 'setFixed' || c.kind === 'rename') {
       // Bodies a collision made (src/sim/nbody fragment()) exist only once the run reaches it: their ids are checked for form, not presence.
       const made = typeof c.id === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(c.id);

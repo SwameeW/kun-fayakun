@@ -1,6 +1,7 @@
 import type { ClimateSpec } from './climate';
 import type { Command, Encounter, Scenario } from './engine';
 import type { MergeEvent } from './nbody';
+import type { Burn } from './ships';
 
 /**
  * Messages between the orbital laboratory's worker (./worker) and the page (./client). Every
@@ -62,6 +63,8 @@ export interface LabSnapshot {
   swarms: Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array }>;
   logLength: number;
   discarded: number;
+  /** Ships (./ships): their rocket, propellant now and burns to come. */
+  ships: Array<{ id: string; dryKg: number; fuelKg: number; thrustN: number; ispS: number; burns: Burn[] }>;
 }
 
 export type LabReply =

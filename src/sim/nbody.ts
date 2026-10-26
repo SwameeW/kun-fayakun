@@ -1,6 +1,7 @@
 import { cloneClimate, type ClimateState, type StarLight } from './climate';
 import { contactCrater } from './craters';
 import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts';
+import { cloneShip, dropEnded, kickThrust, spendPropellant, type ShipState } from './ships';
 import { cloneSwarm, driftSwarms, kickSwarms, loseStruck, rehomeSwarms, swarmHomes, type Swarm } from './swarms';
 
 /**
@@ -82,6 +83,8 @@ export interface SimState {
   climateAt: number;
   /** Pieces of tidally disrupted bodies (they are not torn apart again). */
   rubble: string[];
+  /** Ships (./ships), by id: their mass, rocket and burns (each a test particle among the bodies). */
+  ships: Record<string, ShipState>;
 }
 
 /** A collision (what happened to the target, which keeps its id, and the projectile), or a tidal disruption (the body that held, and the body torn apart). */
@@ -132,12 +135,12 @@ export const count = (s: SimState): number => s.ids.length;
 
 /** A deep copy (the engine's checkpoints and predictions run on copies). */
 export function cloneState(s: SimState, withSwarms = true): SimState {
-  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [], stars: Object.fromEntries(Object.entries(s.stars).map(([id, l]) => [id, { ...l }])), climate: Object.fromEntries(Object.entries(s.climate).map(([id, c]) => [id, cloneClimate(c)])), climateAt: s.climateAt, rubble: [...s.rubble] };
+  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [], stars: Object.fromEntries(Object.entries(s.stars).map(([id, l]) => [id, { ...l }])), climate: Object.fromEntries(Object.entries(s.climate).map(([id, c]) => [id, cloneClimate(c)])), climateAt: s.climateAt, rubble: [...s.rubble], ships: Object.fromEntries(Object.entries(s.ships).map(([id, ship]) => [id, cloneShip(ship)])) };
 }
 
 /** An empty state. */
 export function emptyState(): SimState {
-  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [], stars: {}, climate: {}, climateAt: 0, rubble: [] };
+  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [], stars: {}, climate: {}, climateAt: 0, rubble: [], ships: {} };
 }
 
 /** The body a gone body merged into (the latest collision that ended it), or null. */
@@ -188,6 +191,7 @@ export function rotationOf(s: SimState, i: number): { periodS: number | null; po
 export function removeAt(s: SimState, i: number): void {
   const id = s.ids[i];
   if (id !== undefined && s.fixed.includes(id)) s.fixed.splice(s.fixed.indexOf(id), 1);
+  if (id !== undefined && Object.hasOwn(s.ships, id)) s.ships = Object.fromEntries(Object.entries(s.ships).filter(([k]) => k !== id));
   s.j2.splice(i, 1);
   s.inertia.splice(i, 1);
   s.ids.splice(i, 1);
@@ -750,6 +754,9 @@ export function step(s: SimState, dt: number, acc: number[], events: MergeEvent[
   }
   // Test particles: half a kick from everything but their primary's central pull, with the bodies where they start.
   if (s.swarms.length > 0) kickSwarms(s, acc, dt * 0.5);
+  // Ships' rockets: half a kick of thrust with the mass at the start.
+  const t0 = s.t;
+  const burning = kickThrust(s, dt * 0.5, t0);
   for (let k = 0; k < n * 3; k += 1) s.vel[k] = (s.vel[k] ?? 0) + (acc[k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.spin[k] = (s.spin[k] ?? 0) + (acc[n * 3 + k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.pos[k] = (s.pos[k] ?? 0) + (s.vel[k] ?? 0) * dt;
@@ -764,6 +771,12 @@ export function step(s: SimState, dt: number, acc: number[], events: MergeEvent[
   }
   for (let k = 0; k < n * 3; k += 1) s.vel[k] = (s.vel[k] ?? 0) + (acc[k] ?? 0) * dt * 0.5;
   for (let k = 0; k < n * 3; k += 1) s.spin[k] = (s.spin[k] ?? 0) + (acc[n * 3 + k] ?? 0) * dt * 0.5;
+  // The rest of the thrust, with the step's propellant spent; then burns that have ended.
+  if (burning) {
+    spendPropellant(s, t0);
+    kickThrust(s, dt * 0.5, t0);
+  }
+  dropEnded(s);
   return shortest;
 }
 

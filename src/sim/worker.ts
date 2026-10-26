@@ -95,6 +95,7 @@ function snapshot(): void {
     light: luminosities(s),
     logLength: engine.scenario.log.length,
     discarded: engine.discarded,
+    ships: Object.entries(s.ships).map(([id, x]) => ({ id, dryKg: x.dryKg, fuelKg: x.fuelKg, thrustN: x.thrustN, ispS: x.ispS, burns: x.burns.map((b) => ({ ...b })) })),
   };
   post(reply, [pos.buffer, vel.buffer, spin.buffer, ...swarms.map((w) => w.rel.buffer)]);
 }

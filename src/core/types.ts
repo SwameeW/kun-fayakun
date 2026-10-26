@@ -1003,6 +1003,22 @@ export interface UniverseLabBody {
   roche: { rigidKm: number; fluidKm: number } | null;
   /** Held in place by the visitor (an external constraint). */
   fixed: boolean;
+  /**
+   * A ship's rocket (src/sim/ships), or null: its dry mass and propellant (kg), thrust (N), specific
+   * impulse (s), the change of speed its propellant can still give it (m/s, the rocket equation),
+   * whether it is burning, and its burns to come (from now, s; each one's change of speed, m/s).
+   */
+  ship: {
+    dryKg: number;
+    fuelKg: number;
+    thrustN: number;
+    ispS: number;
+    deltaVLeftMs: number;
+    burning: boolean;
+    burns: ReadonlyArray<{ inS: number; durationS: number; direction: LabBurnDirection; ref: string; throttle: number; deltaVMs: number }>;
+    /** The autopilot's burn to make the orbit round at its far side: how soon the far side comes (s), the change of speed (m/s), and whether the propellant left (after the burns planned) allows it; null on an orbit already round or unbound. */
+    circularise: { inS: number; deltaVMs: number; possible: boolean } | null;
+  } | null;
   /** Named by the visitor (a world's own name gives way to it). */
   renamed: boolean;
   /** Its J2 (0: spherical). */
@@ -1076,6 +1092,8 @@ export interface UniverseLab {
   redoable: number;
   /** A body is held in place: momentum and energy are not conserved while it is. */
   constrained: boolean;
+  /** A ship is burning: its rocket adds energy and momentum (its propellant, which leaves, carries the balance; the experiment does not follow it). */
+  thrusting: boolean;
   /** How paths are drawn: each about its primary, in the scenario's frame, turning with a pair (the chosen body's primary and its partner), or turning with the chosen body's primary's own rotation (body-fixed: a satellite's path over the ground). */
   view: 'primary' | 'inertial' | 'corotating' | 'bodyfixed';
   /** The pair the turning frame turns with. */
@@ -1154,7 +1172,21 @@ export type LabCommand =
   | { kind: 'removeSwarm'; id: string }
   /** The temperature view on the worlds drawn, and a world's atmosphere changed (ledger WR-5): a grey atmosphere's optical depth, a forcing on the Earth's, its surface pressure (Pa). */
   | { kind: 'climateView'; on: boolean }
-  | { kind: 'atmosphere'; id: string; tau?: number; forcingWm2?: number; pressurePa?: number };
+  | { kind: 'atmosphere'; id: string; tau?: number; forcingWm2?: number; pressurePa?: number }
+  /**
+   * Ships (ledger SC-1, SC-3; src/sim/ships): one added on a circular orbit about a body (dry mass and
+   * propellant, kg; thrust, N; specific impulse, s); a burn planned to change its speed by `deltaVMs`
+   * (m/s) along a direction set by its motion about `ref`, `inS` seconds from now, at a throttle; its
+   * planned burns called off.
+   */
+  | { kind: 'addShip'; primary: string; distanceKm: number; name: string; dryKg: number; fuelKg: number; thrustN: number; ispS: number }
+  | { kind: 'burn'; id: string; direction: LabBurnDirection; ref: string; deltaVMs: number; inS: number; throttle: number }
+  | { kind: 'cancelBurns'; id: string }
+  /** An autopilot: a prograde burn centred on the far side of the ship's orbit, to make the orbit round there (refused without the propellant for it). */
+  | { kind: 'circularise'; id: string };
+
+/** A burn's direction, set by a ship's motion about a body: along it or against it, square to its orbit's plane, or toward or away from the body. */
+export type LabBurnDirection = 'prograde' | 'retrograde' | 'normal' | 'antinormal' | 'radialOut' | 'radialIn';
 
 /** The time machine as the view reports it. */
 export interface UniverseTime {
