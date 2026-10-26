@@ -18,6 +18,13 @@ sky allows, not when a month begins.
   passes the zenith of the point opposite (mid-January and late November), when shadows on that
   side of the world point toward it. "Go" sets the clock to the moment, pauses it, and shows the
   lit face of the Earth.
+- **The Sun and the times of prayer.** For the place the qibla is reckoned from, on its local day
+  of the date shown: Fajr and Isha where the Sun's centre is a convention's depth below the
+  horizon (or Isha a set time after Maghrib), sunrise and sunset, Dhuhr at the Sun's transit, Asr
+  where a shadow is longer than its noon shadow by its object's length or twice it, and Maghrib at
+  sunset (or, for two conventions, with the Sun 4 or 4.5 degrees below). Ten published conventions
+  can be chosen, each its institution's, as PrayTimes.org lists them; none is preferred. Times are
+  in UTC, to the minute; the note sends people to their own community's timetable.
 - **The golden latitude.** The latitude that divides the meridian from pole to pole in the golden
   ratio, drawn beside the Kaaba's own, with the actual sizes: the Kaaba's ratio of its distances to
   the South and North Poles is 1.6210 against the golden ratio's 1.6180, and the golden latitude
@@ -55,6 +62,7 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | Topocentric Moon | Observer on the WGS 84 ellipsoid at sea level | Meeus, ch. 11 and 40 |
 | Crescent visibility (Yallop) | Yallop's q-test at the best time (sunset plus 4/9 of the time to moonset): q = (ARCV - (11.8371 - 6.3226 W' + 0.7319 W'^2 - 0.1018 W'^3)) / 10, ARCV the geocentric airless altitude difference, W' the topocentric crescent width (SD'(1 - cos ARCL)); zones A (q > +0.216), B (> -0.014), C (> -0.160), D (> -0.232), E (> -0.293), F; not used beyond 63 degrees of latitude | B. D. Yallop, NAO Technical Note 69 (1997); the zones as published with the Utrecht global maps |
 | Crescent visibility (Odeh) | Odeh's test at the same best time: V = ARCV - (7.1651 - 6.3226 W + 0.7319 W^2 - 0.1018 W^3), ARCV the airless altitude difference of the Moon and the Sun seen from the place (topocentric), W the topocentric crescent width (the topocentric semi-diameter times 1 - cos of the topocentric elongation, arcminutes); zones A (V >= 5.65, seen by eye), B (>= 2, with optical aid and perhaps by eye), C (>= -0.96, with optical aid only), D (not even with optical aid); not used beyond 63 degrees of latitude, like Yallop's | M. Sh. Odeh, "New criterion for lunar crescent visibility", Experimental Astronomy 18, 39-64 (2004), doi:10.1007/s10686-005-9002-5: 737 observations, almost half from the Islamic Crescents' Observation Project |
+| Times of prayer | The local day's solar transit (Dhuhr); the Sun's centre at each convention's depression, rising for Fajr and setting for Isha (and Maghrib where given), without refraction; sunrise and sunset by the upper limb at -50'; Asr where cot(altitude) = k + tan(the Sun's zenith distance at noon), k = 1 or 2; Isha 90 minutes after Maghrib for Umm al-Qura (120 in Ramadan by its calendar); at sea level | PrayTimes.org (H. Zarrabi-Zadeh): its calculation page and PrayTimes.js 2.3, retrieved 2026-10-26. Fajr / Isha depressions: Muslim World League 18 / 17; ISNA 15 / 15; Egyptian General Authority of Survey 19.5 / 17.5; Umm al-Qura 18.5 / 90 min; Karachi 18 / 18; Tehran 17.7 / 14 (Maghrib 4.5); Leva Institute, Qum 16 / 14 (Maghrib 4); Muslims of France 12 / 12; Russia 16 / 15; Singapore 20 / 18 |
 | The Sun over the Kaaba | Each day's solar transit at the Kaaba (and at its antipode); the day the Sun comes nearest the zenith | The ephemeris above |
 | Golden latitude | Meridian arcs on the WGS 84 ellipsoid (Helmert's series); the latitude whose distances to the poles are in the golden ratio, by bisection | WGS 84 (a = 6378.137 km, f = 1/298.257223563) |
 | Hijri date | The browser's Umm al-Qura calendar (ICU, `islamic-umalqura`) for the civil day in UTC | Unicode CLDR / ICU |
@@ -78,6 +86,9 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | Seen from the place | The Moon lower by up to its horizontal parallax (about 57') | On 18 February, the topocentric ARCV 0.95 to 0.96 degrees below the geocentric in each of the eleven places, and the topocentric width 11 to 14 per cent below Yallop's W' |
 | Umm al-Qura | 1 Ramadan 1447 = 18 February 2026; 1 Shawwal 1447 = 20 March 2026 | the same |
 | WGS 84 quarter meridian | 10,001.965729 km | the same, to a millimetre |
+| The Sun's rise, transit, set and civil twilight (Makkah 20 March, London 21 June, Jakarta 21 and 22 December 2026) | The US Naval Observatory's tables, UTC to the minute | all within 40 s of the tables' minutes (the largest, London's sunset, 34 s) |
+| The times of prayer (Makkah, 20 March 2026, every convention) | Each convention's definition | The Sun at each depression to 0.01 degrees; Asr's shadow its noon shadow and 1 (or 2) to 0.001; Umm al-Qura's Isha 90 minutes after Maghrib (120 in Ramadan) |
+| London at midsummer | The Sun 15.1 degrees below the horizon at most | No Fajr or Isha at 18 degrees; both, near midnight, at 15 |
 | The little cloud beside nu Andromedae (HR 226) | About 1.3 degrees (star atlases) | 1.345 degrees, against the sky's own catalogue |
 
 In the browser (`tests/explore/islamic.spec.ts`), going to the computed moment of the Sun over the
@@ -102,8 +113,12 @@ dawn and dusk) and day-side satellites were drawn as if in the Earth's shadow.
   of seconds; the interface shows minutes.
 - **Umm al-Qura** is Saudi Arabia's civil calendar, computed in advance. Communities that begin each
   month by sighting may be a day apart from it, and the Islamic day begins at sunset, not midnight.
-- **Not shown:** prayer times. They depend on conventions for dawn and nightfall (solar depressions
-  from 15 to 19.5 degrees) and for the afternoon prayer, which differ between communities; the
-  section shows the Sun's and the Moon's positions, not times to pray.
+- **Times of prayer** are each convention's, at sea level, in UTC, to the minute. Timetables add
+  precautionary minutes (to Dhuhr, and in some to Maghrib) that are not shown; where the Sun does
+  not reach a convention's depression (summer nights far from the equator), communities use further
+  rules (the middle of the night, a seventh of the night, or a share by angle), not shown either:
+  the time is given as none. The day in Ramadan, for Umm al-Qura's Isha, is by the Umm al-Qura
+  calendar. The section is for understanding how the Sun sets the times; for prayer, the note
+  sends people to their own community's timetable.
 - **Review.** Like the field notes' prophets' lands, this section awaits review by a qualified
   scholar (REVIEW.md) before public release.

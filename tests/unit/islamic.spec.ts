@@ -14,6 +14,10 @@
  *   2 and -0.96, and its inputs taken from the place itself (topocentric).
  * - Umm al-Qura: 1 Ramadan 1447 on 18 February 2026 and 1 Shawwal 1447 on 20 March 2026.
  * - WGS 84's quarter meridian: 10,001.965729 km.
+ * - The Sun's rising, transit, setting and civil twilight: the US Naval Observatory's tables
+ *   (aa.usno.navy.mil/api/rstt/oneday, retrieved 2026-10-26), UTC to the minute, for Makkah on
+ *   20 March 2026, London on 21 June and Jakarta on 21 and 22 December.
+ * - The conventions for the times of prayer: PrayTimes.org's list (retrieved 2026-10-26).
  * - Al-Sufi's "little cloud": the Andromeda Galaxy (M 31) at SIMBAD's ICRS position, about 1.3
  *   degrees west of nu Andromedae, the star its finders hop from.
  * Places' coordinates come from public/assets/places/places.json (Natural Earth).
@@ -33,15 +37,20 @@ import {
   meridianArcKm,
   meridianRatio,
   newMoons,
+  horizontal,
   odehV,
   odehZone,
+  PRAYER_CONVENTIONS,
+  prayerTimes,
   qiblaBearing,
   qiblaDistanceKm,
   qiblaPath,
   QUARTER_MERIDIAN_KM,
   skyTrack,
+  sunPlace,
   yallopQ,
   yallopZone,
+  type PrayerConvention,
   type SkyFrame,
 } from '../../src/explore/islamic/astronomy';
 import { HERITAGE } from '../../src/explore/islamic/heritage';
@@ -247,4 +256,69 @@ test('al-Sufi’s “little cloud” named on the sky with the stars’ names, b
   heavens.update(10);
   expect(named()).toBeUndefined();
   heavens.dispose();
+});
+
+test('the Sun’s rising, transit, setting and twilight as the US Naval Observatory tables them', () => {
+  // Civil twilight is the Sun 6 degrees below the horizon: the same reckoning as dawn and nightfall.
+  const base = PRAYER_CONVENTIONS[0];
+  expect(base).toBeDefined();
+  const civil: PrayerConvention = { ...(base as PrayerConvention), fajrDeg: 6, ishaDeg: 6 };
+  const cases = [
+    { place: [21.4225, 39.8262], day: '2026-03-20T12:00Z', twilightBegins: '2026-03-20T03:03Z', rise: '2026-03-20T03:25Z', transit: '2026-03-20T09:28Z', set: '2026-03-20T15:32Z', twilightEnds: '2026-03-20T15:54Z' },
+    { place: [51.5072, -0.1276], day: '2026-06-21T12:00Z', twilightBegins: '2026-06-21T02:55Z', rise: '2026-06-21T03:43Z', transit: '2026-06-21T12:02Z', set: '2026-06-21T20:21Z', twilightEnds: '2026-06-21T21:09Z' },
+    { place: [-6.2088, 106.8456], day: '2026-12-21T05:00Z', twilightBegins: null, rise: null, transit: '2026-12-21T04:51Z', set: '2026-12-21T11:05Z', twilightEnds: '2026-12-21T11:28Z' },
+    { place: [-6.2088, 106.8456], day: '2026-12-22T05:00Z', twilightBegins: '2026-12-21T22:14Z', rise: '2026-12-21T22:36Z', transit: null, set: null, twilightEnds: null },
+  ] as const;
+  for (const c of cases) {
+    const t = prayerTimes(sky, c.place[0], c.place[1], jd(c.day), civil, 1);
+    // The tables round to the minute: within 40 s of their minute (30 s of rounding, and seconds of nutation and UT1 left out).
+    const near = (ours: number | null, published: string | null, what: string): void => {
+      if (published === null) return;
+      expect(Math.abs(((ours ?? 0) - jd(published)) * 86_400), `${what} ${c.day}`).toBeLessThan(40);
+    };
+    near(t.fajr, c.twilightBegins, 'civil twilight begins');
+    near(t.sunrise, c.rise, 'rise');
+    near(t.dhuhr, c.transit, 'transit');
+    near(t.sunset, c.set, 'set');
+    near(t.isha, c.twilightEnds, 'civil twilight ends');
+  }
+});
+
+test('the times of prayer by each convention: depressions, the noon shadow, Umm al-Qura’s interval, the nights too short', () => {
+  const makkah = { lat: 21.4225, lon: 39.8262 };
+  const day = jd('2026-03-20T12:00Z');
+  const altitude = (t: number | null, place: { lat: number; lon: number }): number => horizontal(sunPlace(sky, t ?? 0), place.lat, place.lon, t ?? 0).alt;
+  for (const c of PRAYER_CONVENTIONS) {
+    const t = prayerTimes(sky, makkah.lat, makkah.lon, day, c, 1);
+    const late = prayerTimes(sky, makkah.lat, makkah.lon, day, c, 2);
+    // In order through the day.
+    const order = [t.fajr, t.sunrise, t.dhuhr, t.asr, late.asr, t.sunset, t.isha];
+    for (let k = 1; k < order.length; k += 1) expect(order[k] ?? 0, `${c.id} ${String(k)}`).toBeGreaterThan(order[k - 1] ?? Infinity);
+    // Dawn and nightfall where the Sun's centre is the convention's depth below the horizon.
+    expect(altitude(t.fajr, makkah), c.id).toBeCloseTo(-c.fajrDeg, 2);
+    if (c.ishaDeg !== null) expect(altitude(t.isha, makkah), c.id).toBeCloseTo(-c.ishaDeg, 2);
+    else expect(((t.isha ?? 0) - (t.maghrib ?? 0)) * 1440, c.id).toBeCloseTo(c.ishaMinutes ?? 0, 6);
+    if (c.maghribDeg !== null) expect(altitude(t.maghrib, makkah), c.id).toBeCloseTo(-c.maghribDeg, 2);
+    else expect(t.maghrib).toBe(t.sunset);
+    // Asr: a stick's shadow (over its height) is its noon shadow and one, or two.
+    const shadow = (time: number | null): number => 1 / Math.tan((altitude(time, makkah) * Math.PI) / 180);
+    expect(shadow(t.asr) - shadow(t.dhuhr), c.id).toBeCloseTo(1, 3);
+    expect(shadow(late.asr) - shadow(t.dhuhr), c.id).toBeCloseTo(2, 3);
+  }
+  // Umm al-Qura's Isha is two hours after Maghrib in Ramadan.
+  const ummAlQura = PRAYER_CONVENTIONS.find((c) => c.id === 'makkah') as PrayerConvention;
+  const ramadan = prayerTimes(sky, makkah.lat, makkah.lon, day, ummAlQura, 1, true);
+  expect(((ramadan.isha ?? 0) - (ramadan.maghrib ?? 0)) * 1440).toBeCloseTo(120, 6);
+  // London at midsummer: the Sun goes 15.1 degrees below the horizon at most, so a convention at 18
+  // has no Fajr or Isha that night, and one at 15 has both, close to midnight.
+  const london = { lat: 51.5072, lon: -0.1276 };
+  const mwl = prayerTimes(sky, london.lat, london.lon, jd('2026-06-21T12:00Z'), PRAYER_CONVENTIONS.find((c) => c.id === 'mwl') as PrayerConvention, 1);
+  expect([mwl.fajr, mwl.isha]).toEqual([null, null]);
+  expect(mwl.sunrise).not.toBeNull();
+  const isna = prayerTimes(sky, london.lat, london.lon, jd('2026-06-21T12:00Z'), PRAYER_CONVENTIONS.find((c) => c.id === 'isna') as PrayerConvention, 1);
+  expect(isna.fajr).not.toBeNull();
+  expect(((isna.fajr ?? 0) - (isna.isha ?? 0)) * 24).toBeLessThan(1);
+  // Within the Arctic Circle in December the Sun does not rise: no sunrise, sunset or Asr.
+  const tromso = prayerTimes(sky, 69.65, 18.96, jd('2026-12-21T12:00Z'), PRAYER_CONVENTIONS[0] as PrayerConvention, 1);
+  expect([tromso.sunrise, tromso.sunset, tromso.asr]).toEqual([null, null, null]);
 });

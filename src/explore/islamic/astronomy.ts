@@ -1,5 +1,6 @@
 import type { Ephemeris } from '../../astro/ephemeris';
 import { utcToTdb, type TimeConstants } from '../../astro/time';
+import type { PrayerConventionId } from '../../core/types';
 
 /**
  * The astronomy of the qibla and the new moon, from the explorer's own ephemeris (JPL's approximate
@@ -22,6 +23,11 @@ import { utcToTdb, type TimeConstants } from '../../astro/time';
  *   (M. Sh. Odeh, Experimental Astronomy 18, 39-64, 2004) at the same time: the same cubic with its
  *   own constant, against the altitude difference and width seen from the place itself (topocentric),
  *   sorted into Odeh's zones A to D.
+ *
+ * - The Sun and the times of prayer: dawn and nightfall where the Sun's centre is a convention's depth
+ *   below the horizon, sunrise and sunset by its upper limb, noon at its transit, and the afternoon
+ *   where a shadow reaches a set length beyond its noon length; each convention as PrayTimes.org lists
+ *   it, from its institution.
  *
  * Positions are geocentric, on the equator and equinox of date (IAU 1976 precession from J2000). The
  * Sun is shifted back along the ecliptic by the annual aberration and its light-time (20.5" at 1 au);
@@ -470,11 +476,12 @@ export function skyTrack(sky: SkyFrame, fromJd: number, toJd: number, stepDays =
 export const eveningSpan = (dateJd0: number): [number, number] => [dateJd0 - 0.25, dateJd0 + 1.75];
 
 /**
- * When a body sets to an altitude (degrees, geocentric) nearest a guess: its hour angle at that
- * altitude, the clock moved to meet it, a few times over (Meeus, ch. 15, iterated). Null where it
- * never comes that low, or never that high, on that day.
+ * When a body passes an altitude (degrees, geocentric) nearest a guess, setting (`side` 1, west of
+ * the meridian) or rising (-1, east of it): its hour angle at that altitude, the clock moved to meet
+ * it, a few times over (Meeus, ch. 15, iterated). Null where it never comes that low, or never that
+ * high, on that day.
  */
-function setting(place: (jd: number) => Place, altitudeDeg: (p: Place) => number, lat: number, lon: number, guess: number): number | null {
+function crossing(place: (jd: number) => Place, altitudeDeg: (p: Place) => number, lat: number, lon: number, guess: number, side: 1 | -1): number | null {
   const phi = lat * DEG;
   let t = guess;
   for (let k = 0; k < 6; k += 1) {
@@ -482,10 +489,12 @@ function setting(place: (jd: number) => Place, altitudeDeg: (p: Place) => number
     const c = (Math.sin(altitudeDeg(p) * DEG) - Math.sin(phi) * Math.sin(p.dec)) / (Math.cos(phi) * Math.cos(p.dec));
     if (c < -1 || c > 1) return null;
     const hourAngle = wrapPi(gmst(t) + lon * DEG - p.ra);
-    t += wrapPi(Math.acos(c) - hourAngle) / (TAU * 1.00273790935);
+    t += wrapPi(side * Math.acos(c) - hourAngle) / (TAU * 1.00273790935);
   }
   return t;
 }
+
+const setting = (place: (jd: number) => Place, altitudeDeg: (p: Place) => number, lat: number, lon: number, guess: number): number | null => crossing(place, altitudeDeg, lat, lon, guess, 1);
 
 /** The altitude of the Moon's centre (geocentric, degrees) when it sets: 0.7275 of its horizontal parallax, less the refraction. */
 const moonSetAltitude = (p: Place): number => ((1 - MOON_SD_PER_PARALLAX) * moonParallax(p.distKm)) / DEG - MOON_REFRACTION_DEG;
@@ -555,5 +564,101 @@ export function crescentAt(track: SkyTrack, lat: number, lon: number, dateJd0: n
     arclDeg: arcl,
     widthArcmin: width,
     ageHours,
+  };
+}
+
+// ----- The Sun and the times of prayer ---------------------------------------------------------
+
+/** A published convention for the times of prayer: how far below the horizon the Sun's centre is at dawn and at nightfall. */
+export interface PrayerConvention {
+  id: PrayerConventionId;
+  /** Fajr: the Sun this far below the horizon before sunrise (degrees). */
+  fajrDeg: number;
+  /** Isha: the Sun this far below after sunset (degrees), or (null) a set time after Maghrib. */
+  ishaDeg: number | null;
+  ishaMinutes: number | null;
+  /** Isha's time after Maghrib in Ramadan, where it differs. */
+  ishaRamadanMinutes: number | null;
+  /** Maghrib with the Sun this far below the horizon (degrees); null: at sunset. */
+  maghribDeg: number | null;
+}
+
+const convention = (id: PrayerConventionId, fajrDeg: number, isha: number | { minutes: number; ramadan: number }, maghribDeg: number | null = null): PrayerConvention => ({
+  id,
+  fajrDeg,
+  ishaDeg: typeof isha === 'number' ? isha : null,
+  ishaMinutes: typeof isha === 'number' ? null : isha.minutes,
+  ishaRamadanMinutes: typeof isha === 'number' ? null : isha.ramadan,
+  maghribDeg,
+});
+
+/**
+ * The conventions, each its institution's, as PrayTimes.org lists them (H. Zarrabi-Zadeh: its page
+ * on the calculation and PrayTimes.js 2.3, retrieved 2026-10-26).
+ */
+export const PRAYER_CONVENTIONS: readonly PrayerConvention[] = [
+  convention('mwl', 18, 17),
+  convention('isna', 15, 15),
+  convention('egypt', 19.5, 17.5),
+  convention('makkah', 18.5, { minutes: 90, ramadan: 120 }),
+  convention('karachi', 18, 18),
+  convention('tehran', 17.7, 14, 4.5),
+  convention('qum', 16, 14, 4),
+  convention('france', 12, 12),
+  convention('russia', 16, 15),
+  convention('singapore', 20, 18),
+];
+
+export interface PrayerTimes {
+  /** UTC Julian dates; null where the Sun does not come so far below the horizon (or so high) that day. */
+  fajr: number | null;
+  sunrise: number | null;
+  /** The Sun's transit (timetables usually add a minute or more). */
+  dhuhr: number;
+  asr: number | null;
+  sunset: number | null;
+  maghrib: number | null;
+  isha: number | null;
+  /** The Sun's altitude when Asr begins that afternoon (degrees), and at its transit. */
+  asrAltitudeDeg: number | null;
+  noonAltitudeDeg: number;
+}
+
+/**
+ * The times the Sun marks for prayer at a place on its local day containing `jdUtc` (the day by
+ * local mean time), by a convention, a shadow's length for Asr (1: its object's length beyond its
+ * noon shadow; 2: twice it), and whether the day is in Ramadan (for a convention that says so).
+ * Dawn and nightfall are depressions of the Sun's centre (no refraction); sunrise and sunset its upper
+ * limb with 34' of refraction, as for the crescent's map; the observer at sea level.
+ */
+export function prayerTimes(sky: SkyFrame, lat: number, lon: number, jdUtc: number, c: PrayerConvention, asrFactor: 1 | 2, ramadan = false): PrayerTimes {
+  const p: Place = { ra: 0, dec: 0, distKm: 0 };
+  const sun = (jd: number): Place => sunPlace(sky, jd, p);
+  // Noon by local mean time on the local day, then the Sun's own transit.
+  const dhuhr = transit(sky, lon, Math.floor(jdUtc + lon / 360 - 0.5) + 1 - lon / 360);
+  const at = (altitudeDeg: number, side: 1 | -1): number | null => crossing(sun, () => altitudeDeg, lat, lon, dhuhr, side);
+  const phi = lat * DEG;
+  // The noon shadow (its length over its object's: tan of the Sun's zenith distance at transit), and
+  // Asr where a shadow is `asrFactor` times its object longer than that: cot(altitude) = asrFactor +
+  // tan(|latitude - declination at noon|).
+  const zenith = Math.abs(phi - sun(dhuhr).dec);
+  const noonAltitudeDeg = 90 - zenith / DEG;
+  const asrAltitude = Math.atan(1 / (asrFactor + Math.tan(zenith))) / DEG;
+  const sunrise = at(SUNSET_ALT_DEG, -1);
+  const sunset = at(SUNSET_ALT_DEG, 1);
+  const maghrib = c.maghribDeg === null ? sunset : at(-c.maghribDeg, 1);
+  const minutes = ramadan && c.ishaRamadanMinutes !== null ? c.ishaRamadanMinutes : c.ishaMinutes;
+  const isha = c.ishaDeg !== null ? at(-c.ishaDeg, 1) : maghrib === null || minutes === null ? null : maghrib + minutes / 1440;
+  const asr = noonAltitudeDeg > 0 ? at(asrAltitude, 1) : null;
+  return {
+    fajr: at(-c.fajrDeg, -1),
+    sunrise,
+    dhuhr,
+    asr,
+    sunset,
+    maghrib,
+    isha,
+    asrAltitudeDeg: asr === null ? null : asrAltitude,
+    noonAltitudeDeg,
   };
 }

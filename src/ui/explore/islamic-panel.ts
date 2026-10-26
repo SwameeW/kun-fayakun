@@ -1,4 +1,4 @@
-import type { App, CrescentCriterion, CrescentZoneName, UniverseIslamic, UniverseView } from '../../core/types';
+import type { App, CrescentCriterion, CrescentZoneName, PrayerConventionId, UniverseIslamic, UniversePrayer, UniverseView } from '../../core/types';
 import { loadPlaces, searchPlaces, type Place } from '../../explore/field-notes/places';
 import { HERITAGE } from '../../explore/islamic/heritage';
 import { h, uniqueId } from '../dom';
@@ -8,7 +8,7 @@ import type { Formatters } from './format';
  * The qibla and the new moon (its own chunk, loaded when the navigator's section first opens): the
  * qibla from the point beneath the camera or a place found by name, and its path on the globe; the
  * next times the Sun stands over the Kaaba or the point opposite it, each a moment to go to; the
- * golden latitude beside the Kaaba's, with its actual size; and the new moon with the new crescent's
+ * times of prayer the Sun marks there, by each published convention; the golden latitude beside the Kaaba's, with its actual size; and the new moon with the new crescent's
  * map for the evenings after it (Yallop's zones or Odeh's), the place in view read out in words. Everything it
  * shows comes from src/explore/islamic; it decides nothing for anyone: the notes say the qibla is
  * a great-circle direction and that communities begin each month by their own practice.
@@ -24,6 +24,8 @@ const ZONES: readonly CrescentZoneName[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const ODEH_ZONES: readonly CrescentZoneName[] = ['A', 'B', 'C', 'D'];
 const ODEH_SWATCH: Partial<Record<CrescentZoneName, string>> = { A: 'a', B: 'b', C: 'd', D: 'e' };
 const CRITERIA: readonly CrescentCriterion[] = ['yallop', 'odeh'];
+/** The conventions for the times of prayer, in PrayTimes.org's order. */
+const CONVENTIONS: readonly PrayerConventionId[] = ['mwl', 'isna', 'egypt', 'makkah', 'karachi', 'tehran', 'qum', 'france', 'russia', 'singapore'];
 /** Why a place has no zone, as message keys. */
 const NONE_KEYS = { 'moon-sets-first': 'moonSetsFirst', 'before-new-moon': 'beforeNewMoon', 'no-sunset': 'noSunset', 'high-latitude': 'highLatitude' } as const;
 /** How wide the view is when going to a moment of the Sun over the Kaaba (km of ground): the whole lit face of the Earth. */
@@ -39,6 +41,7 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
   const utc = new Intl.DateTimeFormat(i18n.locale, { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' });
   const utcDay = new Intl.DateTimeFormat(i18n.locale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
   const utcTime = new Intl.DateTimeFormat(i18n.locale, { timeStyle: 'short', timeZone: 'UTC' });
+  const utcDate = new Intl.DateTimeFormat(i18n.locale, { dateStyle: 'long', timeZone: 'UTC' });
   /** A number shown with exactly `digits` decimals (a bearing of 119.0, a ratio of 1.6210: the precision is part of the figure). */
   const fixedFormats = new Map<number, Intl.NumberFormat>();
   const fixed = (value: number, digits: number): string => {
@@ -101,6 +104,49 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
   // The Sun over the Kaaba.
   const sunList = h('ul', { class: 'kf-living-list', 'data-testid': 'islamic-kaaba-sun' });
   let sunKey = '';
+
+  // The Sun and the times of prayer: a convention, Asr's shadow, and the times for the place.
+  const conventionId = uniqueId('islamic-convention');
+  const conventionSelect = h('select', { id: conventionId, class: 'kf-living-input', 'data-testid': 'islamic-convention' }, ...CONVENTIONS.map((id) => h('option', { value: id }, i18n.t(`ui.universe.islamic.prayer.convention.${id}`))));
+  let asrChoice: 1 | 2 = 1;
+  const sendPrayer = (): void => {
+    const convention = CONVENTIONS.find((id) => id === conventionSelect.value) ?? 'mwl';
+    send({ kind: 'prayer', convention, asrFactor: asrChoice });
+  };
+  conventionSelect.addEventListener('change', sendPrayer);
+  const asrButtons = ([1, 2] as const).map((factor) => {
+    const b = h('button', { type: 'button', class: 'kf-living-choice', 'aria-pressed': String(factor === 1), 'data-testid': `islamic-asr-${factor}` }, i18n.t(`ui.universe.islamic.prayer.asr${factor}`));
+    b.addEventListener('click', () => {
+      asrChoice = factor;
+      sendPrayer();
+    });
+    return b;
+  });
+  const prayerFor = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-prayer-for' });
+  const prayerList = h('dl', { class: 'kf-about-facts', 'data-testid': 'islamic-prayer' });
+  let prayerKey = '';
+  const degrees = (deg: number): string => fixed(deg, Number.isInteger(deg) ? 0 : 1);
+  const prayerRows = (p: UniversePrayer): HTMLElement[] => {
+    const t = p.times;
+    const time = (ms: number | null, none: string): string => (ms === null ? i18n.t(none) : i18n.t('ui.universe.islamic.prayer.time', { time: utcTime.format(new Date(ms)) }));
+    const below = 'ui.universe.islamic.prayer.none';
+    const noSun = 'ui.universe.islamic.prayer.noSun';
+    const rows: Array<[string, string, string]> = [
+      ['fajr', i18n.t('ui.universe.islamic.prayer.fajr', { deg: degrees(p.fajrDeg) }), time(t.fajr, below)],
+      ['sunrise', i18n.t('ui.universe.islamic.prayer.sunrise'), time(t.sunrise, noSun)],
+      ['dhuhr', i18n.t('ui.universe.islamic.prayer.dhuhr', { alt: fixed(p.noonAltitudeDeg, 1) }), time(t.dhuhr, noSun)],
+      ['asr', p.asrAltitudeDeg === null ? i18n.t('ui.universe.islamic.prayer.asrPlain') : i18n.t('ui.universe.islamic.prayer.asr', { alt: fixed(p.asrAltitudeDeg, 1) }), time(t.asr, 'ui.universe.islamic.prayer.noTime')],
+      ['maghrib', p.maghribDeg === null ? i18n.t('ui.universe.islamic.prayer.maghribSunset') : i18n.t('ui.universe.islamic.prayer.maghribDeg', { deg: degrees(p.maghribDeg) }), time(t.maghrib, p.maghribDeg === null ? noSun : below)],
+      [
+        'isha',
+        p.ishaDeg !== null
+          ? i18n.t('ui.universe.islamic.prayer.ishaDeg', { deg: degrees(p.ishaDeg) })
+          : i18n.t(p.ramadan && p.convention === 'makkah' ? 'ui.universe.islamic.prayer.ishaRamadan' : 'ui.universe.islamic.prayer.ishaMinutes', { minutes: p.ishaMinutes ?? 0 }),
+        time(t.isha, p.ishaDeg === null ? noSun : below),
+      ],
+    ];
+    return rows.flatMap(([id, term, detail]) => [h('dt', {}, term), h('dd', { 'data-testid': `islamic-prayer-${id}` }, detail)]);
+  };
 
   // The golden latitude.
   const goldenText = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-golden' });
@@ -194,6 +240,15 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
     h('h3', { class: 'kf-living-label' }, i18n.t('ui.universe.islamic.sunTitle')),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.sunIntro')),
     sunList,
+    h('h3', { class: 'kf-living-label' }, i18n.t('ui.universe.islamic.prayerTitle')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.prayerIntro')),
+    h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: conventionId }, i18n.t('ui.universe.islamic.prayer.convention')), conventionSelect),
+    h('div', { class: 'kf-lab-row', role: 'group', 'aria-label': i18n.t('ui.universe.islamic.prayer.asrGroup') }, ...asrButtons),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.prayer.asrNote')),
+    prayerFor,
+    prayerList,
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.prayer.note')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.prayer.credit')),
     h('h3', { class: 'kf-living-label' }, i18n.t('ui.universe.islamic.goldenTitle')),
     goldenText,
     h('div', { class: 'kf-lab-row' }, goldenLine, goldenGo),
@@ -255,6 +310,25 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
             return h('li', { class: 'kf-living-line' }, h('span', { class: 'kf-living-line-text' }, text), go);
           }),
         );
+      }
+      // The times of prayer.
+      const pr = s.prayer;
+      if (pr && s.qibla) {
+        if (conventionSelect.value !== pr.convention) conventionSelect.value = pr.convention;
+        asrChoice = pr.asrFactor;
+        asrButtons.forEach((b, k) => {
+          b.setAttribute('aria-pressed', String(k + 1 === pr.asrFactor));
+        });
+        write(prayerFor, i18n.t('ui.universe.islamic.prayer.for', { place: placeName(s.qibla), date: utcDate.format(new Date(pr.times.dhuhr)) }));
+        const k = JSON.stringify(pr);
+        if (k !== prayerKey) {
+          prayerKey = k;
+          prayerList.replaceChildren(...prayerRows(pr));
+        }
+      } else {
+        write(prayerFor, i18n.t('ui.universe.islamic.noPlace'));
+        prayerKey = '';
+        prayerList.replaceChildren();
       }
       // The golden latitude.
       const g = s.golden;

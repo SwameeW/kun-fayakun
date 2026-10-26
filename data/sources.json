@@ -1083,6 +1083,23 @@
       }
     },
     {
+      "id": "praytimes-org",
+      "kind": "paper",
+      "title": "Prayer Times Calculation, and the calculation methods of PrayTimes.js 2.3",
+      "author": "Hamid Zarrabi-Zadeh (PrayTimes.org)",
+      "url": "https://praytimes.org/calculation",
+      "version": "retrieved 2026-10-26 (the page's table of methods, and the methods in PrayTimes.js 2.3, sha256 f0e8442410446b1bf2db613bdebd3aa3aef5cdf5483068fbd9212d5acaa180fd)",
+      "license": "Facts only: each convention's published depressions of the Sun and intervals, credited; no code or text of PrayTimes.org is used",
+      "licenseUrl": null,
+      "credit": "Conventions as PrayTimes.org lists them (H. Zarrabi-Zadeh)",
+      "notes": "The ten conventions for the times of prayer in the explorer's section on the qibla and the new moon (src/explore/islamic/astronomy.ts): each its institution's depressions of the Sun for Fajr and Isha (or Umm al-Qura's interval after Maghrib, 120 minutes in Ramadan) and, for Tehran and Qum, for Maghrib. Awaits the scholar's review (REVIEW.md).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "simbad-m31",
       "kind": "dataset",
       "title": "SIMBAD: M 31, the Andromeda Galaxy (its ICRS position)",

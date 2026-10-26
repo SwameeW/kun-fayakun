@@ -1,5 +1,5 @@
 import { Vector3, type Object3D } from 'three/webgpu';
-import type { CrescentCriterion, CrescentZoneName, SceneLabel, UniverseCrescent, UniverseIslamic, UniverseIslamicCommand } from '../../core/types';
+import type { CrescentCriterion, CrescentZoneName, PrayerConventionId, SceneLabel, UniverseCrescent, UniverseIslamic, UniverseIslamicCommand, UniversePrayer } from '../../core/types';
 import { bodyFrame } from '../living/quakes';
 import {
   compassPoint,
@@ -12,6 +12,8 @@ import {
   meridianArcKm,
   meridianRatio,
   newMoons,
+  PRAYER_CONVENTIONS,
+  prayerTimes,
   qiblaBearing,
   qiblaDistanceKm,
   qiblaPath,
@@ -23,13 +25,15 @@ import {
   type SkyFrame,
   type SkyTrack,
 } from './astronomy';
+import { hijriDate } from './hijri';
 import { createIslamicLayer, type MarkSet } from './layer';
 
 /**
  * The qibla and the new moon in the explorer (its own chunk, loaded when their section first opens):
  * the qibla from the point beneath the camera or a chosen place, drawn as a great circle on the
  * globe; the golden latitude beside the Kaaba's; the next times the Sun stands over the Kaaba or the
- * point opposite it; the new moons; and the new crescent's map for the evenings after one, by Yallop's
+ * point opposite it; the times of prayer at the place, by a published convention; the new moons; and
+ * the new crescent's map for the evenings after one, by Yallop's
  * test or Odeh's (both are worked out for every place; choosing between them recolours the map). All of it
  * comes from ./astronomy and the explorer's ephemeris; the map is computed a few milliseconds a frame,
  * so the view never stalls. Nothing here shows the Kaaba itself: it is a point the lines end at.
@@ -149,6 +153,41 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
   let hereFor = '';
 
   const place = (): { lat: number; lon: number; name: string | null } | null => chosen ?? (below ? { ...below, name: null } : null);
+
+  // The times of prayer at the place, on its local day of the date shown, refound when any of those changes.
+  let prayerConvention: PrayerConventionId = 'mwl';
+  let asrFactor: 1 | 2 = 1;
+  let prayer: UniversePrayer | null = null;
+  let prayerFor = '';
+  const refreshPrayer = (): void => {
+    const p = place();
+    const c = PRAYER_CONVENTIONS.find((x) => x.id === prayerConvention);
+    if (!p || !c) {
+      prayer = null;
+      prayerFor = '';
+      return;
+    }
+    // The place's day by local mean time, and whether Umm al-Qura's calendar has it in Ramadan.
+    const day = Math.floor(jdNow + p.lon / 360 - 0.5);
+    const key = `${p.lat.toFixed(3)}:${p.lon.toFixed(3)}:${day}:${prayerConvention}:${asrFactor}`;
+    if (key === prayerFor) return;
+    prayerFor = key;
+    const ramadan = hijriDate(msOf(day + 1 - p.lon / 360))?.month === 9;
+    const t = prayerTimes(sky, p.lat, p.lon, jdNow, c, asrFactor, ramadan);
+    const ms = (jd: number | null): number | null => (jd === null ? null : msOf(jd));
+    prayer = {
+      convention: c.id,
+      asrFactor,
+      fajrDeg: c.fajrDeg,
+      ishaDeg: c.ishaDeg,
+      ishaMinutes: c.ishaDeg === null ? (ramadan && c.ishaRamadanMinutes !== null ? c.ishaRamadanMinutes : c.ishaMinutes) : null,
+      maghribDeg: c.maghribDeg,
+      ramadan,
+      times: { fajr: ms(t.fajr), sunrise: ms(t.sunrise), dhuhr: msOf(t.dhuhr), asr: ms(t.asr), sunset: ms(t.sunset), maghrib: ms(t.maghrib), isha: ms(t.isha) },
+      noonAltitudeDeg: t.noonAltitudeDeg,
+      asrAltitudeDeg: t.asrAltitudeDeg,
+    };
+  };
 
   const refreshQibla = (): void => {
     const p = place();
@@ -358,6 +397,10 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
           criterion = c.criterion === 'odeh' ? 'odeh' : 'yallop';
           showMap();
           break;
+        case 'prayer':
+          if (PRAYER_CONVENTIONS.some((x) => x.id === c.convention)) prayerConvention = c.convention;
+          asrFactor = c.asrFactor === 2 ? 2 : 1;
+          break;
       }
       refreshQibla();
     },
@@ -366,6 +409,7 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
       jdNow = frame.jdUtc;
       below = frame.below;
       refreshQibla();
+      refreshPrayer();
       refreshSuns();
       refreshMoons();
       work();
@@ -392,6 +436,7 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
                 ageHours: latest === undefined ? null : (jdNow - latest) * 24,
               },
         criterion,
+        prayer: prayer ? { ...prayer, times: { ...prayer.times } } : null,
         crescent: crescent ? { ...crescent, counts: { ...crescent.counts } } : null,
         marks: layer.counts(),
       };

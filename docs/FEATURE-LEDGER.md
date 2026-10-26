@@ -38,8 +38,8 @@ platform.
 | IA-5 | The Umm al-Qura date | ICU's islamic-umalqura | the same (Ramadan and Shawwal 1447) | implemented |
 | IA-6 | Astronomers and geometers of the Islamic world | Wikidata places, cited notes | the same | implemented |
 | IA-7 | Al-Sufi's "little cloud" named on the sky | The Andromeda Galaxy's position from SIMBAD (2MASS), named with the stars' names | `tests/unit/islamic.spec.ts` (named only with the names; 1.345 degrees from nu Andromedae in the sky's catalogue) | implemented |
-| IA-8 | Star names from Arabic astronomy | Etymologies from a licensed source | Every name cited | research needed |
-| IA-9 | Prayer times | Conventions for twilight and the afternoon differ between communities | Owner and scholar decision first | deferred |
+| IA-8 | Star names from Arabic astronomy | Etymologies from a licensed source; the IAU's catalogue of star names (2022) has none yet ("WGSN is working to add brief summaries of etymological information") | Every name cited | research needed |
+| IA-9 | Prayer times | Ten published conventions (PrayTimes.org's list, each its institution's) and both reckonings of Asr, chosen in the panel; times in UTC for the place in view; high-latitude rules not shown; awaiting the scholar's review (REVIEW.md) | `tests/unit/islamic.spec.ts` (the Sun's times within the USNO tables' rounding; each convention's depressions, Asr's shadows, Umm al-Qura's interval, the short nights), `tests/explore/islamic.spec.ts` | implemented |
 | IA-10 | Other crescent criteria (Odeh, SAAO), weather | Odeh's test (Experimental Astronomy 18, 2004) beside Yallop's, chosen in the panel; SAAO (a curve read from a figure) and weather not implemented | `tests/unit/islamic.spec.ts` (Odeh's zone bounds; Ramadan 1447 by both tests; topocentric inputs), `tests/explore/islamic.spec.ts` (the map recoloured by Odeh's zones) | partial |
 
 ## Phase 1: orbital laboratory (US)

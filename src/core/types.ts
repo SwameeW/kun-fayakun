@@ -727,6 +727,33 @@ export type UniverseSkyCommand = { kind: 'layer'; layer: SkyLayerName; on: boole
 export type CrescentZoneName = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 /** The test the crescent's map is drawn by: Yallop's (NAO Technical Note 69, 1997) or Odeh's (Experimental Astronomy 18, 2004). */
 export type CrescentCriterion = 'yallop' | 'odeh';
+/**
+ * A published convention for the times of prayer (src/explore/islamic/astronomy.ts): the Muslim World
+ * League; the Islamic Society of North America; the Egyptian General Authority of Survey; Umm al-Qura
+ * University, Makkah; the University of Islamic Sciences, Karachi; the Institute of Geophysics,
+ * University of Tehran; the Leva Institute, Qum; the Muslims of France; the Spiritual Administration of
+ * Muslims of Russia; the Islamic Religious Council of Singapore.
+ */
+export type PrayerConventionId = 'mwl' | 'isna' | 'egypt' | 'makkah' | 'karachi' | 'tehran' | 'qum' | 'france' | 'russia' | 'singapore';
+
+/** The Sun and the times of prayer for a place on its local day (src/explore/islamic), as the view reports them. */
+export interface UniversePrayer {
+  convention: PrayerConventionId;
+  /** Asr's shadow: its object's length (1) or twice it (2) beyond its noon shadow. */
+  asrFactor: 1 | 2;
+  /** The convention's depressions of the Sun (degrees) for Fajr, Isha (null: a time after Maghrib, `ishaMinutes`) and Maghrib (null: sunset). */
+  fajrDeg: number;
+  ishaDeg: number | null;
+  ishaMinutes: number | null;
+  maghribDeg: number | null;
+  /** The day is in Ramadan by the Umm al-Qura calendar (for a convention whose Isha differs then). */
+  ramadan: boolean;
+  /** The times (ms, UTC); null where the Sun does not come so far below the horizon, or so high, that day. */
+  times: { fajr: number | null; sunrise: number | null; dhuhr: number; asr: number | null; sunset: number | null; maghrib: number | null; isha: number | null };
+  /** The Sun's altitude at its transit and when Asr begins (degrees). */
+  noonAltitudeDeg: number;
+  asrAltitudeDeg: number | null;
+}
 
 /** The new crescent's map for an evening after a new moon (src/explore/islamic). */
 export interface UniverseCrescent {
@@ -766,6 +793,8 @@ export interface UniverseIslamic {
   newMoon: { unixMs: number; previousMs: number | null; nextMs: number | null; ageHours: number | null } | null;
   /** The test the crescent's map is drawn by (kept while no map is shown). */
   criterion: CrescentCriterion;
+  /** The times of prayer for the place the qibla is reckoned from, on its local day of the date shown; null with no place. */
+  prayer: UniversePrayer | null;
   /** The new crescent's map while one is shown. */
   crescent: UniverseCrescent | null;
   /** Marks drawn on the globe: the qibla's path, the two latitudes, the map's places. */
@@ -901,7 +930,8 @@ export type UniverseIslamicCommand =
   | { kind: 'golden'; on: boolean }
   | { kind: 'newMoon'; step: -1 | 1 }
   | { kind: 'evening'; evening: 0 | 1 | 2 | null }
-  | { kind: 'criterion'; criterion: CrescentCriterion };
+  | { kind: 'criterion'; criterion: CrescentCriterion }
+  | { kind: 'prayer'; convention: PrayerConventionId; asrFactor: 1 | 2 };
 
 /** One body of an experiment as the view reports it (masses in kg by one G: the Earth's GM over its mass). */
 export interface UniverseLabBody {

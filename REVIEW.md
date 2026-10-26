@@ -88,18 +88,29 @@ scholarly text or science text change later, that area needs review again.
   than 30 km across (`MAKKAH_FRAME`).
 - **The qibla and the new moon (explorer, `docs/ISLAMIC-ASTRONOMY.md`).** That
   the section gives no rulings: the qibla as a great-circle direction from true
-  north, the crescent map as what the sky allows (Yallop's criterion) with the
-  note that communities begin each month by their own practice, and the Umm
-  al-Qura date named as such. That the golden-latitude note is worded as a
-  closeness of numbers, not evidence. That no prayer times are shown, and why.
-  The heritage notes (`ui.universe.islamic.heritage.*`): al-Battani, al-Sufi,
-  al-Tusi, Ulugh Beg, the Darb-i Imam's girih tiles, Taqi al-Din.
+  north, the crescent map as what the sky allows (Yallop's criterion, or
+  Odeh's) with the note that communities begin each month by their own
+  practice, and the Umm al-Qura date named as such. That the golden-latitude
+  note is worded as a closeness of numbers, not evidence. The times of prayer
+  (`ui.universe.islamic.prayer*`): that the ten conventions are named and
+  described fairly (each its institution's, none preferred, the Muslim World
+  League's shown first only as PrayTimes.org lists it first), that Asr's two
+  reckonings name the schools correctly (one shadow-length: Shafi'i, Maliki,
+  Hanbali, Ja'fari; two: Hanafi), that Maghrib by the Sun 4 or 4.5 degrees
+  below the horizon is described rightly for the Tehran and Qum conventions,
+  and that the note sends people to their own community's timetable. The
+  heritage notes (`ui.universe.islamic.heritage.*`): al-Battani, al-Sufi,
+  al-Tusi, Ulugh Beg, the Darb-i Imam's girih tiles, Taqi al-Din; and the
+  Andromeda Galaxy named on the sky as al-Sufi's "little cloud".
 
 ### 3. Astrophysicist
 
 - The qibla and the new moon's astronomy (`src/explore/islamic/astronomy.ts`):
-  the checks against published values in `docs/ISLAMIC-ASTRONOMY.md`, and
-  Yallop's test as implemented (best time, geocentric ARCV, topocentric W').
+  the checks against published values in `docs/ISLAMIC-ASTRONOMY.md`,
+  Yallop's test as implemented (best time, geocentric ARCV, topocentric W'),
+  Odeh's (topocentric ARCV and W at the same best time), and the times of
+  prayer (depressions of the Sun's centre without refraction; sunrise and
+  sunset by the upper limb with 34' of refraction; Asr from the noon shadow).
 
 - Every number in `data/constants.json` (value, uncertainty, unit, qualifier,
   citation and access date), and every place it appears in the panels.

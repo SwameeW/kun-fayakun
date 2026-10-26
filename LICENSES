@@ -812,6 +812,12 @@ Changes:  public/assets/places/places.json keeps each place's name,
           no country is kept.
 Credit:   Made with Natural Earth
 
+PrayTimes.org (the conventions for the times of prayer)
+Terms:    Facts only: each convention's published depressions of the Sun and
+          intervals, as PrayTimes.org lists them (H. Zarrabi-Zadeh). No code
+          or text of PrayTimes.org is used.
+Credit:   Conventions as PrayTimes.org lists them (H. Zarrabi-Zadeh)
+
 SIMBAD (the Andromeda Galaxy's place on the sky)
 Terms:    Free use with acknowledgement: "This research has made use of the
           SIMBAD database, operated at CDS, Strasbourg, France" (Wenger et
