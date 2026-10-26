@@ -338,7 +338,11 @@ test('rings and belts: a main belt about the Sun and a ring about the Earth, dra
   await page.getByTestId('lab-ring-remove-swarm-1').click();
   await expect.poll(async () => (await lab(page))?.swarms.map((w) => w.id), LIVE).toEqual(['swarm-2']);
   await expect.poll(async () => (await lab(page))?.particlesDrawn, LIVE).toBe(500);
-  // A gravitating ring: a dozen bodies about the Earth, each one a body of the experiment.
+  // A gravitating ring: a dozen bodies about the Earth, each one a body of the experiment (counted
+  // paused: running, two could meet and merge before a slow machine looks).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
   await page.getByTestId('lab-ring-preset-moonlets').click();
   await expect.poll(async () => (await lab(page))?.bodies.filter((b) => b.id.startsWith('moonlets-1-')).length, LIVE).toBe(12);
   expect(pageErrors).toEqual([]);

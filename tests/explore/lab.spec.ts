@@ -173,9 +173,16 @@ test('a laboratory collision is predicted and accounted, files export, and bad o
   const file = await download;
   expect(file.suggestedFilename()).toBe('kun-fayakun-two-body-laboratory.json');
   const path = await file.path();
+  // Paused first: a file loads at its start (both bodies, before the collision) and keeps the clock as
+  // it was, so a fast clock on a slow machine cannot run it into the collision again before the check.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
   await page.getByTestId('lab-import-file').setInputFiles(path);
   await expect(page.getByTestId('lab-status')).toHaveText('Loaded.', LIVE);
   await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(2);
+  expect((await lab(page))?.paused).toBe(true);
+  expect((await lab(page))?.elapsedS).toBe(0);
   await page.evaluate(() => {
     (window as unknown as { __kf: { app: { universeLab(c: { kind: 'import'; text: string }): void } } }).__kf.app.universeLab({ kind: 'import', text: '{"schemaVersion": 99, "bodies": []}' });
   });
