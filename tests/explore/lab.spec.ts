@@ -257,3 +257,37 @@ test('a fast impact breaks a planet: the outcome named, the remnant keeping its 
   expect(pieces).toBeLessThanOrEqual(7);
   expect(pageErrors).toEqual([]);
 });
+
+test('a small body’s impact leaves a crater: its size and kind by the scaling law, and the impact’s energy, in the history', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  // A stone 1 km across (3,000 kg/m^3), 1,600 km above the planet (the Earth's mass and size), falling at 20 km/s.
+  await page.getByTestId('lab-add').locator('summary').click();
+  await page.getByTestId('lab-add-name').fill('Stone');
+  await page.getByTestId('lab-add-mass').fill('1.571e12');
+  await page.getByTestId('lab-add-radius').fill('0.5');
+  await page.getByTestId('lab-add-primary').selectOption('planet');
+  for (const [axis, value] of [['x', '-8000'], ['y', '0'], ['z', '0']] as const) await page.getByTestId(`lab-add-pos-${axis}`).fill(value);
+  for (const [axis, value] of [['x', '20'], ['y', '0'], ['z', '0']] as const) await page.getByTestId(`lab-add-vel-${axis}`).fill(value);
+  await page.getByTestId('lab-add-state').click();
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(3);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  // Collins, Melosh and Marcus's scaling: a complex crater of some 15 to 20 km; about 8 x 10^4 megatons of TNT.
+  await expect(page.getByTestId('lab-history')).toContainText(/Stone struck Planet at [\d.]+ km\/s: .+; its crater about .+ across \(complex: a central peak and terraces\), with the energy of .+ megatons of TNT/, LIVE);
+  const e = (await lab(page))?.events.find((x) => x.absorbed === 'body-1');
+  expect(e?.craterComplex).toBe(true);
+  expect(e?.craterKm ?? 0).toBeGreaterThan(14);
+  expect(e?.craterKm ?? Infinity).toBeLessThan(22);
+  expect((e?.energyJ ?? 0) / 4.184e15).toBeGreaterThan(5e4);
+  expect((e?.energyJ ?? Infinity) / 4.184e15).toBeLessThan(1.2e5);
+  expect(pageErrors).toEqual([]);
+});

@@ -46,9 +46,49 @@ disruption criterion; and every outcome sums to the total mass.
   makes energy from nothing.
 - **Material strength** (small bodies, the paper's c* = 5): the laboratory's bodies are taken as
   planet-size and strengthless.
-- **Heat and craters**: the energy is accounted (as in Phase 1's mergers), but no crater, melt or
-  surface mark is drawn.
+- **Heat and craters**: the energy is accounted, and a cratering impact's crater size is reported
+  ([Craters and energy](#craters-and-energy)), but no crater, melt or surface mark is drawn on a
+  world yet.
 - This is not a hydrodynamic (SPH) simulation, and no outcome is a prediction of a real impact.
+
+## Craters and energy
+
+`src/sim/craters.ts`, at every merger and breakup the engine resolves (not a graze):
+
+- **The crater.** The scaling Collins, Melosh and Marcus (2005) use in the Earth Impact Effects
+  Program (Meteoritics & Planetary Science 40, 817):
+  - the transient crater by pi-group scaling for rock, after Schmidt and Housen (1987):
+    D_tc = 1.161 (rho_i / rho_t)^(1/3) L^0.78 v^0.44 g^-0.22 sin^(1/3) theta (SI units; theta from
+    the horizontal, from the impact parameter as theta = arccos b);
+  - the final crater: simple, 1.25 D_tc, up to the simple-to-complex transition; complex beyond it,
+    1.17 D_tc^1.13 / D_c^0.13 (McKinnon and Schenk 1985), D_c the transient diameter there.
+- **The transition.** A final diameter of 3.2 km on the Earth (D_c = 2.56 km), scaled inversely
+  with surface gravity as the transition is observed to scale: about 19 km on the Moon, 8.5 km on
+  Mars.
+- **Which impacts crater.** Targets of up to ten Earth masses are taken to have a solid surface;
+  beyond that, the worlds known are giants of gas and ice, and stars. A crater wider than the
+  target's radius means the target is reshaped, not cratered (a giant impact), and none is given.
+- **The materials.** The target's crust is taken as crystalline rock, 2,750 kg/m³ (or the body's own
+  density where that is lower). The projectile has its own bulk density, from its mass and radius.
+- **The energy.** The pair's kinetic energy at contact in their centre of mass frame, ½ μ v², the
+  fall included. The history gives it in megatons of TNT (4.184 × 10¹⁵ J each). The engine's own
+  "heat" is its bookkeeping: what the closed model's energy loses when the contact is resolved,
+  which leaves out the last part of the fall.
+- **In the history.** For example: "Stone struck Planet at 20.6 km/s: partial accretion (the target
+  grew), no debris thrown off, at 0 days; its crater about 18 km across (complex: a central peak and
+  terraces), with the energy of 7.988 × 10⁴ megatons of TNT". The planet has the Earth's mass and
+  size, and the stone is 1 km across.
+- **Checked.**
+  - The fit itself.
+  - A 50 m iron body at 12.8 km/s gives a simple crater of about 1.5 km (Meteor Crater is 1.2 km).
+  - A 1 km stony body at 20 km/s gives a complex crater of about 16 km on the Earth.
+  - The Moon's transition, and its larger craters for the same impact.
+  - No crater for a giant impact, or on a star.
+- **Not yet:**
+  - the crater's depth;
+  - its mark on the world's surface (with the terrain the walk now reads, ledger GR-1 and GR-5);
+  - melt;
+  - the hit body's local heating.
 
 ## The steps, in order
 
@@ -58,7 +98,7 @@ disruption criterion; and every outcome sums to the total mass.
 | 2 | The engine uses it at contact: a merger, a graze, or the largest remnant (the target's id), the second and up to six debris bodies, within the 64-body limit (debris without room returned to the remnant and reported) | Mass, momentum, angular momentum and the closed model's energy kept to 1e-12 through a breakup; pieces start clear of one another; replay bit-exact; a graze not struck twice (done: `tests/unit/impacts.spec.ts`, and in the browser `tests/explore/lab.spec.ts`) |
 | 3 | Debris speeds from the paper's distribution (eqs. 38 to 43), placed deterministically. Research needed: the fit (log(dv dm/dv) = A - S v, v in units of the combined mass's escape speed at R_C1, relative to the largest remnant) is normalised by the histogram's bin width dv, which the paper does not state; until it is established from its figure 7 or a later source, the placeholder speeds stay | The ejected mass's speed distribution matches the fit; the same scenario gives the same debris |
 | 4 | The reverse impact for hit-and-run projectiles | The paper's projectile remnant law |
-| 5 | Impact heat and a crater size from a cited scaling law, as an event in the history (no surface change until terrain exists, Phase 4) | Crater diameters against the law's published examples |
+| 5 | Impact heat and a crater size from a cited scaling law, as an event in the history (no surface change until terrain exists, Phase 4) | Crater diameters against the law's published examples (done: `src/sim/craters.ts`, `tests/unit/craters.spec.ts`, and in the browser `tests/explore/lab.spec.ts`; the mark on the surface is next) |
 | 6 | The interface: the outcome named in words, its regime and numbers, debris drawn as bodies | Browser tests; a showcase (a rogue world striking a planet) |
 
 Decorative dust, if any, will be drawn separately from the bodies the integrator moves, and labelled

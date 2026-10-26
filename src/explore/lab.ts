@@ -3,6 +3,7 @@ import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
 import { BODY_IDS, type BodyId, type LabCommand, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
 import { validateScenario, type BodySpec, type Command, type Scenario } from '../sim/engine';
+import { joules } from '../sim/craters';
 import { circularOrbit, consumes, primaryOf, type SimState } from '../sim/nbody';
 import type { LabReply, LabRequest, LabSnapshot } from '../sim/protocol';
 import { seedLaboratory, seedSolarSystem } from '../sim/seed';
@@ -744,7 +745,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         selected,
         drift: s?.drift ?? { energy: 0, momentum: 0, angularMomentum: 0 },
         interventions: s?.interventions ?? [],
-        events: (s?.events ?? []).map((e) => ({ t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0 })),
+        events: (s?.events ?? []).map((e) => ({ t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0, craterKm: e.crater?.diameterKm ?? null, craterComplex: e.crater?.complex ?? false, energyJ: joules(e.energy) })),
         checkpoints: s?.checkpoints ?? [],
         logLength: s?.logLength ?? 0,
         discarded: s?.discarded ?? 0,

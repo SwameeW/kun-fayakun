@@ -551,7 +551,9 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   conservative mergers (mass, momentum, centre of mass; orbital angular momentum into spin; lost
   kinetic energy into `internal`, reported as heat), breakups (`fragment()`: the remnant keeps the
   target's id; `remnant-<step>` and `debris-<step>-<k>` bodies, at most `MAX_DEBRIS`, within
-  `MAX_BODIES`) and grazes (`passing` pairs); `ContactEvent` (`merge`, `fragment`, `graze`),
+  `MAX_BODIES`) and grazes (`passing` pairs); `ContactEvent` (`merge`, `fragment`, `graze`; its
+  `energy`, ½ μ v² at contact, and `crater`, `src/sim/craters.ts`: the final diameter and whether
+  complex, on a solid target),
   `primaryOf` (the heavier body with the smallest distance over GM^(1/3)). `engine.ts`: `Engine`
   (scenario, edit log applied at recorded steps, checkpoints, `seek`, `replayFromStart`, `drift`
   since the last intervention), `Prediction` (a copy integrated ahead in slices, with its primary's
