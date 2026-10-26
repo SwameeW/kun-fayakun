@@ -73,11 +73,15 @@ the same G.
   lengthens only every 64 steps, so the method keeps most of its long-run energy behaviour.
 - **Contacts.** Between steps, every pair's closest approach over the step is computed along the
   relative motion (swept, so a fast impactor cannot pass through a target between steps). Bodies
-  that touch merge at the step: mass, momentum and the centre of mass are kept; the pair's
-  orbital angular momentum about their centre of mass becomes the survivor's spin; volumes add
-  (the radius follows); the kinetic energy lost (½μv², the heat) moves into an internal energy
-  reservoir so the closed model's total is kept, and is reported as heat. The heavier body
-  survives with its id (the Sun always keeps its id).
+  that touch collide at the step, with the outcome Leinhardt and Stewart's scaling laws give for the
+  speed and angle at contact (`docs/IMPACTS.md`). Below the merging speed they merge: mass, momentum
+  and the centre of mass are kept; the pair's orbital angular momentum about their centre of mass
+  becomes the survivor's spin; volumes add (the radius follows); the kinetic energy lost (½μv², the
+  heat) moves into an internal energy reservoir so the closed model's total is kept, and is reported
+  as heat. Faster, they break up: the largest remnant (keeping the target's id), the second, and at
+  most six debris bodies, with mass, momentum, angular momentum and the closed model's energy kept
+  exactly. A grazing hit-and-run leaves both as they were. The heavier body is the target (the Sun
+  always keeps its id).
 - **Seed.** The solar-system fork takes positions from the explorer's ephemeris (JPL's
   approximate planetary elements, Standish and Williams, and the Horizons Moon table) at the
   explorer's date, clamped inside the Moon table's span; velocities by central differences over
@@ -165,8 +169,11 @@ These are deliberate simplifications; the interface does not claim otherwise.
 - **The seed is approximate.** JPL's approximate elements are not an N-body solution and the
   velocities are differenced, so the copy departs from the real system from the start (measured
   below). That departure is the model's, not the Sun's.
-- **Mergers are perfectly inelastic.** No fragments, ejecta, craters or debris; the heat is a number,
-  not a temperature. No grazing outcome other than merging.
+- **Collisions are scaling laws, not hydrodynamics.** The outcome and the remnants' masses follow
+  Leinhardt and Stewart (2012); the debris's directions and launch speeds are a documented placeholder
+  (a cone about the impact site, 1.05 to 1.6 times the remnant's escape speed), not yet their fitted
+  speed distribution; a hit-and-run projectile is not eroded. No craters or melt: the heat is a number,
+  not a temperature.
 - **No climate or materials.** Changing a world's mass or orbit does not change its temperature,
   atmosphere or appearance; the Earth is shown with its static imagery, not the day's.
 - **Light.** The Sun lights the scene wherever it is; a body added as a star does not shine.

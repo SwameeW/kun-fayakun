@@ -1,5 +1,5 @@
 /**
- * The explorer's field notes, by Claude: an atlas of places on the Earth worth flying to, and the
+ * The explorer's field notes, by Samee: an atlas of places on the Earth worth flying to, and the
  * places tradition associates with the prophets, peace be upon them.
  *
  * Every coordinate is Wikidata's coordinate location (P625) for the item named beside it, retrieved

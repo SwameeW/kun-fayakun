@@ -800,7 +800,8 @@ export interface UniverseLab {
   /** Relative drift since the last intervention. */
   drift: { energy: number; momentum: number; angularMomentum: number };
   interventions: ReadonlyArray<{ step: number; t: number; kind: string; id: string }>;
-  events: ReadonlyArray<{ t: number; survivor: string; absorbed: string }>;
+  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room) or a graze both carried on from; Leinhardt and Stewart's regime and the speed at contact. */
+  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean }>;
   checkpoints: ReadonlyArray<{ step: number; t: number }>;
   logLength: number;
   discarded: number;

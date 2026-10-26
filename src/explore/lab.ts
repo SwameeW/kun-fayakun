@@ -3,7 +3,7 @@ import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
 import { BODY_IDS, type BodyId, type LabCommand, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
 import { validateScenario, type BodySpec, type Command, type Scenario } from '../sim/engine';
-import { circularOrbit, primaryOf, type SimState } from '../sim/nbody';
+import { circularOrbit, consumes, primaryOf, type SimState } from '../sim/nbody';
 import type { LabReply, LabRequest, LabSnapshot } from '../sim/protocol';
 import { seedLaboratory, seedSolarSystem } from '../sim/seed';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
@@ -267,9 +267,11 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       msg.ids.forEach((id, i) => knownNames.set(id, msg.names[i] ?? id));
       sampleTrails(msg);
       for (const e of msg.events) {
-        const key = `${e.step}:${e.absorbed}`;
+        const key = `${e.step}:${e.absorbed}:${e.kind}`;
         if (seenEvents.has(key)) continue;
         seenEvents.add(key);
+        // A graze leaves both bodies; a merger or a breakup ends the projectile (the target keeps its id).
+        if (!consumes(e)) continue;
         trails.delete(e.absorbed);
         if (selected === e.absorbed) {
           selected = e.survivor;
@@ -353,6 +355,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     t: s.t,
     step: s.step,
     internal: 0,
+    passing: [],
   });
 
   const lab: Lab = {
@@ -741,7 +744,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         selected,
         drift: s?.drift ?? { energy: 0, momentum: 0, angularMomentum: 0 },
         interventions: s?.interventions ?? [],
-        events: (s?.events ?? []).map((e) => ({ t: e.t, survivor: e.survivor, absorbed: e.absorbed })),
+        events: (s?.events ?? []).map((e) => ({ t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0 })),
         checkpoints: s?.checkpoints ?? [],
         logLength: s?.logLength ?? 0,
         discarded: s?.discarded ?? 0,

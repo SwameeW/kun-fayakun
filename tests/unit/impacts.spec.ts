@@ -8,7 +8,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { PhysicalFile } from '../../src/astro/physical';
+import { DEFAULT_INTEGRATOR, Engine, ENGINE_VERSION, SCHEMA_VERSION, stateFrom, type BodySpec } from '../../src/sim/engine';
 import { impactOutcome, impactParameter, LS2012, type ImpactBody } from '../../src/sim/impacts';
+import { diagnostics, drift, MAX_BODIES, MAX_DEBRIS, resolveContacts, step, type ContactEvent, type SimState } from '../../src/sim/nbody';
 
 const physical = JSON.parse(readFileSync(new URL('../../public/assets/jpl/physical.json', import.meta.url), 'utf8')) as PhysicalFile;
 const mean = (r: readonly number[]): number => r.reduce((a, b) => a + b, 0) / r.length;
@@ -89,4 +91,91 @@ test('the impact parameter: 0 head-on, 1 grazing, the sine of the angle between'
   expect(impactParameter(1, 0, 0, 0, 2, 0)).toBeCloseTo(1, 12);
   expect(impactParameter(1, 0, 0, -1, 1, 0)).toBeCloseTo(Math.SQRT1_2, 12);
   expect(impactParameter(0, 0, 0, 1, 0, 0)).toBe(0);
+});
+
+const spec = (id: string, b: ImpactBody, pos: [number, number, number], vel: [number, number, number]): BodySpec => ({ id, name: id, gm: b.gm, radiusKm: b.radiusKm, pos, vel, origin: 'user-edited', sourceIds: [] });
+/** A Mars-mass body about to strike the Earth at `v` km/s, `offset` km off centre (it touches within the next 120 s step). */
+const strike = (v: number, offset: number): SimState => stateFrom([spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('impactor', MARS, [EARTH.radiusKm + MARS.radiusKm + 1500, offset, 0], [-v, 0, 0])]);
+const apartOrTouching = (s: SimState): string[] => {
+  const out: string[] = [];
+  for (let i = 0; i < s.ids.length; i += 1)
+    for (let j = i + 1; j < s.ids.length; j += 1) {
+      const d = Math.hypot((s.pos[j * 3] ?? 0) - (s.pos[i * 3] ?? 0), (s.pos[j * 3 + 1] ?? 0) - (s.pos[i * 3 + 1] ?? 0), (s.pos[j * 3 + 2] ?? 0) - (s.pos[i * 3 + 2] ?? 0));
+      if (d < (s.radius[i] ?? 0) + (s.radius[j] ?? 0)) out.push(`${s.ids[i] ?? ''}/${s.ids[j] ?? ''}`);
+    }
+  return out;
+};
+
+test('a breakup in the engine: the remnant keeps the target\u2019s id, and mass, momentum, angular momentum and the closed model\u2019s energy are all kept', () => {
+  // 40 km/s head-on (a little off centre): erosion, between 21.6 and 65.9 km/s.
+  const s = strike(40, 2000);
+  const ref = diagnostics(s);
+  const events: ContactEvent[] = [];
+  expect(resolveContacts(s, 120, null, events)).toBe(true);
+  const [e] = events;
+  expect(e?.kind).toBe('fragment');
+  expect(e?.regime).toBe('erosion');
+  expect(e?.speedKmS).toBeGreaterThan(40);
+  expect(s.ids).toContain('earth');
+  expect(s.ids).not.toContain('impactor');
+  expect(e?.created.length).toBe(1 + MAX_DEBRIS);
+  expect(s.ids.slice(1)).toEqual(e?.created);
+  const now = diagnostics(s);
+  expect(Math.abs(now.gm - ref.gm) / ref.gm).toBeLessThan(1e-14);
+  const d = drift(ref, now);
+  expect(d.momentum).toBeLessThan(1e-12);
+  expect(d.angularMomentum).toBeLessThan(1e-12);
+  expect(d.energy).toBeLessThan(1e-12);
+  expect(e?.heat).toBeGreaterThan(0);
+  // Eroded: the remnant is lighter than the Earth was; every piece starts clear of every other, and all is finite.
+  expect(s.gm[0] ?? 0).toBeLessThan(EARTH.gm);
+  expect(apartOrTouching(s)).toEqual([]);
+  expect([...s.pos, ...s.vel, ...s.gm, ...s.radius, ...s.spin].every(Number.isFinite)).toBe(true);
+  // Launched past the remnant's escape speed, the pieces leave: no further collision over the next hours.
+  const acc: number[] = [];
+  for (let k = 0; k < 60; k += 1) step(s, 60, acc, events);
+  expect(events.length).toBe(1);
+});
+
+test('a graze passes on: hit-and-run leaves both bodies, and the pair is not struck again until it has parted', () => {
+  // Just above the merging speed, well off centre (b over b_crit = 0.65).
+  const o = impactOutcome(EARTH, MARS, 1, 0.8);
+  const s = stateFrom([spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('impactor', MARS, [EARTH.radiusKm + MARS.radiusKm + 600, 0.85 * (EARTH.radiusKm + MARS.radiusKm), 0], [-1.05 * o.vEscPrime, 0, 0])]);
+  const ref = diagnostics(s);
+  const events: ContactEvent[] = [];
+  const acc: number[] = [];
+  for (let k = 0; k < 200 && events.length === 0; k += 1) step(s, 30, acc, events);
+  expect(events.map((e) => e.kind)).toEqual(['graze']);
+  expect(s.ids).toEqual(['earth', 'impactor']);
+  expect(s.passing).toEqual(['earth|impactor']);
+  // Through the overlap and out: still one event; once apart, the pair is tested again.
+  for (let k = 0; k < 400; k += 1) step(s, 30, acc, events);
+  expect(events.length).toBe(1);
+  expect(s.passing).toEqual([]);
+  expect(drift(ref, diagnostics(s)).energy).toBeLessThan(1e-4);
+});
+
+test('debris that would pass the body limit is returned to the remnant, accounted', () => {
+  // The scenario at the limit: the second remnant takes the projectile's place, and no room is left for debris.
+  const crowd: BodySpec[] = Array.from({ length: MAX_BODIES - 2 }, (_, k) => spec(`m${k}`, { gm: 1, radiusKm: 1 }, [1e9 + k * 1e6, 0, 0], [0, 0, 0]));
+  const s = stateFrom([spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('impactor', MARS, [EARTH.radiusKm + MARS.radiusKm + 1500, 2000, 0], [-40, 0, 0]), ...crowd]);
+  const ref = diagnostics(s);
+  const events: ContactEvent[] = [];
+  resolveContacts(s, 120, null, events);
+  expect(s.ids.length).toBe(MAX_BODIES);
+  expect(events[0]?.created.length).toBe(1);
+  expect(events[0]?.unresolved).toBeGreaterThan(0);
+  expect(Math.abs(diagnostics(s).gm - ref.gm) / ref.gm).toBeLessThan(1e-14);
+});
+
+test('a breakup replays to exactly the same bodies, through save and load', () => {
+  const scenario = { schemaVersion: SCHEMA_VERSION, engineVersion: ENGINE_VERSION, name: 'strike', epochJdTdb: 2451545, frame: 'test', seedNote: '', integrator: { ...DEFAULT_INTEGRATOR }, bodies: [spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('impactor', MARS, [60_000, 2000, 0], [-40, 0, 0])], log: [] };
+  const a = new Engine(structuredClone(scenario));
+  a.advanceTo(3 * 3600, 1_000_000);
+  expect(a.events.some((e) => e.kind === 'fragment')).toBe(true);
+  const b = new Engine(JSON.parse(JSON.stringify(a.toScenario())) as typeof scenario);
+  b.advanceTo(a.state.t, 1_000_000);
+  expect(b.state.ids).toEqual(a.state.ids);
+  expect(b.state.pos).toEqual(a.state.pos);
+  expect(b.state.vel).toEqual(a.state.vel);
 });

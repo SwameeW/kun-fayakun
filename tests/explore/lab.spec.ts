@@ -208,3 +208,36 @@ test('three round trips from a chapter into an experiment and back: the camera l
   for (const [round, m] of memory.slice(1).entries()) expect(m, `round ${round + 1}`).toEqual(level);
   expect(pageErrors).toEqual([]);
 });
+
+test('a fast impact breaks a planet: the outcome named, the remnant keeping its name, debris bodies in the experiment', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  // Space on the focused preset button would press it again: away from it, Space pauses the experiment.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  // A Mars-mass body 20,000 km from the planet, closing at 40 km/s: Leinhardt and Stewart's erosion regime.
+  await page.getByTestId('lab-add').locator('summary').click();
+  await page.getByTestId('lab-add-name').fill('Impactor');
+  await page.getByTestId('lab-add-mass').fill('6.4e23');
+  await page.getByTestId('lab-add-radius').fill('3390');
+  await page.getByTestId('lab-add-primary').selectOption('planet');
+  for (const [axis, value] of [['x', '-20000'], ['y', '1500'], ['z', '0']] as const) await page.getByTestId(`lab-add-pos-${axis}`).fill(value);
+  for (const [axis, value] of [['x', '40'], ['y', '0'], ['z', '0']] as const) await page.getByTestId(`lab-add-vel-${axis}`).fill(value);
+  await page.getByTestId('lab-add-state').click();
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(3);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect(page.getByTestId('lab-history')).toContainText(/Impactor struck Planet at [\d.]+ km\/s: erosion \(the target lost mass\), 7 pieces thrown off/, LIVE);
+  const after = await lab(page);
+  expect(after?.bodies.some((b) => b.id === 'planet')).toBe(true);
+  expect(after?.bodies.some((b) => b.id === 'body-1')).toBe(false);
+  expect(after?.bodies.filter((b) => /^(debris|remnant)-/.test(b.id)).length).toBe(7);
+  expect(after?.events.at(-1)?.kind).toBe('fragment');
+  expect(pageErrors).toEqual([]);
+});

@@ -8,7 +8,7 @@ import '../styles/living.css';
 /**
  * The navigator's Living Earth: the imagery (cloud-free, or the last whole day's), the live layers
  * (satellites and earthquakes, each with what it holds now), a place search, and the field notes,
- * by Claude: "Today on Earth" (src/explore/field-notes/bulletin composes it), an atlas of wonders to
+ * by Samee: "Today on Earth" (src/explore/field-notes/bulletin composes it), an atlas of wonders to
  * tour, and the places tradition associates with the prophets, peace be upon them.
  *
  * Everything is a real button; a choice that flies somewhere says where in its accessible name
@@ -134,7 +134,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     findResults.querySelector('button')?.click();
   });
 
-  // Field notes, by Claude: today, the atlas and the prophets' lands.
+  // Field notes, by Samee: today, the atlas and the prophets' lands.
   /** A line of the bulletin, with its Go button kept (only its name and destination change, so focus stays on it). */
   const line = (testId: string): { li: HTMLLIElement; text: HTMLSpanElement; setGo(place: string | null, onClick: () => void): void } => {
     const text = h('span', { class: 'kf-living-line-text' });

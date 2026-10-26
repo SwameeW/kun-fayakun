@@ -19,6 +19,8 @@ export interface LabPanel {
   update(view: UniverseView, slow: boolean): void;
 }
 
+/** Leinhardt and Stewart's regimes, as message keys. */
+const REGIME_KEYS = { merge: 'merge', 'partial-accretion': 'partialAccretion', 'hit-and-run': 'hitAndRun', erosion: 'erosion', 'super-catastrophic': 'superCatastrophic' } as const;
 const HORIZONS: ReadonlyArray<readonly [number, string]> = [
   [10 * 86_400, 'days10'],
   [60 * 86_400, 'days60'],
@@ -338,7 +340,17 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         };
         history.replaceChildren(
           ...l.interventions.slice(-6).map((i) => h('li', { class: 'kf-living-hint' }, i18n.t(`ui.universe.lab.edit.${i.kind}`, { body: name(i.id), when: days(i.t) }))),
-          ...l.events.slice(-4).map((e) => h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.merged', { absorbed: name(e.absorbed), survivor: name(e.survivor), when: days(e.t) }))),
+          ...l.events.slice(-4).map((e) =>
+            h(
+              'li',
+              { class: 'kf-living-hint' },
+              e.kind === 'merge'
+                ? i18n.t('ui.universe.lab.merged', { absorbed: name(e.absorbed), survivor: name(e.survivor), when: days(e.t) })
+                : e.kind === 'graze'
+                  ? i18n.t('ui.universe.lab.grazed', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), when: days(e.t) })
+                  : i18n.t('ui.universe.lab.impact', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[e.regime]}`), count: e.created, when: days(e.t) }),
+            ),
+          ),
           ...(l.discarded > 0 ? [h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.discarded', { count: l.discarded }))] : []),
         );
       }

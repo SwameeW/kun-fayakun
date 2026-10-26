@@ -2,10 +2,12 @@ import {
   accelerations,
   addBody,
   cloneState,
+  consumes,
   diagnostics,
   drift,
   healthy,
   indexOf,
+  MAX_BODIES,
   primaryOf,
   removeAt,
   resolveContacts,
@@ -125,7 +127,7 @@ export interface PredictionResult {
 const MAX_CHECKPOINTS = 48;
 
 export function stateFrom(bodies: readonly BodySpec[]): SimState {
-  const s: SimState = { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], t: 0, step: 0, internal: 0 };
+  const s: SimState = { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], t: 0, step: 0, internal: 0, passing: [] };
   for (const b of bodies) addBody(s, { id: b.id, name: b.name, gm: b.gm, radiusKm: b.radiusKm, pos: b.pos, vel: b.vel });
   return s;
 }
@@ -364,9 +366,9 @@ export class Prediction {
         // The same retiming as the live run's.
         if (g.fixedDtS === null && (g.eta * shortest < 0.5 * this.dt || copy.step % g.retimeSteps === 0)) this.dt = Math.min(g.dtMaxS, Math.max(g.dtMinS, g.eta * shortest));
         // The frame merged: its survivor carries on as the frame (should that be the body itself, the frame stays where it was).
-        const lost = this.follow === null ? undefined : this.events.find((ev) => ev.absorbed === this.follow);
+        const lost = this.follow === null ? undefined : this.events.find((ev) => consumes(ev) && ev.absorbed === this.follow);
         if (lost) this.follow = lost.survivor === this.id ? null : lost.survivor;
-        const e = this.events.find((ev) => ev.absorbed === this.id);
+        const e = this.events.find((ev) => consumes(ev) && ev.absorbed === this.id);
         if (e) {
           const i = indexOf(copy, e.survivor);
           this.merged = { t: copy.t - this.start, with: e.survivor, pos: [copy.pos[i * 3] ?? 0, copy.pos[i * 3 + 1] ?? 0, copy.pos[i * 3 + 2] ?? 0] };
@@ -418,7 +420,7 @@ function structuredCloneCommand(c: Command): Command {
 }
 
 /** Limits on an imported scenario (a file could ask for anything). */
-export const IMPORT_LIMITS = { bodies: 64, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7 } as const;
+export const IMPORT_LIMITS = { bodies: MAX_BODIES, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7 } as const;
 
 /**
  * A scenario from a parsed file, or the reasons it is refused: unsupported version, missing or
@@ -481,7 +483,9 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
         ids.add(c.body.id);
       }
     } else if (c.kind === 'setMass' || c.kind === 'setVelocity' || c.kind === 'remove') {
-      if (typeof c.id !== 'string' || !ids.has(c.id)) errors.push(`${where}: names a body that does not exist`);
+      // Bodies a collision made (src/sim/nbody fragment()) exist only once the run reaches it: their ids are checked for form, not presence.
+      const made = typeof c.id === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(c.id);
+      if (typeof c.id !== 'string' || !(ids.has(c.id) || made)) errors.push(`${where}: names a body that does not exist`);
       if (c.kind === 'setMass' && !num(c.gm, 0, L.gm)) errors.push(`${where}: mass out of range`);
       if (c.kind === 'setVelocity' && !vec(c.vel, L.speedKmS)) errors.push(`${where}: velocity out of range`);
     } else {
