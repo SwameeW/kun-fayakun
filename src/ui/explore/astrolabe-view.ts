@@ -5,7 +5,7 @@ import type { UniverseIslamic } from '../../core/types';
  * The astrolabe drawn (ledger IA-11; the geometry in src/explore/islamic/astrolabe.ts): the mater's
  * rim with the hours of local apparent time (noon at the top), the plate for the latitude (the sky
  * above the horizon lightly lit; the tropics and equator, almucantars, azimuths, the horizon and the
- * dashed circle 18 degrees below it, all in brass), then the rete (the ecliptic, the stars with their
+ * dashed circle 18 degrees below it, the zenith marked, all in brass), then the rete (the ecliptic, the stars with their
  * names where they do not crowd, the Sun) and the rule from the centre through the Sun to the rim.
  * Drawn at a fixed size and scaled by the page, as the HR diagram is.
  */
@@ -110,6 +110,16 @@ export function drawAstrolabe(canvas: HTMLCanvasElement, a: NonNullable<Universe
   lines(p.almucantars, `rgba(${BRASS},0.32)`, 1);
   lines(p.twilight, `rgba(${BRASS},0.6)`, 1.5, [8, 7]);
   lines(p.horizon, `rgba(${BRASS},0.95)`, 2.5);
+  // The zenith, where the almucantars close and the azimuths meet: a small cross.
+  const [zx, zy] = px(p.zenith);
+  g.strokeStyle = `rgba(${BRASS},0.95)`;
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(zx - 7, zy);
+  g.lineTo(zx + 7, zy);
+  g.moveTo(zx, zy - 7);
+  g.lineTo(zx, zy + 7);
+  g.stroke();
   // East and west where the horizon crosses the equator.
   g.fillStyle = `rgba(${BRASS},1)`;
   g.font = `bold ${FONT}`;
