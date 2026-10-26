@@ -6,7 +6,7 @@ import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFA
 import { starlight } from './daylight';
 import { createWalkSky, MARS_SUN_TINT, type SkyKind } from './sky';
 import { createHeights, TERRAIN, zoomFor, type TileLoader } from './terrain';
-import { createWalker, look, pressureKpa, solarTimeHours, stepWalker, sunElevationDeg, walkerPose, type WalkInput, type WalkerState } from './walker';
+import { createWalker, look, pressureKpa, solarTimeHours, stepWalker, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkerState } from './walker';
 
 /**
  * On foot (its own chunk, loaded the first time a walk starts), on the Earth, the Moon, Mars, Mercury
@@ -53,8 +53,8 @@ export interface Walk {
   readonly active: boolean;
   /** Whether the Sun (and the stars) can be seen from this world's ground (not through Venus's clouds). */
   readonly skySeen: boolean;
-  /** Starts a walk at a place (refused where forbidden). */
-  start(lat: number, lon: number, heading?: number): 'started' | 'forbidden';
+  /** Starts a walk at a place, facing a heading and looking up or down (radians), refused where forbidden. */
+  start(lat: number, lon: number, heading?: number, pitch?: number): 'started' | 'forbidden';
   stop(): void;
   /** Where the walker stands (degrees) once landed, else null. */
   where(): { lat: number; lon: number } | null;
@@ -134,9 +134,10 @@ export function createWalk(setup: WalkSetup): Walk {
       return walker !== null;
     },
     skySeen: skyKind !== 'venus',
-    start(lat, lon, heading = 0) {
+    start(lat, lon, heading = 0, pitch = 0) {
       if (setup.forbidden(lat, lon)) return 'forbidden';
       walker = createWalker(lat, lon, 0, heading);
+      walker.pitch = Math.max(-WALK.maxPitch, Math.min(WALK.maxPitch, pitch));
       landed = false;
       ground.reset(walker.lat, walker.lon);
       return 'started';

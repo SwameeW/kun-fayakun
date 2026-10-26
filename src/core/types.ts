@@ -495,6 +495,12 @@ export interface UniverseView {
    */
   walkHere: { world: WalkableWorld; lat: number; lon: number } | null;
   /**
+   * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
+   * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
+   * and during a trip.
+   */
+  place: { body: BodyId; lat: number; lon: number; altitudeKm: number } | null;
+  /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
    */
@@ -1016,7 +1022,9 @@ export type EarthCommand =
   /** Names on the ground for a set of the field notes' places (src/explore/field-notes), or none. */
   | { kind: 'markers'; set: 'atlas' | 'prophets' | null }
   /** On foot: a walk at a place (degrees) on a world (the Earth when not said), or at the point beneath the camera (UniverseView.walkHere); and back to the view from above. */
-  | { kind: 'walk'; world?: WalkableWorld; lat?: number; lon?: number }
+  | { kind: 'walk'; world?: WalkableWorld; lat?: number; lon?: number; headingDeg?: number; pitchDeg?: number }
+  /** A saved view (ledger GR-4): over a place on a body (degrees) at a height (km): a glide there on the body in view, a trip there first from elsewhere. */
+  | { kind: 'view'; body: BodyId; lat: number; lon: number; altitudeKm: number }
   | { kind: 'walkEnd' }
   /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
   | { kind: 'walkPad'; forward: number; jump: boolean };

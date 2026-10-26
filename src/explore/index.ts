@@ -104,12 +104,15 @@ const WALK_FOV = 70;
 const WALK_LENS = { near: 1e-4, far: 2000 } as const;
 /** On foot the imagery is aimed at the walker's feet as if a pixel there spanned a metre, which asks for its finest level (km). */
 const WALK_FOOTPRINT_KM = 0.001;
+/** The dip into or out of a walk: seconds to dark, and back to light. */
+const WALK_DIP = { downS: 0.25, upS: 0.4 } as const;
 /** The worlds there is ground to walk on. */
 type WalkWorld = WalkableWorld;
 const WALKABLE: readonly BodyId[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
 /** Each walkable world's entry in JPL's physical file (its radii and GM). */
 const WALK_KEYS: Record<WalkWorld, RotatingBody> = { earth: 'Earth', moon: 'Moon', mars: 'Mars', mercury: 'Mercury', venus: 'Venus' };
 const walkable = (id: BodyId): id is WalkWorld => WALKABLE.includes(id);
+const WALK_IDS: readonly WalkWorld[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
 /** The worlds drawn with a solid surface the laboratory's craters mark, and no marks at all. */
 const CRATERED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
 const NO_MARKS: readonly SurfaceMark[] = [];
@@ -300,6 +303,10 @@ export default function create(): UniverseModule {
    */
   let placeLock = false;
   let pendingPlace: { lat: number; lon: number; viewKm: number } | null = null;
+  /** A saved view to glide to once the trip to its body has arrived (ledger GR-4). */
+  let pendingView: { body: BodyId; lat: number; lon: number; altitudeKm: number } | null = null;
+  /** The place beneath the camera on the body in view (UniverseView.place). */
+  let placeBelow: { body: BodyId; lat: number; lon: number; altitudeKm: number } | null = null;
   const earthMeridianBefore = km();
   const earthPole = km();
   let earthMeridianKnown = false;
@@ -361,14 +368,27 @@ export default function create(): UniverseModule {
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
   /** On foot (./walk, its own chunk): each world's walk made the first time it is asked for; `walk` the one in use, on `walkWorld`. */
-  const walks: Partial<Record<WalkWorld, Walk>> = {};
+  const walks: Partial<Record<WalkWorld, Walk | undefined>> = {};
   let walk: Walk | null = null;
   let walkWorld: WalkWorld = 'earth';
   let walkLoading = false;
-  let walkAsked: { on: WalkWorld; lat: number; lon: number } | null = null;
+  let walkAsked: { on: WalkWorld; lat: number; lon: number; headingDeg: number; pitchDeg: number } | null = null;
+  /**
+   * Whether the walker's view is shown (it is once the walk has landed, any glide down has ended and
+   * the picture has dipped), and the dip into or out of it under way: the picture dims, the camera
+   * moves while it is dark (the exposure jumping to the new light), and it comes back, as a
+   * reduced-motion cut does.
+   */
+  let walkShown = false;
+  let walkDip: { into: boolean; t: number; switched: boolean } | null = null;
+  /** The orbit a walk's descent left (its body, the direction from it, render frame, and the height), to climb back to. */
+  let walkReturn: { body: BodyId; dir: Km; altitudeKm: number } | null = null;
   let walkRefused = false;
   /** This frame's walker pose, once landed (the camera is there instead of where the navigator has it). */
   let walking = false;
+  /** This frame's veil from a walk's dip (1 none), and whether the camera switched under it. */
+  let walkVeil = 1;
+  let walkCut = false;
   const walkInput: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
   /** The on-screen pad's (touch) Forward or Back and Jump, and the keys and pad together as the walker gets them. */
   const walkPad = { forward: 0, jump: false };
@@ -608,6 +628,7 @@ export default function create(): UniverseModule {
     walk: null,
     walkRefused: false,
     walkHere: null,
+    place: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -659,9 +680,13 @@ export default function create(): UniverseModule {
     }
     v.time.hijri = lab?.active ? null : hijri;
     v.islamic = lab?.active ? null : (islamic?.view() ?? null);
-    v.walk = walk?.view() ?? null;
+    const walkView = walk?.view() ?? null;
+    // Landed but not yet shown (the glide down, the dip): still landing, as far as anyone looking can tell.
+    if (walkView && !walkShown) walkView.state = 'landing';
+    v.walk = walkView;
     v.walkRefused = walkRefused;
     v.walkHere = walkHere;
+    v.place = placeBelow;
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -739,7 +764,7 @@ export default function create(): UniverseModule {
     // The detail's share of the sky: its brightest stars (the catalogue is sorted by magnitude).
     if (stars) stars.object.count = Math.min(stars.count, detail.starCount);
     // On foot, the ground's illustrative detail.
-    for (const w of Object.values(walks)) w.setDetail(detail.groundDetail === 'full');
+    for (const id of WALK_IDS) walks[id]?.setDetail(detail.groundDetail === 'full');
     if (entered && ctx) {
       ctx.graphics.setBloom(detail.bloom);
       ctx.graphics.setDprCap(detail.dprCap);
@@ -895,14 +920,14 @@ export default function create(): UniverseModule {
   };
 
   /** A place on the Earth (degrees) as a unit direction from its centre, render frame. */
-  const placeDirection = (sys: SolarSystem, latDeg: number, lonDeg: number, out: Km): Km => {
+  const placeDirection = (sys: SolarSystem, latDeg: number, lonDeg: number, out: Km, id: BodyId = 'earth'): Km => {
     const lat = MathUtils.degToRad(latDeg);
     const lon = MathUtils.degToRad(lonDeg);
-    // The Earth's frame: x the prime meridian, y the north pole, east longitude toward -z.
+    // The body's frame: x the prime meridian, y the north pole, east longitude toward -z.
     const bx = Math.cos(lat) * Math.cos(lon);
     const by = Math.sin(lat);
     const bz = -Math.cos(lat) * Math.sin(lon);
-    const m = sys.bodies.earth.basis;
+    const m = sys.bodies[id].basis;
     out.x = bx * (m[0] ?? 1) + by * (m[3] ?? 0) + bz * (m[6] ?? 0);
     out.y = bx * (m[1] ?? 0) + by * (m[4] ?? 1) + bz * (m[7] ?? 0);
     out.z = bx * (m[2] ?? 0) + by * (m[5] ?? 0) + bz * (m[8] ?? 1);
@@ -987,19 +1012,26 @@ export default function create(): UniverseModule {
    * made the first time it is asked for (the walk's own chunk, and for the Moon and Mars their heights'
    * list, public/assets/walk/heights.json); a walk under way on another world ends first.
    */
-  const startWalk = (on: WalkWorld, lat: number, lon: number): void => {
+  const startWalk = (on: WalkWorld, lat: number, lon: number, headingDeg = 0, pitchDeg = 0): void => {
     const sys = system;
     const c = ctx;
     if (!sys || !c || lab?.active) return;
     walkRefused = on === 'earth' && nearMakkah(sys, lat, lon);
     if (walkRefused) return;
-    if (walk?.active && walkWorld !== on) endWalk();
-    walkAsked = { on, lat, lon };
+    if (walk?.active && walkWorld !== on) endWalk(true);
+    walkAsked = { on, lat, lon, headingDeg, pitchDeg };
+    // The descent: with the world in view, the camera glides down over the place to the lowest orbit
+    // while the ground loads (at once with reduced motion); the walk is dipped into once both are done.
+    if (world && nav.focus === on && !walkShown) {
+      const p = placed[on];
+      if (!walkReturn && p.distance > 0) walkReturn = { body: on, dir: km(-p.rel.x / p.distance, -p.rel.y / p.distance, -p.rel.z / p.distance), altitudeKm: p.distance - sys.specs[on].radiusKm };
+      nav.glideTo(world, placeDirection(sys, lat, lon, km(), on), sys.specs[on].minAltitudeKm, DEFAULT_FOV);
+    }
     const ready = walks[on];
     if (ready) {
       walk = ready;
       walkWorld = on;
-      ready.start(lat, lon);
+      ready.start(lat, lon, MathUtils.degToRad(headingDeg), MathUtils.degToRad(pitchDeg));
       walkAsked = null;
       return;
     }
@@ -1043,7 +1075,7 @@ export default function create(): UniverseModule {
         if (walkAsked?.on === on) {
           walk = made;
           walkWorld = on;
-          made.start(walkAsked.lat, walkAsked.lon);
+          made.start(walkAsked.lat, walkAsked.lon, MathUtils.degToRad(walkAsked.headingDeg), MathUtils.degToRad(walkAsked.pitchDeg));
         }
         walkAsked = null;
       })
@@ -1051,14 +1083,38 @@ export default function create(): UniverseModule {
         walkLoading = false;
       });
   };
-  const endWalk = (): void => {
-    walk?.stop();
+  /** Back to orbit: dipped out of a walk that is shown, at once otherwise (or when `now`). */
+  const endWalk = (now = false): void => {
     walkAsked = null;
     for (const k of ['forward', 'right', 'turn', 'tip'] as const) walkInput[k] = 0;
     walkInput.run = false;
     walkInput.jump = false;
     walkPad.forward = 0;
     walkPad.jump = false;
+    if (walkShown && !now) {
+      if (!walkDip || walkDip.into) walkDip = { into: false, t: 0, switched: false };
+      return;
+    }
+    walk?.stop();
+    walkShown = false;
+    walkDip = null;
+    walkReturn = null;
+  };
+
+  /**
+   * Goes to a saved view (ledger GR-4): over a place on a body (degrees) at a height (km), gliding
+   * there on the body in view, after a trip to it from elsewhere. (On the Earth no height a view can
+   * have frames Makkah narrower than MAKKAH_FRAME: the lowest orbit, 150 km, already spans more.)
+   */
+  const goToView = (body: BodyId, lat: number, lon: number, altitudeKm: number): void => {
+    if (!world || !system || !entered) return;
+    if (walk?.active) endWalk(true);
+    if (nav.focus !== body || nav.busy) {
+      if (nav.focus !== body) nav.flyTo(world, body);
+      pendingView = { body, lat, lon, altitudeKm };
+      return;
+    }
+    nav.glideTo(world, placeDirection(system, lat, lon, km(), body), altitudeKm, DEFAULT_FOV);
   };
 
   /** Flies to a place on the Earth (degrees) framing `viewKm` of ground: to the Earth first if elsewhere. */
@@ -1241,6 +1297,11 @@ export default function create(): UniverseModule {
       pendingPlace = null;
       goToPlace(p.lat, p.lon, p.viewKm);
     }
+    if (pendingView && nav.focus === pendingView.body && !nav.busy) {
+      const p = pendingView;
+      pendingView = null;
+      goToView(p.body, p.lat, p.lon, p.altitudeKm);
+    }
     if (placeLock && (nav.focus !== 'earth' || (!nav.lensActive && !nav.gliding && placed.earth.distance - sys.specs.earth.radiusKm > PLACE_LOCK_KM))) placeLock = false;
     nav.placeView = placeLock;
 
@@ -1248,14 +1309,38 @@ export default function create(): UniverseModule {
     nav.update(world, dt, navOut);
     // On foot, the walker's eye replaces the navigator's camera (which keeps its own place for the way
     // back); a trip elsewhere (a world chosen, a place flown to) ends the walk.
-    if (walk?.active && nav.travelling) endWalk();
+    if (walk?.active && nav.travelling && !walkDip) endWalk();
     walking = false;
+    // The dip into or out of a walk: dark, the switch while it is dark, light again.
+    walkVeil = 1;
+    walkCut = false;
+    const dip = walkDip;
+    if (dip) {
+      dip.t += dt;
+      if (!dip.switched && dip.t >= WALK_DIP.downS) {
+        dip.switched = true;
+        walkCut = true;
+        if (dip.into) walkShown = true;
+        else {
+          walk?.stop();
+          walkShown = false;
+          // Back up to the orbit the descent left (unless a trip has taken the camera elsewhere).
+          const back = walkReturn;
+          walkReturn = null;
+          if (back && nav.focus === back.body && !nav.travelling) nav.glideTo(world, back.dir, back.altitudeKm, DEFAULT_FOV);
+        }
+      }
+      walkVeil = dip.switched ? smoothstep(0, 1, (dip.t - WALK_DIP.downS) / WALK_DIP.upS) : 1 - smoothstep(0, 1, dip.t / WALK_DIP.downS);
+      if (dip.t >= WALK_DIP.downS + WALK_DIP.upS) walkDip = null;
+    }
     if (walk?.active) {
       Object.assign(walkStep, walkInput);
       walkStep.forward = Math.max(-1, Math.min(1, walkInput.forward + walkPad.forward));
       walkStep.jump = walkInput.jump || walkPad.jump;
       const pose = walk.step(dt, walkStep);
-      if (pose) {
+      // Landed: once any glide down has ended, the picture dips into the walk.
+      if (pose && !walkShown && !walkDip && !nav.gliding) walkDip = { into: true, t: 0, switched: false };
+      if (pose && walkShown) {
         walking = true;
         const m = sys.bodies[walkWorld].basis;
         const e = sys.bodies[walkWorld].position;
@@ -1327,9 +1412,9 @@ export default function create(): UniverseModule {
     // A reduced-motion cut dims through the veil, and the exposure jumps while it is dim.
     const exposure = exposureTarget();
     c.exposure.setTarget(exposure);
-    c.exposure.setVeil(navOut.dim);
+    c.exposure.setVeil(navOut.dim * walkVeil);
     adaptation.setTarget(exposure);
-    if (navOut.cut) {
+    if (navOut.cut || walkCut) {
       c.exposure.jump();
       adaptation.jump();
     }
@@ -1563,6 +1648,15 @@ export default function create(): UniverseModule {
     {
       const id = nav.focus;
       const p = placed[id];
+      // The place beneath the camera on any body in view, at its true size (for saving the view).
+      if (!lab?.active && !nav.travelling && p.k > 0.999 && grow[id] === 1) {
+        const m = sys.bodies[id].basis;
+        const bx = -p.drawn.x * (m[0] ?? 1) - p.drawn.y * (m[1] ?? 0) - p.drawn.z * (m[2] ?? 0);
+        const by = -p.drawn.x * (m[3] ?? 0) - p.drawn.y * (m[4] ?? 1) - p.drawn.z * (m[5] ?? 0);
+        const bz = -p.drawn.x * (m[6] ?? 0) - p.drawn.y * (m[7] ?? 0) - p.drawn.z * (m[8] ?? 1);
+        const r = Math.hypot(bx, by, bz);
+        placeBelow = r > 0 ? { body: id, lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)), altitudeKm: r - sys.specs[id].radiusKm } : null;
+      } else placeBelow = null;
       if (walkable(id) && !lab?.active && p.k > 0.999 && grow[id] === 1) {
         const m = sys.bodies[id].basis;
         const dx = -p.drawn.x;
@@ -2448,9 +2542,12 @@ export default function create(): UniverseModule {
       switch (command.kind) {
         case 'walk': {
           const at = command.lat !== undefined && command.lon !== undefined ? { world: command.world ?? 'earth', lat: command.lat, lon: command.lon } : (walkHere ?? (belowEarth ? { world: 'earth' as const, ...belowEarth } : null));
-          if (at) startWalk(at.world, at.lat, at.lon);
+          if (at) startWalk(at.world, at.lat, at.lon, command.headingDeg ?? 0, command.pitchDeg ?? 0);
           return;
         }
+        case 'view':
+          goToView(command.body, command.lat, command.lon, command.altitudeKm);
+          return;
         case 'walkEnd':
           endWalk();
           return;
@@ -2597,9 +2694,10 @@ export default function create(): UniverseModule {
     },
 
     exit() {
-      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back).
+      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back) and a walk.
       wantLab = false;
       applyLab();
+      endWalk(true);
       root.removeFromParent();
       input?.detach();
       // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
@@ -2635,6 +2733,11 @@ export default function create(): UniverseModule {
       bodies = null;
       stars = null;
       lab?.dispose();
+      for (const id of WALK_IDS) {
+        walks[id]?.dispose();
+        walks[id] = undefined;
+      }
+      walk = null;
       islamic?.dispose();
       islamic = null;
       lab = null;

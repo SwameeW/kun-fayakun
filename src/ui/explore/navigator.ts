@@ -9,6 +9,7 @@ import type { LabPanel } from './lab-panel';
 import { createLivingEarth } from './living-earth';
 import { createOrrery } from './orrery';
 import { createQualityMenu } from './quality-menu';
+import { createSavedViews } from './saved-views';
 import { createSkyPanel } from './sky-panel';
 
 /**
@@ -112,6 +113,11 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   });
   const walkEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-walk-entry', hidden: true }, walkGo, walkHint);
 
+  // Saved views (place, height, date; on foot the walk): going back to one folds the sheet on a phone.
+  const saved = createSavedViews(app, f, () => {
+    if (layout === 'sheet') setExpanded(false);
+  });
+
   // On a phone a flight from the Living Earth folds the sheet, as choosing a world does.
   const living = createLivingEarth(app, f, () => {
     if (layout === 'sheet') setExpanded(false);
@@ -147,7 +153,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, walkEntry, sky.element, labEntry, living.element, islamic, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, walkEntry, sky.element, saved.element, labEntry, living.element, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -165,7 +171,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [time, map, about.element, sky.element, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
+    for (const el of [time, map, about.element, sky.element, saved.element, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
     if (!expanded) walkEntry.hidden = true;
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
@@ -244,6 +250,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         // In an experiment the real world's facts and live observations step aside (the lab panel has its own).
         const inLab = view.lab !== null;
         about.element.hidden = inLab;
+        saved.element.hidden = inLab;
         living.element.hidden = inLab;
         islamic.hidden = inLab;
         labEntry.hidden = inLab;
@@ -258,6 +265,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         for (const [id, r] of rows) r.row.hidden = inLab && !view.lab?.bodies.some((b) => b.id === id);
         about.update(view, slow);
         sky.update(view, slow);
+        saved.update(view);
         living.update(view, slow);
         if (islamic.open) islamicPanel?.update(view, slow);
       }

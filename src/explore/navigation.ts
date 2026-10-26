@@ -233,7 +233,7 @@ export class Navigator {
    */
   private readonly nadir = springOf(0);
   placeView = false;
-  /** A glide to a place on the Earth under way (./earth-tiles' places, the field notes' tour). */
+  /** A glide to a place under way (on the Earth: ./earth-tiles' places, the field notes' tour; anywhere: the descent before a walk). */
   private glide: { from: Km; to: Km; lnFrom: number; lnTo: number; lift: number; lensFrom: number; lensTo: number; t: number; seconds: number } | null = null;
   private view: NavView = { tanHalfFov: Math.tan((25 * Math.PI) / 180), aspect: 16 / 10, top: 0, bottom: 0 };
   /** The last pose written, so a new trip or flight starts exactly where the camera is. */
@@ -284,14 +284,15 @@ export class Navigator {
   }
 
   /**
-   * Glides the camera, orbiting the Earth, until it looks straight down on `dir` (a unit direction
-   * from the Earth's centre, render frame) from `altitudeKm`, through a lens of `lensDeg`: along the
-   * great circle, lifting on long glides, eased at both ends. With reduced motion it is there at once.
+   * Glides the camera, orbiting the body in view, until it looks straight down on `dir` (a unit
+   * direction from the body's centre, render frame) from `altitudeKm`, through a lens of `lensDeg`:
+   * along the great circle, lifting on long glides, eased at both ends. With reduced motion it is
+   * there at once.
    */
   glideTo(world: NavWorld, dir: Km, altitudeKm: number, lensDeg: number): void {
-    if (this.focus !== 'earth' || this.trip) return;
-    if (this.modeValue === 'flight') this.orbitFromHere(world.body('earth'));
-    const body = world.body('earth');
+    if (this.trip) return;
+    const body = world.body(this.focus);
+    if (this.modeValue === 'flight') this.orbitFromHere(body);
     const to = normalize(copy(km(), dir));
     const ln = Math.log(Math.max(altitudeKm, body.minAltitudeKm));
     const lens = clamp(lensDeg, this.lensMinDeg, this.baseFov);
