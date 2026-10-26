@@ -1818,6 +1818,37 @@
   display: contents;
 }
 
+/* The camera's settings: a button that drops them down beneath it. */
+.kf-universe-photo-camera {
+  position: relative;
+}
+
+.kf-universe-photo-camera > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.kf-universe-photo-camera > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kf-universe-photo-camera-body {
+  position: absolute;
+  inset-block-start: calc(100% + var(--kf-space-2));
+  inset-inline-start: 0;
+  display: grid;
+  gap: var(--kf-space-2);
+  min-inline-size: 15rem;
+  max-inline-size: calc(100vw - 2 * var(--kf-gutter));
+  padding: var(--kf-space-2);
+  border-radius: var(--kf-radius);
+  background: rgb(10 12 20 / 0.82);
+}
+
+.kf-photo .kf-universe-photo-bar .kf-universe-photo-camera[open] .kf-btn {
+  opacity: 1;
+}
+
 .kf-photo .kf-universe-photo-bar .kf-btn {
   display: inline-flex;
   opacity: 0.4;

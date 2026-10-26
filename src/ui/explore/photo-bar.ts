@@ -223,14 +223,23 @@ export function createPhotoBar(app: App, announce: (text: string) => void, onExi
   });
   showTour();
 
+  // The camera's settings fold away under one button, leaving the view and what to do with it.
+  const camera = h(
+    'details',
+    { class: 'kf-universe-photo-camera', 'data-testid': 'universe-photo-camera' },
+    h('summary', { class: 'kf-btn' }, i18n.t('ui.universe.photoCamera')),
+    h('div', { class: 'kf-universe-photo-camera-body' }, lens, exposure, track),
+  );
+
   return {
-    element: h('div', { class: 'kf-universe-photo-controls' }, lens, exposure, track, tour, record, save, exit),
+    element: h('div', { class: 'kf-universe-photo-controls' }, camera, tour, record, save, exit),
     exit,
     opened() {
       showTour();
     },
     reset() {
       stopTour(null);
+      camera.open = false;
       lens.value = '';
       if (app.universe()?.lensFov !== null) app.earthCommand({ kind: 'lens', fovDeg: null });
       exposure.value = '0';
