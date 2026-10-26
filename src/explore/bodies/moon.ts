@@ -104,6 +104,8 @@ export interface MoonFrame {
 
 export interface ExploreMoon {
   readonly object: Group;
+  /** The ground's colour (linear) at a direction in the world's own frame, as the globe shows it (for the ground a walker stands on). */
+  groundColour(direction: Vec3Node): Vec3Node;
   /** Set the object's position, scale and orientation first, and its world matrix current. */
   update(frame: MoonFrame, cameraWorld: Vector3): void;
   prepare(detail: ExploreDetail): Object3D[];
@@ -315,6 +317,15 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
 
   return {
     object,
+    groundColour(direction) {
+      const c = mapCoords(direction, direction.y, options.uAtLon0);
+      const colour = sampleSlot(colourSlot, c).rgb;
+      if (options.body !== 'mars') return colour;
+      // Mars's hue as the globe keeps it (halfway to the map's mean).
+      const brightness = luma(colour);
+      const mean = colourSlot.mean.rgb;
+      return mix(mean.div(max(luma(mean), 1e-3)), colour.div(max(brightness, 1e-3)), MARS_HUE_KEEP).mul(brightness);
+    },
     update(frame, cameraWorld) {
       uLight.value = frame.light;
       uSunAngularRadius.value = Math.asin(Math.min(1, Math.sin(sunAngularRadius) * Math.sqrt(frame.light)));

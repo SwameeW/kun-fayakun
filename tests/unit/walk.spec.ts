@@ -1,7 +1,8 @@
 /**
- * Walking on the Earth (src/explore/walk): the terrain tiles' encoding and Web Mercator arithmetic
- * (against the terrarium definition and the standard tile scheme), heights read seamlessly across
- * tiles and from coarser tiles until finer arrive, and the walker: its frame, a jump's height under
+ * Walking on the Earth, the Moon and Mars (src/explore/walk): the terrain tiles' encoding and Web
+ * Mercator arithmetic (against the terrarium definition and the standard tile scheme, on worlds of any
+ * size), heights read seamlessly across tiles and from coarser tiles until finer arrive (and no finer
+ * than a world's grids hold), and the walker: its frame, a jump's height under
  * a world's own gravity (v^2 / 2g), walking speed, a place it may not enter, the suit's figures, and
  * the day's light on foot (the stars' fade, the sky's adaptation, twilight).
  */
@@ -9,6 +10,7 @@ import { expect, test } from '@playwright/test';
 import { createHeights, decodeTerrarium, mercatorPixel, TERRAIN, zoomFor, type TileLoader } from '../../src/explore/walk/terrain';
 import { createWalker, localFrame, look, pressureKpa, solarTimeHours, stepWalker, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkWorld } from '../../src/explore/walk/walker';
 import { ambient, DAYLIGHT, haze, preethamSunIntensity, skyGain, starlight, twilight } from '../../src/explore/walk/daylight';
+import { equirectMaxZoom } from '../../src/explore/walk/equirect';
 
 const still: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
 const flat = (gravity: number, radiusKm = 6371): WalkWorld => ({ radiusKm, gravity, ground: () => 100, blocked: () => false });
@@ -28,6 +30,35 @@ test('terrarium decoding and the Web Mercator tile scheme', () => {
   expect(zoomFor(5, 0)).toBe(15);
   expect(zoomFor(10, 0)).toBe(14);
   expect(zoomFor(1e7, 0)).toBe(0);
+  // The same tiling over the Moon (1,737.4 km) has pixels 0.272 of the Earth's: 1.3 km asks for zoom 5
+  // there (42.6 km / 2^5), where on the Earth it asks for zoom 7.
+  expect(zoomFor(1300, 0, 1737.4)).toBe(5);
+  expect(zoomFor(1300, 0)).toBe(7);
+});
+
+test('the Moon’s and Mars’s heights asked no finer than their grids hold, and walks kept within the tiles’ latitudes', async () => {
+  // Their grids at 8 pixels a degree: zoom 6's pixels (360 / 2^14 degrees) are a quarter of theirs or finer.
+  const grids = { datumKm: 1737.4, base: { path: 'b', ppd: 2 }, detail: { path: 'd', ppd: 8, tileDeg: 90, cols: 4, rows: 2 } };
+  expect(equirectMaxZoom(grids)).toBe(6);
+  expect(360 / (TERRAIN.tilePx * 2 ** 6)).toBeLessThanOrEqual(1 / 8 / 4);
+  // Heights capped at zoom 6: asked for zoom 15, only zooms 5 and 6 are requested, and zoom 6 answers.
+  const asked: number[] = [];
+  const h = createHeights((z) => {
+    asked.push(z);
+    return Promise.resolve(new Float32Array(TERRAIN.tilePx * TERRAIN.tilePx).fill(-1200));
+  }, 6);
+  h.at(-20, 30, 15);
+  await settle();
+  expect(Math.max(...asked)).toBe(6);
+  expect(h.at(-20, 30, 15)).toEqual({ metres: -1200, zoom: 6 });
+  // A walk begun or walking toward a pole stops at 85 degrees (Web Mercator's tiles end at 85.05).
+  const s = createWalker(89, 10, 0);
+  expect(s.lat).toBe(WALK.maxLatDeg);
+  const flatMoon: WalkWorld = { radiusKm: 1737.4, gravity: 1.62, ground: () => -1200, blocked: () => false };
+  for (let k = 0; k < 100; k += 1) stepWalker(s, { ...still, forward: 1, run: true }, 0.2, flatMoon);
+  expect(s.lat).toBeLessThanOrEqual(WALK.maxLatDeg);
+  // Below the datum on a world without a sea (the walker stands on the ground the heights give).
+  expect(s.feetM).toBe(-1200);
 });
 
 test('heights: exact on a plane across tile edges, and from a coarser tile until the finer arrives', async () => {

@@ -484,10 +484,16 @@ export interface UniverseView {
   lab: UniverseLab | null;
   /** The qibla and the new moon (src/explore/islamic) once their section has been opened; null in the laboratory. */
   islamic: UniverseIslamic | null;
-  /** On foot on the Earth (src/explore/walk) while a walk is on; else null. Also null when a walk was refused: see walkRefused. */
+  /** On foot on the Earth, the Moon or Mars (src/explore/walk) while a walk is on; else null. Also null when a walk was refused: see walkRefused. */
   walk: UniverseWalk | null;
   /** The last walk asked for was refused (a forbidden place: Makkah, by its framing rule), until another starts. */
   walkRefused: boolean;
+  /**
+   * Where a walk without a place would begin: the point beneath the camera (degrees) on the world in
+   * view when there is ground to walk on there and it is drawn at its true size; else null (and in
+   * the laboratory).
+   */
+  walkHere: { world: WalkableWorld; lat: number; lon: number } | null;
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -751,14 +757,17 @@ export interface UniverseIslamic {
   marks: { path: number; lines: number; map: number };
 }
 
-/** On foot on the Earth (src/explore/walk) as the view reports it. */
+/** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
+export type WalkableWorld = 'earth' | 'moon' | 'mars';
+
+/** On foot (src/explore/walk) as the view reports it. */
 export interface UniverseWalk {
   /** 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking'. */
   state: 'landing' | 'walking';
-  world: string;
+  world: WalkableWorld;
   lat: number;
   lon: number;
-  /** The ground and the feet, metres above sea level; heading and look (degrees: heading clockwise from north, look up positive). */
+  /** The ground and the feet, metres above the world's datum (the Earth's sea level, the Moon's 1,737.4 km sphere, Mars's areoid); heading and look (degrees: heading clockwise from north, look up positive). */
   groundM: number;
   feetM: number;
   headingDeg: number;
@@ -767,10 +776,15 @@ export interface UniverseWalk {
   /** The last step was refused (a place the walker may not enter: Makkah, by its framing rule). */
   blocked: boolean;
   walkedM: number;
-  /** Surface gravity (m/s^2), the air's pressure at the feet (kPa) and the world's mean surface temperature (degrees C), null where not known. */
+  /**
+   * Surface gravity (m/s^2), the air's pressure at the feet (kPa: null where there is no air), the
+   * world's mean surface temperature (degrees C), and the ground's range through the day at the
+   * equator (degrees C, the Moon's), null where not known or not given.
+   */
   gravity: number;
   pressureKpa: number | null;
   meanTempC: number | null;
+  dayRangeC: { min: number; max: number } | null;
   /** The Sun's elevation (degrees) and the local apparent solar time (hours). */
   sunElevationDeg: number;
   solarTimeH: number;
@@ -1000,8 +1014,8 @@ export type EarthCommand =
   | { kind: 'select'; id: string | null }
   /** Names on the ground for a set of the field notes' places (src/explore/field-notes), or none. */
   | { kind: 'markers'; set: 'atlas' | 'prophets' | null }
-  /** On foot: a walk at a place (degrees), or at the point beneath the camera; and back to the view from above. */
-  | { kind: 'walk'; lat?: number; lon?: number }
+  /** On foot: a walk at a place (degrees) on a world (the Earth when not said), or at the point beneath the camera (UniverseView.walkHere); and back to the view from above. */
+  | { kind: 'walk'; world?: WalkableWorld; lat?: number; lon?: number }
   | { kind: 'walkEnd' }
   /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
   | { kind: 'walkPad'; forward: number; jump: boolean };

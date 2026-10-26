@@ -16,8 +16,8 @@ import { skyGain, starlight, twilight } from './daylight';
 
 export interface WalkSky {
   readonly mesh: Mesh;
-  /** The local vertical and the Sun's direction (render frame, unit), and the sphere's radius (km). */
-  update(up: { x: number; y: number; z: number }, sun: { x: number; y: number; z: number }, radiusKm: number): void;
+  /** The local vertical and the Sun's direction (render frame, unit), the sphere's radius (km), and the sunlight's strength (1 at 1 au: Mars's sky is lit by its own, 0.43 of the Earth's). */
+  update(up: { x: number; y: number; z: number }, sun: { x: number; y: number; z: number }, radiusKm: number, light?: number): void;
   /** The Sun's height (degrees) the sky was last drawn for. */
   readonly sunDeg: number;
   dispose(): void;
@@ -30,7 +30,96 @@ export interface WalkSky {
  */
 const SKY_SCALE = 0.18;
 
-export function createWalkSky(): WalkSky {
+/** Whose sky: the Earth's (Preetham), none (airless: the black sky and the explorer's stars), or Mars's dusty one (illustrative). */
+export type SkyKind = 'earth' | 'airless' | 'mars';
+
+/**
+ * Mars's sky (illustrative: no radiative transfer of its dust): butterscotch by day, warmer toward the
+ * horizon, with a blue glow about the Sun that strengthens as it sets (its dust scatters blue light
+ * forward, as the rovers' cameras show), dimming through twilight; lit by Mars's sunlight, its horizon
+ * a little brighter than the sunlit ground below it, as the rovers' pictures show it. The ground's
+ * haze fades into the horizon's colour (./ground MARS_AIR).
+ */
+export const MARS_SKY = { zenith: [0.5, 0.36, 0.24], horizon: [0.78, 0.58, 0.38], glow: [0.42, 0.58, 0.95], glowWidth: 0.35, scale: 0.22 } as const;
+/** Sunlight on Mars's ground, a little reddened by the dust it comes through (illustrative). */
+export const MARS_SUN_TINT = [1, 0.93, 0.85] as const;
+
+export function createWalkSky(kind: SkyKind = 'earth'): WalkSky {
+  if (kind === 'airless') return airlessSky();
+  if (kind === 'mars') return marsSky();
+  return earthSky();
+}
+
+/** No sky: the mesh is never shown; the Sun's height is still kept, for the readout and the stars. */
+function airlessSky(): WalkSky {
+  const mesh = new Mesh(new SphereGeometry(1, 8, 4), new MeshBasicNodeMaterial());
+  mesh.visible = false;
+  let sunDeg = 0;
+  return {
+    mesh,
+    get sunDeg() {
+      return sunDeg;
+    },
+    update(up, sun) {
+      const sin = (up.x * sun.x + up.y * sun.y + up.z * sun.z) / (Math.hypot(up.x, up.y, up.z) * Math.hypot(sun.x, sun.y, sun.z) || 1);
+      sunDeg = (Math.asin(Math.max(-1, Math.min(1, sin))) * 180) / Math.PI;
+      mesh.visible = false;
+    },
+    dispose() {
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    },
+  };
+}
+
+function marsSky(): WalkSky {
+  const uUp = uniform(new Vector3(0, 1, 0));
+  const uSun = uniform(new Vector3(0, 1, 0));
+  const uLight = uniform(1);
+  const uDay = uniform(1);
+  const uLow = uniform(0);
+  const uOpacity = uniform(1);
+  const material = new MeshBasicNodeMaterial({ side: BackSide, transparent: true, depthWrite: false, fog: false });
+  material.colorNode = Fn(() => {
+    const up = normalize(uUp);
+    const direction = normalize(positionWorld.sub(cameraPosition));
+    const height = max(dot(direction, up), 0);
+    const base = mix(vec3(...MARS_SKY.horizon), vec3(...MARS_SKY.zenith), pow(height, 0.5));
+    const toSun = acos(clamp(dot(direction, normalize(uSun)), -1, 1));
+    const glow = vec3(...MARS_SKY.glow).mul(exp(toSun.div(MARS_SKY.glowWidth).negate())).mul(uLow.mul(0.7).add(0.3));
+    return vec4(base.mul(uDay).add(glow.mul(max(uDay, uLow.mul(0.5)))).mul(uLight.mul(MARS_SKY.scale)), uOpacity);
+  })();
+  const mesh = new Mesh(new SphereGeometry(1, 48, 24), material);
+  mesh.name = 'explore-walk-sky';
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -1;
+  mesh.visible = false;
+  let sunDeg = 0;
+  return {
+    mesh,
+    get sunDeg() {
+      return sunDeg;
+    },
+    update(up, sun, radiusKm, light = 1) {
+      uUp.value.set(up.x, up.y, up.z);
+      uSun.value.set(sun.x, sun.y, sun.z);
+      uLight.value = light;
+      const sin = (up.x * sun.x + up.y * sun.y + up.z * sun.z) / (Math.hypot(up.x, up.y, up.z) * Math.hypot(sun.x, sun.y, sun.z) || 1);
+      sunDeg = (Math.asin(Math.max(-1, Math.min(1, sin))) * 180) / Math.PI;
+      // Full day from 6 degrees up; gone 12 degrees down; the low-Sun glow strongest at the horizon.
+      uDay.value = Math.min(1, Math.max(0, (sunDeg + 12) / 18));
+      uLow.value = Math.max(0, 1 - Math.abs(sunDeg) / 25);
+      uOpacity.value = 1 - starlight(sunDeg);
+      mesh.scale.setScalar(radiusKm);
+    },
+    dispose() {
+      mesh.geometry.dispose();
+      material.dispose();
+    },
+  };
+}
+
+function earthSky(): WalkSky {
   const uUp = uniform(new Vector3(0, 1, 0));
   const uSun = uniform(new Vector3(0, 1, 0));
   const uGain = uniform(1);

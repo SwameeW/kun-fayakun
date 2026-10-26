@@ -631,9 +631,11 @@ Terms:    Public domain (https://www.naturalearthdata.com/about/terms-of-use/):
           no permission is needed, and crediting the authors is unnecessary.
 Credit:   Made with Natural Earth
 
-Moon colour and relief (NASA Scientific Visualization Studio)
+Moon colour, relief and walking heights (NASA Scientific Visualization Studio)
           CGI Moon Kit, SVS 4720: lroc_color_poles_8k.tif (2019) and
-          ldem_16_uint.tif, from LRO LROC WAC and LOLA data
+          ldem_16_uint.tif, from LRO LROC WAC and LOLA data; the heights
+          averaged to 8 and 2 pixels a degree for walking
+          (public/assets/walk/moon, scripts/walk/heights.py)
 Terms:    Public domain unless otherwise noted (https://svs.gsfc.nasa.gov/help/).
           NASA's media usage guidelines apply
           (https://www.nasa.gov/nasa-brand-center/images-and-media/): texture
@@ -694,6 +696,16 @@ Changes:  GeoTIFF projection metadata used to register exact global grids;
           encoded. Source byte counts and SHA256 pins are in config.py.
 Credits:  NASA/JHUAPL/CIW/USGS, MESSENGER MDIS and MESSENGER DEM |
           NASA/USGS, Viking | NASA/GSFC/USGS, MOLA
+
+Mars walking heights (NASA Planetary Data System)
+          MGS MOLA Mission Experiment Gridded Data Record, MGS-M-MOLA-5-MEGDR-
+          L3-V1.0, meg016/megt90n000eb.img (16 pixels a degree), PDS
+          Geosciences Node
+Terms:    Public domain: NASA Planetary Data System archive data.
+Changes:  averaged to 8 and 2 pixels a degree, re-centred to start at 180
+          degrees west and stored as terrarium-encoded PNG to half a metre
+          (public/assets/walk/mars, scripts/walk/heights.py).
+Credit:   NASA/GSFC, MGS MOLA Science Team; PDS Geosciences Node
 
 Venus, Uranus and Neptune (original uniform cloud-colour display models)
           No third-party images or maps are reproduced. Venus is pale
