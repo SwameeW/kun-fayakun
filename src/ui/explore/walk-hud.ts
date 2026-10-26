@@ -58,13 +58,26 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
       held[which] = on;
       send();
     };
+    // Held while pressed: the pointer captured so a finger sliding off still lets go here. The press
+    // counts first: capture can be refused (a pointer the browser does not count as active), and then
+    // leaving the button lets go instead.
+    let captured = false;
     b.addEventListener('pointerdown', (e) => {
-      b.setPointerCapture(e.pointerId);
       press(true);
+      try {
+        b.setPointerCapture(e.pointerId);
+        captured = true;
+      } catch {
+        captured = false;
+      }
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) b.addEventListener(type, () => {
+        captured = false;
         press(false);
       });
+    b.addEventListener('pointerleave', () => {
+      if (!captured) press(false);
+    });
     b.addEventListener('contextmenu', (e) => {
       e.preventDefault();
     });

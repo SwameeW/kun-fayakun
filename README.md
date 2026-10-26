@@ -20,7 +20,7 @@ are in [docs/CONTRACTS.md](docs/CONTRACTS.md) and [src/core/types.ts](src/core/t
 | M3 | Chapters 7 to 10, JPL ephemerides, the letter analysis, end credits | Done, pending review |
 | Film and simulator brief | Screenplay and shot list ([film/](film/)), then film mode, simulators, sound and showcase features | Screenplay and shot list written; the rest is planned |
 | M4 | Recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded | Not started |
-| Explorer: Universe Sandbox and SpaceEngine brief | Phase 1, the orbital laboratory; Phases 2 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phase 1 done, pending review; Phase 2's impact model in the laboratory; Phase 4's walk on the Earth ([docs/WALKING.md](docs/WALKING.md)) done, pending review; the rest planned |
+| Explorer: Universe Sandbox and SpaceEngine brief | Phases 1 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phases 1 to 4 done (the laboratory, impacts, worlds that respond, walks on the five solid worlds and descents through Venus's and Jupiter's air); Phase 5 done but generated systems (left for the owner); Phase 6's stars partly (an HR diagram, star figures, binaries' dynamics); Phase 7's ships, burns and an autopilot; Phase 8's picture and video with credits, a lens, lessons and sound; all pending review |
 
 Not for public release until the reviews in [Review process](#review-process) are recorded.
 
@@ -50,15 +50,23 @@ and Venus, Uranus and Neptune use explicitly labelled uniform cloud-colour model
 See [the five-planet extension](docs/FIVE-PLANETS.md) for sources and display limits.
 
 The navigator's "Qibla and the new moon" shows the qibla from any place as a great circle on the
-globe, the moments the Sun stands over the Kaaba, the golden latitude beside the Kaaba's (at its
-actual size), new moons and the new crescent's map by Yallop's test, the date in the Umm al-Qura
-calendar, and places of the Islamic world's astronomers; see
-[the qibla and the new moon](docs/ISLAMIC-ASTRONOMY.md).
+globe, the moments the Sun stands over the Kaaba, the times of prayer by each published convention,
+the golden latitude beside the Kaaba's (at its actual size), new moons and the new crescent's map
+by Yallop's test or Odeh's, the date in the Umm al-Qura calendar, and places of the Islamic
+world's astronomers; see [the qibla and the new moon](docs/ISLAMIC-ASTRONOMY.md).
+
+On foot, any of the five solid worlds can be walked on its measured heights, and Venus's and
+Jupiter's air descended through with their probes' readings ([walking](docs/WALKING.md),
+[atmospheres](docs/ATMOSPHERES.md)). "Among the stars" goes out to the Sun's neighbours with their
+planets, and on to the Milky Way, the Local Group and the cosmic web
+([among the stars, and beyond](docs/NEIGHBOURHOOD.md)). Sound plays only where there is air to
+carry it; photo mode saves pictures and videos with their credits
+([the mechanics](docs/EXPLORER-MECHANICS.md)).
 
 The orbital laboratory (`#/universe/lab`, "Experiment with this system" in the navigator) copies
 the solar system at the explorer's date into an N-body integration you can change: masses,
-velocities, new bodies, collisions, with predictions, conservation checks, and save, reset and
-replay. It is kept apart from the real data. See [the laboratory](docs/LAB.md) for its model,
+velocities, new bodies, collisions, ships with rockets and planned burns, lessons, with
+predictions, conservation checks, and save, reset and replay. It is kept apart from the real data. See [the laboratory](docs/LAB.md) for its model,
 scenario format and limitations, and [the feature ledger](docs/FEATURE-LEDGER.md) for what the
 Universe Sandbox and SpaceEngine brief asks for and where each part stands.
 

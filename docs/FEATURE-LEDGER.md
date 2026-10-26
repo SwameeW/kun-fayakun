@@ -130,8 +130,8 @@ platform.
 | ID | Feature | Model | Depends on | Status |
 |---|---|---|---|---|
 | ST-1 | Star parameters (mass, radius, luminosity, temperature) | Cited relations, valid ranges stated | none | partial (2026-10-26): every placed star's temperature (Ballesteros 2012 from B-V) and light in V against the Sun's; a planet host's radius, mass and luminosity as the Exoplanet Archive gives them (`tests/explore/stars.spec.ts`); masses from relations (Eker et al. 2018) wait for a bolometric correction to cite |
-| ST-2 | Several light sources; a star that does not shine | Light from the model, not a fixed Sun | ST-1 | planned |
-| ST-3 | Binaries, double sunsets, circumbinary worlds | | ST-2 | planned |
+| ST-2 | Several light sources; a star that does not shine | Light from the model, not a fixed Sun | ST-1 | partial: in the laboratory's climates (CLIMATE.md) every star's light is summed, each at its luminosity (the main-sequence relation where none is given), and a body under 0.075 solar masses gives none; the worlds are still drawn lit by the Sun |
+| ST-3 | Binaries, double sunsets, circumbinary worlds | | ST-2 | partial: binaries and circumbinary worlds as the laboratory's dynamics and climates (a star added about a star, a world about both); double sunsets are not drawn |
 | ST-4 | Evolution tracks and an HR diagram | Cited tracks or labelled interpolation | ST-1 | partial (2026-10-26): the Hertzsprung-Russell diagram of the 9,140 stars Hipparcos places with a colour, the Sun and the star in view marked (`tests/explore/stars.spec.ts`); evolution tracks need cited tracks (MIST or PARSEC, licence to check) |
 | ST-5 | Remnants: white dwarfs, neutron stars, supernovae | Flash-safe | ST-4 | deferred |
 | ST-6 | Black holes: horizon scale, labelled lensing | Newtonian orbits, separate light model | ST-2 | research needed |
@@ -141,7 +141,7 @@ platform.
 | ID | Feature | Model | Depends on | Status |
 |---|---|---|---|---|
 | SC-1 | A ship with mass, thrust, fuel and attitude | Entity in the integration | SB-4 | implemented (2026-10-26, [LAB.md](LAB.md)): a test particle with dry mass, propellant, thrust and specific impulse; burns along prograde, normal or radial about a chosen body, thrust in the leapfrog's kicks, propellant by the rocket equation (`tests/unit/ships.spec.ts`, `tests/explore/ships.spec.ts`) |
-| SC-2 | Orbital HUD (prograde, normal, radial; elements) | | SB-22 | partial: the inspector's elements, apsides and period (SB-22) and the burn directions by name; the directions are not drawn as markers |
+| SC-2 | Orbital HUD (prograde, normal, radial; elements) | | SB-22 | implemented (2026-10-26): a chosen ship's prograde, normal and radial-out directions about its primary drawn as named markers an arrow's length from it, beside the inspector's elements, apsides and period (SB-22) (`tests/explore/ships.spec.ts`) |
 | SC-3 | Manoeuvre planning with delta-v | Predictions (SB-8) with thrust | SC-1 | implemented (2026-10-26): burns planned by their change of speed at a time, the path ahead integrated through them; a Hohmann transfer to geostationary radius checked |
 | SC-4 | Autopilots that apply forces and can fail | No teleporting | SC-3 | partial (2026-10-26): one autopilot, rounding the orbit at its far side with a finite burn, refused without the propellant for it |
 | SC-5 | Entry and landing | | WR-5, GR-3 | deferred |

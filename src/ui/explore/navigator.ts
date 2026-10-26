@@ -183,7 +183,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     showSound();
     app.earthCommand({ kind: 'sound', on: soundOn });
   });
-  const sound = h('div', { class: 'kf-nav-detail kf-nav-sound' }, soundButton);
+  const sound = h('div', { class: 'kf-nav-sound' }, soundButton);
   const keys = h(
     'details',
     { class: 'kf-nav-keys' },
@@ -191,7 +191,8 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     h('p', {}, i18n.t(coarse.matches ? 'ui.universe.touchList' : 'ui.universe.keysList')),
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
-  const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element, sound);
+  // Detail and Sound share a row, so the foot keeps its height and the list its room on a phone.
+  const foot = h('div', { class: 'kf-nav-foot' }, keys, h('div', { class: 'kf-nav-foot-row' }, quality.element, sound));
   const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living.element, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);

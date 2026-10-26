@@ -984,8 +984,18 @@
   margin: 0 var(--kf-space-3);
 }
 
-.kf-nav-sound {
-  margin-block-start: var(--kf-space-2);
+/* Detail and Sound side by side; the row places the detail menu, so it keeps the foot's width. */
+.kf-nav-foot-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--kf-space-2);
+  margin: 0 var(--kf-space-3);
+}
+
+.kf-nav-foot-row .kf-nav-detail {
+  position: static;
+  margin: 0;
 }
 
 .kf-nav-detail-button {

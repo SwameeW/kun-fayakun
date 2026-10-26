@@ -43,6 +43,15 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   expect(ship?.ship?.deltaVLeftMs ?? 0).toBeCloseTo(320 * 9.80665 * Math.log(2), 3);
   await expect(page.getByTestId('lab-ship')).toBeVisible();
   await expect(page.getByTestId('lab-ship-readout')).toContainText('2,175 m/s of change of speed');
+  // Its burn directions marked and named about it (ledger SC-2), seen with the camera on the Earth beside it.
+  const shipId = (await shipOf(page))?.id ?? '';
+  await page.getByTestId('lab-body-earth').click();
+  await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe('earth');
+  await page.getByTestId('lab-follow').click();
+  await page.getByTestId(`lab-body-${shipId}`).click();
+  await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe(shipId);
+  const hud = (): Promise<string[]> => page.evaluate(() => (window as unknown as { __kf: { app: { hud(): { labels: Array<{ id: string }> } } } }).__kf.app.hud().labels.map((l) => l.id));
+  await expect.poll(async () => (await hud()).filter((id) => id.startsWith('lab-direction-')).sort(), LIVE).toEqual(['lab-direction-normal', 'lab-direction-prograde', 'lab-direction-radialOut']);
   // A burn of 100 m/s prograde, now.
   await page.getByTestId('lab-ship-direction').selectOption('prograde');
   await expect(page.getByTestId('lab-ship-ref')).toHaveValue('earth');

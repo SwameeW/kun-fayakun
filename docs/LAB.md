@@ -121,7 +121,8 @@ scripture: destructive experiments stay clear of the film's verses.
   burn, not a teleport, so it leaves the orbit nearly but not exactly round; refused, and said to be,
   when the propellant left cannot give it.
 - **The orbit's figures** (SC-2) are the inspector's own (SB-22: the osculating elements, apsides and
-  period about the primary). The burn directions are not drawn as markers on the ship.
+  period about the primary). A chosen ship's prograde, normal and radial-out directions about its
+  primary are drawn as markers, each an arrow's length from it, named as the burns name them.
 - **Conservation** is off while a ship burns, and the panel says so: the rocket adds energy and
   momentum, and the propellant it throws out, which carries the balance, is not followed.
 

@@ -54,7 +54,9 @@ jobs:
   # runners keep each near half an hour.
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    # A shard of the laboratory's tests (four to eight minutes each in software rendering) can need well
+    # over an hour; the limit is there to stop a hung job, not a slow one.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -101,7 +103,8 @@ jobs:
           KF_SKIP_BUILD: '1'
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        # Also when a shard runs out of time: its report is then the only record of what it was doing.
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.shard }}
