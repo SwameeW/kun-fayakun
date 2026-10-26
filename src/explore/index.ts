@@ -62,6 +62,7 @@ import { lastWholeDay, RELIEF } from './earth-tiles/sources';
 import type { Islamic } from './islamic';
 import type { Descent } from './descent';
 import type { Neighbourhood } from './neighbourhood';
+import type { LocalGroupFile, WebManifest } from './neighbourhood/beyond';
 import type { NeighbourhoodFile } from './neighbourhood/data';
 import type { DescentFile } from './descent/profile';
 import type { Walk } from './walk';
@@ -1184,10 +1185,15 @@ export default function create(): UniverseModule {
     }
     hoodLoading = true;
     const obliquity = obliquityRad(labInputs.physical);
-    void Promise.all([import('./neighbourhood'), c.assets.json<NeighbourhoodFile>('assets/stars/neighbourhood.json')])
-      .then(([{ createNeighbourhood }, file]) => {
+    // Beyond the stars: the Local Group's galaxies with them, the survey's sample (the film's) only when the camera goes that far.
+    const loadWeb = async (): Promise<{ manifest: WebManifest; data: ArrayBuffer }> => {
+      const manifest = await c.assets.json<WebManifest>('assets/sdss/galaxies.json');
+      return { manifest, data: await c.assets.binary(`assets/sdss/${manifest.file}`) };
+    };
+    void Promise.all([import('./neighbourhood'), c.assets.json<NeighbourhoodFile>('assets/stars/neighbourhood.json'), c.assets.json<LocalGroupFile>('assets/stars/localgroup.json')])
+      .then(([{ createNeighbourhood }, file, localGroup]) => {
         hoodLoading = false;
-        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN });
+        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN }, { localGroup, loadWeb, detail: detail.groundDetail });
         hood = made;
         starsRoot.add(...made.objects);
         begin(made);
@@ -1407,7 +1413,9 @@ export default function create(): UniverseModule {
     }
     if (hoodShown && hood) {
       const camera = c.camera;
-      const pose = hood.update(dt, jdTdb - 2451545, camera);
+      // Points beyond the stars are sized in device pixels from their distance: the screen's focal length.
+      const focalPx = (c.renderer.domElement.clientHeight * c.renderer.getPixelRatio()) / (2 * Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)));
+      const pose = hood.update(dt, jdTdb - 2451545, camera, focalPx);
       camera.position.set(0, 0, 0);
       target.set(...pose.forward);
       up.set(...pose.up);
@@ -2839,6 +2847,9 @@ export default function create(): UniverseModule {
         }
         case 'starsStop':
           hood?.stop();
+          return;
+        case 'starsPlace':
+          hood?.goToPlace(command.place);
           return;
         case 'starsSearch':
           hood?.search(command.text);

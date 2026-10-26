@@ -55,3 +55,57 @@ test('out among the stars: the Sun’s neighbours, Proxima Centauri and its plan
   expect((await view(page))?.focus).toBe('earth');
   expect(pageErrors).toEqual([]);
 });
+
+test('beyond the stars: the Milky Way from above, Andromeda’s figures, the Local Group, the survey’s galaxies, and searching a galaxy', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(300_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('stars-open').click();
+  await expect.poll(async () => (await stars(page))?.focus.name ?? null, LIVE).toBe('Sun');
+  const hud = (): Promise<string[]> => page.evaluate(() => (window as unknown as KfHook).__kf.app.hud().labels.map((l) => l.id));
+  const go = async (id: string): Promise<void> => {
+    await page.getByTestId(`stars-place-${id}`).click();
+    await expect.poll(async () => (await stars(page))?.place?.id, LIVE).toBe(id);
+    await expect.poll(async () => (await stars(page))?.travelling, LIVE).toBe(false);
+  };
+  // The Milky Way from above: at the galaxy's scale, its centre, the Sun and its arms named, the model said to be one.
+  await go('milky-way');
+  const mw = await stars(page);
+  expect(mw?.scale).toBe('galaxy');
+  expect(mw?.fromSunPc ?? 0).toBeGreaterThan(40_000);
+  await expect.poll(async () => (await hud()).filter((id) => id.startsWith('beyond-arm-')).length, LIVE).toBeGreaterThanOrEqual(5);
+  expect(await hud()).toEqual(expect.arrayContaining(['beyond-centre', 'beyond-sun']));
+  await expect(page.getByTestId('stars-scale-note')).toContainText('a model, not a picture');
+  // Andromeda: the catalogue's distance and type, its magnitude marked as derived, its size SIMBAD's.
+  await go('andromeda');
+  await expect(page.getByTestId('stars-focus-name')).toHaveText('Andromeda Galaxy');
+  await expect(page.getByTestId('stars-distance')).toContainText('2.55 million light years (783 kpc)');
+  await expect(page.getByTestId('stars-galaxy-type')).toHaveText('Sb');
+  await expect(page.getByTestId('stars-absolute')).toContainText('(from its brightness and distance)');
+  await expect(page.getByTestId('stars-galaxy-diameter')).toContainText('45.5 kpc (148 thousand light years)');
+  await expect(page.getByTestId('stars-nearest')).toBeHidden();
+  await expect.poll(async () => (await hud()).includes('beyond-galaxy-Andromeda'), LIVE).toBe(true);
+  // The Local Group, its galaxies named; the Milky Way by its name.
+  await go('local-group');
+  expect((await stars(page))?.scale).toBe('local-group');
+  await expect.poll(async () => (await hud()).includes('beyond-milky-way'), LIVE).toBe(true);
+  expect(await hud()).toEqual(expect.arrayContaining(['beyond-galaxy-Andromeda', 'beyond-galaxy-Triangulum']));
+  // The cosmic web: the survey's galaxies fetched and drawn, the note saying what they are.
+  await go('web');
+  expect((await stars(page))?.scale).toBe('universe');
+  await expect.poll(async () => (await stars(page))?.webGalaxies ?? 0, LIVE).toBeGreaterThan(100_000);
+  await expect(page.getByTestId('stars-scale-note')).toContainText('Sloan Digital Sky Survey');
+  // A galaxy found by name, and flown to.
+  await page.getByTestId('stars-search').fill('Sculptor');
+  await page.getByTestId('stars-results').getByRole('button', { name: /Sculptor/u }).first().click();
+  await expect.poll(async () => (await stars(page))?.place?.galaxy, LIVE).toBe('Sculptor');
+  await expect.poll(async () => (await stars(page))?.travelling, LIVE).toBe(false);
+  await expect(page.getByTestId('stars-focus-name')).toHaveText('Sculptor');
+  await expect(page.getByTestId('stars-galaxy-group')).toHaveText('the Milky Way');
+  // Back to the Sun: the stars again, and their nearest.
+  await page.getByTestId('stars-sun').click();
+  await expect.poll(async () => (await stars(page))?.travelling, LIVE).toBe(false);
+  await expect.poll(async () => (await stars(page))?.scale, LIVE).toBe('stars');
+  await expect(page.getByTestId('stars-nearest')).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});

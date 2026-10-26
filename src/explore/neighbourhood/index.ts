@@ -3,6 +3,7 @@ import { cameraPosition, dot, exp, float, Fn, instancedBufferAttribute, max, nor
 import { blackbodyRgb } from '../../chapters/shared/blackbody';
 import type { SceneLabel, UniverseNeighbourhood } from '../../core/types';
 import { bvKelvin, skyDirection } from '../sky';
+import { createBeyond, galacticAxes, type Beyond, type BeyondPlace, type LocalGalaxy, type LocalGroupFile, type WebManifest } from './beyond';
 import { KM_PER_PC, LY_PER_PC, readNeighbours, type Neighbours, type NeighbourhoodFile, type Star, type SunFigures } from './data';
 
 /**
@@ -15,9 +16,11 @@ import { KM_PER_PC, LY_PER_PC, readNeighbours, type Neighbours, type Neighbourho
  * fifth stay directions on the sky, as bright as from the Sun.
  *
  * The camera orbits the star in view (a drag turns it, the wheel moves in or out, from a hundredth of
- * an au to 1,000 parsecs); choosing another star flies there, along the line between them, rising to see both and
- * coming down again; a pick on the screen chooses the nearest star to the pointer. Everything is
- * drawn camera-relative, in parsecs, from double-precision places.
+ * an au to ten billion parsecs); choosing another star flies there, along the line between them, rising to see both and
+ * coming down again; a pick on the screen chooses the nearest star to the pointer. Farther out, ./beyond
+ * draws the Milky Way as a model, the Local Group's galaxies and the survey's (ledger IS-6), and the
+ * camera can fly to places there too. Everything is drawn camera-relative, in parsecs, from
+ * double-precision places.
  */
 
 type V3 = [number, number, number];
@@ -34,13 +37,15 @@ export interface Neighbourhood {
   zoom(dLn: number): void;
   /** Flies to a star (the Sun included). */
   goTo(star: Star): void;
+  /** Flies to a place beyond the stars (./beyond's), or a galaxy of the Local Group by its catalogue name. */
+  goToPlace(id: BeyondPlace['id'] | `galaxy:${string}`): void;
   /** Finds stars by a name or catalogue number, for the view's results. */
   search(text: string): void;
   stop(): void;
   /** The star nearest a point on the screen (CSS px), within a few pixels of its drawn point, or null. */
   pick(xPx: number, yPx: number, widthPx: number, heightPx: number): Star | null;
-  /** Steps the camera and places everything about it; the camera's gaze and up (render frame) and depth range (parsecs). */
-  update(dt: number, days: number, camera: PerspectiveCamera): { forward: V3; up: V3; near: number; far: number };
+  /** Steps the camera and places everything about it (`focalPx`: the screen's height in device pixels over twice the tangent of half the field of view); the camera's gaze and up (render frame) and depth range (parsecs). */
+  update(dt: number, days: number, camera: PerspectiveCamera, focalPx?: number): { forward: V3; up: V3; near: number; far: number };
   labels(out: SceneLabel[]): void;
   view(): UniverseNeighbourhood | null;
   dispose(): void;
@@ -48,22 +53,32 @@ export interface Neighbourhood {
 
 /** Magnitude to light and size, as the explorer's sky maps them (V = 6.5 faint; brighter grows), capped for the nearest stars. */
 const SPRITE = { faintMag: 6.5, faintLight: 0.05, fluxPower: 0.45, baseSize: 2, sizeFrom: 3.5, sizePerMag: 0.45, maxSize: 16, maxLight: 6 } as const;
-/** The camera's reach (pc): from a hundredth of an au (the closest planets' orbits) to 1,000 parsecs. */
-const REACH = { minPc: 0.01 / 206_264.806, maxPc: 1000 } as const;
+/** The camera's reach (pc): from a hundredth of an au (the closest planets' orbits) to ten billion parsecs (the survey's farthest galaxies are under three: room to see it whole). */
+const REACH = { minPc: 0.01 / 206_264.806, maxPc: 1e10 } as const;
+/** Where the stars not placed in space are drawn (pc): a sphere standing for the sky, past everything near. */
+const SKY_PC = 4000;
 /** Planets are drawn round a star the camera is nearer than this (pc), their orbits in au. */
 const SYSTEM_PC = 0.01;
 /** Radians per CSS pixel dragged. */
 const DRAG = 0.005;
-/** The galaxy's north pole and the direction of its centre (ICRS degrees; Hipparcos's definition of the galactic frame). */
-const GALAXY = { poleRa: 192.85948, poleDec: 27.12825, centreRa: 266.40499, centreDec: -28.93617 } as const;
 const AU_PER_PC = 206_264.806;
+
+/** An angle folded into (-pi, pi]. */
+const wrapPi = (a: number): number => a - 2 * Math.PI * Math.floor((a + Math.PI) / (2 * Math.PI));
 
 const smootherstep = (x: number): number => {
   const t = Math.max(0, Math.min(1, x));
   return t * t * t * (t * (t * 6 - 15) + 10);
 };
 
-export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, sunFigures: SunFigures): Neighbourhood {
+/** What lies beyond the stars (./beyond): the Local Group's file, the survey's loader, and the detail. */
+export interface BeyondInputs {
+  localGroup: LocalGroupFile;
+  loadWeb: () => Promise<{ manifest: WebManifest; data: ArrayBuffer }>;
+  detail: 'full' | 'basic';
+}
+
+export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, sunFigures: SunFigures, beyondInputs: BeyondInputs | null = null): Neighbourhood {
   const data = readNeighbours(file, obliquity, sunFigures);
   const all: Star[] = [data.sun, ...data.stars];
   const count = all.length;
@@ -72,7 +87,9 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   let distance = 3;
   let azimuth = 0.6;
   let elevation = 0.35;
-  let trip: { from: V3; to: Star; fromLn: number; toLn: number; lift: number; t: number; seconds: number } | null = null;
+  let trip: { from: V3; to: Star; fromLn: number; toLn: number; lift: number; t: number; seconds: number; turn: { az0: number; el0: number; az1: number; el1: number } | null } | null = null;
+  /** The place beyond the stars in view (with `focus` its stand-in), or null for a star. */
+  let place: BeyondPlace | null = null;
   const camera: V3 = [0, 0, 0];
   const centre: V3 = [0, 0, 0];
 
@@ -105,6 +122,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   // The galaxy's band (illustrative): brightest along its plane, more so toward its centre, on a sphere at infinity.
   const toGalactic = galacticMatrix(obliquity);
   const uGalaxy = uniform(new Matrix3().copy(toGalactic));
+  const uBand = uniform(1);
   const bandMaterial = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: false, depthTest: false, fog: false });
   bandMaterial.colorNode = Fn(() => {
     const d = normalize(positionWorld.sub(cameraPosition));
@@ -112,7 +130,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     const b = g.z.asin();
     const towardCentre = max(g.x, 0);
     const band = exp(b.mul(b).mul(-30)).mul(towardCentre.mul(towardCentre).mul(2).add(0.6));
-    return vec4(vec3(0.07, 0.065, 0.06).mul(band), 1);
+    return vec4(vec3(0.07, 0.065, 0.06).mul(band).mul(uBand), 1);
   })();
   const band = new Mesh(new SphereGeometry(1, 64, 32), bandMaterial);
   band.frustumCulled = false;
@@ -144,10 +162,28 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   group.name = 'explore-neighbourhood';
   group.add(band, sprites, orbitLines, planetSprites);
   group.visible = false;
+  const beyond: Beyond | null = beyondInputs
+    ? createBeyond(beyondInputs.localGroup, obliquity, beyondInputs.loadWeb, beyondInputs.detail, (s) => {
+        group.add(s);
+      })
+    : null;
+  /** A stand-in star for a place beyond the stars, so the camera's orbit and flights treat it as one. */
+  const standIn = (at: V3, name: string): Star => ({ index: -2, hip: null, hr: null, name, raDeg: 0, decDeg: 0, plxMas: Number.POSITIVE_INFINITY, ePlxMas: 0, vmag: Number.NaN, bv: null, spType: null, distPc: Math.hypot(...at), position: at, absoluteV: null, system: null });
+  /** Flies to a star, arriving `toDistance` (pc) from it, turning to look from `toward` when given. */
+  const fly = (star: Star, toDistance: number, toward: V3 | null): void => {
+    const from: V3 = [...centre];
+    const sep = Math.hypot(posOf(star)[0] - from[0], posOf(star)[1] - from[1], posOf(star)[2] - from[2]);
+    if (sep < 1e-12 && Math.abs(Math.log(distance / toDistance)) < 1e-6 && !toward) return;
+    const lift = Math.max(0, Math.log(sep / Math.max(distance, toDistance)));
+    const turn = toward ? { az0: azimuth, el0: elevation, az1: azimuth + wrapPi(Math.atan2(toward[0], toward[2]) - azimuth), el1: Math.asin(Math.max(-0.999, Math.min(0.999, toward[1]))) } : null;
+    trip = { from, to: star, fromLn: Math.log(distance), toLn: Math.log(toDistance), lift: lift * 0.6, t: 0, seconds: Math.min(8, 3 + 0.7 * Math.log1p(sep)), turn };
+    focus = star;
+  };
   /** This frame's planets (for the labels): name and camera-relative place. */
   let planetsDrawn: Array<{ name: string; at: V3 }> = [];
   let systemShownFor: string | null = null;
   let results: Star[] = [];
+  let galaxyResults: LocalGalaxy[] = [];
 
   const posOf = (s: Star): V3 => s.position ?? [0, 0, 0];
   const dirOf = (az: number, el: number): V3 => [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
@@ -197,6 +233,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       active = true;
       group.visible = true;
       focus = data.sun;
+      place = null;
       distance = Math.max(REACH.minPc, Math.min(REACH.maxPc, distancePc));
       trip = null;
     },
@@ -214,17 +251,27 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     },
     goTo(star) {
       if (!star.position || star === focus) return;
-      const from: V3 = [...centre];
-      const sep = Math.hypot(posOf(star)[0] - from[0], posOf(star)[1] - from[1], posOf(star)[2] - from[2]);
       // Arrive close enough to see the star's planets when it has any (three times its widest orbit), else at a hundredth of a parsec.
       const widest = Math.max(0, ...(star.system?.planets.map((p) => p.aAu ?? 0) ?? []));
-      const toDistance = widest > 0 ? (3 * widest) / AU_PER_PC : 0.01;
-      const lift = Math.max(0, Math.log(sep / Math.max(distance, toDistance)));
-      trip = { from, to: star, fromLn: Math.log(distance), toLn: Math.log(toDistance), lift: lift * 0.6, t: 0, seconds: Math.min(8, 3 + 0.7 * Math.log1p(sep)) };
-      focus = star;
+      place = null;
+      fly(star, widest > 0 ? (3 * widest) / AU_PER_PC : 0.01, null);
+    },
+    goToPlace(id) {
+      if (!beyond) return;
+      let to: BeyondPlace | undefined;
+      if (id.startsWith('galaxy:')) {
+        const g = beyond.galaxies.find((x) => x.name === id.slice(7));
+        const known = beyond.places.find((p) => p.galaxy === g);
+        // Any other galaxy of the catalogue: arrived at ten times its half-light radius, three kiloparsecs at least.
+        to = known ?? (g ? { id: 'local-group', position: g.position, arrivePc: Math.max(3000, 10 * (g.radiusKpc ?? 0.3) * 1000), from: null, galaxy: g } : undefined);
+      } else to = beyond.places.find((p) => p.id === id);
+      if (!to) return;
+      place = to;
+      fly(standIn(to.position, to.galaxy?.name ?? to.id), to.arrivePc, to.from);
     },
     search(text) {
       results = data.search(text);
+      galaxyResults = beyond?.search(text) ?? [];
     },
     stop() {
       if (!trip) return;
@@ -250,7 +297,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       }
       return best;
     },
-    update(dt, days, cam) {
+    update(dt, days, cam, focalPx = 800) {
       lastCamera = cam;
       // Where the camera looks (the star in view, or along a trip's line) and how far from it.
       const f = posOf(focus);
@@ -260,6 +307,10 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
         const to = posOf(trip.to);
         for (let k = 0; k < 3; k += 1) centre[k] = (trip.from[k] ?? 0) + ((to[k] ?? 0) - (trip.from[k] ?? 0)) * s;
         distance = Math.exp(trip.fromLn + (trip.toLn - trip.fromLn) * s + trip.lift * Math.sin(Math.PI * s));
+        if (trip.turn) {
+          azimuth = trip.turn.az0 + (trip.turn.az1 - trip.turn.az0) * s;
+          elevation = trip.turn.el0 + (trip.turn.el1 - trip.turn.el0) * s;
+        }
         if (trip.t >= trip.seconds) trip = null;
       } else {
         centre[0] = f[0];
@@ -268,6 +319,12 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       }
       const d = dirOf(azimuth, elevation);
       for (let k = 0; k < 3; k += 1) camera[k] = (centre[k] ?? 0) + (d[k] ?? 0) * distance;
+      const fromSun = Math.hypot(camera[0], camera[1], camera[2]);
+      // Out past the stars: the catalogue's stars and the band from within the galaxy give way to its model.
+      const starsShown = beyond ? beyond.starsShown(fromSun) : 1;
+      uBand.value = beyond ? beyond.bandShown(fromSun) : 1;
+      beyond?.update(camera, fromSun, focalPx);
+      sprites.visible = starsShown > 0.001;
       // Every star from here: its place relative to the camera, its light as its absolute magnitude moved to this distance.
       for (let i = 0; i < count; i += 1) {
         const s = all[i];
@@ -283,18 +340,18 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
           const r = Math.max(Math.hypot(rx, ry, rz), 1e-9);
           m = (s.absoluteV ?? s.vmag) + 5 * Math.log10(r / 10);
         } else {
-          // Not placed: a direction, at a radius past the reach, as bright as from the Sun.
+          // Not placed: a direction, on a sphere past the stars near the Sun, as bright as from the Sun.
           const dir = [0, 0, 0];
           skyDirection(s.raDeg, s.decDeg, obliquity, dir);
-          rx = (dir[0] ?? 0) * REACH.maxPc * 4;
-          ry = (dir[1] ?? 0) * REACH.maxPc * 4;
-          rz = (dir[2] ?? 0) * REACH.maxPc * 4;
+          rx = (dir[0] ?? 0) * SKY_PC;
+          ry = (dir[1] ?? 0) * SKY_PC;
+          rz = (dir[2] ?? 0) * SKY_PC;
           m = s.vmag;
         }
         positions[i * 3] = rx;
         positions[i * 3 + 1] = ry;
         positions[i * 3 + 2] = rz;
-        const light = Math.min(SPRITE.maxLight, SPRITE.faintLight * 10 ** (-0.4 * (m - SPRITE.faintMag) * SPRITE.fluxPower));
+        const light = starsShown * Math.min(SPRITE.maxLight, SPRITE.faintLight * 10 ** (-0.4 * (m - SPRITE.faintMag) * SPRITE.fluxPower));
         const t = tint[i] ?? [1, 1, 1];
         colours[i * 3] = t[0] * light;
         colours[i * 3 + 1] = t[1] * light;
@@ -344,6 +401,9 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     },
     labels(out) {
       if (!active) return;
+      const fromSun = Math.hypot(camera[0], camera[1], camera[2]);
+      beyond?.labels(out, camera, fromSun);
+      if (beyond && beyond.starsShown(fromSun) < 0.5) return;
       // The star in view, the Sun, and the brightest-looking named stars from here (at most a dozen).
       const ranked = all
         .map((s, i) => ({ s, i, size: sizes[i] ?? 0 }))
@@ -359,6 +419,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       const f = posOf(focus);
       const fromSunPc = Math.hypot(camera[0], camera[1], camera[2]);
       const s = focus;
+      const g: LocalGalaxy | null = place?.galaxy ?? null;
       const kelvin = s.bv === null ? null : bvKelvin(s.bv);
       return {
         focus: {
@@ -382,7 +443,27 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
         fromSunLy: fromSunPc * LY_PER_PC,
         travelling: trip !== null,
         systemShown: !trip && distance < SYSTEM_PC && (s.system?.planets.length ?? 0) > 0,
-        results: results.map((x) => ({ name: x.name ?? (x.hip ? `HIP ${String(x.hip)}` : ''), hip: x.hip, distPc: x === data.sun ? 0 : x.distPc, planets: x.system?.planets.length ?? 0 })),
+        scale: beyond ? beyond.scale(fromSunPc) : 'stars',
+        place: place
+          ? {
+              id: place.id,
+              galaxy: g?.name ?? null,
+              group: g?.group ?? null,
+              type: g?.type ?? null,
+              distKpc: Math.hypot(...place.position) / 1000,
+              radiusKpc: g?.radiusKpc ?? null,
+              diameterKpc: g?.diameterKpc ?? null,
+              absV: g?.absV ?? null,
+              absVDerived: g?.absVDerived ?? false,
+              massMsun: g?.massMsun ?? null,
+            }
+          : null,
+        webGalaxies: beyond?.webCount ?? 0,
+        places: (beyond?.places ?? []).map((x) => ({ id: x.id, distKpc: Math.hypot(...x.position) / 1000 })),
+        results: [
+          ...galaxyResults.map((x) => ({ name: x.name, hip: null, distPc: x.distKpc * 1000, planets: 0, galaxy: x.name })),
+          ...results.map((x) => ({ name: x.name ?? (x.hip ? `HIP ${String(x.hip)}` : ''), hip: x.hip, distPc: x === data.sun ? 0 : x.distPc, planets: x.system?.planets.length ?? 0, galaxy: null })),
+        ],
         nearest: data
           .nearest(f, 9)
           .filter((x) => x !== s)
@@ -397,6 +478,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       orbitGeometry.dispose();
       orbitMaterial.dispose();
       planetMaterial.dispose();
+      beyond?.dispose();
     },
   };
 }
@@ -412,10 +494,7 @@ function normalised(a: V3): V3 {
 
 /** The rotation from the render frame to the galactic frame (x to the galaxy's centre, z to its north pole). */
 function galacticMatrix(obliquity: number): Matrix3 {
-  const pole = skyDirection(GALAXY.poleRa, GALAXY.poleDec, obliquity, [0, 0, 0]) as V3;
-  const centre = skyDirection(GALAXY.centreRa, GALAXY.centreDec, obliquity, [0, 0, 0]) as V3;
-  const y = normalised(cross(pole, centre));
-  const x = normalised(cross(y, pole));
+  const { x, y, z } = galacticAxes(obliquity);
   // Rows: the galactic axes in the render frame.
-  return new Matrix3().set(x[0], x[1], x[2], y[0], y[1], y[2], pole[0], pole[1], pole[2]);
+  return new Matrix3().set(x[0], x[1], x[2], y[0], y[1], y[2], z[0], z[1], z[2]);
 }

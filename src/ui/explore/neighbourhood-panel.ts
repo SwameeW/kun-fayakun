@@ -1,4 +1,5 @@
-import type { App, NeighbourPlanet, UniverseView } from '../../core/types';
+import type { App, NeighbourPlanet, UniverseNeighbourhood, UniverseView } from '../../core/types';
+import starsMessages from '../../i18n/en.stars.json';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
 
@@ -8,8 +9,15 @@ import type { Formatters } from './format';
  * magnitudes) and its known planets (each value the NASA Exoplanet Archive calculated rather than
  * measured marked so, and masses that are only lower limits said to be), a search by name or
  * catalogue number, the stars nearest the one in view, and the ways back: to the Sun, and to the
- * solar system. It takes the navigator's place while there, as the laboratory's panel does.
+ * solar system. Beyond the stars (ledger IS-6): places to go (the galaxy's centre, the Milky Way from
+ * above, the Magellanic Clouds, Andromeda and Triangulum, the Local Group, the cosmic web), a note on
+ * what each scale shows and where it comes from, and a galaxy's figures from the catalogue. It takes
+ * the navigator's place while there, as the laboratory's panel does.
  */
+
+type PlaceId = UniverseNeighbourhood['places'][number]['id'];
+/** Light years per kiloparsec. */
+const LY_PER_KPC = 3261.5638;
 
 export interface NeighbourhoodPanel {
   readonly element: HTMLElement;
@@ -18,6 +26,8 @@ export interface NeighbourhoodPanel {
 
 export function createNeighbourhoodPanel(app: App, f: Formatters): NeighbourhoodPanel {
   const { i18n } = app;
+  // This panel's messages come with its chunk.
+  i18n.extend('en.stars.json', starsMessages);
   const write = (el: HTMLElement, text: string): void => {
     if (el.textContent !== text) el.textContent = text;
   };
@@ -47,6 +57,11 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
   const search = h('input', { id: searchId, type: 'search', class: 'kf-living-input', autocomplete: 'off', 'data-testid': 'stars-search' });
   const results = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-results' });
   const nearestList = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-nearest' });
+  const nearestTitle = h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.nearest'));
+  // Beyond the stars: places to go, and what the scale in view shows.
+  const placesList = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-places' });
+  const scaleNote = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-scale-note' });
+  let placesKey = '';
   const starButton = (label: string, detail: string, hip: number | null, testId: string): HTMLElement => {
     const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': testId }, h('span', { class: 'kf-living-place-name' }, label), h('span', { class: 'kf-living-place-where' }, detail));
     b.addEventListener('click', () => {
@@ -71,13 +86,26 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     planetsNote,
     h('div', { class: 'kf-lab-row' }, stop, toSun),
     h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: searchId }, i18n.t('ui.universe.stars.search')), search, results),
-    h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.nearest')),
+    nearestTitle,
     nearestList,
+    h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.beyond.title')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.beyond.intro')),
+    placesList,
+    scaleNote,
     back,
     h('p', { class: 'kf-living-hint kf-stars-credit' }, i18n.t('ui.universe.stars.credit')),
   );
 
   const pc = (value: number): string => f.number(value, value < 10 ? 2 : 1);
+  /** A distance in light years in words past ten thousand (2.5 million), and in parsecs with its prefix (783 kpc). */
+  const lyWords = (ly: number): string =>
+    ly < 1e4 ? f.number(ly, ly < 10 ? 2 : 1) : ly < 1e6 ? i18n.t('ui.universe.stars.thousand', { n: f.number(ly / 1e3, ly < 1e5 ? 1 : 0) }) : ly < 1e9 ? i18n.t('ui.universe.stars.million', { n: f.number(ly / 1e6, ly < 1e8 ? 2 : 0) }) : i18n.t('ui.universe.stars.billion', { n: f.number(ly / 1e9, 2) });
+  const pcWords = (parsecs: number): string =>
+    parsecs < 1e3 ? i18n.t('ui.universe.stars.pc', { n: pc(parsecs) }) : parsecs < 1e6 ? i18n.t('ui.universe.stars.kpc', { n: f.number(parsecs / 1e3, parsecs < 1e4 ? 2 : 0) }) : parsecs < 1e9 ? i18n.t('ui.universe.stars.mpc', { n: f.number(parsecs / 1e6, 2) }) : i18n.t('ui.universe.stars.gpc', { n: f.number(parsecs / 1e9, 2) });
+  /** A count in words past a thousand (1.5 billion). */
+  const lyWordsPlain = (value: number): string =>
+    value < 1e6 ? f.number(value, 0) : value < 1e9 ? i18n.t('ui.universe.stars.million', { n: f.number(value / 1e6, value < 1e7 ? 1 : 0) }) : i18n.t('ui.universe.stars.billion', { n: f.number(value / 1e9, value < 1e10 ? 1 : 0) });
+  const placeName = (id: PlaceId, galaxy: string | null): string => (id === 'local-group' && galaxy ? galaxy : i18n.t(`ui.universe.stars.beyond.place.${id}`));
   const row = (term: string, detail: string, testId: string): HTMLElement[] => [h('dt', {}, term), h('dd', { 'data-testid': `stars-${testId}` }, detail)];
   const calc = (text: string, calculated: boolean): string => (calculated ? i18n.t('ui.universe.stars.calculated', { value: text }) : text);
   const planetLine = (p: NeighbourPlanet): HTMLElement => {
@@ -99,18 +127,61 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
       element.hidden = n === null;
       if (!n) return;
       stop.hidden = !n.travelling;
-      write(where, i18n.t('ui.universe.stars.where', { ly: f.number(n.fromSunLy, n.fromSunLy < 10 ? 2 : 1), pc: pc(n.fromSunPc) }));
+      write(where, n.fromSunPc < 1000 ? i18n.t('ui.universe.stars.where', { ly: f.number(n.fromSunLy, n.fromSunLy < 10 ? 2 : 1), pc: pc(n.fromSunPc) }) : i18n.t('ui.universe.stars.whereFar', { ly: lyWords(n.fromSunLy), pc: pcWords(n.fromSunPc) }));
+      write(scaleNote, n.scale === 'stars' ? '' : n.scale === 'universe' && n.webGalaxies === 0 ? i18n.t('ui.universe.stars.beyond.scale.loading') : i18n.t(`ui.universe.stars.beyond.scale.${n.scale}`, { count: f.number(n.webGalaxies, 0) }));
+      const pk = n.places.map((x) => x.id).join('|');
+      if (pk !== placesKey) {
+        placesKey = pk;
+        placesList.replaceChildren(
+          ...n.places.map((x) => {
+            const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': `stars-place-${x.id}` }, h('span', { class: 'kf-living-place-name' }, placeName(x.id, null)), h('span', { class: 'kf-living-place-where' }, x.id === 'web' || x.id === 'local-group' || x.id === 'milky-way' ? i18n.t(`ui.universe.stars.beyond.view.${x.id}`) : i18n.t('ui.universe.stars.lyAway', { ly: lyWords(x.distKpc * LY_PER_KPC) })));
+            b.addEventListener('click', () => {
+              app.earthCommand({ kind: 'starsPlace', place: x.id });
+            });
+            return h('li', {}, b);
+          }),
+        );
+      }
       const rk = n.results.map((r) => `${String(r.hip)}:${r.name}`).join('|');
       if (rk !== resultsKey) {
         resultsKey = rk;
         results.replaceChildren(
-          ...n.results.map((r) => starButton(r.name, r.distPc === null ? i18n.t('ui.universe.stars.unplaced') : i18n.t(r.planets > 0 ? 'ui.universe.stars.fromSunWithPlanets' : 'ui.universe.stars.fromSun', { pc: pc(r.distPc), count: r.planets }), r.hip, `stars-result-${String(r.hip ?? 'sun')}`)),
+          ...n.results.map((r) => {
+            if (r.galaxy !== null) {
+              const galaxy = r.galaxy;
+              const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': `stars-result-galaxy-${galaxy.replace(/\W+/gu, '-')}` }, h('span', { class: 'kf-living-place-name' }, r.name), h('span', { class: 'kf-living-place-where' }, i18n.t('ui.universe.stars.galaxyAway', { ly: lyWords(((r.distPc ?? 0) / 1000) * LY_PER_KPC) })));
+              b.addEventListener('click', () => {
+                app.earthCommand({ kind: 'starsPlace', place: `galaxy:${galaxy}` });
+              });
+              return h('li', {}, b);
+            }
+            return starButton(r.name, r.distPc === null ? i18n.t('ui.universe.stars.unplaced') : i18n.t(r.planets > 0 ? 'ui.universe.stars.fromSunWithPlanets' : 'ui.universe.stars.fromSun', { pc: pc(r.distPc), count: r.planets }), r.hip, `stars-result-${String(r.hip ?? 'sun')}`);
+          }),
         );
       }
       const s = n.focus;
-      const key = `${String(s.hip)}:${String(s.name)}`;
+      const pl = n.place;
+      const key = `${String(s.hip)}:${String(s.name)}:${pl?.id ?? ''}:${pl?.galaxy ?? ''}`;
       if (key === shownFor) return;
       shownFor = key;
+      nearestTitle.hidden = pl !== null;
+      nearestList.hidden = pl !== null;
+      if (pl) {
+        // A place beyond the stars: its name, and a galaxy's figures from the catalogue.
+        write(name, placeName(pl.id, pl.galaxy));
+        const rows: HTMLElement[] = [...row(i18n.t('ui.universe.stars.distance'), i18n.t('ui.universe.stars.placeDistance', { ly: lyWords(pl.distKpc * LY_PER_KPC), pc: pcWords(pl.distKpc * 1000) }), 'distance')];
+        if (pl.type) rows.push(...row(i18n.t('ui.universe.stars.galaxyType'), pl.type, 'galaxy-type'));
+        if (pl.absV !== null) rows.push(...row(i18n.t('ui.universe.stars.absolute'), pl.absVDerived ? i18n.t('ui.universe.stars.derived', { value: f.number(pl.absV, 1) }) : f.number(pl.absV, 1), 'absolute'));
+        if (pl.massMsun !== null) rows.push(...row(i18n.t('ui.universe.stars.galaxyMass'), i18n.t('ui.universe.stars.suns', { n: lyWordsPlain(pl.massMsun) }), 'galaxy-mass'));
+        if (pl.diameterKpc !== null) rows.push(...row(i18n.t('ui.universe.stars.galaxyDiameter'), i18n.t('ui.universe.stars.kpcAcross', { n: f.number(pl.diameterKpc, 1), ly: lyWords(pl.diameterKpc * LY_PER_KPC) }), 'galaxy-diameter'));
+        else if (pl.radiusKpc !== null) rows.push(...row(i18n.t('ui.universe.stars.galaxyRadius'), i18n.t('ui.universe.stars.kpcRadius', { n: f.number(pl.radiusKpc, pl.radiusKpc < 1 ? 2 : 1) }), 'galaxy-radius'));
+        if (pl.group) rows.push(...row(i18n.t('ui.universe.stars.galaxyGroup'), i18n.t(`ui.universe.stars.group.${pl.group === 'MW' ? 'mw' : pl.group === 'M31' ? 'm31' : 'rest'}`), 'galaxy-group'));
+        facts.replaceChildren(...rows);
+        planetsTitle.hidden = true;
+        planetsNote.hidden = true;
+        planets.replaceChildren();
+        return;
+      }
       write(name, s.name ?? (s.hip !== null ? `HIP ${String(s.hip)}` : ''));
       const items: HTMLElement[] = [];
       if (s.distPc !== null && s.distPc > 0) {
