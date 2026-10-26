@@ -51,7 +51,9 @@ export default defineConfig<KfOptions>({
   // fails is let through; it is only given longer to happen.
   timeout: CI ? 360_000 : 120_000,
   expect: { timeout: CI ? 45_000 : 15_000 },
-  fullyParallel: false,
+  // On CI the browser tests are split across runners test by test (not file by file), so a file of
+  // long tests does not hold one runner past its limit; locally each file runs in order.
+  fullyParallel: CI,
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   // GPU-bound pages interfere with each other; perf runs must be alone.
