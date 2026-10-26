@@ -61,6 +61,8 @@ import { createEarthTiles, type EarthTiles } from './earth-tiles';
 import { lastWholeDay, RELIEF } from './earth-tiles/sources';
 import type { Islamic } from './islamic';
 import type { Descent } from './descent';
+import type { Neighbourhood } from './neighbourhood';
+import type { NeighbourhoodFile } from './neighbourhood/data';
 import type { DescentFile } from './descent/profile';
 import type { Walk } from './walk';
 import type { EquirectGrids } from './walk/equirect';
@@ -294,6 +296,8 @@ const dot3 = (a: Km, b: Km): number => a.x * b.x + a.y * b.y + a.z * b.z;
 
 export default function create(): UniverseModule {
   const root = new Group();
+  /** The stars around the Sun (./neighbourhood), drawn instead of the solar system while there. */
+  const starsRoot = new Group();
   root.name = 'universe';
   let ctx: UniverseContext | null = null;
   let system: SolarSystem | null = null;
@@ -398,6 +402,15 @@ export default function create(): UniverseModule {
   let descentDip: { into: boolean; t: number; switched: boolean } | null = null;
   const descentPad = { climb: 0 };
   let descending = false;
+  /**
+   * Among the stars (./neighbourhood, its own chunk): made the first time, shown once the picture
+   * has dipped into it (the solar system hidden), and this frame's veil from its dip.
+   */
+  let hood: Neighbourhood | null = null;
+  let hoodLoading = false;
+  let hoodShown = false;
+  let hoodDip: { into: boolean; t: number; switched: boolean } | null = null;
+  let hoodVeil = 1;
   /** The orbit a walk's descent left (its body, the direction from it, render frame, and the height), to climb back to. */
   let walkReturn: { body: BodyId; dir: Km; altitudeKm: number } | null = null;
   let walkRefused = false;
@@ -649,6 +662,7 @@ export default function create(): UniverseModule {
     walkHere: null,
     place: null,
     descent: null,
+    neighbourhood: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -708,6 +722,7 @@ export default function create(): UniverseModule {
     v.walkHere = walkHere;
     v.place = placeBelow;
     v.descent = descent?.view() ?? null;
+    v.neighbourhood = hoodShown ? (hood?.view() ?? null) : null;
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -840,6 +855,12 @@ export default function create(): UniverseModule {
     const rect = c.renderer.domElement.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+    // Among the stars: a star under the pointer is flown to.
+    if (hoodShown && hood) {
+      const star = hood.pick(x, y, rect.width, rect.height);
+      if (star) hood.goTo(star);
+      return null;
+    }
     // A satellite under the pointer is chosen instead (its name, orbit and height show).
     const camera = c.camera;
     const hit = satellites?.pick(x, y, SATELLITE_PICK_PX, (v) => {
@@ -1142,6 +1163,53 @@ export default function create(): UniverseModule {
         descentLoading = false;
       });
   };
+  /**
+   * Out among the stars (ledger IS-3): the neighbourhood made the first time (its chunk, the stars'
+   * file public/assets/stars/neighbourhood.json and the Sun's magnitude and colour from the
+   * constants), then the picture dips into it, round the Sun from three parsecs. Not from an
+   * experiment; a walk or a descent ends first.
+   */
+  const startStars = (): void => {
+    const c = ctx;
+    if (!c || !labInputs || lab?.active || hoodShown || hoodLoading) return;
+    if (walk?.active) endWalk(true);
+    if (descent?.active) endDescent(true);
+    const begin = (made: Neighbourhood): void => {
+      made.enter(3);
+      hoodDip = { into: true, t: 0, switched: false };
+    };
+    if (hood) {
+      begin(hood);
+      return;
+    }
+    hoodLoading = true;
+    const obliquity = obliquityRad(labInputs.physical);
+    void Promise.all([import('./neighbourhood'), c.assets.json<NeighbourhoodFile>('assets/stars/neighbourhood.json')])
+      .then(([{ createNeighbourhood }, file]) => {
+        hoodLoading = false;
+        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN });
+        hood = made;
+        starsRoot.add(...made.objects);
+        begin(made);
+      })
+      .catch(() => {
+        hoodLoading = false;
+      });
+  };
+  /** Back to the solar system from the stars: dipped out (at once when `now`). */
+  const endStars = (now = false): void => {
+    if (!hoodShown) return;
+    if (!now) {
+      if (!hoodDip || hoodDip.into) hoodDip = { into: false, t: 0, switched: false };
+      return;
+    }
+    hood?.exit();
+    hoodShown = false;
+    hoodDip = null;
+    root.visible = true;
+    starsRoot.visible = false;
+  };
+
   /** Back to orbit from a descent: dipped out of one that is shown, at once otherwise (or when `now`). */
   const endDescent = (now = false): void => {
     descentPad.climb = 0;
@@ -1320,6 +1388,51 @@ export default function create(): UniverseModule {
       }
     }
     sys.update(jdTdb);
+    // Among the stars: the dip into or out of them, and then their own scene and camera instead of the solar system's.
+    hoodVeil = 1;
+    const hdip = hoodDip;
+    let hoodCut = false;
+    if (hdip) {
+      hdip.t += dt;
+      if (!hdip.switched && hdip.t >= WALK_DIP.downS) {
+        hdip.switched = true;
+        hoodCut = true;
+        hoodShown = hdip.into;
+        if (!hdip.into) hood?.exit();
+        root.visible = !hoodShown;
+        starsRoot.visible = hoodShown;
+      }
+      hoodVeil = hdip.switched ? smoothstep(0, 1, (hdip.t - WALK_DIP.downS) / WALK_DIP.upS) : 1 - smoothstep(0, 1, hdip.t / WALK_DIP.downS);
+      if (hdip.t >= WALK_DIP.downS + WALK_DIP.upS) hoodDip = null;
+    }
+    if (hoodShown && hood) {
+      const camera = c.camera;
+      const pose = hood.update(dt, jdTdb - 2451545, camera);
+      camera.position.set(0, 0, 0);
+      target.set(...pose.forward);
+      up.set(...pose.up);
+      look.lookAt(eye, target, up);
+      camera.quaternion.setFromRotationMatrix(look);
+      camera.up.copy(up);
+      camera.near = pose.near;
+      camera.far = pose.far;
+      camera.fov = DEFAULT_FOV;
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+      c.exposure.setTarget(1);
+      c.exposure.setVeil(hoodVeil);
+      adaptation.setTarget(1);
+      if (hoodCut) {
+        c.exposure.jump();
+        adaptation.jump();
+      }
+      adaptation.update(dt);
+      labels.length = 0;
+      hood.labels(labels);
+      refreshView();
+      entering = false;
+      return;
+    }
     // In the laboratory the experiment puts the worlds where it has them (their turn still the IAU models').
     if (lab?.active) {
       lab.applyBuiltIns(sys, hiddenBodies);
@@ -1523,9 +1636,9 @@ export default function create(): UniverseModule {
     // A reduced-motion cut dims through the veil, and the exposure jumps while it is dim.
     const exposure = exposureTarget();
     c.exposure.setTarget(exposure);
-    c.exposure.setVeil(navOut.dim * walkVeil * descentVeil);
+    c.exposure.setVeil(navOut.dim * walkVeil * descentVeil * hoodVeil);
     adaptation.setTarget(exposure);
-    if (navOut.cut || walkCut) {
+    if (navOut.cut || walkCut || hoodCut) {
       c.exposure.jump();
       adaptation.jump();
     }
@@ -2454,6 +2567,10 @@ export default function create(): UniverseModule {
       input = createInput(c.renderer.domElement, {
         // On foot, the same input walks: a drag looks round, W A S D walk (Shift runs), R jumps, the arrows turn and tip the look; Esc or O ends the walk.
         drag: (dx, dy) => {
+          if (hoodShown) {
+            hood?.drag(dx, dy);
+            return;
+          }
           if (walk?.active) {
             walk.look(dx, dy);
             return;
@@ -2466,6 +2583,10 @@ export default function create(): UniverseModule {
           nav.drag(w, dx, dy);
         },
         pan: (dx, dy) => {
+          if (hoodShown) {
+            hood?.drag(dx, dy);
+            return;
+          }
           if (walk?.active) {
             walk.look(dx, dy);
             return;
@@ -2478,6 +2599,10 @@ export default function create(): UniverseModule {
           nav.pan(w, dx, dy);
         },
         zoom: (dLn) => {
+          if (hoodShown) {
+            hood?.zoom(dLn);
+            return;
+          }
           if (walk?.active || descent?.active) return;
           stretch.steered = true;
           nav.zoom(w, dLn);
@@ -2500,6 +2625,11 @@ export default function create(): UniverseModule {
           nav.setFlightKeys(w, move, roll, boost);
         },
         stop: () => {
+          if (hoodShown) {
+            if (hood?.travelling) hood.stop();
+            else endStars();
+            return true;
+          }
           if (walk?.active) {
             endWalk();
             return true;
@@ -2564,6 +2694,9 @@ export default function create(): UniverseModule {
       ctx = c;
       if (!system || !world) return;
       c.scene.add(root);
+      c.scene.add(starsRoot);
+      starsRoot.visible = false;
+      root.visible = true;
       entered = true;
       ambient = 0;
       setDate(pinnedUtc);
@@ -2691,6 +2824,24 @@ export default function create(): UniverseModule {
           return;
         case 'descentTo':
           if (Number.isFinite(command.pressureBar) && command.pressureBar > 0) descent?.goTo(command.pressureBar);
+          return;
+        case 'stars':
+          startStars();
+          return;
+        case 'starsEnd':
+          endStars();
+          return;
+        case 'starsGoTo': {
+          if (!hood) return;
+          const star = command.hip === null ? hood.data.sun : hood.data.stars.find((s) => s.hip === command.hip);
+          if (star) hood.goTo(star);
+          return;
+        }
+        case 'starsStop':
+          hood?.stop();
+          return;
+        case 'starsSearch':
+          hood?.search(command.text);
           return;
         case 'walkEnd':
           endWalk();
@@ -2843,6 +2994,8 @@ export default function create(): UniverseModule {
       applyLab();
       endWalk(true);
       endDescent(true);
+      endStars(true);
+      starsRoot.removeFromParent();
       root.removeFromParent();
       input?.detach();
       // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
@@ -2887,6 +3040,9 @@ export default function create(): UniverseModule {
         descents[id] = undefined;
       }
       descent = null;
+      hood?.dispose();
+      hood = null;
+      starsRoot.removeFromParent();
       walk = null;
       islamic?.dispose();
       islamic = null;

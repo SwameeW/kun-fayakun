@@ -117,13 +117,13 @@ platform.
 
 | ID | Feature | Model / data | Depends on | Status |
 |---|---|---|---|---|
-| IS-1 | Hierarchical coordinates (galaxy, system, body, surface) | Sector plus local Float64 frames, small camera-relative values for the GPU | none | planned |
-| IS-2 | Distances for the stars | Parallaxes (Hipparcos or Gaia, licence to check). The sky now has directions only | IS-1 | research needed |
-| IS-3 | Nearby stars as places to fly to, without double drawing the sky's stars | One identity per star | IS-2 | planned |
-| IS-4 | Known exoplanet systems | NASA Exoplanet Archive; unknown values never shown as measured | IS-3 | planned |
+| IS-1 | Hierarchical coordinates (galaxy, system, body, surface) | Sector plus local Float64 frames, small camera-relative values for the GPU | none | partial (2026-10-26, [NEIGHBOURHOOD.md](NEIGHBOURHOOD.md)): the stars nearby in double-precision parsecs drawn camera-relative, beside the solar system's floating origin in km and the walks' anchored ground; sectors for the galaxy and beyond with IS-6 |
+| IS-2 | Distances for the stars | Parallaxes (Hipparcos or Gaia, licence to check). The sky now has directions only | IS-1 | implemented (2026-10-26): the Hipparcos new reduction's parallaxes for every Hipparcos star within 25 pc and the Bright Star Catalogue's stars (10,193), each placed only where its parallax is known to a fifth; ESA's and CDS's terms (acknowledgement) recorded |
+| IS-3 | Nearby stars as places to fly to, without double drawing the sky's stars | One identity per star | IS-2 | implemented (2026-10-26): "Among the stars", its own scene (the solar system's sky not drawn there), every star one point as bright as it looks from the camera, flights between them; `tests/explore/stars.spec.ts` |
+| IS-4 | Known exoplanet systems | NASA Exoplanet Archive; unknown values never shown as measured | IS-3 | implemented within 20 pc (2026-10-26): the archive's composite parameters for 183 systems, every calculated value marked and M sin i masses as lower limits; orbits drawn face-on to the Sun (tilted where the inclination is measured), places on them illustrative |
 | IS-5 | Generated systems where nothing is catalogued | Deterministic hierarchical seeds, versioned rules, always marked "generated" | IS-1 | planned (only labelled, only beyond the catalogues) |
 | IS-6 | Clusters, nebulae, the Milky Way, the Local Group, the cosmic web | The film's SDSS and Planck data where they apply | IS-1 | planned |
-| IS-7 | Navigator hierarchy, search, bookmarks, history | | IS-3 | planned |
+| IS-7 | Navigator hierarchy, search, bookmarks, history | | IS-3 | partial (2026-10-26): the stars' search (IAU names, hosts, HIP and HR numbers), the nearest stars as links, saved views (GR-4) for the solar system; not yet a history of places visited |
 
 ## Phase 6: stars and extremes (US)
 

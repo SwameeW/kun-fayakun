@@ -234,6 +234,8 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     hud.update(view);
     walkHud.update(view);
     descentHud.update(view);
+    // Among the stars the solar system's readout and notes step aside.
+    element.classList.toggle('is-among-stars', view.neighbourhood !== null);
     time.update(view);
     notes.update(view);
     if (settling && ((!view.moving && !view.travelling) || now >= settleBy)) {

@@ -496,6 +496,8 @@ export interface UniverseView {
   walkHere: { world: WalkableWorld; lat: number; lon: number } | null;
   /** Down through Venus's or Jupiter's atmosphere where a probe went, while one is under way; else null. */
   descent: UniverseDescent | null;
+  /** Among the stars around the Sun, while there; else null. */
+  neighbourhood: UniverseNeighbourhood | null;
   /**
    * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
    * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
@@ -797,6 +799,56 @@ export interface UniverseDescent {
   bottomBar: number;
 }
 
+/** A known planet about a star nearby (the NASA Exoplanet Archive's composite parameters), each value it calculated rather than measured flagged. */
+export interface NeighbourPlanet {
+  name: string;
+  aAu: number | null;
+  aCalculated: boolean;
+  periodDays: number | null;
+  eccentricity: number | null;
+  inclinationDeg: number | null;
+  radiusEarth: number | null;
+  radiusCalculated: boolean;
+  massEarth: number | null;
+  massCalculated: boolean;
+  massKind: string | null;
+  eqTempK: number | null;
+  method: string | null;
+  year: number | null;
+}
+
+/** The stars around the Sun (src/explore/neighbourhood; docs/NEIGHBOURHOOD.md), as the view reports them. */
+export interface UniverseNeighbourhood {
+  /** The star in view: its names, distance from the Sun (pc and light years, with the parallax's relative error), magnitudes, temperature, type and planets. */
+  focus: {
+    name: string | null;
+    hip: number | null;
+    hr: number | null;
+    distPc: number | null;
+    distLy: number | null;
+    relativeError: number;
+    vmag: number | null;
+    absoluteV: number | null;
+    temperatureK: number | null;
+    spType: string | null;
+    planets: NeighbourPlanet[];
+    host: string | null;
+    starsInSystem: number;
+  };
+  /** The camera's distance from the star in view (pc, km) and from the Sun (pc, light years). */
+  cameraPc: number;
+  cameraKm: number;
+  fromSunPc: number;
+  fromSunLy: number;
+  travelling: boolean;
+  /** The star's planets drawn round it (the camera near enough, no trip under way). */
+  systemShown: boolean;
+  /** The stars nearest the one in view (their distance from it, pc; how many planets they have). */
+  nearest: Array<{ name: string; hip: number | null; distPc: number; planets: number }>;
+  /** The last search's matches (their distance from the Sun, pc, null where not placed). */
+  results: Array<{ name: string; hip: number | null; distPc: number | null; planets: number }>;
+}
+
 /** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
 export type WalkableWorld = 'earth' | 'moon' | 'mars' | 'mercury' | 'venus';
 
@@ -1065,6 +1117,13 @@ export type EarthCommand =
   | { kind: 'descentPad'; climb: number; held?: boolean }
   /** Straight to the height in the probe's column where the pressure is `pressureBar`. */
   | { kind: 'descentTo'; pressureBar: number }
+  /** Out among the stars (ledger IS-3); back to the solar system; to a star by its Hipparcos number (null: the Sun); a trip among them stopped. */
+  | { kind: 'stars' }
+  | { kind: 'starsEnd' }
+  | { kind: 'starsGoTo'; hip: number | null }
+  | { kind: 'starsStop' }
+  /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
+  | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }
   /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
   | { kind: 'walkPad'; forward: number; jump: boolean };

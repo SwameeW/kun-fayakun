@@ -804,3 +804,34 @@
   inline-size: 100%;
   accent-color: var(--kf-gold-strong);
 }
+
+/* Among the stars (src/ui/explore/neighbourhood-panel.ts): the planets' list. */
+.kf-stars-planets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kf-stars-planet {
+  display: grid;
+  gap: var(--kf-space-1);
+  padding-block: var(--kf-space-1);
+  border-block-end: 1px solid var(--kf-line);
+}
+
+.kf-stars-credit {
+  font-size: 0.6875rem;
+}
+
+/* Among the stars the solar system's readout and notes step aside (the stars' panel has their facts). */
+.kf-universe.is-among-stars :is([data-testid="universe-readout"], .kf-note-slot, .kf-universe-hint) {
+  display: none;
+}
+
+.kf-stars .kf-living-places {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--kf-space-1);
+}
