@@ -246,7 +246,7 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
   and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
   that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts).
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
   `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,

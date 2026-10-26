@@ -15,7 +15,8 @@
  * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
  * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
- * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode), each
+ * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode,
+ * the film's sound), each
  * against its own budget.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -76,6 +77,10 @@ const WALK_BUDGET_BYTES = 30_000;
 const PHOTO_SOURCES = ['src/ui/explore/photo-bar.ts'] as const;
 /** What photo mode's controls may add beyond the shell and the explorer, gzipped. */
 const PHOTO_BUDGET_BYTES = 10_000;
+/** The film's sound (loaded the first time a chapter plays with sound on): its voices and score. */
+const FILM_SOUND_SOURCES = ['src/core/film-score.ts'] as const;
+/** What the film's sound may add beyond the shell, gzipped. */
+const FILM_SOUND_BUDGET_BYTES = 12_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -251,7 +256,15 @@ function main(): void {
   const photoBytes = photoRows.reduce((sum, row) => sum + row.gzip, 0);
   const photoOk = photoRows.length > 0 && photoBytes <= PHOTO_BUDGET_BYTES;
   console.log(`${photoOk ? 'PASS' : 'FAIL'}: photo mode (lazy, ${photoRows.length} files) = ${formatBytes(photoBytes)} bytes gzipped (budget ${formatBytes(PHOTO_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk) process.exitCode = 1;
+  // The film's sound, beyond the shell: what the first chapter played with sound on adds.
+  const soundRows = measure(exploreFiles(manifest, shellFiles, FILM_SOUND_SOURCES));
+  for (const row of [...soundRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`sound  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const soundBytes = soundRows.reduce((sum, row) => sum + row.gzip, 0);
+  const soundOk = soundRows.length > 0 && soundBytes <= FILM_SOUND_BUDGET_BYTES;
+  console.log(`${soundOk ? 'PASS' : 'FAIL'}: the film's sound (lazy, ${soundRows.length} files) = ${formatBytes(soundBytes)} bytes gzipped (budget ${formatBytes(FILM_SOUND_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !soundOk) process.exitCode = 1;
 }
 
 try {

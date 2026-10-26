@@ -1487,6 +1487,8 @@ export interface App extends AppCommands {
   readonly backend: 'webgpu' | 'webgl2';
   readonly reducedMotion: boolean;
   readonly assets: AssetLoader;
+  /** The app's sound buses (src/core/audio.ts): the film's sound plays through the scene bus. Asking for one starts the browser's audio. */
+  readonly audio: AudioBuses;
   /** HUD tags and scale for this frame from the active experience (cheap; the UI polls it once per animation frame). */
   hud(): HudState;
   /** The explorer's camera and focus while it is on screen, else null (cheap; polled per frame by its UI). */

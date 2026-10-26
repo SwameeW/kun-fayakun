@@ -214,6 +214,11 @@ a:hover {
   color: var(--kf-text);
 }
 
+/* The speaker inside the sound button: laid out as the button's own icon. */
+.kf-sound-icon {
+  display: contents;
+}
+
 .kf-btn--icon {
   padding: 0;
   inline-size: 2.75rem;

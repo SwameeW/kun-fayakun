@@ -34,3 +34,29 @@ export function writePreferenceString(name: string, value: string): void {
     /* Storage unavailable: the preference lasts for this page only. */
   }
 }
+
+/** A remembered on/off choice that several parts of the interface show and change together. */
+export interface SharedPreference {
+  get(): boolean;
+  set(value: boolean): void;
+  /** Called after every change, whichever part made it. */
+  subscribe(listener: (value: boolean) => void): void;
+}
+
+export function sharedPreference(name: string, fallback: boolean): SharedPreference {
+  const listeners = new Set<(value: boolean) => void>();
+  let value: boolean | null = null;
+  const get = (): boolean => (value ??= readPreference(name) ?? fallback);
+  return {
+    get,
+    set(next) {
+      if (next === get()) return;
+      value = next;
+      writePreference(name, next);
+      for (const listener of listeners) listener(next);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+    },
+  };
+}

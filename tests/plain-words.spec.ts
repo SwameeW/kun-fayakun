@@ -16,7 +16,7 @@ import { expect, test, type KfHook } from './support/fixtures';
 
 const read = (path: string): unknown => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const en = read('../src/i18n/en.json') as Record<string, string>;
-const chapters = read('../src/i18n/en.chapters.json') as Record<string, string>;
+const chapters = read('../src/i18n/en.plain.json') as Record<string, string>;
 const sources = read('../data/sources.json') as SourcesFile;
 const quran = quranByKey();
 

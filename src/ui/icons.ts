@@ -14,6 +14,8 @@ const PATHS = {
   faster: 'M5.5 6.5l5.5 5.5-5.5 5.5M13 6.5l5.5 5.5-5.5 5.5',
   reverse: 'M9 5.5L4.5 10 9 14.5M4.5 10h10a5 5 0 0 1 0 10H11',
   photo: 'M4 8h3.5l2-2.5h5l2 2.5H20v10.5H4zM12 10.2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  sound: 'M4 9.5h3.5L12 6v12l-4.5-3.5H4zM15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10',
+  soundOff: 'M4 9.5h3.5L12 6v12l-4.5-3.5H4zM16 10l4 4M20 10l-4 4',
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -1,5 +1,5 @@
 import type { FrameStats } from './perf';
-import type { App, UniversePose, UniverseView } from './types';
+import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from './types';
 
 /** <html> attributes that tests wait on (docs/CONTRACTS.md, "Test hooks"). */
 export type HookAttribute =
@@ -38,6 +38,11 @@ export interface KfTestHandle {
    * moves only through step(), and the tier and render scale stop adapting.
    */
   step(frames?: number, dt?: number): void;
+  /** The film's sound (src/ui/film-sound.ts), once the interface has made it. */
+  filmSound?: {
+    state(): unknown;
+    render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
+  };
   /** The solar-system explorer: its state (null when it is not on screen) and an instant camera placement. */
   universe: {
     state(): UniverseView | null;
@@ -54,4 +59,9 @@ declare global {
 
 export function exposeTestHandle(handle: KfTestHandle): void {
   window.__kf = handle;
+}
+
+/** A part of the interface made after the app (the film's sound) adds itself to the handle. */
+export function extendTestHandle(part: Pick<KfTestHandle, 'filmSound'>): void {
+  if (window.__kf) Object.assign(window.__kf, part);
 }

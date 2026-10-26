@@ -1,10 +1,11 @@
-import type { App, ChapterContent, ChapterId, ProseBlock, ScienceBlock, TextBlock } from '../core/types';
+import type { App, ChapterContent, ChapterId, ProseBlock, ScienceBlock, TextBlock, VerseKey } from '../core/types';
 import { externalLink, h, uniqueId } from './dom';
 import { figure } from './figures';
 import { blockCitations, formatProse } from './format';
 import { icon } from './icons';
 import { discoveryBlock, type DiscoveryBlock } from './discovery';
-import { hadithArticle, plainExplanation, verseArticle } from './scripture';
+import { hadithArticle, plainBlock, plainExplanation, verseArticle } from './scripture';
+import { loadPlainWords } from './plain-words';
 import { readPreference, writePreference } from './preferences';
 import { setVersePlain, versePlain } from './verse-english';
 import './styles/panel.css';
@@ -201,6 +202,27 @@ export function createPanel(app: App): Panel {
     return h('div', { class: 'kf-plain-choice' }, button, h('p', { id: hintId, class: 'kf-plain-hint' }, i18n.t('ui.verse.plainSwitchHint')));
   }
 
+  /**
+   * Once the explanations have arrived (./plain-words): each verse's, under its attribution, and the
+   * switch for the film's cards, above the first text. A chapter rendered after they arrived has them already.
+   */
+  function addPlainWords(blocks: readonly TextBlock[]): void {
+    const layer = sections.get('text');
+    if (!layer) return;
+    for (const article of layer.querySelectorAll<HTMLElement>('article.kf-verse[data-verse]')) {
+      const key = article.dataset.verse as VerseKey | undefined;
+      const attribution = article.querySelector(':scope > .kf-attrib');
+      if (!key || !attribution || article.querySelector(':scope > .kf-plain')) continue;
+      const block = plainBlock(key, i18n);
+      if (block) attribution.after(block);
+    }
+    if (!layer.querySelector('.kf-plain-choice')) {
+      const choice = plainSwitch(blocks);
+      const first = layer.querySelector(':scope > article');
+      if (choice && first) first.before(choice);
+    }
+  }
+
   /** A plain note at the top of a layer (e.g. a chapter that pairs no text with the science). */
   function layerNote(key: string | undefined): HTMLElement | null {
     return key ? h('p', { class: 'kf-layer-note' }, i18n.t(key)) : null;
@@ -249,6 +271,9 @@ export function createPanel(app: App): Panel {
       );
       body.scrollTop = 0;
       renderedChapter = chapter;
+      void loadPlainWords(app).then(() => {
+        if (renderedChapter === chapter) addPlainWords(panel.text);
+      });
       showInvite(false);
       inviteKey = null;
       const verses = sections.get('text')?.querySelectorAll('[data-verse]');

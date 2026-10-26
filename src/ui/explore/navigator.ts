@@ -1,7 +1,7 @@
 import { BODY_IDS, type App, type BodyId, type UniverseView } from '../../core/types';
 import { h, uniqueId } from '../dom';
 import { icon } from '../icons';
-import { readPreference, writePreference } from '../preferences';
+import { sound as soundChoice } from '../sound-preference';
 import { createAbout } from './about';
 import { createBodyIcon, type BodyIcon } from './body-icon';
 import type { Formatters } from './format';
@@ -188,20 +188,22 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   });
 
   const quality = createQualityMenu(app, onApplied);
-  // Sound where there is air (ledger CR-6): on unless the visitor turned it off, kept for the next visit.
-  let soundOn = readPreference('sound') ?? true;
+  // Sound where there is air (ledger CR-6): one choice with the film's speaker (../sound-preference), kept for the next visit.
+  let shownSound: boolean | null = null;
   const soundValue = h('span', { class: 'kf-nav-detail-value' });
-  const soundButton = h('button', { type: 'button', class: 'kf-btn kf-nav-detail-button', 'aria-pressed': String(soundOn), title: i18n.t('ui.universe.sound.hint'), 'data-testid': 'universe-sound' }, h('span', { class: 'kf-nav-detail-label' }, i18n.t('ui.universe.sound.label')), soundValue);
+  const soundButton = h('button', { type: 'button', class: 'kf-btn kf-nav-detail-button', 'aria-pressed': String(soundChoice.get()), title: i18n.t('ui.universe.sound.hint'), 'data-testid': 'universe-sound' }, h('span', { class: 'kf-nav-detail-label' }, i18n.t('ui.universe.sound.label')), soundValue);
   const showSound = (): void => {
-    soundButton.setAttribute('aria-pressed', String(soundOn));
-    soundValue.textContent = i18n.t(soundOn ? 'ui.universe.sound.on' : 'ui.universe.sound.off');
+    const on = soundChoice.get();
+    if (on === shownSound) return;
+    shownSound = on;
+    soundButton.setAttribute('aria-pressed', String(on));
+    soundValue.textContent = i18n.t(on ? 'ui.universe.sound.on' : 'ui.universe.sound.off');
   };
   showSound();
   soundButton.addEventListener('click', () => {
-    soundOn = !soundOn;
-    writePreference('sound', soundOn);
+    soundChoice.set(!soundChoice.get());
     showSound();
-    app.earthCommand({ kind: 'sound', on: soundOn });
+    app.earthCommand({ kind: 'sound', on: soundChoice.get() });
   });
   const sound = h('div', { class: 'kf-nav-sound' }, soundButton, helpButton(app, 'sound', i18n.t('ui.universe.sound.label')));
   const keys = h(
@@ -284,8 +286,9 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
       return expanded;
     },
     update(view, slow) {
-      // The explorer starts with sound on: told the visitor's choice once it is there to hear it.
-      if (view.sound.on !== soundOn) app.earthCommand({ kind: 'sound', on: soundOn });
+      // The explorer starts with sound on: told the visitor's choice once it is there to hear it (or as the film's speaker changes it).
+      showSound();
+      if (view.sound.on !== soundChoice.get()) app.earthCommand({ kind: 'sound', on: soundChoice.get() });
       for (const b of view.bodies) {
         const row = rows.get(b.id);
         if (!row) continue;

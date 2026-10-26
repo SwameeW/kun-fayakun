@@ -274,6 +274,7 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 
 - Default: no music. While a verse is recited, ambient sound and scene effects fade to silence (Quran 7:204: listen and pay attention).
 - Between verses: optional ambient track of voice and nature sounds only; instruments off by default.
+  - Owner, 2026-10-26 (“add high quality sounds to the cinematic parts … make sure they make sense”): the film has a sound score of nature and physics only, made in Web Audio (no recordings, nothing to license), on by default with one speaker in the header shared with the explorer’s Sound. Where there was sound it is that sound (the plasma’s acoustic peaks until recombination; the Sun’s acoustic modes; lava, rain, sea, wind); in space, only a low hush. Levels follow each chapter’s scene events, near silence under every verse and lower under hadith cards, silence where the screenplay keeps it, no one-shot on a seek, a fade before a pause. film/screenplay.md “Sound” and the shot list’s sound column describe it; tests/film-sound.spec.ts measures it (headroom, the duck, the silences).
 - Recitation: live via the Quran Foundation proxy, reciter selectable. No effects on recitation (no pitch, speed, or reverb changes). Confirm the audio license.
 
 ## 7. UI AND ACCESSIBILITY

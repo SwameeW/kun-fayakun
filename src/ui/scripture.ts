@@ -84,7 +84,7 @@ function verseAttribution(entry: QuranEntry, data: DataStore, i18n: I18n): HTMLE
   );
 }
 
-/** The verse's plain-words explanation (src/i18n/en.chapters.json), or null if it has none. */
+/** The verse's plain-words explanation (src/i18n/en.plain.json, once ./plain-words has loaded it), or null. */
 export function plainExplanation(key: VerseKey, i18n: I18n): string | null {
   return i18n.has(`plain.${key}`) ? i18n.t(`plain.${key}`) : null;
 }
@@ -93,7 +93,7 @@ export function plainExplanation(key: VerseKey, i18n: I18n): string | null {
  * The plain-words explanation under a verse's translation: labelled as an explanation, apart from
  * the translation and its attribution, so it is never taken for a translation of the Quran.
  */
-function plainBlock(key: VerseKey, i18n: I18n): HTMLElement | null {
+export function plainBlock(key: VerseKey, i18n: I18n): HTMLElement | null {
   const text = plainExplanation(key, i18n);
   if (!text) return null;
   const labelId = uniqueId('plain');

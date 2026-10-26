@@ -169,7 +169,7 @@ class Engine implements KunFayakunApp {
   private readonly params: LaunchParams;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(DEFAULT_FOV, 1, NEAR, FAR);
-  private readonly audio = createAudioEngine();
+  readonly audio = createAudioEngine();
   private readonly motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly exposure: EngineExposure;
   private readonly chapterExposure: ExposureControl;

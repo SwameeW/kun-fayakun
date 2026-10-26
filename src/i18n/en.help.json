@@ -11,7 +11,7 @@
   "help.seen": "Special things you have noticed on this visit, like Jupiter’s squashed shape. It is just a list for you, not a score.",
   "help.photo": "Photo mode hides the buttons so you see only the view. You can save a picture or a video, with a note underneath of where its pictures and numbers came from.",
   "help.detail": "How much detail the explorer draws. More detail looks sharper but needs a faster device. Auto picks what suits yours.",
-  "help.sound": "You hear the wind where there is air, like when you walk on the Earth or Mars. Where there is no air you only hear your space suit, because sound can’t travel through empty space.",
+  "help.sound": "You hear the wind where there is air, like when you walk on the Earth or Mars. Where there is no air you only hear your space suit, because sound can’t travel through empty space. This also turns the film’s sounds on or off.",
 
   "help.body.sun": "The Sun is a star: a giant ball of very hot, glowing gas. About a million Earths could fit inside it, and its light and warmth keep us alive.",
   "help.body.mercury": "Mercury is the smallest planet and the closest to the Sun. It has almost no air, so its days are scorching and its nights are freezing.",

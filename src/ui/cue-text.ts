@@ -11,6 +11,7 @@ import {
   plainExplanation,
   verifiedHadithText,
 } from './scripture';
+import { loadPlainWords } from './plain-words';
 import { onVersePlainChange, versePlain } from './verse-english';
 import './styles/cue-text.css';
 
@@ -288,7 +289,12 @@ export function createCueText(app: App, announce: (text: string) => void): CueTe
     chapter = stateChapter;
   });
   app.events.on('error', clearFast);
-  onVersePlainChange(update);
+  // The explanations come in their own chunk: fetched as soon as the cards are to show them.
+  if (versePlain()) void loadPlainWords(app).then(update);
+  onVersePlainChange((plain) => {
+    if (plain) void loadPlainWords(app).then(update);
+    else update();
+  });
   app.events.on('route', ({ route }) => {
     if (route.name !== 'chapter') clearFast();
   });

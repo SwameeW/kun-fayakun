@@ -132,6 +132,20 @@ Two minutes over the Planck CMB sky. It opens with the name Kun Fayakun, then ev
 dataset, licence and reviewer, from data/sources.json, data/hadith.json and the review record, and
 the on-screen disclaimer.
 
+## Sound
+
+No music, no instrument, no voice (spec section 6): the film's sounds come from what it shows, made
+in Web Audio with nothing recorded (src/core/film-score.ts). Where there was sound to hear, it is that
+sound. The young universe rang with sound waves in its plasma; Chapters 1 and 2 sound their acoustic
+peaks (the multipoles of the Planck sky's peaks, raised into hearing), falling in pitch as space
+stretches, until recombination ends them in one exhaled breath. A star churns; the Sun rings with
+acoustic modes about 135 microhertz apart near 3 mHz, sped up some 42,000 times in Chapter 7. The young
+Earth has lava, a giant impact felt as a low swell, rain and the first seas, wind over new land, and
+Chapter 9 begins under water. Out in space, where nothing carries sound, only a low hush. Silence
+where the film asks for it: the four seconds before the word, the verses of the end, the close. Under
+every verse the sound sinks to near silence (7:204), and lower under a hadith card; nothing startles.
+The speaker at the top turns it off, with the explorer's wind.
+
 ## Signature shots
 
 - The slow crane over the protoplanetary disk (Chapter 7, shot 1): built.
@@ -150,109 +164,109 @@ the on-screen disclaimer.
 |---|---|---|---|---|---|---|---|---|---|---|
 | ch00-s1-01 | 0:00.0 | 4 s | hold | 25.7 mm | Absolute black: before time | none | silence (4 s) | - | - | - |
 | ch00-s1-02 | 0:04.0 | 7.5 s | hold | 25.7 mm | The word kun forms in light (a slow fade of at least 4 s) | the calligraphy's own light, breathing | silence, then a single breath of air | word | - | - |
-| ch00-s1-03 | 0:11.5 | 6 s | dolly back and down | 25.7 mm | The calligraphy settles into the frame | calligraphy glow | low pad | - | - | - |
+| ch00-s1-03 | 0:11.5 | 6 s | dolly back and down | 25.7 mm | The calligraphy settles into the frame | calligraphy glow | a faint hush | - | - | - |
 | ch00-s2-04 | 0:17.5 | 71 s | hold | 25.7 mm | Kun in stillness while the verses are read, then the hadith | calligraphy glow | near silence | - | 2:117, 36:82, hadith bukhari-3191 with muslim-2653, hadith abudawud-4700 with tirmidhi-2155 | text, scholarly |
-| ch00-s3-05 | 1:28.5 | 4.5 s | hold | 25.7 mm | The light of the word fades | fading glow | near silence | beyond | - | science |
+| ch00-s3-05 | 1:28.5 | 4.5 s | hold | 25.7 mm | The light of the word fades | fading glow | the hush fading away | beyond | - | science |
 | ch00-s3-06 | 1:33.0 | 4 s | hold | 25.7 mm | Darkness before the beginning | none | silence | - | - | - |
 
 ### Chapter 1. The beginning (1:20.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch01-s1-01 | 0:00.0 | 11 s | hold | 25.7 mm | A point of light grows softly (no flash) | the point's own light | rising pad | beginning | - | - |
-| ch01-s1-02 | 0:11.0 | 17 s | dolly back | 25.7 mm | Space stretches: comoving dust recedes | white-hot to amber | pad, widening | stretch, cooling | - | - |
-| ch01-s2-03 | 0:28.0 | 34 s | crane up and out | 25.7 mm | The plasma condenses, warming to gold | amber | pad | - | 21:30 | text |
-| ch01-s3-04 | 1:02.0 | 18 s | push-in | 25.7 mm | Into the plasma (continues unbroken into Chapter 2) | gold | pad thinning | sideBySide, open | - | scholarly, science |
+| ch01-s1-01 | 0:00.0 | 11 s | hold | 25.7 mm | A point of light grows softly (no flash) | the point's own light | the plasma's sound waves rising (its acoustic peaks, made audible) | beginning | - | - |
+| ch01-s1-02 | 0:11.0 | 17 s | dolly back | 25.7 mm | Space stretches: comoving dust recedes | white-hot to amber | the plasma's sound widening, its pitch falling as space stretches | stretch, cooling | - | - |
+| ch01-s2-03 | 0:28.0 | 34 s | crane up and out | 25.7 mm | The plasma condenses, warming to gold | amber | the plasma's sound; near silence under the verse | - | 21:30 | text |
+| ch01-s3-04 | 1:02.0 | 18 s | push-in | 25.7 mm | Into the plasma (continues unbroken into Chapter 2) | gold | the plasma's sound, lower, carried into Chapter 2 | sideBySide, open | - | scholarly, science |
 
 ### Chapter 2. The first light (1:26.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch02-s1-01 | 0:00.0 | 19.5 s | drift | 25.7 mm | Inside the glowing plasma; photons random-walk | gold plasma | breath-like noise | nuclei, opaque, atoms | - | - |
-| ch02-s2-02 | 0:19.5 | 13.5 s | slow push | 25.7 mm | Recombination: the fog clears in one breath | plasma fading, photons streaming free | one exhaled breath, then silence | - | - | figure cmb-legend |
-| ch02-s3-03 | 0:33.0 | 12.5 s | pull back through the shell | 25.7 mm | The real Planck sky around the viewer, then seen whole | CMB map | silence opening into a low pad | planck | - | - |
-| ch02-s4-04 | 0:45.5 | 40.5 s | slow orbit | 25.7 mm | The CMB globe | CMB map | low pad | seeds | 41:11 | text, scholarly, science |
+| ch02-s1-01 | 0:00.0 | 19.5 s | drift | 25.7 mm | Inside the glowing plasma; photons random-walk | gold plasma | the plasma's sound waves, roaring low | nuclei, opaque, atoms | - | - |
+| ch02-s2-02 | 0:19.5 | 13.5 s | slow push | 25.7 mm | Recombination: the fog clears in one breath | plasma fading, photons streaming free | the sound waves end at recombination: one exhaled breath, then silence | - | - | figure cmb-legend |
+| ch02-s3-03 | 0:33.0 | 12.5 s | pull back through the shell | 25.7 mm | The real Planck sky around the viewer, then seen whole | CMB map | silence opening into a low hush | planck | - | - |
+| ch02-s4-04 | 0:45.5 | 40.5 s | slow orbit | 25.7 mm | The CMB globe | CMB map | a low hush; near silence under the verse | seeds | 41:11 | text, scholarly, science |
 
 ### Chapter 3. The dark ages and the first stars (1:24.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch03-s1-01 | 0:00.0 | 22 s | dolly back | 25.7 mm | The dark ages: near-uniform dark matter | false-colour violet, very dim | deep drone | dark, web | - | - |
-| ch03-s2-02 | 0:22.0 | 26 s | crane out | 25.7 mm | The web forms (Zel'dovich approximation) | violet to blue-white | drone with slow swells | method, stars | - | science |
-| ch03-s3-03 | 0:48.0 | 36 s | crane out, wide | 25.7 mm | First stars swell softly in the knots; first galaxies gather | blue-white stars, warm galaxy glow | high, soft tones | webb, galaxies, open | - | - |
+| ch03-s1-01 | 0:00.0 | 22 s | dolly back | 25.7 mm | The dark ages: near-uniform dark matter | false-colour violet, very dim | a deep, low rumble | dark, web | - | - |
+| ch03-s2-02 | 0:22.0 | 26 s | crane out | 25.7 mm | The web forms (Zel'dovich approximation) | violet to blue-white | the rumble, a hush slowly rising | method, stars | - | science |
+| ch03-s3-03 | 0:48.0 | 36 s | crane out, wide | 25.7 mm | First stars swell softly in the knots; first galaxies gather | blue-white stars, warm galaxy glow | a brighter hush; glints of high air as stars ignite | webb, galaxies, open | - | - |
 
 ### Chapter 4. A vast heaven (1:27.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch04-s1-01 | 0:00.0 | 27 s | slow push | 25.7 mm | Among the galaxies | starlight | wind-like pad | galaxies, stretch | - | - |
+| ch04-s1-01 | 0:00.0 | 27 s | slow push | 25.7 mm | Among the galaxies | starlight | a wind-like hush | galaxies, stretch | - | - |
 | ch04-s2-02 | 0:27.0 | 21 s | drift | 25.7 mm | Space stretches while the verse is read | starlight | near silence | - | 51:47 | text |
-| ch04-s3-03 | 0:48.0 | 39 s | pull back | 25.7 mm | Light reddens with distance; both Hubble-constant values | reddening starlight | pad | redshift, tension, sideBySide | - | scholarly, science; figure hubble-tension |
+| ch04-s3-03 | 0:48.0 | 39 s | pull back | 25.7 mm | Light reddens with distance; both Hubble-constant values | reddening starlight | the hush deepening as the light reddens | redshift, tension, sideBySide | - | scholarly, science; figure hubble-tension |
 
 ### Chapter 5. Seven heavens and the galaxies (1:44.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch05-s1-01 | 0:00.0 | 12 s | drift | 25.7 mm | The Milky Way (an artist's model), the Sun tagged | galaxy light | low pad | milkyWay | - | - |
+| ch05-s1-01 | 0:00.0 | 12 s | drift | 25.7 mm | The Milky Way (an artist's model), the Sun tagged | galaxy light | a low hush | milkyWay | - | - |
 | ch05-s2-02 | 0:12.0 | 24 s | logarithmic pull-back | 25.7 mm | Our galaxy becomes one point among real SDSS galaxies | survey points | rising air | pullBack, survey | - | - |
-| ch05-s3-03 | 0:36.0 | 20 s | push-in to the slice | 25.7 mm | The equatorial slice brightens: the cosmic web | web light | pad | - | 67:3 | text |
+| ch05-s3-03 | 0:36.0 | 20 s | push-in to the slice | 25.7 mm | The equatorial slice brightens: the cosmic web | web light | a hush | - | 67:3 | text |
 | ch05-s4-04 | 0:56.0 | 37 s | slow orbit | 25.7 mm | The web, the Sloan Great Wall tagged | web light | near silence | - | 65:12 | - |
-| ch05-s5-05 | 1:33.0 | 11 s | pull-back | 25.7 mm | The survey inside the limit of the observable universe | faint rim light | pad fading | observable | - | scholarly |
+| ch05-s5-05 | 1:33.0 | 11 s | pull-back | 25.7 mm | The survey inside the limit of the observable universe | faint rim light | the hush fading | observable | - | scholarly |
 
 ### Chapter 6. Stars and iron (2:05.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch06-s1-01 | 0:00.0 | 18 s | crane down | 25.7 mm | A massive star cut open, banded by element (not to scale) | the star's own light | deep, slow pulse-free drone | star, iron | - | - |
+| ch06-s1-01 | 0:00.0 | 18 s | crane down | 25.7 mm | A massive star cut open, banded by element (not to scale) | the star's own light | the churning of convection, deep and slow | star, iron | - | - |
 | ch06-s2-02 | 0:18.0 | 18 s | dolly back | 25.7 mm | Core collapse: shock, neutrinos; the star torn apart (eased, no flash) | white-hot, exposure dipped | a single low swell | collapse, elements | - | - |
 | ch06-s3-03 | 0:36.0 | 50 s | drift, remnant above the verse | 25.7 mm | The debris, dimmed to a quiet glow | element false colour | near silence | - | 57:25 | text |
-| ch06-s4-04 | 1:26.0 | 14 s | travel | 25.7 mm | A white dwarf drawing gas from a companion | the companion's light | pad | whiteDwarf | - | scholarly |
-| ch06-s5-05 | 1:40.0 | 25 s | dolly back | 25.7 mm | Type Ia supernova; the nickel-56 decay chain | white-hot fading with the decay | a single low swell | typeIa, us | - | science; figure decay-chain |
+| ch06-s4-04 | 1:26.0 | 14 s | travel | 25.7 mm | A white dwarf drawing gas from a companion | the companion's light | the hiss of infalling gas | whiteDwarf | - | scholarly |
+| ch06-s5-05 | 1:40.0 | 25 s | dolly back | 25.7 mm | Type Ia supernova; the nickel-56 decay chain | white-hot fading with the decay | a single low swell, then a hum fading with the decay chain | typeIa, us | - | science; figure decay-chain |
 
 ### Chapter 7. The Sun and its course (2:46.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch07-s1-01 | 0:00.0 | 16 s | slow crane over the disk | 22 mm | Protoplanetary disk: dust lanes, gaps carved by forming planets | the protostar's warm light through dust | wind-like pad | disk, gaps | - | - |
+| ch07-s1-01 | 0:00.0 | 16 s | slow crane over the disk | 22 mm | Protoplanetary disk: dust lanes, gaps carved by forming planets | the protostar's warm light through dust | the hiss of dust in the disk | disk, gaps | - | - |
 | ch07-s1-02 | 0:16.0 | 24 s | crane continues | 22 mm | The Sun begins to shine (eased brightening) | warming to sunlight | a slow swell | sun | - | - |
-| ch07-s2-03 | 0:40.0 | 10 s | dolly in | 26 mm | The disk clears; the planets remain | sunlight | pad | planets | - | - |
+| ch07-s2-03 | 0:40.0 | 10 s | dolly in | 26 mm | The disk clears; the planets remain | sunlight | the Sun's own acoustic modes, made audible | planets | - | - |
 | ch07-s2-04 | 0:50.0 | 19 s | hold on the Sun | 35 mm | The living Sun: granulation, limb darkening, corona | sunlight | near silence | - | 36:38 | text |
-| ch07-s3-05 | 1:09.0 | 12 s | crane up, wide | 22 mm | The orrery: real orbits from JPL data, astrolabe rings | sunlight, engraved warm rings | pad | orbits | - | - |
+| ch07-s3-05 | 1:09.0 | 12 s | crane up, wide | 22 mm | The orrery: real orbits from JPL data, astrolabe rings | sunlight, engraved warm rings | the Sun's modes fading into a hush | orbits | - | - |
 | ch07-s4-06 | 1:21.0 | 20 s | long-lens hold beside the Earth | 85 mm | The Moon's phases as seen from the Earth | sunlight | near silence | - | 36:39 | - |
 | ch07-s5-07 | 1:41.0 | 41 s | slow orbit, wide | 26 mm | Each in an orbit | sunlight, rings | near silence | - | 36:40, 21:33 | scholarly |
-| ch07-s6-08 | 2:22.0 | 24 s | pull back to the galaxy | 26 mm | The Sun's course around the Milky Way (science, not the verse's meaning) | galaxy light | pad | galactic, notMeaning | - | science |
+| ch07-s6-08 | 2:22.0 | 24 s | pull back to the galaxy | 26 mm | The Sun's course around the Milky Way (science, not the verse's meaning) | galaxy light | a widening hush | galactic, notMeaning | - | science |
 
 ### Chapter 8. The earth spread out (2:47.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch08-s1-01 | 0:00.0 | 22 s | slow orbit | 35 mm | The young Earth: a molten world, lava cracks and steam | magma glow, a young Sun | deep rumble, low | molten, bombardment | - | - |
+| ch08-s1-01 | 0:00.0 | 22 s | slow orbit | 35 mm | The young Earth: a molten world, lava cracks and steam | magma glow, a young Sun | lava rumbling and bubbling | molten, bombardment | - | - |
 | ch08-s2-02 | 0:22.0 | 18 s | dolly back, wide | 26 mm | A giant impact (eased, no flash); debris rings the Earth | impact glow, exposure dipped | a single low swell | impact | - | - |
-| ch08-s2-03 | 0:40.0 | 12 s | slow orbit | 26 mm | The debris gathers into the Moon | sunlight | pad | moon | - | text |
+| ch08-s2-03 | 0:40.0 | 12 s | slow orbit | 26 mm | The debris gathers into the Moon | sunlight | the lava's rumble settling | moon | - | text |
 | ch08-s3-04 | 0:52.0 | 24 s | hold | 35 mm | The crust cools and darkens | dimming magma glow | near silence | - | 41:9 | - |
-| ch08-s4-05 | 1:16.0 | 32 s | slow push | 35 mm | Rain and the first oceans | sunlight on steam and water | rain-like noise | oceans | 41:10 | - |
-| ch08-s5-06 | 1:48.0 | 17 s | slow orbit | 35 mm | Plates move; continents and mountains rise; clouds with atmospheric scattering | sunlight, blue limb | wind | continents | - | scholarly |
+| ch08-s4-05 | 1:16.0 | 32 s | slow push | 35 mm | Rain and the first oceans | sunlight on steam and water | rain; the first seas | oceans | 41:10 | - |
+| ch08-s5-06 | 1:48.0 | 17 s | slow orbit | 35 mm | Plates move; continents and mountains rise; clouds with atmospheric scattering | sunlight, blue limb | wind over the new land; the sea | continents | - | scholarly |
 | ch08-s6-07 | 2:05.0 | 42 s | hold, wide | 26 mm | The finished Earth turning | sunlight | near silence | today | 79:30, 79:31, 79:32 | science |
 
 ### Chapter 9. Life from water (2:24.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch09-s1-01 | 0:00.0 | 58 s | drift, macro | 50 mm | Early ocean, close: light filtering through water, single cells | sunlight from above through water | water | water, traces, luca | 21:30 | text |
+| ch09-s1-01 | 0:00.0 | 58 s | drift, macro | 50 mm | Early ocean, close: light filtering through water, single cells | sunlight from above through water | under the sea: a low murmur and rising bubbles | water, traces, luca | 21:30 | text |
 | ch09-s2-02 | 0:58.0 | 14 s | rising pull-up | 26 mm | Up through the surface to orbit | sunlight | rising air | - | - | - |
-| ch09-s3-03 | 1:12.0 | 18 s | slow orbit | 35 mm | Oxygen rises: oceans and sky shift colour | sunlight, a bluer limb | pad | oxygen | - | - |
-| ch09-s4-04 | 1:30.0 | 43 s | slow orbit | 35 mm | The land turns green | sunlight | pad | land | 24:45 | scholarly |
-| ch09-s5-05 | 2:13.0 | 11 s | hold | 26 mm | The living Earth (the story pauses before the first humans) | sunlight | near silence | end | - | science |
+| ch09-s3-03 | 1:12.0 | 18 s | slow orbit | 35 mm | Oxygen rises: oceans and sky shift colour | sunlight, a bluer limb | the sea and a rising wind | oxygen | - | - |
+| ch09-s4-04 | 1:30.0 | 43 s | slow orbit | 35 mm | The land turns green | sunlight | wind and the sea; near silence under the verse | land | 24:45 | scholarly |
+| ch09-s5-05 | 2:13.0 | 11 s | hold | 26 mm | The living Earth (the story pauses before the first humans) | sunlight | wind and sea fading | end | - | science |
 
 ### Chapter 10. The folding of the heavens (3:18.0)
 
 | Shot | From | Length | Camera | Lens | Subject | Light | Sound | Captions | Verses | Panel |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ch10-s1-01 | 0:00.0 | 24 s | drift | 26 mm | The cosmos today: galaxies | starlight | low pad | now, futures | - | figure cosmic-futures |
-| ch10-s2-02 | 0:24.0 | 12 s | locked-off wide | 26 mm | Possibility: heat death (labelled hypothesis) | reddening, dimming | pad thinning | heatDeath | - | - |
-| ch10-s2-03 | 0:36.0 | 12 s | locked-off wide | 26 mm | Possibility: Big Rip (labelled hypothesis) | stretching light | pad | bigRip | - | - |
-| ch10-s2-04 | 0:48.0 | 12 s | locked-off wide | 26 mm | Possibility: Big Crunch (labelled hypothesis) | bluing light, eased | pad | bigCrunch | - | - |
-| ch10-s3-05 | 1:00.0 | 86 s | slow drift | 26 mm | Calm galaxies while the verses are read | soft starlight | near silence | - | 81:1, 81:2, 82:1, 82:2, 39:67, 14:48 | text |
+| ch10-s1-01 | 0:00.0 | 24 s | drift | 26 mm | The cosmos today: galaxies | starlight | a low hush | now, futures | - | figure cosmic-futures |
+| ch10-s2-02 | 0:24.0 | 12 s | locked-off wide | 26 mm | Possibility: heat death (labelled hypothesis) | reddening, dimming | the hush thinning | heatDeath | - | - |
+| ch10-s2-03 | 0:36.0 | 12 s | locked-off wide | 26 mm | Possibility: Big Rip (labelled hypothesis) | stretching light | a tearing hiss | bigRip | - | - |
+| ch10-s2-04 | 0:48.0 | 12 s | locked-off wide | 26 mm | Possibility: Big Crunch (labelled hypothesis) | bluing light, eased | a gathering rumble | bigCrunch | - | - |
+| ch10-s3-05 | 1:00.0 | 86 s | slow drift | 26 mm | Calm galaxies while the verses are read | soft starlight | silence | - | 81:1, 81:2, 82:1, 82:2, 39:67, 14:48 | text |
 | ch10-s4-06 | 2:26.0 | 10 s | slow push | 26 mm | The heavens gently roll inward (labelled artistic) | soft white | a long exhale | artistic | - | scholarly |
-| ch10-s5-07 | 2:36.0 | 34 s | hold | 26 mm | Everything resolves into calm light; the calligraphy of 21:104 | soft white | near silence | - | 21:104 | - |
+| ch10-s5-07 | 2:36.0 | 34 s | hold | 26 mm | Everything resolves into calm light; the calligraphy of 21:104 | soft white | one breath as the word forms; then silence | - | 21:104 | - |
 | ch10-s6-08 | 3:10.0 | 8 s | hold | 26 mm | Silence | fade to black | silence | - | - | science |

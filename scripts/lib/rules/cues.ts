@@ -148,11 +148,11 @@ export function checkCues(ctx: ValidationContext, log: RuleLog): void {
     return;
   }
   const verses = new Map<string, QuranEntry>(ctx.quran.status === 'ok' ? ctx.quran.value.ayat.map((a) => [a.key, a]) : []);
-  const plain: ReadonlyMap<string, string> = ctx.i18n.chapters.status === 'ok' ? ctx.i18n.chapters.file.messages : new Map();
+  const plain: ReadonlyMap<string, string> = ctx.i18n.plain.status === 'ok' ? ctx.i18n.plain.file.messages : new Map();
   const records: unknown = ctx.hadith.status === 'ok' ? ctx.hadith.value.hadith : [];
   const hadith: HadithContext = {
     hadith: new Map(Array.isArray(records) ? (records as HadithEntry[]).map((e) => [e.id, e]) : []),
-    messages: plain,
+    messages: ctx.i18n.chapters.status === 'ok' ? ctx.i18n.chapters.file.messages : new Map(),
   };
   for (const chapter of ctx.content.chapters) {
     const { content } = chapter;

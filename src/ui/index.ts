@@ -3,12 +3,15 @@ import type { App, ChapterId, Route } from '../core/types';
 import { createAnnouncer } from './announcer';
 import type { UniverseUi } from './explore/index';
 import { createCueText } from './cue-text';
+import { createFilmSound } from './film-sound';
+import { extendTestHandle } from '../core/hooks';
 import { focusLost, h } from './dom';
 import { ARABIC_FONT_PATH, declareArabicFont, loadArabicFont } from './fonts';
 import { createFpsReadout } from './fps';
 import { icon } from './icons';
 import { createIntro } from './intro';
 import { createShortcuts } from './keyboard';
+import { sound } from './sound-preference';
 import { createPanel } from './panel';
 import { chapterHash, parseHash } from './route';
 import { createSourcesPage } from './sources-page';
@@ -149,12 +152,32 @@ export function mountUI(app: App, root: HTMLElement): void {
   shortcutsButton.addEventListener('click', () => {
     shortcuts.openHelp();
   });
+  // Sound: the film's (./film-sound) and the explorer's wind, one choice for both.
+  extendTestHandle({ filmSound: createFilmSound(app) });
+  const soundIcon = h('span', { class: 'kf-sound-icon' });
+  const soundButton = h(
+    'button',
+    { type: 'button', class: 'kf-btn kf-btn--icon kf-btn--quiet', 'data-testid': 'sound-toggle' },
+    soundIcon,
+    h('span', { class: 'kf-sr-only' }, i18n.t('ui.header.sound')),
+  );
+  const showSound = (): void => {
+    const on = sound.get();
+    soundButton.setAttribute('aria-pressed', String(on));
+    soundButton.title = i18n.t(on ? 'ui.header.soundOn' : 'ui.header.soundOff');
+    soundIcon.replaceChildren(icon(on ? 'sound' : 'soundOff'));
+  };
+  showSound();
+  soundButton.addEventListener('click', () => {
+    sound.set(!sound.get());
+  });
+  sound.subscribe(showSound);
   const header = h(
     'header',
     { class: 'kf-header' },
     h('h1', { class: 'kf-brand' }, brand),
     params.get('fps') === '1' ? createFpsReadout(app) : null,
-    h('div', { class: 'kf-header-actions' }, shortcutsButton, panel.toggleButton),
+    h('div', { class: 'kf-header-actions' }, shortcutsButton, soundButton, panel.toggleButton),
   );
 
   /* Main stage -------------------------------------------------------- */
