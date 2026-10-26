@@ -1,5 +1,7 @@
 /**
- * Audio policy (spec §6): silent by default, no music, no audio assets in M1.
+ * Audio policy (spec §6): no music. The film is silent; the explorer's only sounds are the wind
+ * where there is air, or a suit's fans where there is none (src/explore/sound.ts, made in Web Audio,
+ * no audio assets), off at the navigator's foot.
  *
  * Two buses (ambient, scene) feed the output through gains the engine controls.
  * Recitation (M4) never goes through Web Audio: it plays on its own media
