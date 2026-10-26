@@ -37,6 +37,7 @@ import type {
   UniverseGraphics,
   UniverseSteer,
   EarthCommand,
+  UniverseTimeCommand,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -900,6 +901,10 @@ class Engine implements KunFayakunApp {
 
   earthCommand(command: EarthCommand): void {
     this.universeHost.earth(command);
+  }
+
+  universeTime(command: UniverseTimeCommand): void {
+    this.universeHost.time(command);
   }
 
   universe(): UniverseView | null {

@@ -10,7 +10,7 @@ import { createQualityMenu } from './quality-menu';
 /**
  * The celestial navigator: every world the explorer shows, each with a small live portrait (lit as
  * the camera sees it), its distance and how long its light takes to arrive, all live from the
- * ephemeris; a compact orrery to fly by; the Living Earth (./living-earth: its imagery, live layers,
+ * ephemeris; the time machine (at its head); a compact orrery to fly by; the Living Earth (./living-earth: its imagery, live layers,
  * place search and field notes); the phenomena seen on this visit (its summary says how many
  * entries it holds; no totals, no scores); the detail menu; and the keys. On a wide screen it is a
  * side panel (folding to a rail of portraits); on a phone a bottom sheet (folding to a row of them)
@@ -35,7 +35,8 @@ export interface Navigator {
 /** Wide enough (and tall enough) for the side panel; otherwise the bottom sheet. */
 const PANEL_QUERY = '(min-width: 900px) and (min-height: 560px)';
 
-export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void): Navigator {
+/** `time`: the time machine's line (./time-control and photo mode's button), placed at the head of the body. */
+export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void, time: HTMLElement): Navigator {
   const { i18n } = app;
   const panelQuery = window.matchMedia(PANEL_QUERY);
   const coarse = window.matchMedia('(pointer: coarse)');
@@ -100,7 +101,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, map, list, living.element, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, map, list, living.element, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -118,7 +119,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [map, living.element, seen, foot]) el.hidden = !expanded;
+    for (const el of [time, map, living.element, seen, foot]) el.hidden = !expanded;
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
     notify();

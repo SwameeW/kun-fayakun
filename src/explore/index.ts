@@ -77,6 +77,7 @@ import { FloatingOrigin, km, renderToEcliptic, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretchedDistance, stretchedLight } from './stretch';
 import { createSolarSystem, type SolarSystem } from './system';
+import { advanceClock, fasterRate, slowerRate } from './time';
 
 const DEFAULT_BODY: BodyId = 'earth';
 const NOISE = { size: 64, seed: 31_415 } as const;
@@ -89,6 +90,13 @@ const SATELLITE_PICK_PX = 9;
 const LIVING_RANGE_KM = 4e6;
 /** The narrowest lens over the day's mosaic (its 250 m pixels at about four screen pixels each from the lowest orbit). */
 const TODAY_LENS_MIN_DEG = 6;
+/**
+ * The time machine and the live layers: satellites are shown up to this rate (explorer seconds per
+ * real second: the worker's states, several a second, carry them no further) and earthquakes only
+ * within this long of the present (the feed is the past day's).
+ */
+const SATELLITE_MAX_RATE = 600;
+const QUAKES_WITHIN_MS = 86_400_000;
 /**
  * The field notes' names on the ground: shown within this distance of the Earth's centre (km), kept
  * this many CSS px apart (in their list's order: the rest give way until the view comes closer), and
@@ -313,6 +321,11 @@ export default function create(): UniverseModule {
   let input: ExploreInput | null = null;
   let world: NavWorld | null = null;
   let range = { startJd: 0, endJd: Infinity };
+  /** The time machine (./time): the rate set, whether paused, the end it stopped at, and the rate the clock ran at this frame. */
+  let timeRate = 1;
+  let timePaused = false;
+  let timeEdge: 'start' | 'end' | null = null;
+  let clockRate = 1;
   let timeConstants: PhysicalFile['time'] | null = null;
   let noise: Data3DTexture | null = null;
   let insets: Required<ViewInsets> = { top: 0, bottom: 0, left: 0, right: 0 };
@@ -517,6 +530,7 @@ export default function create(): UniverseModule {
     solarFilter: false,
     jdTdb: 0,
     unixMs: 0,
+    time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0 },
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -553,6 +567,12 @@ export default function create(): UniverseModule {
     v.solarFilter = filterAmount > 0.5;
     v.jdTdb = jdTdb;
     v.unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    v.time.rate = timeRate;
+    v.time.paused = timePaused;
+    v.time.edge = timeEdge;
+    // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
+    v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
     v.mode = navOut.mode;
     v.speedKmS = navOut.speedKmS;
     const trip = nav.tripState;
@@ -899,8 +919,15 @@ export default function create(): UniverseModule {
     nav.reducedMotion = c.reducedMotion;
     adaptation.setReducedMotion(c.reducedMotion);
     ambient += c.reducedMotion ? 0 : dt;
-    jdTdb = Math.min(range.endJd, jdTdb + dt / SECONDS_PER_DAY);
-    jdUtc += dt / SECONDS_PER_DAY;
+    // The time machine: the clock at its rate (real time during a trip), kept in the data's span.
+    clockRate = timePaused ? 0 : nav.busy ? Math.sign(timeRate) : timeRate;
+    const clock = advanceClock(jdTdb, dt, clockRate, range.startJd, range.endJd);
+    jdUtc += clock.jd - jdTdb;
+    jdTdb = clock.jd;
+    if (clock.edge) {
+      timePaused = true;
+      timeEdge = clock.edge;
+    }
     sys.update(jdTdb);
     advanceStretch(dt);
     warpSystem(sys);
@@ -1195,8 +1222,8 @@ export default function create(): UniverseModule {
       living.sun.y = scratch.y;
       living.sun.z = scratch.z;
       const unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
-      satellites?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, sun: living.sun, earthRadiusKm: sys.specs.earth.radiusKm, visible: near });
-      quakes?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, earthRadiusKm: sys.specs.earth.radiusKm, visible: near, time: ambient, reducedMotion: c.reducedMotion });
+      satellites?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, sun: living.sun, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && Math.abs(clockRate) <= SATELLITE_MAX_RATE });
+      quakes?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && Math.abs(unixMs - Date.now()) < QUAKES_WITHIN_MS, time: ambient, reducedMotion: c.reducedMotion });
       if (satellites) for (const l of satellites.labels()) labels.push(l);
       if (quakes) for (const l of quakes.labels()) labels.push(l);
       pushMarkers(sys, near && pe.distance < MARKER_RANGE_KM, pxPerTan);
@@ -1979,6 +2006,37 @@ export default function create(): UniverseModule {
           return;
         case 'markers':
           markerSet = command.set;
+          return;
+      }
+    },
+
+    time(command) {
+      // A change of rate or direction sets the clock running; a new date keeps it as it was.
+      if (command.kind !== 'date' && command.kind !== 'toggle') timePaused = false;
+      timeEdge = null;
+      switch (command.kind) {
+        case 'toggle':
+          timePaused = !timePaused;
+          return;
+        case 'faster':
+          timeRate = fasterRate(timeRate);
+          return;
+        case 'slower':
+          timeRate = slowerRate(timeRate);
+          return;
+        case 'reverse':
+          timeRate = -timeRate;
+          return;
+        case 'now':
+          timeRate = 1;
+          setDate(null);
+          return;
+        case 'date':
+          setDate(command.jdUtc);
+          return;
+        case 'rate':
+          if (command.rate === 0) timePaused = true;
+          else timeRate = command.rate;
           return;
       }
     },

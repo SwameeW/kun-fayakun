@@ -476,6 +476,8 @@ export interface UniverseView {
   /** The date shown: TDB Julian date, and the same instant as a Unix time (ms) for display. */
   jdTdb: number;
   unixMs: number;
+  /** The time machine (src/explore/time): its clock's rate and state, and the span of dates it can show. */
+  time: UniverseTime;
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -677,6 +679,33 @@ export interface ViewInsets {
 export type UniverseSteer = 'stop' | 'orbit';
 
 /**
+ * The time machine's commands: pause or resume; one step faster or slower on the ladder of rates
+ * (src/explore/time TIME_RATES); run backwards or forwards; back to the present at real time; jump
+ * to a date (UTC Julian date, kept in the data's span); or an exact rate (explorer seconds per real
+ * second; negative runs backwards).
+ */
+export type UniverseTimeCommand =
+  | { kind: 'toggle' }
+  | { kind: 'faster' }
+  | { kind: 'slower' }
+  | { kind: 'reverse' }
+  | { kind: 'now' }
+  | { kind: 'date'; jdUtc: number }
+  | { kind: 'rate'; rate: number };
+
+/** The time machine as the view reports it. */
+export interface UniverseTime {
+  /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused (at real time during a trip). */
+  rate: number;
+  paused: boolean;
+  /** The clock stopped at an end of the data's span, or null. */
+  edge: 'start' | 'end' | null;
+  /** The span of dates the explorer can show (Unix ms). */
+  startMs: number;
+  endMs: number;
+}
+
+/**
  * Commands for the explorer's Living Earth: fly to a place on the Earth (degrees, and the width of
  * ground to frame, km), choose the imagery (cloud-free, or the last whole day's), and turn its live
  * layers on or off. The interface sends them; the explorer ignores what it cannot do.
@@ -720,6 +749,8 @@ export interface UniverseModule extends ExperienceModule {
   steer(command: UniverseSteer): boolean;
   /** Living Earth commands (src/explore/earth-tiles and src/explore/living). */
   earth(command: EarthCommand): void;
+  /** Time machine commands (src/explore/time). */
+  time(command: UniverseTimeCommand): void;
 }
 
 /** A camera pose around a body, for tests and frame captures. */
@@ -806,6 +837,8 @@ export interface AppCommands {
   steerUniverse(command: UniverseSteer): boolean;
   /** In the explorer: a Living Earth command (fly to a place, imagery, live layers). */
   earthCommand(command: EarthCommand): void;
+  /** In the explorer: a time machine command (pause, faster, slower, backwards, now, a date). */
+  universeTime(command: UniverseTimeCommand): void;
 }
 
 /* ------------------------------------------------------------------ */

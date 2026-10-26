@@ -53,5 +53,8 @@ test('the solar-system explorer has no accessibility violations', async ({ page,
   await kf.open('/universe/saturn', { query: { jd: '2461336.75' } });
   await expect(page.locator('html')).toHaveAttribute('data-universe-ready', 'true', { timeout: 90_000 });
   await expect(page.getByTestId('universe-readout')).toBeVisible();
+  // Checked once the interface has faded in: mid-fade every colour is dimmed, and contrast would be judged on that.
+  await expect(page.getByTestId('universe-bodies')).toHaveCSS('opacity', '1');
+  await expect(page.getByTestId('universe-readout')).toHaveCSS('opacity', '1');
   await expectNoViolations(page, testInfo, 'universe');
 });
