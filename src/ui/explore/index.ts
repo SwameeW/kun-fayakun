@@ -6,6 +6,7 @@ import '../styles/explore.css';
 import { createFlightHud } from './flight-hud';
 import { formatters } from './format';
 import { createNavigator } from './navigator';
+import { createWalkHud } from './walk-hud';
 import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
 import { createTimeControl } from './time-control';
@@ -72,6 +73,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   // A quiet toast marks what joins the log of what was seen, and a detail level applied.
   const toast = createToast('universe-toast');
   const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
+  const walkHud = createWalkHud(app, f, () => element);
   // The time machine heads the navigator, with photo mode's button at the end of its line.
   const time = createTimeControl(app, announce);
   const photo = h('button', { type: 'button', class: 'kf-universe-time-button kf-universe-photo', 'aria-label': i18n.t('ui.universe.photo'), 'data-testid': 'universe-photo' }, icon('photo'));
@@ -114,6 +116,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     hud.trip,
     notes.element,
     hud.readout,
+    walkHud.element,
     toast.element,
     navigator.element,
   );
@@ -226,6 +229,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
+    walkHud.update(view);
     time.update(view);
     notes.update(view);
     if (settling && ((!view.moving && !view.travelling) || now >= settleBy)) {

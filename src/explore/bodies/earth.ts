@@ -92,6 +92,13 @@ export interface EarthFrame {
 
 export interface ExploreEarth {
   readonly object: Group;
+  /**
+   * The ground's colour (linear) at a direction in the Earth's own frame, as the globe shows it: the
+   * day map, with streamed imagery where it has loaded (for the ground a walker stands on).
+   */
+  groundColour(direction: Vec3Node): Vec3Node;
+  /** Sunlight's colour after the air, for the cosine of the Sun's elevation: the globe's own. */
+  sunlight(mu: FloatNode): Vec3Node;
   /** Set the object's position, scale and orientation first, and its world matrix current. */
   update(frame: EarthFrame, cameraWorld: Vector3): void;
   /** Builds what a detail level needs; returns the meshes whose materials should compile before apply(). */
@@ -415,6 +422,14 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
 
   return {
     object,
+    groundColour(direction) {
+      const n = normalize(direction);
+      const map = sampleSlot(slot.day, mapCoords(n, n.y, U_AT_LON0)).rgb;
+      return tiles ? tiles.imagery(n, sphereFootprint(n), map).colour : map;
+    },
+    sunlight(mu) {
+      return sunAt(true, 1, mu);
+    },
     update(frame, cameraWorld) {
       uTime.value = frame.time;
       uLight.value = frame.light;

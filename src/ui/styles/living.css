@@ -558,3 +558,152 @@
 .kf-islamic-swatch.is-d { background: rgb(250 148 66); }
 .kf-islamic-swatch.is-e { background: rgb(237 87 82); }
 .kf-islamic-swatch.is-f { background: rgb(143 145 161); }
+
+/* On foot (src/ui/explore/walk-hud.ts): the suit's readout, where the readout from orbit was. */
+.kf-walk {
+  position: absolute;
+  inset-block-end: var(--kf-space-4);
+  inset-inline-start: var(--kf-space-4);
+  max-inline-size: min(26rem, calc(100vw - 2 * var(--kf-space-4)));
+  padding: var(--kf-space-3);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius);
+  background: rgb(12 13 19 / 0.82);
+  color: var(--kf-text);
+  font-size: 0.8125rem;
+  display: grid;
+  gap: var(--kf-space-1);
+  z-index: 3;
+}
+
+.kf-walk[hidden] {
+  display: none;
+}
+
+.kf-walk-title {
+  margin: 0;
+  color: var(--kf-gold-strong);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.kf-walk-suit > :not(summary) {
+  margin-block-start: var(--kf-space-1);
+}
+
+.kf-walk-line,
+.kf-walk-keys,
+.kf-walk-notice,
+.kf-walk-credit {
+  margin: 0;
+}
+
+.kf-walk-keys,
+.kf-walk-credit {
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+}
+
+.kf-walk-notice {
+  color: var(--kf-gold-strong);
+}
+
+.kf-walk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-2);
+}
+
+.kf-walk-controls[hidden] {
+  display: none;
+}
+
+.kf-walk-pad {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-2);
+}
+
+.kf-walk-pad-btn {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* With a keyboard the keys are named; on a touch screen, the pad. */
+.kf-walk-touch {
+  display: none;
+  margin: 0;
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+}
+
+/*
+ * A narrow screen keeps the worlds' sheet at its foot: the suit's readout sits just above it, in
+ * smaller type, while the notes and the hint wait; with the sheet pulled up, the readout waits too.
+ */
+@media (max-width: 899.98px), (max-height: 559.98px) {
+  .kf-walk {
+    inset-inline: var(--kf-space-2);
+    inset-block-end: calc(var(--kf-sheet-h, 5.5rem) + var(--kf-space-2));
+    max-inline-size: 30rem;
+    padding: var(--kf-space-2) var(--kf-space-3);
+    font-size: 0.75rem;
+  }
+
+  .kf-walk-keys,
+  .kf-walk-touch,
+  .kf-walk-credit {
+    font-size: 0.6875rem;
+  }
+
+  .kf-universe.is-walking :is(.kf-note-slot, .kf-universe-hint),
+  .kf-universe.is-sheet-open .kf-walk {
+    visibility: hidden;
+  }
+}
+
+/* A short landscape screen: the sheet keeps to the right, so the readout takes the lower left, below the way back to the start (scrolling if it must). */
+@media (max-height: 500px) {
+  .kf-walk {
+    inset-inline-end: auto;
+    inset-block-end: var(--kf-space-2);
+    inline-size: min(22rem, 55vw);
+    max-block-size: calc(100% - var(--kf-header-h, 3.25rem) - 3.5rem);
+    overflow-y: auto;
+  }
+}
+
+/* On foot the readout from orbit steps aside (its height is above the globe, not the ground). */
+.kf-universe.is-walking [data-testid="universe-readout"] {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .kf-walk-back,
+  .kf-walk-pad-btn {
+    min-block-size: 2.75rem;
+  }
+
+  .kf-walk-title {
+    display: flex;
+    align-items: center;
+    min-block-size: 2.75rem;
+  }
+
+  .kf-walk-pad-btn {
+    min-inline-size: 4.5rem;
+  }
+
+  .kf-walk-keys {
+    display: none;
+  }
+
+  .kf-walk-touch {
+    display: block;
+  }
+}

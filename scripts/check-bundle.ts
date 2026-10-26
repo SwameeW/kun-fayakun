@@ -14,7 +14,9 @@
  *
  * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
- * the shell) must stay within 150 KB gzipped, and none of it may be in the shell.
+ * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
+ * that load later still (the orbital laboratory, the qibla and new moon section, walking), each
+ * against its own budget.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -66,6 +68,10 @@ const LAB_BUDGET_BYTES = 250_000;
 const ISLAMIC_SOURCES = ['src/explore/islamic/index.ts', 'src/ui/explore/islamic-panel.ts'] as const;
 /** What that section may add beyond the shell and the explorer, gzipped. */
 const ISLAMIC_BUDGET_BYTES = 40_000;
+/** Walking on a world's ground's lazy entry points (loaded with the first walk): the walk (walker, ground, sky) and its terrain tiles' reader. */
+const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts'] as const;
+/** What walking may add beyond the shell and the explorer, gzipped. */
+const WALK_BUDGET_BYTES = 30_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -225,7 +231,15 @@ function main(): void {
   const islamicBytes = islamicRows.reduce((sum, row) => sum + row.gzip, 0);
   const islamicOk = islamicRows.length > 0 && islamicBytes <= ISLAMIC_BUDGET_BYTES;
   console.log(`${islamicOk ? 'PASS' : 'FAIL'}: qibla and new moon (lazy, ${islamicRows.length} files) = ${formatBytes(islamicBytes)} bytes gzipped (budget ${formatBytes(ISLAMIC_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk) process.exitCode = 1;
+  // Walking, beyond the shell and the explorer: what the first walk adds.
+  const walkRows = measure(exploreFiles(manifest, loaded, WALK_SOURCES));
+  for (const row of [...walkRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`walk  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const walkBytes = walkRows.reduce((sum, row) => sum + row.gzip, 0);
+  const walkOk = walkRows.length > 0 && walkBytes <= WALK_BUDGET_BYTES;
+  console.log(`${walkOk ? 'PASS' : 'FAIL'}: walking (lazy, ${walkRows.length} files) = ${formatBytes(walkBytes)} bytes gzipped (budget ${formatBytes(WALK_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk) process.exitCode = 1;
 }
 
 try {

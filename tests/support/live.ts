@@ -7,7 +7,13 @@
  */
 import type { Page } from '@playwright/test';
 
-export const LIVE_HOSTS = ['tiles.maps.eox.at', 'gibs.earthdata.nasa.gov', 'celestrak.org', 'earthquake.usgs.gov'] as const;
+export const LIVE_HOSTS = ['tiles.maps.eox.at', 'gibs.earthdata.nasa.gov', 'celestrak.org', 'earthquake.usgs.gov', 's3.amazonaws.com'] as const;
+
+/** The mocked terrain: every tile flat at this height (m), terrarium-encoded (R x 256 + G + B / 256 - 32768). */
+export const MOCK_GROUND_M = 1000;
+
+/** A 256 px terrarium tile flat at MOCK_GROUND_M (RGB 131, 232, 0), made once with Node's zlib. */
+const TERRAIN_PATH = 'tests/support/terrain-1000m.png';
 export type LiveHost = (typeof LIVE_HOSTS)[number];
 
 /** A one-pixel PNG (relative to the repository, where the runner starts): a valid tile as far as decoding goes. */
@@ -75,6 +81,8 @@ export async function mockLiveHosts(page: Page): Promise<void> {
       await route.fulfill({ status: 200, headers: cors, contentType: 'text/plain', body: catalogue(Date.now()) });
     } else if (host === 'earthquake.usgs.gov') {
       await route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(quakeFeed(Date.now())) });
+    } else if (host === 's3.amazonaws.com') {
+      await route.fulfill({ status: 200, headers: cors, contentType: 'image/png', path: TERRAIN_PATH });
     } else {
       await route.fulfill({ status: 200, headers: cors, contentType: 'image/png', path: PIXEL_PATH });
     }

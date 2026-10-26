@@ -593,6 +593,53 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
 - **Messages.** `ui.universe.lab.*` in `src/i18n/en.explore.json`; the validator's "reflection, not
   proof" phrasing rule applies to them too (paths are "integrated ahead", never "predicted").
 
+## On foot (explorer)
+
+The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources and limits:
+`docs/WALKING.md`.
+
+- **Modules** (`src/explore/walk/`, its own lazy chunk, loaded with the first walk):
+  - `terrain.ts`: `TERRAIN`, `decodeTerrarium`, `mercatorPixel`, `zoomFor`, and
+    `createHeights(loader)`, which has `at`, `want`, `stats` and `revision(zoom)`. `revision(zoom)`
+    counts the tiles returned at that zoom or coarser. Also `terrariumLoader(url)`.
+  - `walker.ts`: `WALK`, `createWalker`, `look`, `stepWalker`, `localFrame`, `walkerPose`,
+    `pressureKpa`, `sunElevationDeg`, `solarTimeHours`.
+  - `ground.ts`: `GROUND`, and `createGround(colour, sunlight, noise)`, the clipmap.
+  - `sky.ts`: `createWalkSky`.
+  - `daylight.ts`: `DAYLIGHT`, `starlight`, `skyGain`, `ambient`, `haze`, `twilight`,
+    `preethamSunIntensity`.
+  - `index.ts`: `createWalk(setup)`, which returns `start`, `stop`, `where`, `starlight`, `look`,
+    `step`, `place`, `view` and `dispose`.
+- **App, module and view.** `app.earthCommand` takes three walk commands:
+  - `{ kind: 'walk', lat?, lon? }`: at the place, or at the point below the view;
+  - `{ kind: 'walkEnd' }`;
+  - `{ kind: 'walkPad', forward, jump }`: the on-screen pad.
+
+  `UniverseView.walk` is a `UniverseWalk` or null. It holds the state (`landing`, `walking`), the
+  place, the ground's height and the feet's, the heading and pitch, `airborne`, `blocked`,
+  `walkedM`, `gravity`, `pressureKpa`, `meanTempC`, `sunElevationDeg`, `solarTimeH`, `groundZoom`,
+  the tiles, and the rings filled. `UniverseView.walkRefused` says a walk was refused at Makkah.
+- **Constants used:**
+  - `earth.atmosphere.surfacePressure` (101.4 kPa);
+  - `earth.atmosphere.scaleHeight`;
+  - `earth.atmosphere.averageTemperature` (15 °C);
+  - gravity from the Earth's GM (DE440) at the mean of `physical.bodies.Earth.radiiKm`.
+- **Interface:**
+  - `src/ui/explore/walk-hud.ts`. Test ids: `walk-hud`, `walk-title`, `walk-place`, `walk-ground`,
+    `walk-gravity`, `walk-air`, `walk-sun`, `walk-notice`, `walk-forward`, `walk-backward`,
+    `walk-jump` and `walk-end`.
+  - The Living Earth panel's `living-walk` button.
+  - The explorer section gets `is-walking`, which hides the readout from orbit, and the notes and
+    the hint on a narrow screen.
+  - Messages: `ui.universe.walk.*`.
+- **Rules:**
+  - No walk begins within `MAKKAH_FRAME.radiusKm` (25 km) of the Kaaba, and no step enters it.
+  - The fixed 70° field of view spans at least 35 km there.
+  - A trip (`nav.travelling`) ends a walk.
+- **Budget.** `scripts/check-bundle.ts` holds walking's lazy files to 30,000 bytes gzipped.
+- **Tests** (mocked terrain): `tests/support/live.ts` serves `tests/support/terrain-1000m.png`, flat
+  at `MOCK_GROUND_M` (1,000 m), for every terrain tile.
+
 ## Browsers and local testing (measured on this machine)
 
 - **The user browses with Brave** (installed: `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,

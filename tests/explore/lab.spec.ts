@@ -63,19 +63,26 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   for (let i = 0; i < 2; i += 1) await page.locator('body').press(']');
   await expect.poll(async () => ((await body(page, 'earth'))?.distanceKm ?? Infinity) / d0, LIVE).toBeLessThan(0.97);
   await expect(page.getByTestId('lab-history').getByText('Sun: mass changed')).toHaveCount(1);
+  // Paused again, so what follows happens at a known moment: the Earth's new orbit later takes it near
+  // enough to the Sun for the Moon to be pulled away or into the Earth, at a time that depends on where
+  // the Moon was when the Sun's mass changed (on a slow machine, it struck the Earth by day 98).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  const n0 = (await lab(page))?.bodies.length ?? 0;
 
   // A second moon for the Earth, on a circular orbit about it: it appears, chosen, with its prediction.
   await page.getByTestId('lab-add').locator('summary').click();
   await page.getByTestId('lab-add-primary').selectOption('earth');
   await page.getByTestId('lab-add-orbit').click();
-  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(11);
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(n0 + 1);
   const moonId = (await lab(page))?.selected ?? '';
   expect(moonId).toMatch(/^body-\d+$/);
   await expect(page.getByTestId('lab-prediction')).toContainText(/integrated ahead|On its present course/, LIVE);
   await expect.poll(async () => (await page.evaluate(() => (window as unknown as { __kf: { app: { hud(): { labels: Array<{ id: string }> } } } }).__kf.app.hud().labels.map((l) => l.id))).includes(`lab-${moonId}`), LIVE).toBe(true);
   // Duplicated (a new id), then the copy removed; the Sun cannot be removed.
   await page.getByTestId('lab-duplicate').click();
-  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(12);
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(n0 + 2);
   const copy = (await lab(page))?.selected ?? '';
   expect(copy).toMatch(/^body-\d+$/);
   expect(copy).not.toBe(moonId);
@@ -93,7 +100,11 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(10);
   await page.getByTestId('lab-restore-saved').click();
   await expect(page.getByTestId('lab-status')).toHaveText('Loaded.', LIVE);
-  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(11);
+  // Its clock runs again: the edits replay as their steps come round, the moon added early (well before the Earth nears the Sun).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(false);
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(n0 + 1);
   // Back to a checkpoint: the clock goes back to it.
   const now = (await lab(page))?.elapsedS ?? 0;
   const first = page.getByTestId('lab-checkpoints').getByRole('button').last();
@@ -237,7 +248,12 @@ test('a fast impact breaks a planet: the outcome named, the remnant keeping its 
   const after = await lab(page);
   expect(after?.bodies.some((b) => b.id === 'planet')).toBe(true);
   expect(after?.bodies.some((b) => b.id === 'body-1')).toBe(false);
-  expect(after?.bodies.filter((b) => /^(debris|remnant)-/.test(b.id)).length).toBe(7);
-  expect(after?.events.at(-1)?.kind).toBe('fragment');
+  const breakup = after?.events.find((e) => e.kind === 'fragment');
+  expect(breakup?.regime).toBe('erosion');
+  expect(breakup?.created).toBe(7);
+  // The pieces are bodies of the experiment (as its clock runs on, a slow one may fall back on the planet).
+  const pieces = after?.bodies.filter((b) => /^(debris|remnant)-/.test(b.id)).length ?? 0;
+  expect(pieces).toBeGreaterThan(0);
+  expect(pieces).toBeLessThanOrEqual(7);
   expect(pageErrors).toEqual([]);
 });

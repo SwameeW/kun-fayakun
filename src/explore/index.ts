@@ -56,8 +56,10 @@ import { createRawDecoder, type RawDecoder } from './assets/raw-ktx2';
 import { createUploader } from './assets/upload';
 import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createEarthTiles, type EarthTiles } from './earth-tiles';
-import { lastWholeDay } from './earth-tiles/sources';
+import { lastWholeDay, RELIEF } from './earth-tiles/sources';
 import type { Islamic } from './islamic';
+import type { Walk } from './walk';
+import type { WalkInput } from './walk/walker';
 import { hijriDate } from './islamic/hijri';
 import type { Lab } from './lab';
 import { composeBulletin } from './field-notes/bulletin';
@@ -93,6 +95,11 @@ const PLACE_LOCK_KM = 3000;
 const SATELLITE_PICK_PX = 9;
 /** The live layers show within this distance of the Earth (km): about ten times the Moon's distance. */
 const LIVING_RANGE_KM = 4e6;
+/** On foot: the field of view (degrees), and the depth range (km) the ground's logarithmic depth spans, past any horizon a walker sees. */
+const WALK_FOV = 70;
+const WALK_LENS = { near: 1e-4, far: 2000 } as const;
+/** On foot the imagery is aimed at the walker's feet as if a pixel there spanned a metre, which asks for its finest level (km). */
+const WALK_FOOTPRINT_KM = 0.001;
 /** The narrowest lens over the day's mosaic (its 250 m pixels at about four screen pixels each from the lowest orbit). */
 const TODAY_LENS_MIN_DEG = 6;
 /**
@@ -338,6 +345,21 @@ export default function create(): UniverseModule {
   const hiddenBodies = new Set<BodyId>();
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
+  /** On foot on the Earth (./walk, its own chunk, with the terrain tiles): loaded the first time a walk starts. */
+  let walk: Walk | null = null;
+  let walkLoading = false;
+  let walkAsked: { lat: number; lon: number } | null = null;
+  let walkRefused = false;
+  /** This frame's walker pose, once landed (the camera is there instead of where the navigator has it). */
+  let walking = false;
+  const walkInput: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
+  /** The on-screen pad's (touch) Forward or Back and Jump, and the keys and pad together as the walker gets them. */
+  const walkPad = { forward: 0, jump: false };
+  const walkStep: WalkInput = { ...walkInput };
+  /** The point on the Earth beneath the camera when near it (degrees), for walks begun there. */
+  let belowEarth: { lat: number; lon: number } | null = null;
+  /** The air's figures for the suit's readout (data/constants.json), once the constants have loaded. */
+  let walkAir: { surfaceKpa: number | null; scaleHeightKm: number | null; meanTempC: number | null } = { surfaceKpa: null, scaleHeightKm: null, meanTempC: null };
   let islamicLoading = false;
   const islamicWaiting: UniverseIslamicCommand[] = [];
   let hijriDay = Number.NaN;
@@ -556,6 +578,8 @@ export default function create(): UniverseModule {
     sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
     lab: null,
     islamic: null,
+    walk: null,
+    walkRefused: false,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -607,6 +631,8 @@ export default function create(): UniverseModule {
     }
     v.time.hijri = lab?.active ? null : hijri;
     v.islamic = lab?.active ? null : (islamic?.view() ?? null);
+    v.walk = walk?.view() ?? null;
+    v.walkRefused = walkRefused;
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -890,6 +916,58 @@ export default function create(): UniverseModule {
     return makkah !== undefined && centralAngle(lat, lon, makkah.lat, makkah.lon) * sys.specs.earth.radiusKm < MAKKAH_FRAME.radiusKm;
   };
 
+  /**
+   * Starts a walk at a place on the Earth: refused within Makkah's framing radius (no view comes
+   * that close, on foot least of all); the walk's own chunk is loaded the first time.
+   */
+  const startWalk = (lat: number, lon: number): void => {
+    const sys = system;
+    if (!sys || lab?.active) return;
+    walkRefused = nearMakkah(sys, lat, lon);
+    if (walkRefused) return;
+    walkAsked = { lat, lon };
+    if (walk) {
+      walk.start(lat, lon);
+      walkAsked = null;
+      return;
+    }
+    if (walkLoading || !bodies || !labInputs) return;
+    walkLoading = true;
+    const gm = labInputs.physical.gmKm3S2.Earth;
+    const radii = labInputs.physical.bodies.Earth.radiiKm;
+    const meanRadiusKm = (radii[0] + radii[1] + radii[2]) / 3;
+    const earth = bodies.earth;
+    const radiusKm = sys.specs.earth.radiusKm;
+    void Promise.all([import('./walk'), import('./walk/terrain')])
+      .then(([{ createWalk }, { terrariumLoader }]) => {
+        walkLoading = false;
+        walk = createWalk({
+          groundColour: (d) => earth.groundColour(d),
+          sunlight: (mu) => earth.sunlight(mu),
+          terrain: terrariumLoader((z, x, y) => RELIEF.url(z, x, y, '')),
+          noise,
+          forbidden: (la, lo) => nearMakkah(sys, la, lo),
+          // Gravity from the Earth's GM (DE440) at its mean radius (NAIF): NASA's mean surface gravity, 9.820 m/s^2.
+          world: { name: 'earth', radiusKm, gravity: (gm / (meanRadiusKm * meanRadiusKm)) * 1000, ...walkAir },
+        });
+        root.add(...walk.objects);
+        if (walkAsked) walk.start(walkAsked.lat, walkAsked.lon);
+        walkAsked = null;
+      })
+      .catch(() => {
+        walkLoading = false;
+      });
+  };
+  const endWalk = (): void => {
+    walk?.stop();
+    walkAsked = null;
+    for (const k of ['forward', 'right', 'turn', 'tip'] as const) walkInput[k] = 0;
+    walkInput.run = false;
+    walkInput.jump = false;
+    walkPad.forward = 0;
+    walkPad.jump = false;
+  };
+
   /** Flies to a place on the Earth (degrees) framing `viewKm` of ground: to the Earth first if elsewhere. */
   const goToPlace = (lat: number, lon: number, viewKm: number): void => {
     if (!world || !system || !entered) return;
@@ -1075,6 +1153,30 @@ export default function create(): UniverseModule {
 
     // The camera, in doubles; then everything relative to it.
     nav.update(world, dt, navOut);
+    // On foot, the walker's eye replaces the navigator's camera (which keeps its own place for the way
+    // back); a trip elsewhere (a world chosen, a place flown to) ends the walk.
+    if (walk?.active && nav.travelling) endWalk();
+    walking = false;
+    if (walk?.active) {
+      Object.assign(walkStep, walkInput);
+      walkStep.forward = Math.max(-1, Math.min(1, walkInput.forward + walkPad.forward));
+      walkStep.jump = walkInput.jump || walkPad.jump;
+      const pose = walk.step(dt, walkStep);
+      if (pose) {
+        walking = true;
+        const m = sys.bodies.earth.basis;
+        const e = sys.bodies.earth.position;
+        const toRender = (v: readonly number[], out: Km, from: Km | null): void => {
+          out.x = (from?.x ?? 0) + (v[0] ?? 0) * (m[0] ?? 1) + (v[1] ?? 0) * (m[3] ?? 0) + (v[2] ?? 0) * (m[6] ?? 0);
+          out.y = (from?.y ?? 0) + (v[0] ?? 0) * (m[1] ?? 0) + (v[1] ?? 0) * (m[4] ?? 1) + (v[2] ?? 0) * (m[7] ?? 0);
+          out.z = (from?.z ?? 0) + (v[0] ?? 0) * (m[2] ?? 0) + (v[1] ?? 0) * (m[5] ?? 0) + (v[2] ?? 0) * (m[8] ?? 1);
+        };
+        toRender(pose.position, navOut.position, e);
+        toRender(pose.forward, navOut.forward, null);
+        toRender(pose.up, navOut.up, null);
+        navOut.fov = WALK_FOV;
+      }
+    }
     origin.setCamera(navOut.position);
     BODY_IDS.forEach((id, i) => {
       const p = placed[id];
@@ -1093,6 +1195,10 @@ export default function create(): UniverseModule {
     ringSphere.pole.z = pole[5] ?? 0;
     nearestKm = nearestAltitude(spheres);
     lensFor(nearestKm, lens);
+    if (walking) {
+      lens.near = WALK_LENS.near;
+      lens.far = WALK_LENS.far;
+    }
 
     // The camera: at the origin, along the navigator's gaze and "up" (its bank included), turned so
     // the body sits in the middle of the part of the view the interface leaves clear, with this
@@ -1146,7 +1252,8 @@ export default function create(): UniverseModule {
       const radiusKm = spec.radiusKm * grow[id];
       p.radiusPx = pxPerTan * Math.tan(Math.asin(Math.min(1, radiusKm / Math.max(p.distance, radiusKm))));
       const object = bodies.objects[id];
-      object.visible = !hiddenBodies.has(id);
+      // On foot, the ground under the walker stands in for the globe.
+      object.visible = !hiddenBodies.has(id) && !(walking && id === 'earth');
       object.position.set(p.drawn.x, p.drawn.y, p.drawn.z);
       object.scale.setScalar(radiusKm * p.k);
       const b = sys.bodies[id].basis;
@@ -1212,7 +1319,14 @@ export default function create(): UniverseModule {
       }
       // Scene pixels: the canvas's, at the internal render scale.
       const scenePxPerTan = (c.renderer.domElement.height * renderScale) / (2 * tanHalf);
-      const aim = entering || stretch.amount < 1 ? null : earthAim(sys, scenePxPerTan);
+      // On foot, aimed where the walker stands (looking along the ground, the view's centre may miss the globe).
+      const standing = walking ? (walk?.where() ?? null) : null;
+      const aim =
+        entering || stretch.amount < 1
+          ? null
+          : standing
+            ? { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: WALK_FOOTPRINT_KM / sys.specs.earth.radiusKm }
+            : earthAim(sys, scenePxPerTan);
       earthTiles.update(aim, dt, c.reducedMotion);
       // How far the lens may narrow: the day mosaic stops at 250 m per pixel, and over Makkah the
       // view stays wide enough to frame the city in its valley (MAKKAH_FRAME), never closer.
@@ -1271,7 +1385,9 @@ export default function create(): UniverseModule {
 
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
-    stars.setLight(STARS.light * adapted ** (STARS.follow - 1));
+    // On foot by day, the sky hides the stars (and through twilight lets them through).
+    const starlight = walking ? (walk?.starlight() ?? 1) : 1;
+    stars.setLight(STARS.light * adapted ** (STARS.follow - 1) * starlight);
     stars.update(dt);
 
     // Orbit lines: the focus's own (and the Moon's around the Earth) up close, the rest as the view
@@ -1288,7 +1404,7 @@ export default function create(): UniverseModule {
       const fromCentre = Math.hypot(path.centre.x - origin.camera.x, path.centre.y - origin.camera.y, path.centre.z - origin.camera.z);
       const outside = smoothstep(ORBIT_INSIDE.from * size, ORBIT_INSIDE.to * size, fromCentre);
       // The worlds' real orbits are the ephemeris's: not drawn over an experiment (its trails are).
-      const want = lab?.active ? 0 : (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
+      const want = lab?.active || walking ? 0 : (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
       const current = orbitWeights[i] ?? 0;
       orbitWeights[i] = current + (want - current) * (entering ? 1 : orbitSettle);
     });
@@ -1323,11 +1439,10 @@ export default function create(): UniverseModule {
       lab.labels(labels);
     }
 
-    // The qibla and the new moon: their marks turn with the Earth (near it, at true scale, never over an experiment).
-    if (islamic) {
+    // The point beneath the camera when near the Earth: the direction from its centre to the camera (at the origin), in its own frame.
+    {
       const pe = placed.earth;
       const near = pe.k > 0.999 && pe.distance < LIVING_RANGE_KM && !lab?.active;
-      // The point beneath the camera: the direction from the Earth's centre to the camera (at the origin), in the Earth's own frame.
       const m = sys.bodies.earth.basis;
       const dx = -pe.drawn.x;
       const dy = -pe.drawn.y;
@@ -1336,9 +1451,19 @@ export default function create(): UniverseModule {
       const by = dx * (m[3] ?? 0) + dy * (m[4] ?? 1) + dz * (m[5] ?? 0);
       const bz = dx * (m[6] ?? 0) + dy * (m[7] ?? 0) + dz * (m[8] ?? 1);
       const r = Math.hypot(bx, by, bz);
-      const below = near && r > 0 ? { lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)) } : null;
-      islamic.update({ jdUtc, earth: pe.drawn, basis: m, earthRadiusKm: sys.specs.earth.radiusKm, visible: near, below });
-      islamic.labels(labels);
+      belowEarth = near && r > 0 ? { lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)) } : null;
+      // The qibla and the new moon: their marks turn with the Earth (near it, at true scale, never over an experiment or on foot).
+      if (islamic) {
+        islamic.update({ jdUtc, earth: pe.drawn, basis: m, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && !walking, below: belowEarth });
+        if (!walking) islamic.labels(labels);
+      }
+      // On foot: the ground and the sky, placed about the camera; the Sun's direction toward it, in the render frame and the Earth's own.
+      if (walk?.active) {
+        unit(scratch, sys.bodies.earth.position, sys.bodies.sun.position);
+        const sunWorld: [number, number, number] = [scratch.x * (m[0] ?? 1) + scratch.y * (m[1] ?? 0) + scratch.z * (m[2] ?? 0), scratch.x * (m[3] ?? 0) + scratch.y * (m[4] ?? 1) + scratch.z * (m[5] ?? 0), scratch.x * (m[6] ?? 0) + scratch.y * (m[7] ?? 0) + scratch.z * (m[8] ?? 1)];
+        // True scale (the walk's far plane puts the Earth in scaled space, which the ground does not use).
+        walk.place({ earth: pe.rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt('earth'), subSolarLon: subSolar(sys).lon, near: lens.near, far: lens.far });
+      }
     }
 
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
@@ -1355,12 +1480,12 @@ export default function create(): UniverseModule {
       living.sun.z = scratch.z;
       const unixMs = (jdUtc - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
       // Observations of the real Earth are not shown around an experiment's (its Earth may not be ours).
-      const real = !lab?.active;
+      const real = !lab?.active && !walking;
       satellites?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, sun: living.sun, earthRadiusKm: sys.specs.earth.radiusKm, visible: real && near && Math.abs(clockRate) <= SATELLITE_MAX_RATE });
       quakes?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, earthRadiusKm: sys.specs.earth.radiusKm, visible: real && near && Math.abs(unixMs - Date.now()) < QUAKES_WITHIN_MS, time: ambient, reducedMotion: c.reducedMotion });
       if (satellites) for (const l of satellites.labels()) labels.push(l);
       if (quakes) for (const l of quakes.labels()) labels.push(l);
-      pushMarkers(sys, near && pe.distance < MARKER_RANGE_KM, pxPerTan);
+      pushMarkers(sys, near && pe.distance < MARKER_RANGE_KM && !walking, pxPerTan);
       // The field notes' bulletin, about once a second (its facts change slowly; the places it names, slower).
       bulletinClock += dt;
       if (bulletinClock >= 1 && places.length > 0) {
@@ -1404,7 +1529,7 @@ export default function create(): UniverseModule {
         const brightness = 0.22 + 2.1 * style.albedo * phase;
         dot.color = [style.tint[0] * brightness, style.tint[1] * brightness, style.tint[2] * brightness];
       }
-      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx);
+      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx) * (id === 'sun' ? 1 : starlight);
       dot.sizePx = style.sizePx;
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
@@ -1966,6 +2091,14 @@ export default function create(): UniverseModule {
       try {
         await c.data.ready;
         const facts = deriveFacts(physical, planets, (id) => c.data.constant(id).value);
+        const figure = (id: string): number | null => {
+          try {
+            return c.data.constant(id).value;
+          } catch {
+            return null;
+          }
+        };
+        walkAir = { surfaceKpa: figure('earth.atmosphere.surfacePressure'), scaleHeightKm: figure('earth.atmosphere.scaleHeight'), meanTempC: figure('earth.atmosphere.averageTemperature') };
         lightKmS = facts.lightKmS;
         discoveries = new Discoveries(facts);
       } catch (err) {
@@ -1974,28 +2107,57 @@ export default function create(): UniverseModule {
 
       const w = world;
       input = createInput(c.renderer.domElement, {
+        // On foot, the same input walks: a drag looks round, W A S D walk (Shift runs), R jumps, the arrows turn and tip the look; Esc or O ends the walk.
         drag: (dx, dy) => {
+          if (walk?.active) {
+            walk.look(dx, dy);
+            return;
+          }
           stretch.steered = true;
           nav.drag(w, dx, dy);
         },
         pan: (dx, dy) => {
+          if (walk?.active) {
+            walk.look(dx, dy);
+            return;
+          }
           stretch.steered = true;
           nav.pan(w, dx, dy);
         },
         zoom: (dLn) => {
+          if (walk?.active) return;
           stretch.steered = true;
           nav.zoom(w, dLn);
         },
         orbitKeys: (azimuth, elevation, zoom) => {
+          // The left arrow turns the walker left (its azimuth is +1, for the orbit's own sense).
+          walkInput.turn = -azimuth;
+          walkInput.tip = elevation;
+          if (walk?.active) return;
           if (azimuth !== 0 || elevation !== 0 || zoom !== 0) stretch.steered = true;
           nav.setOrbitKeys(azimuth, elevation, zoom);
         },
         flightKeys: (move, roll, boost) => {
+          walkInput.forward = move.z;
+          walkInput.right = move.x;
+          walkInput.jump = move.y > 0;
+          walkInput.run = boost;
+          if (walk?.active) return;
           if (move.x !== 0 || move.y !== 0 || move.z !== 0 || roll !== 0) stretch.steered = true;
           nav.setFlightKeys(w, move, roll, boost);
         },
-        stop: () => steer('stop'),
+        stop: () => {
+          if (walk?.active) {
+            endWalk();
+            return true;
+          }
+          return steer('stop');
+        },
         orbit: () => {
+          if (walk?.active) {
+            endWalk();
+            return;
+          }
           steer('orbit');
         },
         pick,
@@ -2129,6 +2291,18 @@ export default function create(): UniverseModule {
 
     earth(command) {
       switch (command.kind) {
+        case 'walk': {
+          const at = command.lat !== undefined && command.lon !== undefined ? { lat: command.lat, lon: command.lon } : belowEarth;
+          if (at) startWalk(at.lat, at.lon);
+          return;
+        }
+        case 'walkEnd':
+          endWalk();
+          return;
+        case 'walkPad':
+          walkPad.forward = Math.max(-1, Math.min(1, command.forward));
+          walkPad.jump = command.jump;
+          return;
         case 'goto':
           goToPlace(command.lat, command.lon, command.viewKm);
           return;

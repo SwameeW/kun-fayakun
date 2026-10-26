@@ -484,6 +484,10 @@ export interface UniverseView {
   lab: UniverseLab | null;
   /** The qibla and the new moon (src/explore/islamic) once their section has been opened; null in the laboratory. */
   islamic: UniverseIslamic | null;
+  /** On foot on the Earth (src/explore/walk) while a walk is on; else null. Also null when a walk was refused: see walkRefused. */
+  walk: UniverseWalk | null;
+  /** The last walk asked for was refused (a forbidden place: Makkah, by its framing rule), until another starts. */
+  walkRefused: boolean;
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -747,6 +751,35 @@ export interface UniverseIslamic {
   marks: { path: number; lines: number; map: number };
 }
 
+/** On foot on the Earth (src/explore/walk) as the view reports it. */
+export interface UniverseWalk {
+  /** 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking'. */
+  state: 'landing' | 'walking';
+  world: string;
+  lat: number;
+  lon: number;
+  /** The ground and the feet, metres above sea level; heading and look (degrees: heading clockwise from north, look up positive). */
+  groundM: number;
+  feetM: number;
+  headingDeg: number;
+  pitchDeg: number;
+  airborne: boolean;
+  /** The last step was refused (a place the walker may not enter: Makkah, by its framing rule). */
+  blocked: boolean;
+  walkedM: number;
+  /** Surface gravity (m/s^2), the air's pressure at the feet (kPa) and the world's mean surface temperature (degrees C), null where not known. */
+  gravity: number;
+  pressureKpa: number | null;
+  meanTempC: number | null;
+  /** The Sun's elevation (degrees) and the local apparent solar time (hours). */
+  sunElevationDeg: number;
+  solarTimeH: number;
+  /** The terrain zoom the ground under the feet comes from, the tiles' counts, and the rings of ground filled. */
+  groundZoom: number | null;
+  tiles: { ready: number; loading: number; failed: number };
+  rings: number;
+}
+
 /** Commands for the qibla and the new moon. */
 export type UniverseIslamicCommand =
   | { kind: 'open' }
@@ -857,7 +890,12 @@ export type EarthCommand =
   | { kind: 'layer'; layer: EarthLayer; on: boolean }
   | { kind: 'select'; id: string | null }
   /** Names on the ground for a set of the field notes' places (src/explore/field-notes), or none. */
-  | { kind: 'markers'; set: 'atlas' | 'prophets' | null };
+  | { kind: 'markers'; set: 'atlas' | 'prophets' | null }
+  /** On foot: a walk at a place (degrees), or at the point beneath the camera; and back to the view from above. */
+  | { kind: 'walk'; lat?: number; lon?: number }
+  | { kind: 'walkEnd' }
+  /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
+  | { kind: 'walkPad'; forward: number; jump: boolean };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';
