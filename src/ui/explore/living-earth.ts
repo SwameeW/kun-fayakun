@@ -298,12 +298,20 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     prophets,
   );
 
+  // On foot: a walk at the point below (src/explore/walk), in a space suit at the Earth's own gravity.
+  const walkButton = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'living-walk' }, i18n.t('ui.universe.walk.here'));
+  walkButton.addEventListener('click', () => {
+    app.earthCommand({ kind: 'walk' });
+    onGo();
+  });
+  const walkHere = h('div', { class: 'kf-living-group' }, walkButton, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.walk.hereHint')));
+
   const summary = h('summary', {}, i18n.t('ui.universe.living.title'));
   const element = h(
     'details',
     { class: 'kf-nav-living', 'data-testid': 'living-earth' },
     summary,
-    h('div', { class: 'kf-living-body' }, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.living.intro')), imagery, layers, find, notes),
+    h('div', { class: 'kf-living-body' }, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.living.intro')), imagery, layers, find, walkHere, notes),
   );
   element.addEventListener('toggle', () => {
     if (!element.open) return;

@@ -7,7 +7,7 @@
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { JD, place, settled, step, view, waitForUniverse } from '../support/universe';
+import { JD, place, recordToasts, settled, step, toasts, view, waitForUniverse } from '../support/universe';
 import { SLOW } from '../support/env';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
@@ -112,14 +112,15 @@ test('something seen for the first time gets a quiet toast, and the log says how
   await kf.open('/universe/saturn', { query: { jd: JD } });
   await waitForUniverse(page);
   await step(page, 1);
+  await recordToasts(page);
   await place(page, { body: 'saturn', distanceKm: 400_000, azimuthDeg: 25, elevationDeg: 10 });
   await step(page, 30);
   const toast = page.getByTestId('universe-toast');
   // A polite live region, there from the start; it never takes focus.
   await expect(toast).toHaveAttribute('aria-live', 'polite');
-  // Its title and line together, in one look: the toast is gone again after a few seconds (and a slow
-  // machine's two separate looks could fall either side of its end).
-  await expect(toast).toContainText(/Saturn’s rings in sunlight[\s\S]*Added to Seen on this visit/);
+  // Its title and line together: what it showed (it is gone again after a few seconds, and a slow
+  // machine's look could fall either side of its end).
+  await expect.poll(() => toasts(page), { timeout: 60_000 * SLOW }).toMatch(/Saturn’s rings in sunlight[\s\S]*Added to Seen on this visit/);
   const summary = page.getByTestId('universe-seen').locator('summary');
   await expect(summary).toContainText(/Seen on this visit \(\d+\)/);
   await expect(summary).not.toContainText(/\/|of \d/);

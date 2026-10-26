@@ -61,6 +61,12 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   remove them, see trails and the path integrated ahead, watch conservation, and save, export,
   reset, go back to a checkpoint or replay. Collisions merge, with the energy accounted. The time
   machine drives its clock; leaving gives the real explorer back as it was.
+- **On foot on the Earth** (SpaceEngine's surface view, and the brief's space suit, ledger GR-5;
+  `docs/WALKING.md`). "Walk here" stands the visitor on the ground below: first person at 1.7 m,
+  walking, running and jumping at the Earth's gravity, on the Terrain Tiles' heights out to the
+  horizon under the streamed imagery, with the day's sky, its twilight and the stars at night. The
+  suit reads out the ground's height, gravity, the air's pressure at the feet and the Sun's height.
+  Makkah's 25 km rule holds on foot.
 
 ## Planned, in this order (each from cited data)
 
@@ -75,11 +81,12 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
    system, body and surface frames, each in Float64, giving small camera-relative values to the
    GPU): the explorer's kilometre floating origin cannot simply be stretched to light-years
    without losing the precision of the surface.
-3. **Down to the ground.** Real terrain near the surface (the Earth's terrain tiles, LOLA, MOLA), a
-   view from the ground with the real sky, the next eclipses found from the ephemeris to fly to, and
-   saved, shareable locations (place, view and time). Then on foot in a space suit on every solid
-   world, at its own gravity, and down through the atmospheres of Venus, Titan and the giant planets
-   (ledger GR-5, GR-6), in as much detail as the data hold, with anything finer labelled as drawn.
+3. **Down to the ground.** On foot on the Earth is in ([WALKING.md](WALKING.md)): the Terrain
+   Tiles under the streamed imagery, at the Earth's gravity, with the day's sky. Still to come: the
+   same walk on the Moon (LOLA), Mars (MOLA, HRSC), Mercury and Venus; the next eclipses found from
+   the ephemeris to fly to; saved, shareable locations (place, view and time); and down through the
+   atmospheres of Venus, Titan and the giant planets (ledger GR-5, GR-6), in as much detail as the
+   data hold, with anything finer labelled as drawn.
 4. **Ship mode** (optional). Newtonian flight with thrust and gravity, and orbit prediction.
 
 ## Not planned

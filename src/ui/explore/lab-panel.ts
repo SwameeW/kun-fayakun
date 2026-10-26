@@ -258,6 +258,11 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const selectedBody = (): UniverseLabBody | undefined => lab?.bodies.find((b) => b.id === selectedId);
   /** The inspector's fields hold what the visitor types: refilled only when another body is chosen. */
   let filledFor: string | null = null;
+  /**
+   * A choice made here and not yet in the experiment's view: until it is, the inspector stays hidden,
+   * so nothing typed in that moment (a long one on a slow device) goes to the body chosen before.
+   */
+  let choosing: { id: string | null } | null = null;
 
   const row = (term: string, detail: string, testId: string): HTMLElement[] => [h('dt', {}, term), h('dd', { 'data-testid': testId }, detail)];
 
@@ -283,7 +288,9 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           ...l.bodies.map((b) => {
             const pick = h('button', { type: 'button', class: 'kf-living-place', 'aria-pressed': String(b.id === l.selected), 'data-testid': `lab-body-${b.id}` }, h('span', { class: 'kf-living-place-name' }, nameOf(b)), h('span', { class: 'kf-living-place-where' }, b.edited ? i18n.t('ui.universe.lab.edited') : ''));
             pick.addEventListener('click', () => {
-              send({ kind: 'select', id: b.id === l.selected ? null : b.id });
+              choosing = { id: b.id === l.selected ? null : b.id };
+              inspector.hidden = true;
+              send({ kind: 'select', id: choosing.id });
             });
             return h('li', {}, pick);
           }),
@@ -298,7 +305,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       }
       // The inspector.
       const b = selectedBody();
-      inspector.hidden = !b;
+      if (choosing && (l.selected === choosing.id || (choosing.id !== null && !l.bodies.some((x) => x.id === choosing?.id)))) choosing = null;
+      inspector.hidden = !b || choosing !== null;
       if (b) {
         write(inspectorTitle, nameOf(b));
         facts.replaceChildren(

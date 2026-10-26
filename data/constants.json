@@ -657,6 +657,32 @@
       }
     },
     {
+      "id": "earth.atmosphere.surfacePressure",
+      "description": "Mean surface pressure of the Earth's atmosphere (sea level)",
+      "value": 101.4,
+      "uncertainty": null,
+      "unit": "kPa",
+      "qualifier": "a global mean; weather moves it by a few per cent",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet, Terrestrial Atmosphere: surface pressure 1014 mb",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.atmosphere.averageTemperature",
+      "description": "Average temperature at the Earth's surface",
+      "value": 15,
+      "uncertainty": null,
+      "unit": "°C",
+      "qualifier": "a global average (288 K); the fact sheet gives a diurnal range of 10 to 20 °C",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet, Terrestrial Atmosphere: average temperature 288 K (15 C)",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
       "id": "sun.effectiveTemperature",
       "description": "The Sun's effective temperature: the temperature of a blackbody that would radiate as much per square metre as the Sun's visible surface",
       "value": 5772,

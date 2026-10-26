@@ -20,7 +20,7 @@ are in [docs/CONTRACTS.md](docs/CONTRACTS.md) and [src/core/types.ts](src/core/t
 | M3 | Chapters 7 to 10, JPL ephemerides, the letter analysis, end credits | Done, pending review |
 | Film and simulator brief | Screenplay and shot list ([film/](film/)), then film mode, simulators, sound and showcase features | Screenplay and shot list written; the rest is planned |
 | M4 | Recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded | Not started |
-| Explorer: Universe Sandbox and SpaceEngine brief | Phase 1, the orbital laboratory; Phases 2 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phase 1 done, pending review; the rest planned |
+| Explorer: Universe Sandbox and SpaceEngine brief | Phase 1, the orbital laboratory; Phases 2 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phase 1 done, pending review; Phase 2's impact model in the laboratory; Phase 4's walk on the Earth ([docs/WALKING.md](docs/WALKING.md)) done, pending review; the rest planned |
 
 Not for public release until the reviews in [Review process](#review-process) are recorded.
 
@@ -217,6 +217,9 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
   credited with its link whenever it shows), NASA GIBS (VIIRS on NOAA-20), CelesTrak's orbital
   elements propagated with satellite.js (MIT), the USGS earthquake feed (public domain), Natural
   Earth populated places (public domain) and Wikidata coordinates (CC0); section 13 of `LICENSES`.
+- On foot on the Earth (explorer): Terrain Tiles on the AWS Open Data Registry (USGS 3DEP, SRTM and
+  GMTED2010; NOAA ETOPO1; and national elevation models, each credited as they require on the
+  Sources page and in section 13 of `LICENSES`).
 - The explorer's sky: the Bright Star Catalogue (Hoffleit and Warren, NASA Astronomical Data Center;
   public domain), the IAU Catalog of Star Names (CC BY) and d3-celestial's constellations (Olaf
   Frohn, BSD-3-Clause); section 14 of `LICENSES`.

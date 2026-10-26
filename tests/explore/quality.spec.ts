@@ -6,7 +6,7 @@
  * GPU's resources where they were.
  */
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
-import { JD, place, view, waitForUniverse } from '../support/universe';
+import { JD, place, recordToasts, toasts, view, waitForUniverse } from '../support/universe';
 import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 
 const stats = (page: import('@playwright/test').Page): Promise<FrameStats> => page.evaluate(() => (window as unknown as KfHook).__kf.frameStats());
@@ -100,12 +100,13 @@ test('keyboard browsing of the menu applies nothing: arrows only select, Enter a
   expect(await calls()).toEqual([expected]);
   expect((await view(page))?.detail.choice).toBe(expected);
   // A click on a tier applies it at once and closes the menu.
+  await recordToasts(page);
   await page.getByTestId('universe-detail').click();
   await page.getByTestId('universe-detail-auto').click();
   await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
   expect((await calls()).at(-1)).toBe('auto');
   // Applying says what the level draws, quietly.
-  await expect(page.getByTestId('universe-toast')).toContainText(/maps/);
+  await expect.poll(() => toasts(page), { timeout: 60_000 * SLOW }).toMatch(/maps/);
   expect(pageErrors).toEqual([]);
 });
 

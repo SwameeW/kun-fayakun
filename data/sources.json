@@ -862,6 +862,23 @@
       }
     },
     {
+      "id": "aws-terrain-tiles",
+      "kind": "dataset",
+      "title": "Terrain Tiles: global elevation tiles in terrarium encoding, merged from public elevation models (AWS Open Data Registry; built with Mapzen's Joerd)",
+      "author": "Mapzen and contributors (Joerd), hosted on the AWS Open Data Registry; the elevation models of the agencies credited",
+      "url": "https://registry.opendata.aws/terrain-tiles/",
+      "version": "elevation-tiles-prod, terrarium PNG tiles (height = R x 256 + G + B / 256 - 32768 m), zoom 0 to 15, streamed live",
+      "license": "Open data: public domain (USGS, NOAA) and the open licences of the national elevation models, each with the attribution listed in the credit",
+      "licenseUrl": "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+      "credit": "ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded under National Science Foundation awards 1043681, 1559691, and 1542736; Australia terrain data \u00a9 Commonwealth of Australia (Geoscience Australia) 2017; Austria terrain data \u00a9 offene Daten \u00d6sterreichs \u2013 Digitales Gel\u00e4ndemodell (DGM) \u00d6sterreich; Canada terrain data contains information licensed under the Open Government Licence \u2013 Canada; Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers; Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration; Mexico terrain data source: INEGI, Continental relief, 2016; New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand and the New Zealand Government (All rights reserved); Norway terrain data \u00a9 Kartverket; United Kingdom terrain data \u00a9 Environment Agency copyright and/or database right 2015. All rights reserved; United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.",
+      "notes": "The ground under a walker on the Earth (src/explore/walk): heights read from these tiles at the detail each ring of ground needs, down to about 5 m per pixel under the feet, and the explorer's relief layer. Streamed as the visitor walks; nothing is stored in the repository. The walk's panel credits it in short, with the full list here.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "celestrak-gp",
       "kind": "dataset",
       "title": "CelesTrak GP data: orbital elements (two-line element sets) of the active satellites",

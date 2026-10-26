@@ -126,3 +126,24 @@ export function overflow(page: Page): Promise<{ scroll: number; client: number; 
     return { scroll: root.scrollWidth, client: root.clientWidth, offenders };
   });
 }
+
+/**
+ * Records every message the explorer's toast shows from now on (title and line together), for
+ * `toasts` to read: a toast stays only a few seconds, and a slow machine's look can fall either side
+ * of it, so tests read what was shown rather than what is showing.
+ */
+export const recordToasts = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const w = window as unknown as { kfToasts?: string[] };
+    w.kfToasts = [];
+    const el = document.querySelector('[data-testid="universe-toast"]');
+    if (!el) return;
+    const seen = w.kfToasts;
+    new MutationObserver(() => {
+      const text = el.textContent;
+      if (text !== '' && seen.at(-1) !== text) seen.push(text);
+    }).observe(el, { subtree: true, childList: true, characterData: true });
+  });
+
+/** What the toast has shown since recordToasts, one message a line. */
+export const toasts = (page: Page): Promise<string> => page.evaluate(() => ((window as unknown as { kfToasts?: string[] }).kfToasts ?? []).join('\n'));

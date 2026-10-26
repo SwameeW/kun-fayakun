@@ -379,3 +379,67 @@ test('the qibla and the new moon on a phone: opened from the sheet, every contro
   expect(results.violations.map((v) => v.id)).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', lat: 23.4, lon: 25 });
+  });
+  await expect.poll(async () => (await view(page))?.walk?.state, { timeout: 60_000 * SLOW }).toBe('walking');
+  const hud = page.getByTestId('walk-hud');
+  await expect(hud).toBeVisible();
+  // A touch screen is told about the pad, not the keys.
+  await expect(hud.locator('.kf-walk-touch')).toBeVisible();
+  await expect(hud.locator('.kf-walk-keys')).toBeHidden();
+  const cdp = await page.context().newCDPSession(page);
+  const centre = async (testId: string): Promise<Point> => {
+    const box = await page.getByTestId(testId).boundingBox();
+    if (!box) throw new Error(`${testId} has no box`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  // Forward held for a second walks about a metre and a half.
+  const before = (await view(page))?.walk;
+  await touch(cdp, 'touchStart', [await centre('walk-forward')]);
+  await page.waitForTimeout(1200);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(async () => (await view(page))?.walk?.walkedM ?? 0, { timeout: 30_000 * SLOW }).toBeGreaterThan(0.5);
+  // Let go, the walker stops.
+  const stopped = (await view(page))?.walk?.walkedM ?? 0;
+  await page.waitForTimeout(500);
+  expect((await view(page))?.walk?.walkedM ?? 0).toBeCloseTo(stopped, 1);
+  // A finger dragged across the scene (above the suit's readout) looks round.
+  const hudBox = await hud.boundingBox();
+  const mid = { x: (page.viewportSize()?.width ?? 0) / 2, y: (hudBox?.y ?? 400) / 2 + 40 };
+  await touch(cdp, 'touchStart', [mid]);
+  for (let i = 1; i <= 8; i++) await touch(cdp, 'touchMove', [{ x: mid.x - i * 18, y: mid.y }]);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(async () => Math.abs(((await view(page))?.walk?.headingDeg ?? 0) - (before?.headingDeg ?? 0)), { timeout: 30_000 * SLOW }).toBeGreaterThan(5);
+  // Jump.
+  const ground = (await view(page))?.walk?.groundM ?? 0;
+  await touch(cdp, 'touchStart', [await centre('walk-jump')]);
+  await expect.poll(async () => ((await view(page))?.walk?.feetM ?? 0) - ground, { timeout: 30_000 * SLOW }).toBeGreaterThan(0.05);
+  await touch(cdp, 'touchEnd', []);
+  // Every control a touch target, within the screen.
+  const width = page.viewportSize()?.width ?? 0;
+  const problems = await page.evaluate((w) => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid="walk-hud"] button')) {
+      const r = el.getBoundingClientRect();
+      if (r.height < 43.5) out.push(`${el.dataset.testid ?? el.tagName} ${Math.round(r.height)}px tall`);
+      if (r.right > w + 0.5 || r.left < -0.5) out.push(`${el.dataset.testid ?? el.tagName} past the screen's edge`);
+    }
+    return out;
+  }, width);
+  expect(problems).toEqual([]);
+  const wide = await overflow(page);
+  expect(wide.offenders).toEqual([]);
+  expect(wide.scroll).toBeLessThanOrEqual(wide.client);
+  const results = await new AxeBuilder({ page }).include('[data-testid="walk-hud"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+  // Back to orbit.
+  await page.getByTestId('walk-end').tap();
+  await expect.poll(async () => (await view(page))?.walk, { timeout: 30_000 * SLOW }).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
