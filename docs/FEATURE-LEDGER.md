@@ -143,7 +143,7 @@ platform.
 | SC-1 | A ship with mass, thrust, fuel and attitude | Entity in the integration | SB-4 | implemented (2026-10-26, [LAB.md](LAB.md)): a test particle with dry mass, propellant, thrust and specific impulse; burns along prograde, normal or radial about a chosen body, thrust in the leapfrog's kicks, propellant by the rocket equation (`tests/unit/ships.spec.ts`, `tests/explore/ships.spec.ts`) |
 | SC-2 | Orbital HUD (prograde, normal, radial; elements) | | SB-22 | implemented (2026-10-26): a chosen ship's prograde, normal and radial-out directions about its primary drawn as named markers an arrow's length from it, beside the inspector's elements, apsides and period (SB-22) (`tests/explore/ships.spec.ts`) |
 | SC-3 | Manoeuvre planning with delta-v | Predictions (SB-8) with thrust | SC-1 | implemented (2026-10-26): burns planned by their change of speed at a time, the path ahead integrated through them; a Hohmann transfer to geostationary radius checked |
-| SC-4 | Autopilots that apply forces and can fail | No teleporting | SC-3 | partial (2026-10-26): one autopilot, rounding the orbit at its far side with a finite burn, refused without the propellant for it |
+| SC-4 | Autopilots that apply forces and can fail | No teleporting | SC-3 | implemented (2026-10-26): two autopilots of finite burns, each refused (and said to be beforehand) when it cannot be done: rounding the orbit at its far side, and a Hohmann transfer to a round orbit at a chosen distance (checked against Vallado's example 6-1, and flown in `tests/explore/ships.spec.ts`) |
 | SC-5 | Entry and landing | | WR-5, GR-3 | deferred |
 
 ## Phase 8: creative platform

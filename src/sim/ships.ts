@@ -58,6 +58,35 @@ export function burnDuration(ship: ShipSpec, dvMs: number, throttle = 1): number
   return (m0 / mdot) * (1 - Math.exp(-dvMs / (ship.ispS * G0)));
 }
 
+/** An orbit rounder than this (eccentricity) counts as round for a transfer, which assumes it. */
+export const ROUND_E = 0.01;
+
+/** A Hohmann transfer: the two changes of speed (m/s, positive along the motion), the coast between the burns' middles (s), and each burn's length at full thrust (s; Infinity beyond the propellant). */
+export interface Transfer {
+  dv1Ms: number;
+  dv2Ms: number;
+  coastS: number;
+  d1S: number;
+  d2S: number;
+}
+
+/**
+ * A Hohmann transfer (Vallado, Fundamentals of Astrodynamics and Applications, 4th ed., algorithm 36)
+ * from a round orbit of radius r1 to one of radius r2 (km) about a body of gravitational parameter mu
+ * (km^3/s^2), the first change of speed from the ship's speed now (km/s): a burn along the motion
+ * (backwards to fall), half the transfer orbit's period, and a second at its far side. Each burn's
+ * length is the rocket equation's at full thrust, the second from what the first leaves.
+ */
+export function hohmann(ship: ShipSpec, mu: number, r1Km: number, speedKmS: number, r2Km: number): Transfer {
+  const aT = (r1Km + r2Km) / 2;
+  const dv1Ms = (Math.sqrt(mu * (2 / r1Km - 1 / aT)) - speedKmS) * 1000;
+  const dv2Ms = (Math.sqrt(mu / r2Km) - Math.sqrt(mu * (2 / r2Km - 1 / aT))) * 1000;
+  const d1S = burnDuration(ship, Math.abs(dv1Ms));
+  const after: ShipSpec = { ...ship, fuelKg: ship.fuelKg - (ship.thrustN / (ship.ispS * G0)) * d1S };
+  const d2S = Number.isFinite(d1S) ? burnDuration(after, Math.abs(dv2Ms)) : Number.POSITIVE_INFINITY;
+  return { dv1Ms, dv2Ms, coastS: Math.PI * Math.sqrt(aT ** 3 / mu), d1S, d2S };
+}
+
 /** The burn running at time t (the first that has begun), or null. */
 const running = (ship: ShipState, t: number): Burn | null => {
   const b = ship.burns[0];

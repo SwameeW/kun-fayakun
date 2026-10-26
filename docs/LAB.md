@@ -116,10 +116,15 @@ scripture: destructive experiments stay clear of the film's verses.
   after the burns already planned. The path drawn ahead (SB-8) is integrated through every planned
   burn as the experiment would be: plan, look, then let the time run. Burns are edits like any other:
   logged, undone, replayed, saved and shared.
-- **An autopilot** (SC-4): "Make the orbit round at its far side" plans a prograde burn centred on
+- **Autopilots** (SC-4). "Make the orbit round at its far side" plans a prograde burn centred on
   the apoapsis (its time from the mean anomaly), of sqrt(mu / r_a) - sqrt(mu (2 / r_a - 1 / a)): a real
-  burn, not a teleport, so it leaves the orbit nearly but not exactly round; refused, and said to be,
-  when the propellant left cannot give it.
+  burn, not a teleport, so it leaves the orbit nearly but not exactly round. "Transfer" takes a ship
+  on a round orbit (eccentricity under 0.01) to a round one at the distance typed, by a Hohmann
+  transfer (Vallado's algorithm 36, `hohmann` in src/sim/ships.ts): a burn along the motion now
+  (backwards to fall), half the transfer orbit's period, and a second centred on its far side, each
+  as long as the rocket equation says from the propellant left. Both are refused, and the panel says
+  why beforehand, when they cannot be done: not enough propellant, an orbit not round enough to
+  start from, other burns still planned, or a target below the primary's surface.
 - **The orbit's figures** (SC-2) are the inspector's own (SB-22: the osculating elements, apsides and
   period about the primary). A chosen ship's prograde, normal and radial-out directions about its
   primary are drawn as markers, each an arrow's length from it, named as the burns name them.
@@ -130,8 +135,11 @@ Checked in `tests/unit/ships.spec.ts`: a 1,500 m/s burn in empty space gives 1,5
 and spends exactly the rocket equation's propellant; a burn begins at its time and the directions
 are what they say; a Hohmann transfer from 7,000 km to geostationary radius planned with two finite
 burns (Vallado's algorithm 36) reaches the second orbit to 1.5 per cent with an eccentricity under
-0.02, spending the rocket equation's propellant for the two; undo takes a burn back bit for bit,
-and the validator takes a scenario with a ship and a burn. In the browser, `tests/explore/ships.spec.ts`.
+0.02, spending the rocket equation's propellant for the two; the transfer autopilot's plan matches
+Vallado's worked example 6-1 (191 km to geostationary altitude: 2.457 and 1.478 km/s, 5.256 hours)
+and mirrors it going down; undo takes a burn back bit for bit, and the validator takes a scenario
+with a ship and a burn. In the browser, `tests/explore/ships.spec.ts`, which also flies the transfer
+autopilot from 7,000 km to a round orbit at 9,000 km (within 1.5 per cent, eccentricity under 0.02).
 
 ## Lessons (ledger CR-4)
 

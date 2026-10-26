@@ -1185,7 +1185,9 @@ export type LabCommand =
   | { kind: 'burn'; id: string; direction: LabBurnDirection; ref: string; deltaVMs: number; inS: number; throttle: number }
   | { kind: 'cancelBurns'; id: string }
   /** An autopilot: a prograde burn centred on the far side of the ship's orbit, to make the orbit round there (refused without the propellant for it). */
-  | { kind: 'circularise'; id: string };
+  | { kind: 'circularise'; id: string }
+  /** The second autopilot: a Hohmann transfer from a round orbit to a round one `toKm` from the primary's centre (two burns; refused unless it can be done). */
+  | { kind: 'transfer'; id: string; toKm: number };
 
 /** A burn's direction, set by a ship's motion about a body: along it or against it, square to its orbit's plane, or toward or away from the body. */
 export type LabBurnDirection = 'prograde' | 'retrograde' | 'normal' | 'antinormal' | 'radialOut' | 'radialIn';

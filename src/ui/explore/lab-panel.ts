@@ -1,7 +1,7 @@
 import { julianDateUtc } from '../../astro/time';
 import labMessages from '../../i18n/en.lab.json';
 import type { App, LabCommand, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
-import { BURN_DIRECTIONS } from '../../sim/ships';
+import { BURN_DIRECTIONS, hohmann, ROUND_E } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { createLabLessons } from './lab-lessons';
@@ -338,6 +338,13 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     if (selectedId) send({ kind: 'circularise', id: selectedId });
   });
   const shipRoundText = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-circularise-text' });
+  // The second autopilot (ledger SC-4): a Hohmann transfer to a round orbit at the distance typed.
+  const shipTo = field('ui.universe.lab.ship.to', 'lab-ship-to');
+  const shipTransfer = button(i18n.t('ui.universe.lab.ship.transfer'), 'lab-ship-transfer', () => {
+    const to = num(shipTo.input);
+    if (selectedId && to > 0) send({ kind: 'transfer', id: selectedId, toKm: to });
+  });
+  const shipTransferText = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-transfer-text' });
   const shipBurns = h('ul', { class: 'kf-living-list', 'data-testid': 'lab-ship-burns' });
   const shipCancel = button(i18n.t('ui.universe.lab.ship.cancel'), 'lab-ship-cancel', () => {
     if (selectedId) send({ kind: 'cancelBurns', id: selectedId });
@@ -363,9 +370,38 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.ship.planHint')),
     shipRound,
     shipRoundText,
+    shipTo.label,
+    h('div', { class: 'kf-lab-row' }, shipTo.input, shipTransfer),
+    shipTransferText,
     shipBurns,
     shipCancel,
   );
+
+  /** What the transfer autopilot would do for the distance typed (src/sim/ships), or why it cannot: the lab plans the same or refuses. */
+  const previewTransfer = (): void => {
+    const b = selectedBody();
+    const ship = b?.ship;
+    const primary = b?.primary ? lab?.bodies.find((x) => x.id === b.primary) : undefined;
+    const to = num(shipTo.input);
+    let text = '';
+    let possible = false;
+    if (b && ship && primary && b.orbit && b.distanceKm !== null && b.relativeSpeedKmS !== null) {
+      if (ship.burns.length > 0) text = i18n.t('ui.universe.lab.ship.transferBusy');
+      else if (!b.orbit.bound || b.orbit.e >= ROUND_E) text = i18n.t('ui.universe.lab.ship.transferRound', { e: f.number(b.orbit.e, 3) });
+      else if (!(to > primary.radiusKm)) text = shipTo.input.value.trim() === '' ? '' : i18n.t('ui.universe.lab.ship.transferBelow', { primary: nameOf(primary), radius: f.number(primary.radiusKm, 0) });
+      else if (Math.abs(to - b.distanceKm) >= 1) {
+        const plan = hohmann(ship, primary.gm, b.distanceKm, b.relativeSpeedKmS, to);
+        possible = Number.isFinite(plan.d1S) && Number.isFinite(plan.d2S);
+        const dir = (dv: number): string => i18n.t(`ui.universe.lab.ship.dirShort.${dv >= 0 ? 'prograde' : 'retrograde'}`);
+        text = possible
+          ? i18n.t('ui.universe.lab.ship.transferText', { dv1: f.number(Math.abs(plan.dv1Ms), 0), dir1: dir(plan.dv1Ms), dv2: f.number(Math.abs(plan.dv2Ms), 0), dir2: dir(plan.dv2Ms), coast: lightTime(plan.coastS) })
+          : i18n.t('ui.universe.lab.ship.transferShort', { dv: f.number(Math.abs(plan.dv1Ms) + Math.abs(plan.dv2Ms), 0) });
+      }
+    }
+    shipTransfer.disabled = !possible;
+    write(shipTransferText, text);
+  };
+  shipTo.input.addEventListener('input', previewTransfer);
 
   const massGroup = h(
     'div',
@@ -884,6 +920,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           shipRound.hidden = round === null;
           shipRound.disabled = !round?.possible;
           write(shipRoundText, round ? i18n.t(round.possible ? 'ui.universe.lab.ship.circulariseText' : 'ui.universe.lab.ship.circulariseShort', { dv: f.number(round.deltaVMs, round.deltaVMs < 10 ? 1 : 0), when: lightTime(round.inS) }) : '');
+          previewTransfer();
         }
         const primary = b.primary ? l.bodies.find((x) => x.id === b.primary) : undefined;
         const pName = primary ? nameOf(primary) : '';

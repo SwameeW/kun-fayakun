@@ -63,7 +63,8 @@
 
 .kf-about-facts {
   display: grid;
-  grid-template-columns: minmax(6.5rem, max-content) 1fr;
+  /* The values keep at least 45% of the width: a long name wraps rather than squeezing its value onto two lines. */
+  grid-template-columns: minmax(6.5rem, max-content) minmax(45%, 1fr);
   gap: var(--kf-space-1) var(--kf-space-3);
   margin: 0;
   line-height: 1.45;
@@ -816,7 +817,13 @@
   accent-color: var(--kf-gold-strong);
 }
 
-/* Among the stars (src/ui/explore/neighbourhood-panel.ts): the planets' list. */
+/* Among the stars (src/ui/explore/neighbourhood-panel.ts): inset and set like the navigator's other sections. */
+.kf-stars {
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  font-size: 0.8125rem;
+}
+
+/* The planets' list. */
 .kf-stars-planets {
   list-style: none;
   margin: 0;
