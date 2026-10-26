@@ -6,6 +6,7 @@ import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { createLabLessons } from './lab-lessons';
 import { helpButton, withHelp } from './help';
+import '../styles/lab.css';
 
 /**
  * The orbital laboratory's panel (heading the navigator while an experiment runs): what it is (an

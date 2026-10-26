@@ -3,6 +3,7 @@ import photoMessages from '../../i18n/en.photo.json';
 import { h } from '../dom';
 import { load as loadSavedViews, type Saved } from './saved-views';
 import { helpButton } from './help';
+import '../styles/photo.css';
 
 /**
  * Photo mode's bar (its own chunk, loaded the first time photo mode opens; ./index keeps the mode

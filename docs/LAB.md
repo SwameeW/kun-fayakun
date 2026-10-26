@@ -176,7 +176,14 @@ expects worked out beforehand from the experiment as it stands, beside the exper
   target, the second planned by the autopilot.
 - **The Roche limit**: the Moon moved inside the Earth's fluid limit for it, and torn apart.
 
-"Start the lesson again" sets the experiment up from the start once more. Tested in
+"Start the lesson again" sets the experiment up from the start once more (pressed again while that
+is under way, it changes nothing). The steps are taken in order and each once: every step's button
+waits until the experiment is set up (the first step's place says so meanwhile), the next one opens
+only once the one before is taken, and a step taken stays done. Before a step is taken it says what
+it will do where it has words for that; once taken, what happened. The first step's figures (the
+experiment as it stood) are kept as they were once the first edit is made, and words once shown are
+never blanked (the torn Moon no longer has the distance they gave). The steps are a numbered list,
+each number beside its button and the step's words under it. Tested in
 `tests/explore/lessons.spec.ts`.
 
 ## State ownership

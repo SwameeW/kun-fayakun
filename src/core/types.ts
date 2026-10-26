@@ -426,6 +426,8 @@ export interface SceneLabel {
    * joined to it by a thin leader line, so tags on crowded small features never overlap.
    */
   offset?: readonly [number, number];
+  /** Where tags crowd, which keeps its place: the higher (a body's radius, the chosen body's highest); others 0. */
+  rank?: number;
 }
 
 /** How big the view really is: world units in metres, at a depth of interest. */

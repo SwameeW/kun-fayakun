@@ -7,11 +7,12 @@ import { withHelp } from './help';
  * The navigator's "The sky": what the stars behind the worlds are (the Bright Star Catalogue's,
  * at their real places, colours and brightness), and a switch for each of the sky's layers: the
  * constellation figures with their names, their boundaries, a grid with the celestial equator and
- * the ecliptic, and the brightest stars' names. Each switch is a pressed-or-not button.
+ * the ecliptic, and the brightest stars' names. Each switch is a pressed-or-not button. Its own chunk
+ * (./sections), loaded the first time the section opens (the section and its summary are the navigator's).
  */
 
 export interface SkyPanel {
-  readonly element: HTMLDetailsElement;
+  readonly body: HTMLElement;
   update(view: UniverseView, slow: boolean): void;
 }
 
@@ -27,15 +28,10 @@ export function createSkyPanel(app: App, f: Formatters): SkyPanel {
     return [layer, b] as const;
   });
   const intro = h('p', { class: 'kf-living-hint', 'data-testid': 'sky-intro' });
-  const element = h(
-    'details',
-    { class: 'kf-nav-about kf-nav-sky', 'data-testid': 'universe-sky' },
-    h('summary', {}, i18n.t('ui.universe.sky.title')),
-    h('div', { class: 'kf-about-body' }, withHelp(app, intro, 'sky', i18n.t('ui.universe.sky.title')), h('div', { class: 'kf-living-group' }, ...switches.map(([, b]) => b)), h('p', { class: 'kf-about-sources' }, i18n.t('ui.universe.sky.sources'))),
-  );
+  const body = h('div', { class: 'kf-about-body' }, withHelp(app, intro, 'sky', i18n.t('ui.universe.sky.title')), h('div', { class: 'kf-living-group' }, ...switches.map(([, b]) => b)), h('p', { class: 'kf-about-sources' }, i18n.t('ui.universe.sky.sources')));
   let shownStars = -1;
   return {
-    element,
+    body,
     update(view, slow) {
       for (const [layer, b] of switches) {
         const on = String(view.sky.layers[layer]);

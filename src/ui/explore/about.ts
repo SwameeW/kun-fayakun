@@ -1,5 +1,5 @@
 import type { PlanetsFile } from '../../astro/ephemeris';
-import { PHYSICAL_URL, type PhysicalFile } from '../../astro/physical';
+import type { PhysicalFile } from '../../astro/physical';
 import type { App, BodyId, UniverseView } from '../../core/types';
 import { worldFacts, type WorldFacts } from '../../explore/about';
 import { h, svg } from '../dom';
@@ -12,15 +12,19 @@ import { helpButton } from './help';
  * speed, its day (one turn, and sunrise to sunrise), its year and orbit, its axial tilt, how far it
  * is now (live), and a size comparison drawn to scale beside the Earth (the Earth's beside the Moon),
  * with its sources named. A definition list, rewritten when the world in view changes; the live
- * distance only on the navigator's slow ticks.
+ * distance only on the navigator's slow ticks. Its own chunk (./sections), loaded the first time the
+ * section opens: the section and its summary (the world's name) are the navigator's.
  */
 
 export interface About {
-  readonly element: HTMLDetailsElement;
-  update(view: UniverseView, slow: boolean): void;
+  readonly body: HTMLElement;
+  /** `open`: whether the section shows (the live distance is written only then). */
+  update(view: UniverseView, slow: boolean, open: boolean): void;
 }
 
 const PLANETS_URL = 'assets/jpl/planets.json';
+/** src/astro/physical's file (named here, so this chunk takes none of that module's code with it). */
+const PHYSICAL_URL = 'assets/jpl/physical.json';
 const SUPERSCRIPT = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 /** The comparison's larger disc, in its drawing's units (the drawing is 220 wide). */
 const DISC = 80;
@@ -40,13 +44,12 @@ export function createAbout(app: App, f: Formatters): About {
       console.warn('explore: the object information could not be loaded', err);
     });
 
-  const summary = h('summary', {}, i18n.t('ui.universe.about.title', { body: f.name('earth') }));
   const facts = h('dl', { class: 'kf-about-facts', 'data-testid': 'universe-about-facts' });
   // The world in a few plain words, behind its "?".
   const plain = h('p', { class: 'kf-help-row kf-about-plain' });
   const picture = h('figure', { class: 'kf-about-compare' });
   const sources = h('p', { class: 'kf-about-sources' });
-  const element = h('details', { class: 'kf-nav-about', 'data-testid': 'universe-about' }, summary, h('div', { class: 'kf-about-body' }, plain, facts, picture, sources));
+  const body = h('div', { class: 'kf-about-body' }, plain, facts, picture, sources);
 
   const km = (value: number): string => f.keep(i18n.t('ui.hud.unit.km', { value: f.number(value, value < 10_000 ? 1 : 0) }));
   /** A number of three figures in powers of ten: "1.90 × 10²⁷". */
@@ -96,7 +99,6 @@ export function createAbout(app: App, f: Formatters): About {
     const w = worldFacts(id, physical, planets);
     const earth = worldFacts('earth', physical, planets);
     const name = f.name(id);
-    summary.textContent = i18n.t('ui.universe.about.title', { body: name });
     plain.replaceChildren(h('span', {}, i18n.t('ui.universe.about.plain', { body: name })), helpButton(app, `body.${id}`, name));
     const isEarth = id === 'earth';
     const items: HTMLElement[] = [
@@ -164,10 +166,10 @@ export function createAbout(app: App, f: Formatters): About {
   };
 
   return {
-    element,
-    update(view, slow) {
+    body,
+    update(view, slow, open) {
       if (view.focus !== shown) build(view.focus, view);
-      else if (slow && element.open) writeNow(view);
+      else if (slow && open) writeNow(view);
     },
   };
 }

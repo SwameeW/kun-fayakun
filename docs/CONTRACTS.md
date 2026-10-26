@@ -372,15 +372,32 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   (its summary says how many entries it holds, with no total, score or achievement; each new entry
   gets a quiet toast, a polite live region) and the detail menu; a side panel on wide screens (the
   menu opening beside it), a bottom sheet on phones (ten portraits in two rows when folded; the list first, the log, then the orrery as a
-  small strip, none held sideways; sized to what it holds, fading where it scrolls; held sideways,
-  pulled up at the right, the world framed beside it). The world in view is marked `aria-current`.
+  small strip, none held sideways; sized to what it holds; held sideways,
+  pulled up at the right, the world framed beside it). Its body fades at whichever edge it scrolls
+  on (`has-above`, `has-more`), never cutting a line in half. Folded, only the portraits stay, in an
+  experiment its worlds and among the stars none: the laboratory's and the stars' panels fold away
+  with every section and come back as they were; the folded rail never runs past the window's foot
+  (a short window scrolls it). Entering the laboratory or the stars brings their panel into view
+  from its top. The sections read only when opened (About, the sky, saved views: one chunk,
+  `src/ui/explore/sections.ts`; the Living Earth; the qibla) and the laboratory's and the stars'
+  panels are chunks of their own (`src/ui/explore/lazy.ts`): each loads once however often it is
+  asked for on the way, with a line while it comes (`part-waiting`) and, if its code does not
+  arrive, a status saying so with `part-retry` (and in the laboratory `lab-leave`, among the stars
+  `stars-leave`); nothing is thrown. The world in view is marked `aria-current`.
   Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
   the view (the same width) and never show at once: a trip takes the note out first, and a note comes
   back only after the indicator has gone. A note's title folds it; on a phone it folds by itself after
   6.5 s or at a touch on the scene. Names beside the bodies stay inside the clear view (at a body's
   left when its right has no room; a body just out of frame gets a pointer at the edge), each choice
   holding until the body is clearly past the line, and a name that gives way to another fades
-  quickly (no ghosting); they come up with the picture, never over a black screen. Notes near a body give numbers derived
+  quickly while one coming in waits until nothing still shows where it goes (no ghosting); they come
+  up with the picture, never over a black screen. Inside the clear view they keep off what stands
+  over it (the way back; on a wide screen the readout's card), which the interface reports on the
+  window as `kf-universe-avoid`: a pointer at the edge slides along the edge past it, a tag gives way.
+  The laboratory's names take part (`SceneLabel.rank`: the larger first): none behind a world's disc
+  or outside the clear view, each trying the four corners about its body, and two never show over
+  each other; the chosen body's name and its marks (burn directions, Lagrange points, encounters: no
+  rank) always show while in front of the camera, the others giving way to them. Notes near a body give numbers derived
   from cited data only (`src/explore/discoveries.ts`: IAU rotation rates, JPL elements, the Cassini
   ring profile, and `light.speed`, `earth.atmosphere.scaleHeight`, `sun.effectiveTemperature` in
   data/constants.json). Exploration shows no scripture.
@@ -457,8 +474,13 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   `names`, `boundaries`, `grid`); `UniverseView.sky` reports them. It replaced the explorer's
   procedural starfield (the chapters keep theirs).
 - **Messages.** The explorer's strings live in `src/i18n/en.explore.json`, added to the catalogue by
-  its interface (`I18n.extend`) so they never weigh on the shell; the validator reads it with
-  en.json and en.chapters.json (no key in two files).
+  its interface (`I18n.extend`) so they never weigh on the shell (the Living Earth's and its field
+  notes' own words in `en.living.json`, with its chunk); the validator reads them with en.json and
+  en.chapters.json (no key in two files).
+- **Layout under stress** (`tests/explore/layout-stress.spec.ts`, helpers in `tests/support/layout.ts`):
+  at 1280x800, 1440x900, 2000x1300 and on a touch phone held both ways, every section, panel and mode
+  opened and closed in bursts; every control inside the window or its own scroller, nothing wider
+  than the window, no control over another, no text cut off, no error logged.
 - Roadmap for the rest of SpaceEngine's mechanics: `docs/EXPLORER-MECHANICS.md`.
 
 ## Living Earth (explorer)

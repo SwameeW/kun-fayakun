@@ -1,4 +1,4 @@
-import type { App, LabCommand, UniverseLab, UniverseLabBody } from '../../core/types';
+import type { App, I18nKey, LabCommand, UniverseLab, UniverseLabBody } from '../../core/types';
 import { helpButton } from './help';
 import { h } from '../dom';
 import type { Formatters } from './format';
@@ -9,6 +9,13 @@ import type { Formatters } from './format';
  * experiment, then goes in a few steps, each an edit the visitor makes with a button (the same edits
  * the panel offers), with what to look for and the number the physics expects, worked out from the
  * experiment as it stands before the step; the experiment's own figures then say what happened.
+ *
+ * The steps are taken in order, each once, and only once the experiment is set up (its first step
+ * reads it): a step's button is disabled until then and after it is taken (the lesson starts again
+ * from its own button). A step says what it will do before it is taken (where it has words for that)
+ * and what happened once it is; what the experiment looked like at the start is kept as it was once
+ * the first edit is made, and words once shown are never blanked (a moon torn apart no longer has
+ * the distance they gave).
  */
 
 export interface Lessons {
@@ -26,8 +33,10 @@ const LESSON_SHIP = { dryKg: 2000, fuelKg: 18_000, thrustN: 400_000, ispS: 320, 
 interface Step {
   /** What to look for, from the experiment now and what was noted when the step was taken. */
   text: (lab: UniverseLab, noted: Record<string, number>) => string;
-  /** The step's edit, and what to note beforehand. */
-  act?: { label: string; run: (lab: UniverseLab, noted: Record<string, number>) => void };
+  /** The step's edit, and what to note beforehand: false when the experiment lacks what it needs (nothing sent). */
+  act?: { label: string; run: (lab: UniverseLab, noted: Record<string, number>) => boolean };
+  /** What the step will do, shown until it is taken (otherwise its words wait for it). */
+  before?: I18nKey;
 }
 
 export function createLabLessons(app: App, f: Formatters): Lessons {
@@ -45,9 +54,10 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
   const pause = (lab: UniverseLab): void => {
     if (!lab.paused) app.universeTime({ kind: 'toggle' });
   };
-  /** Runs the experiment's clock at a rate (a rate also sets it running). */
-  const run = (rate: number): void => {
+  /** Runs the experiment's clock at a rate (a rate also sets it running): a step that always can. */
+  const run = (rate: number): true => {
     app.universeTime({ kind: 'rate', rate });
+    return true;
   };
   /** The circular speed and escape speed (km/s) of a body about its primary, at its distance now. */
   const speeds = (lab: UniverseLab, b: UniverseLabBody): { circular: number; escape: number } => {
@@ -75,12 +85,14 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
           label: i18n.t('ui.universe.lab.lesson.kepler.act2'),
           run: (lab, noted) => {
             const o = find(lab, 'planet')?.orbit;
-            if (!o?.periodS) return;
+            if (!o?.periodS) return false;
             noted.period = o.periodS;
             noted.speed = find(lab, 'planet')?.relativeSpeedKmS ?? 0;
             send({ kind: 'elements', id: 'planet', aKm: o.aKm * 2, e: o.e, iDeg: o.iDeg, nodeDeg: o.nodeDeg, periapsisArgDeg: o.periapsisArgDeg, trueAnomalyDeg: o.trueAnomalyDeg });
+            return true;
           },
         },
+        before: 'ui.universe.lab.lesson.kepler.2before',
         text: (lab, noted) => {
           const o = find(lab, 'planet')?.orbit;
           return noted.period && o?.periodS ? i18n.t('ui.universe.lab.lesson.kepler.2', { expected: days(noted.period * 2 ** 1.5), period: days(o.periodS), ratio: f.number(o.periodS / noted.period, 3) }) : i18n.t('ui.universe.lab.lesson.kepler.2before');
@@ -89,9 +101,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
       {
         act: {
           label: i18n.t('ui.universe.lab.lesson.kepler.act3'),
-          run: () => {
-            run(30 * 86_400);
-          },
+          run: () => run(30 * 86_400),
         },
         text: (lab, noted) => {
           const v = find(lab, 'planet')?.relativeSpeedKmS;
@@ -113,13 +123,15 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
           label: i18n.t('ui.universe.lab.lesson.escape.act2'),
           run: (lab, noted) => {
             const b = find(lab, 'planet');
-            if (!b?.relativeSpeedKmS) return;
+            if (!b?.relativeSpeedKmS) return false;
             // A little past escape speed: exactly at it, the orbit would be a parabola, neither bound nor not.
             const dv = (speeds(lab, b).escape * 1.02 - b.relativeSpeedKmS) * 1000;
             noted.push = dv;
             send({ kind: 'impulse', id: 'planet', progradeMs: dv, normalMs: 0, radialMs: 0 });
+            return true;
           },
         },
+        before: 'ui.universe.lab.lesson.escape.2before',
         text: (lab, noted) => {
           const o = find(lab, 'planet')?.orbit;
           return noted.push ? i18n.t(o?.bound === false ? 'ui.universe.lab.lesson.escape.2' : 'ui.universe.lab.lesson.escape.2wait', { push: ms(noted.push), e: f.number(o?.e ?? 0, 3) }) : i18n.t('ui.universe.lab.lesson.escape.2before');
@@ -128,9 +140,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
       {
         act: {
           label: i18n.t('ui.universe.lab.lesson.escape.act3'),
-          run: () => {
-            run(30 * 86_400);
-          },
+          run: () => run(30 * 86_400),
         },
         text: (lab) => {
           const b = find(lab, 'planet');
@@ -154,20 +164,20 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
           run: (lab, noted) => {
             const s = ship(lab);
             const earth = find(lab, 'earth');
-            if (!s || !earth || !s.distanceKm) return;
+            if (!s || !earth || !s.distanceKm) return false;
             const { dv1 } = hohmann(earth.gm, s.distanceKm, GEO_KM);
             noted.dv1 = dv1;
             send({ kind: 'burn', id: s.id, direction: 'prograde', ref: 'earth', deltaVMs: dv1, inS: 0, throttle: 1 });
+            return true;
           },
         },
+        before: 'ui.universe.lab.lesson.hohmann.2before',
         text: (_lab, noted) => (noted.dv1 ? i18n.t('ui.universe.lab.lesson.hohmann.2', { dv1: ms(noted.dv1) }) : i18n.t('ui.universe.lab.lesson.hohmann.2before')),
       },
       {
         act: {
           label: i18n.t('ui.universe.lab.lesson.hohmann.act3'),
-          run: () => {
-            run(600);
-          },
+          run: () => run(600),
         },
         text: (lab) => {
           const o = ship(lab)?.orbit;
@@ -180,6 +190,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
           run: (lab) => {
             const s = ship(lab);
             if (s) send({ kind: 'circularise', id: s.id });
+            return s !== undefined;
           },
         },
         text: (lab) => {
@@ -190,9 +201,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
       {
         act: {
           label: i18n.t('ui.universe.lab.lesson.hohmann.act5'),
-          run: () => {
-            run(1800);
-          },
+          run: () => run(1800),
         },
         text: (lab) => {
           const o = ship(lab)?.orbit;
@@ -213,19 +222,19 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
           run: (lab, noted) => {
             const m = find(lab, 'moon');
             const o = m?.orbit;
-            if (!m?.roche || !o) return;
+            if (!m?.roche || !o) return false;
             noted.a = m.roche.fluidKm * 0.8;
             send({ kind: 'elements', id: 'moon', aKm: noted.a, e: 0, iDeg: o.iDeg, nodeDeg: o.nodeDeg, periapsisArgDeg: o.periapsisArgDeg, trueAnomalyDeg: o.trueAnomalyDeg });
+            return true;
           },
         },
+        before: 'ui.universe.lab.lesson.roche.2before',
         text: (_lab, noted) => (noted.a ? i18n.t('ui.universe.lab.lesson.roche.2', { a: km(noted.a) }) : i18n.t('ui.universe.lab.lesson.roche.2before')),
       },
       {
         act: {
           label: i18n.t('ui.universe.lab.lesson.roche.act3'),
-          run: () => {
-            run(3600);
-          },
+          run: () => run(3600),
         },
         text: (lab) => {
           const torn = lab.events.some((e) => e.kind === 'disrupt');
@@ -236,7 +245,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
   };
 
   // The list of lessons, and the one being followed.
-  const list = h('ul', { class: 'kf-living-list', 'data-testid': 'lab-lessons-list' });
+  const list = h('ul', { class: 'kf-living-list kf-lab-lessons-list', 'data-testid': 'lab-lessons-list' });
   const current = h('section', { class: 'kf-lab-lesson', 'data-testid': 'lab-lesson', hidden: true });
   const lessonTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'lab-lesson-title' });
   const lessonIntro = h('p', { class: 'kf-living-hint' });
@@ -248,28 +257,62 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
   let noted: Record<string, number> = {};
   /** Set-up waiting for the experiment to be there (the seed loads in its worker). */
   let pending: { ready: (lab: UniverseLab) => boolean; then: (lab: UniverseLab) => void } | null = null;
-  let stepTexts: HTMLElement[] = [];
+  /** Each step's item, words and button; whether it has been taken; the last words it showed (kept, never blanked); and whether they are kept as they are. */
+  let stepParts: Array<{ li: HTMLElement; text: HTMLElement; button: HTMLButtonElement | null }> = [];
+  let taken: boolean[] = [];
+  let shown: string[] = [];
+  let kept: boolean[] = [];
   let latest: UniverseLab | null = null;
 
+  /** Which steps can be taken: once set up (the first step has read the experiment), in order, each once. */
+  const refresh = (): void => {
+    if (!active) return;
+    let open = pending === null && shown[0] !== '';
+    steps[active].forEach((step, k) => {
+      const button = stepParts[k]?.button;
+      const disabled = !open || (taken[k] ?? false);
+      if (button && button.disabled !== disabled) button.disabled = disabled;
+      if (step.act && !taken[k]) open = false;
+    });
+  };
+
+  const take = (k: number): void => {
+    const act = active ? steps[active][k]?.act : undefined;
+    const button = stepParts[k]?.button;
+    if (!act || !latest || !button || button.disabled || pending !== null || taken[k]) return;
+    if (!act.run(latest, noted)) return;
+    taken[k] = true;
+    // What the experiment looked like before the first edit stays as it was (its live figures would now be the edit's).
+    for (let j = 0; j < k; j += 1) if (!active || !steps[active][j]?.act) kept[j] = true;
+    const hadFocus = document.activeElement === button;
+    refresh();
+    // The keyboard goes on to the next step (the one taken is done), or to starting again at the end.
+    if (hadFocus) (stepParts.find((p) => p.button && !p.button.disabled)?.button ?? restart).focus();
+  };
+
   const begin = (id: LessonId): void => {
+    // Already being set up: once is enough (a button pressed again and again starts it once).
+    if (active === id && pending !== null) return;
     active = id;
     noted = {};
     current.hidden = false;
     lessonTitle.textContent = i18n.t(`ui.universe.lab.lesson.${id}.title`);
     lessonIntro.textContent = i18n.t(`ui.universe.lab.lesson.${id}.intro`);
-    stepTexts = [];
+    stepParts = [];
+    taken = steps[id].map(() => false);
+    shown = steps[id].map(() => '');
+    kept = steps[id].map(() => false);
     stepList.replaceChildren(
       ...steps[id].map((step, k) => {
         const text = h('p', { class: 'kf-living-hint', 'data-testid': `lab-lesson-text-${String(k)}` });
-        stepTexts.push(text);
-        const act = step.act;
-        const button = act
-          ? h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': `lab-lesson-step-${String(k)}` }, act.label)
-          : null;
+        const button = step.act ? h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': `lab-lesson-step-${String(k)}`, disabled: true }, step.act.label) : null;
         button?.addEventListener('click', () => {
-          if (latest && act) act.run(latest, noted);
+          take(k);
         });
-        return h('li', {}, ...(button ? [button] : []), text);
+        // Numbered by its place in the lesson (an item without words yet is hidden, and the numbers stay).
+        const li = h('li', { value: String(k + 1) }, button, text);
+        stepParts.push({ li, text, button });
+        return li;
       }),
     );
     // Its experiment from the start: the seed, then (the Hohmann lesson) its ship; the world in question chosen, the clock paused.
@@ -286,6 +329,27 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
         } else send({ kind: 'select', id: focus });
       },
     };
+    write();
+  };
+
+  /** Each step's words: while set up, a line saying so (the first step's place); then what each says. */
+  const write = (): void => {
+    if (!active) return;
+    const lab = pending === null ? latest : null;
+    steps[active].forEach((step, k) => {
+      const part = stepParts[k];
+      if (!part) return;
+      if (lab && !kept[k]) {
+        // Before a step is taken, what it will do (where it says); once taken, what happened.
+        const now = step.act && !taken[k] ? (step.before ? i18n.t(step.before) : '') : step.text(lab, noted);
+        if (now !== '') shown[k] = now;
+      }
+      const words = shown[k] || (k === 0 ? i18n.t('ui.universe.lab.lesson.loading') : '');
+      if (part.text.textContent !== words) part.text.textContent = words;
+      if (part.text.hidden !== (words === '')) part.text.hidden = words === '';
+      if (part.li.hidden !== (words === '' && !part.button)) part.li.hidden = words === '' && !part.button;
+    });
+    refresh();
   };
   restart.addEventListener('click', () => {
     if (active) begin(active);
@@ -320,12 +384,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
         pending = null;
         p.then(lab);
       }
-      if (!active) return;
-      steps[active].forEach((step, k) => {
-        const el = stepTexts[k];
-        const text = step.text(lab, noted);
-        if (el && el.textContent !== text) el.textContent = text;
-      });
+      write();
     },
   };
 }

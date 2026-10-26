@@ -217,6 +217,7 @@
   "ui.universe.lab.lesson.intro": "Short lessons, each on its own experiment, set up from the start. Each has a few steps, each an edit you make with its button, and says beforehand what to look for and the number the physics expects.",
   "ui.universe.lab.lesson.restart": "Start the lesson again",
   "ui.universe.lab.lesson.end": "Leave the lesson",
+  "ui.universe.lab.lesson.loading": "Setting up the experiment…",
   "ui.universe.lab.lesson.kmS": "{v} km/s",
   "ui.universe.lab.lesson.ms": "{v} m/s",
   "ui.universe.lab.lesson.days": "{v} days",

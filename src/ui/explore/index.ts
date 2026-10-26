@@ -218,7 +218,11 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     const readout = hud.readout.getBoundingClientRect();
     let top = header;
     // A readout across the top middle (as on a phone) is covered space too.
-    if (readout.height > 0 && readout.top < height / 2 && readout.left < width / 3 && readout.right > width / 3) top = Math.max(top, readout.bottom);
+    const across = readout.height > 0 && readout.top < height / 2 && readout.left < width / 3 && readout.right > width / 3;
+    if (across) top = Math.max(top, readout.bottom);
+    // Inside the clear view the way back stands over it, and on a wide screen the readout's card: the names beside the worlds keep clear of them.
+    const avoid = (across ? [back] : [back, hud.readout]).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    window.dispatchEvent(new CustomEvent('kf-universe-avoid', { detail: avoid.map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })) }));
     const isSheet = navigator.layout === 'sheet' && nav.height > 0;
     // A sheet pulled up beside the view (a phone held sideways: tall, at the right) covers the right, not the bottom.
     const beside = isSheet && nav.left > width / 4 && nav.height > height / 2;
@@ -239,7 +243,9 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     app.setViewInsets({ top, bottom, left: 0, right });
   };
   navigator.onResize(reportInsets);
-  new ResizeObserver(reportInsets).observe(hud.readout);
+  const sized = new ResizeObserver(reportInsets);
+  sized.observe(hud.readout);
+  sized.observe(back);
   window.addEventListener('resize', reportInsets);
 
   let visible = false;

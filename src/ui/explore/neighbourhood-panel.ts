@@ -6,6 +6,7 @@ import starsMessages from '../../i18n/en.stars.json';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { helpButton, withHelp } from './help';
+import '../styles/stars.css';
 
 /**
  * Among the stars (ledger IS-3, IS-4, IS-7; its own chunk, loaded with the first visit): the star in
@@ -20,8 +21,12 @@ import { helpButton, withHelp } from './help';
  */
 
 type PlaceId = UniverseNeighbourhood['places'][number]['id'];
-/** The Hertzsprung-Russell diagram's ranges: colour (B-V) and absolute magnitude, brightest at the top; its size in canvas pixels. */
-const HR = { bv: [-0.4, 2.1], mag: [-8, 17], width: 600, height: 440, pad: { left: 56, right: 14, top: 14, bottom: 46 } } as const;
+/**
+ * The Hertzsprung-Russell diagram's ranges: colour (B-V) and absolute magnitude, brightest at the top;
+ * its size in layout units (drawn at its shown width and the screen's pixel density), its margins at its
+ * widest; and its text at least this size on screen (CSS px), however narrow the panel.
+ */
+const HR = { bv: [-0.4, 2.1], mag: [-8, 17], width: 600, height: 440, pad: { left: 56, right: 14, top: 14, bottom: 46 }, fontPx: 11.5 } as const;
 /** The Sun among them: its absolute magnitude and colour (data/constants.json's, as the scene takes them). */
 const SUN_ON_HR = { bv: 0.653, mag: 4.81 } as const;
 /** Light years per kiloparsec. */
@@ -74,31 +79,65 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
   let hrStars: Array<{ hip: number; bv: number; mag: number; rgb: readonly number[] }> | null = null;
   let hrBase: HTMLCanvasElement | null = null;
   let hrMarked = '';
-  const hrX = (bv: number): number => HR.pad.left + ((bv - HR.bv[0]) / (HR.bv[1] - HR.bv[0])) * (HR.width - HR.pad.left - HR.pad.right);
-  const hrY = (mag: number): number => HR.pad.top + ((mag - HR.mag[0]) / (HR.mag[1] - HR.mag[0])) * (HR.height - HR.pad.top - HR.pad.bottom);
+  let hrFocus: { hip: number | null; name: string | null } | null = null;
+  /** Drawn at its shown width: device pixels per layout unit, the type's size in layout units, and the margins it needs. */
+  let hrShown = 0;
+  let hrScale = 1;
+  let hrFont = 15;
+  const hrPad: { left: number; bottom: number } = { left: HR.pad.left, bottom: HR.pad.bottom };
+  const hrX = (bv: number): number => hrPad.left + ((bv - HR.bv[0]) / (HR.bv[1] - HR.bv[0])) * (HR.width - hrPad.left - HR.pad.right);
+  const hrY = (mag: number): number => HR.pad.top + ((mag - HR.mag[0]) / (HR.mag[1] - HR.mag[0])) * (HR.height - HR.pad.top - hrPad.bottom);
+  /** Sizes the canvas to its shown width (true when that changed): its text never below HR.fontPx on screen. */
+  const hrSize = (): boolean => {
+    const css = hr.clientWidth;
+    if (css <= 0 || css === hrShown) return false;
+    hrShown = css;
+    const dpr = window.devicePixelRatio || 1;
+    hr.width = Math.round(css * dpr);
+    hr.height = Math.round(css * (HR.height / HR.width) * dpr);
+    hrScale = hr.width / HR.width;
+    hrFont = Math.max(15, (HR.fontPx * HR.width) / css);
+    hrPad.bottom = Math.max(HR.pad.bottom, hrFont * 3.1);
+    hr.dataset.fontPx = ((hrFont * css) / HR.width).toFixed(1);
+    return true;
+  };
   const drawHrBase = (): void => {
     if (!hrStars) return;
     const base = document.createElement('canvas');
-    base.width = HR.width;
-    base.height = HR.height;
+    base.width = hr.width;
+    base.height = hr.height;
     const g = base.getContext('2d');
     if (!g) return;
+    g.setTransform(hrScale, 0, 0, hrScale, 0, 0);
     g.strokeStyle = 'rgba(255,255,255,0.25)';
     g.fillStyle = 'rgba(255,255,255,0.6)';
-    g.font = '15px system-ui, sans-serif';
-    g.lineWidth = 1;
-    g.strokeRect(HR.pad.left, HR.pad.top, HR.width - HR.pad.left - HR.pad.right, HR.height - HR.pad.top - HR.pad.bottom);
+    g.font = `${hrFont.toFixed(1)}px system-ui, sans-serif`;
+    g.lineWidth = 1 / hrScale;
+    // The brightness axis's title up its side, within the diagram's height: on one line, or else on two
+    // (before its bracket where both halves fit, otherwise at the most even break), the margin widened for them.
+    const brightness = i18n.t('ui.universe.stars.hr.brightness');
+    const room = HR.height - HR.pad.top - hrFont;
+    const fits = (s: string): boolean => g.measureText(s).width <= room;
+    const words = brightness.split(' ');
+    const halves = words.slice(1).map((_, k) => [words.slice(0, k + 1).join(' '), words.slice(k + 1).join(' ')] as const);
+    const even = halves.reduce<readonly [string, string] | null>((best, h) => (!best || Math.max(g.measureText(h[0]).width, g.measureText(h[1]).width) < Math.max(g.measureText(best[0]).width, g.measureText(best[1]).width) ? h : best), null);
+    const bracket = halves.find(([a, b]) => b.startsWith('(') && fits(a) && fits(b));
+    const lines: readonly string[] = fits(brightness) || !even ? [brightness] : (bracket ?? even);
+    hrPad.left = Math.max(HR.pad.left, hrFont * (2.65 + 1.2 * lines.length));
+    g.strokeRect(hrPad.left, HR.pad.top, HR.width - hrPad.left - HR.pad.right, HR.height - HR.pad.top - hrPad.bottom);
     // Ticks: colour every half, magnitude every five.
     g.textAlign = 'center';
-    for (let bv = 0; bv <= 2; bv += 0.5) g.fillText(f.number(bv, 1), hrX(bv), HR.height - HR.pad.bottom + 18);
+    for (let bv = 0; bv <= 2; bv += 0.5) g.fillText(f.number(bv, 1), hrX(bv), HR.height - hrPad.bottom + hrFont * 1.2);
     g.textAlign = 'right';
-    for (let m = -5; m <= 15; m += 5) g.fillText(f.number(m, 0), HR.pad.left - 8, hrY(m) + 5);
+    for (let m = -5; m <= 15; m += 5) g.fillText(f.number(m, 0), hrPad.left - hrFont * 0.5, hrY(m) + hrFont / 3);
     g.textAlign = 'center';
-    g.fillText(i18n.t('ui.universe.stars.hr.colour'), (HR.pad.left + HR.width - HR.pad.right) / 2, HR.height - 6);
+    g.fillText(i18n.t('ui.universe.stars.hr.colour'), (hrPad.left + HR.width - HR.pad.right) / 2, HR.height - hrFont * 0.4);
     g.save();
-    g.translate(16, (HR.pad.top + HR.height - HR.pad.bottom) / 2);
+    g.translate(hrFont * 1.05, (HR.pad.top + HR.height - hrPad.bottom) / 2);
     g.rotate(-Math.PI / 2);
-    g.fillText(i18n.t('ui.universe.stars.hr.brightness'), 0, 0);
+    lines.forEach((line, k) => {
+      g.fillText(line, 0, k * hrFont * 1.2);
+    });
     g.restore();
     for (const s of hrStars) {
       g.fillStyle = `rgba(${String(Math.round(255 * (s.rgb[0] ?? 1)))},${String(Math.round(255 * (s.rgb[1] ?? 1)))},${String(Math.round(255 * (s.rgb[2] ?? 1)))},0.75)`;
@@ -116,8 +155,11 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
   const drawHr = (focus: { hip: number | null; name: string | null } | null): void => {
     const g = hr.getContext('2d');
     if (!g || !hrBase || !hrStars) return;
-    g.clearRect(0, 0, HR.width, HR.height);
+    hrFocus = focus;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, hr.width, hr.height);
     g.drawImage(hrBase, 0, 0);
+    g.setTransform(hrScale, 0, 0, hrScale, 0, 0);
     // The Sun: a circle with a point at its centre.
     g.strokeStyle = 'rgba(255,214,120,1)';
     g.fillStyle = 'rgba(255,214,120,1)';
@@ -126,9 +168,9 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     g.arc(hrX(SUN_ON_HR.bv), hrY(SUN_ON_HR.mag), 7, 0, 2 * Math.PI);
     g.stroke();
     g.fillRect(hrX(SUN_ON_HR.bv) - 1.5, hrY(SUN_ON_HR.mag) - 1.5, 3, 3);
-    g.font = '15px system-ui, sans-serif';
+    g.font = `${hrFont.toFixed(1)}px system-ui, sans-serif`;
     g.textAlign = 'left';
-    g.fillText(i18n.t('ui.universe.stars.hr.sun'), hrX(SUN_ON_HR.bv) + 10, hrY(SUN_ON_HR.mag) + 5);
+    g.fillText(i18n.t('ui.universe.stars.hr.sun'), hrX(SUN_ON_HR.bv) + 10, hrY(SUN_ON_HR.mag) + hrFont / 3);
     const s = focus?.hip === null || focus?.hip === undefined ? undefined : hrStars.find((x) => x.hip === focus.hip);
     if (s) {
       // White on a dark edge, to show on stars of any colour.
@@ -156,12 +198,19 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
         .map(([hip, , , , , plx, , vmag, bv]) => ({ hip, bv: bv ?? 0, mag: vmag + 5 * Math.log10(plx / 100), rgb: blackbodyRgb(bvKelvin(bv ?? 0)) }))
         .filter((x) => x.bv >= HR.bv[0] && x.bv <= HR.bv[1] && x.mag >= HR.mag[0] && x.mag <= HR.mag[1]);
       hr.dataset.count = String(hrStars.length);
+      hrSize();
       drawHrBase();
       hrMarked = '';
     })
     .catch(() => {
       hr.hidden = true;
     });
+  // Drawn again at its new width when the panel's changes (a window resized, the panel shown again).
+  new ResizeObserver(() => {
+    if (!hrSize() || !hrStars) return;
+    drawHrBase();
+    drawHr(hrFocus);
+  }).observe(hr);
   // Beyond the stars: places to go, and what the scale in view shows.
   const placesList = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-places' });
   const scaleNote = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-scale-note' });

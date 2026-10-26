@@ -268,12 +268,14 @@
   display: none;
 }
 
+/* A name and a short detail on one line; where both do not fit, the detail goes under the name (never two ragged columns). */
 .kf-living-place {
   inline-size: 100%;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--kf-space-2);
+  gap: 2px var(--kf-space-2);
   padding-inline: var(--kf-space-3);
   border-radius: var(--kf-radius-small);
   text-align: start;
@@ -462,21 +464,7 @@
   }
 }
 
-/* The orbital laboratory's panel (src/ui/explore/lab-panel.ts). */
-.kf-nav-lab {
-  display: grid;
-  /* One column no wider than the panel, whatever a child's own width (a list of long choices). */
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--kf-space-2);
-  margin: 0 var(--kf-space-3) var(--kf-space-2);
-  padding: var(--kf-space-3);
-  border: 1px solid var(--kf-gold-soft);
-  border-radius: var(--kf-radius);
-  background: var(--kf-gold-faint);
-  font-size: 0.8125rem;
-}
-
-.kf-nav-lab[hidden],
+/* The ways into the laboratory and the stars, and their slots (src/ui/explore/navigator.ts). */
 .kf-nav-lab-entry[hidden] {
   display: none;
 }
@@ -487,20 +475,6 @@
   margin: 0 var(--kf-space-3) var(--kf-space-2);
   padding-block-start: var(--kf-space-2);
   border-block-start: 1px solid var(--kf-line);
-}
-
-.kf-lab-clock {
-  margin: 0;
-  color: var(--kf-gold-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-.kf-lab-warning {
-  margin: 0;
-  padding: var(--kf-space-2);
-  border: 1px solid var(--kf-danger);
-  border-radius: var(--kf-radius-small);
-  color: var(--kf-danger);
 }
 
 .kf-lab-row {
@@ -515,166 +489,18 @@
   min-inline-size: 0;
 }
 
-.kf-lab-vec {
-  max-inline-size: 5.5rem;
-}
-
-.kf-lab-fieldset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.kf-lab-file {
-  display: inline-flex;
-  align-items: center;
-}
-
-/* A list of long choices no wider than the panel. */
-.kf-nav-lab select {
-  max-inline-size: 100%;
-}
-
-/* A tick beside each body (several at once), and the inspector's tick boxes. */
-.kf-lab-body-row {
-  display: flex;
-  align-items: center;
-  gap: var(--kf-space-1);
-}
-
-.kf-lab-body-row > .kf-living-place {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-.kf-lab-check {
-  inline-size: 1.125rem;
-  block-size: 1.125rem;
-  margin: 0;
-  accent-color: var(--kf-gold-strong);
-  flex: none;
-}
-
-.kf-lab-check-label {
-  margin: 0;
-  flex: 1 1 0;
-  min-inline-size: 0;
-}
-
-/* The palette of real bodies to add, by kind. */
-.kf-lab-palette {
-  display: grid;
-  gap: var(--kf-space-1);
-  max-block-size: 18rem;
-  overflow-y: auto;
-  padding-inline-end: var(--kf-space-1);
-}
-
-.kf-lab-presets .kf-living-place[aria-pressed="true"] {
-  border-color: var(--kf-gold-strong);
-}
-
-/* A quantity over time: a line on a faint frame, in the text colour. */
-.kf-lab-chart {
-  display: block;
-  inline-size: 100%;
-  block-size: 6rem;
-  color: var(--kf-gold-strong);
-}
-
-@media (pointer: coarse) {
-  /* A 44 px target with a 24 px box drawn in it (the theme's line and gold: data images take no variables). */
-  .kf-lab-check {
-    appearance: none;
-    -webkit-appearance: none;
-    inline-size: 2.75rem;
-    block-size: 2.75rem;
-    border-radius: var(--kf-radius-small);
-    background: no-repeat center / 1.5rem 1.5rem url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='1.5' width='21' height='21' rx='4' fill='none' stroke='%23ede7da' stroke-opacity='0.55' stroke-width='2'/%3E%3C/svg%3E");
-    cursor: pointer;
-  }
-
-  .kf-lab-check:checked {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='1.5' width='21' height='21' rx='4' fill='%23e8c983'/%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%2305060a' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  }
-
-  .kf-lab-check:focus-visible {
-    outline: 2px solid var(--kf-gold-strong);
-    outline-offset: 2px;
-  }
-
-  .kf-lab-body-row {
-    min-block-size: 2.75rem;
-  }
-}
-
-.kf-nav.is-sheet .kf-nav-lab,
+/* On a phone's sheet the list of worlds comes first; the laboratory's and the stars' panels (their slots) and the ways in follow it. */
+.kf-nav.is-sheet .kf-nav-lab-slot,
 .kf-nav.is-sheet .kf-nav-lab-entry {
   order: 2;
 }
 
-/* The qibla and the new moon (src/ui/explore/islamic-panel.ts). */
-.kf-islamic {
-  display: grid;
-  gap: var(--kf-space-2);
-  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
-}
-
-/* The astrolabe (src/ui/explore/astrolabe-view.ts): drawn at a fixed size, scaled to the panel. */
-.kf-islamic-astrolabe {
-  display: block;
-  inline-size: 100%;
-  max-inline-size: 22rem;
-  block-size: auto;
-  aspect-ratio: 1;
-  margin: var(--kf-space-1) auto;
-}
-
-.kf-islamic-astrolabe[hidden] {
-  display: none;
-}
-
-.kf-islamic-figure {
-  margin: 0;
-  color: var(--kf-text);
-  font-size: 0.875rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.kf-islamic-legend {
+/* A part on its way, or one that did not come (./lazy). */
+.kf-part-waiting {
   display: grid;
   gap: var(--kf-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.75rem;
+  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
 }
-
-.kf-islamic-legend li {
-  display: grid;
-  grid-template-columns: 0.75rem 1fr auto;
-  align-items: center;
-  gap: var(--kf-space-2);
-}
-
-.kf-islamic-count {
-  color: var(--kf-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The map's colours (src/explore/islamic/index.ts ZONE_RGB), each beside its words: colour is never the only cue. */
-.kf-islamic-swatch {
-  inline-size: 0.75rem;
-  block-size: 0.75rem;
-  border-radius: 50%;
-}
-
-.kf-islamic-swatch.is-a { background: rgb(92 219 128); }
-.kf-islamic-swatch.is-b { background: rgb(189 224 92); }
-.kf-islamic-swatch.is-c { background: rgb(250 209 82); }
-.kf-islamic-swatch.is-d { background: rgb(250 148 66); }
-.kf-islamic-swatch.is-e { background: rgb(237 87 82); }
-.kf-islamic-swatch.is-f { background: rgb(143 145 161); }
 
 /* On foot (src/ui/explore/walk-hud.ts): the suit's readout, where the readout from orbit was. */
 .kf-walk {
@@ -835,49 +661,7 @@
   accent-color: var(--kf-gold-strong);
 }
 
-/* Among the stars (src/ui/explore/neighbourhood-panel.ts): inset and set like the navigator's other sections. */
-.kf-stars {
-  margin: 0 var(--kf-space-3) var(--kf-space-2);
-  font-size: 0.8125rem;
-}
-
-/* The planets' list. */
-.kf-stars-planets {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.kf-stars-planet {
-  display: grid;
-  gap: var(--kf-space-1);
-  padding-block: var(--kf-space-1);
-  border-block-end: 1px solid var(--kf-line);
-}
-
-.kf-stars-hr {
-  display: block;
-  inline-size: 100%;
-  block-size: auto;
-  aspect-ratio: 600 / 440;
-  margin-block: var(--kf-space-2);
-  border-radius: var(--kf-radius-small);
-  background: rgb(255 255 255 / 0.03);
-}
-
-.kf-stars-credit {
-  font-size: 0.6875rem;
-}
-
 /* Among the stars the solar system's readout and notes step aside (the stars' panel has their facts). */
 .kf-universe.is-among-stars :is([data-testid="universe-readout"], .kf-note-slot, .kf-universe-hint) {
   display: none;
-}
-
-.kf-stars .kf-living-places {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--kf-space-1);
 }

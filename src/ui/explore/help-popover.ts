@@ -1,6 +1,7 @@
 import type { App } from '../../core/types';
 import helpMessages from '../../i18n/en.help.json';
 import { h, uniqueId } from '../dom';
+import '../styles/help.css';
 
 /**
  * The plain-words popover the "?" buttons open (./help; its own chunk with src/i18n/en.help.json):
