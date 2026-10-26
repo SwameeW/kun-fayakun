@@ -28,6 +28,7 @@
 import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
 import { createEphemeris, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { obliquityRad, PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
+import type { RotatingBody } from '../astro/rotation';
 import { julianDateUtc, utcToTdb } from '../astro/time';
 import { createNoiseVolume } from '../chapters/shared/noise-volume';
 import { blackbodyRgb } from '../chapters/shared/blackbody';
@@ -105,7 +106,9 @@ const WALK_LENS = { near: 1e-4, far: 2000 } as const;
 const WALK_FOOTPRINT_KM = 0.001;
 /** The worlds there is ground to walk on. */
 type WalkWorld = WalkableWorld;
-const WALKABLE: readonly BodyId[] = ['earth', 'moon', 'mars'];
+const WALKABLE: readonly BodyId[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
+/** Each walkable world's entry in JPL's physical file (its radii and GM). */
+const WALK_KEYS: Record<WalkWorld, RotatingBody> = { earth: 'Earth', moon: 'Moon', mars: 'Mars', mercury: 'Mercury', venus: 'Venus' };
 const walkable = (id: BodyId): id is WalkWorld => WALKABLE.includes(id);
 /** The worlds drawn with a solid surface the laboratory's craters mark, and no marks at all. */
 const CRATERED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
@@ -376,9 +379,8 @@ export default function create(): UniverseModule {
   let walkHere: { world: WalkWorld; lat: number; lon: number } | null = null;
   /** The air's figures for the suit's readout (data/constants.json), once the constants have loaded. */
   let walkAir: { surfaceKpa: number | null; scaleHeightKm: number | null; meanTempC: number | null } = { surfaceKpa: null, scaleHeightKm: null, meanTempC: null };
-  let marsAir: { surfaceKpa: number | null; scaleHeightKm: number | null; meanTempC: number | null } = { surfaceKpa: null, scaleHeightKm: null, meanTempC: null };
-  /** The Moon's ground through the day at its equator (degrees C, its fact sheet's), for the suit's readout. */
-  let moonDay: { min: number; max: number } | null = null;
+  /** Every other world's figures for the suit (data/constants.json, NASA's fact sheets): air or none, mean temperature, the ground's range. */
+  const walkFigures: Partial<Record<WalkWorld, { surfaceKpa: number | null; scaleHeightKm: number | null; meanTempC: number | null; dayRangeC: { min: number; max: number } | null }>> = {};
   /** Each world's J2 and moment of inertia factor (data/constants.json, NASA's fact sheets), for the laboratory's seed. */
   let labShapes: Record<string, { j2: number | null; inertia: number | null }> = {};
   /** The sourced constants, for the laboratory's climates (built in its own chunk). */
@@ -545,6 +547,8 @@ export default function create(): UniverseModule {
   /** How much of the Sun's disc no nearer body covers, 0 to 1. */
   const sunVisible = (): number => {
     if (!system) return 1;
+    // Under Venus's clouds the Sun is never seen.
+    if (walking && walk && !walk.skySeen) return 0;
     const s = placed.sun;
     const a = Math.asin(Math.min(1, system.specs.sun.radiusKm / Math.max(s.distance, 1)));
     let share = 1;
@@ -1002,10 +1006,10 @@ export default function create(): UniverseModule {
     if (walkLoading || !bodies || !labInputs) return;
     walkLoading = true;
     const physical = labInputs.physical;
-    const key = on === 'earth' ? 'Earth' : on === 'moon' ? 'Moon' : 'Mars';
+    const key = WALK_KEYS[on];
     const radii = physical.bodies[key].radiiKm;
     const meanRadiusKm = (radii[0] + radii[1] + radii[2]) / 3;
-    // Surface gravity from the world's GM (DE440) at its mean radius (NAIF): the Earth's 9.820 m/s^2, the Moon's 1.62, Mars's 3.71.
+    // Surface gravity from the world's GM (DE440) at its mean radius (NAIF): the Earth's 9.820 m/s^2, the Moon's 1.62, Mars's 3.73, Mercury's 3.70, Venus's 8.87.
     const gravity = (physical.gmKm3S2[key] / (meanRadiusKm * meanRadiusKm)) * 1000;
     const radiusKm = sys.specs[on].radiusKm;
     const b = bodies;
@@ -1024,11 +1028,12 @@ export default function create(): UniverseModule {
               })
             : grids
               ? createWalk({
-                  groundColour: (d) => (on === 'moon' ? b.moon : b.mars).groundColour(d),
+                  // The globe's own colour (Venus has none to stand on: the walk's illustrative ground).
+                  ...(on === 'venus' ? {} : { groundColour: (d: Parameters<typeof b.moon.groundColour>[0]) => (on === 'moon' ? b.moon : on === 'mars' ? b.mars : b.mercury).groundColour(d) }),
                   terrain: equirectLoader(grids, (path) => c.assets.url(path)),
                   maxZoom: equirectMaxZoom(grids),
                   forbidden: () => false,
-                  world: on === 'moon' ? { name: 'moon', radiusKm, gravity, surfaceKpa: null, scaleHeightKm: null, meanTempC: null, dayRangeC: moonDay } : { name: 'mars', radiusKm, gravity, ...marsAir },
+                  world: { name: on, radiusKm, gravity, surfaceKpa: null, scaleHeightKm: null, meanTempC: null, dayRangeC: null, ...walkFigures[on] },
                 })
               : null;
         if (!made) return;
@@ -1377,7 +1382,8 @@ export default function create(): UniverseModule {
     bodies.sun.update({
       time: ambient,
       kelvin: SUN_KELVIN,
-      light: sunDisplay / adapted,
+      // Under Venus's clouds no Sun is seen (no light: the disc is not drawn).
+      light: walking && walk?.skySeen === false ? 0 : sunDisplay / adapted,
       exposure: adapted,
       filter: filterColor,
       filtered: filterAmount,
@@ -1644,7 +1650,7 @@ export default function create(): UniverseModule {
         const brightness = 0.22 + 2.1 * style.albedo * phase;
         dot.color = [style.tint[0] * brightness, style.tint[1] * brightness, style.tint[2] * brightness];
       }
-      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx) * (id === 'sun' ? 1 : starlight);
+      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx) * (id === 'sun' ? (walking && walk?.skySeen === false ? 0 : 1) : starlight);
       dot.sizePx = style.sizePx;
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
@@ -2214,11 +2220,19 @@ export default function create(): UniverseModule {
           }
         };
         walkAir = { surfaceKpa: figure('earth.atmosphere.surfacePressure'), scaleHeightKm: figure('earth.atmosphere.scaleHeight'), meanTempC: figure('earth.atmosphere.averageTemperature') };
-        const marsK = figure('mars.averageTemperature');
-        marsAir = { surfaceKpa: figure('mars.surfacePressure'), scaleHeightKm: figure('mars.atmosphere.scaleHeight'), meanTempC: marsK === null ? null : marsK - 273.15 };
-        const moonMin = figure('moon.surfaceTemperature.equatorMin');
-        const moonMax = figure('moon.surfaceTemperature.equatorMax');
-        moonDay = moonMin === null || moonMax === null ? null : { min: moonMin - 273.15, max: moonMax - 273.15 };
+        const celsius = (id: string): number | null => {
+          const k = figure(id);
+          return k === null ? null : k - 273.15;
+        };
+        const range = (min: string, max: string): { min: number; max: number } | null => {
+          const lo = celsius(min);
+          const hi = celsius(max);
+          return lo === null || hi === null ? null : { min: lo, max: hi };
+        };
+        walkFigures.moon = { surfaceKpa: null, scaleHeightKm: null, meanTempC: null, dayRangeC: range('moon.surfaceTemperature.equatorMin', 'moon.surfaceTemperature.equatorMax') };
+        walkFigures.mars = { surfaceKpa: figure('mars.surfacePressure'), scaleHeightKm: figure('mars.atmosphere.scaleHeight'), meanTempC: celsius('mars.averageTemperature'), dayRangeC: null };
+        walkFigures.mercury = { surfaceKpa: null, scaleHeightKm: null, meanTempC: celsius('mercury.averageTemperature'), dayRangeC: range('mercury.surfaceTemperature.sunwardMin', 'mercury.surfaceTemperature.sunwardMax') };
+        walkFigures.venus = { surfaceKpa: figure('venus.surfacePressure'), scaleHeightKm: figure('venus.atmosphere.scaleHeight'), meanTempC: celsius('venus.averageTemperature'), dayRangeC: null };
         labShapes = Object.fromEntries(BODY_IDS.map((id) => [id, { j2: figure(`${id}.j2`), inertia: figure(`${id}.momentOfInertia`) }]));
         labFigure = figure;
         lightKmS = facts.lightKmS;

@@ -30,8 +30,8 @@ export interface WalkSky {
  */
 const SKY_SCALE = 0.18;
 
-/** Whose sky: the Earth's (Preetham), none (airless: the black sky and the explorer's stars), or Mars's dusty one (illustrative). */
-export type SkyKind = 'earth' | 'airless' | 'mars';
+/** Whose sky: the Earth's (Preetham), none (airless: the black sky and the explorer's stars), Mars's dusty one, or Venus's overcast (both illustrative). */
+export type SkyKind = 'earth' | 'airless' | 'mars' | 'venus';
 
 /**
  * Mars's sky (illustrative: no radiative transfer of its dust): butterscotch by day, warmer toward the
@@ -43,11 +43,56 @@ export type SkyKind = 'earth' | 'airless' | 'mars';
 export const MARS_SKY = { zenith: [0.5, 0.36, 0.24], horizon: [0.78, 0.58, 0.38], glow: [0.42, 0.58, 0.95], glowWidth: 0.35, scale: 0.22 } as const;
 /** Sunlight on Mars's ground, a little reddened by the dust it comes through (illustrative). */
 export const MARS_SUN_TINT = [1, 0.93, 0.85] as const;
+/**
+ * Venus's sky from the ground (illustrative): the underside of a cloud deck that no Sun or star shows
+ * through, its light dim and orange (the deep air takes the blue out of what the clouds let down, as
+ * the Venera landers' pictures show it), brightest overhead by day, dark by night.
+ */
+export const VENUS_SKY = { zenith: [0.95, 0.68, 0.36], horizon: [0.78, 0.5, 0.24], scale: 0.12 } as const;
 
 export function createWalkSky(kind: SkyKind = 'earth'): WalkSky {
   if (kind === 'airless') return airlessSky();
   if (kind === 'mars') return marsSky();
+  if (kind === 'venus') return venusSky();
   return earthSky();
+}
+
+/** Venus's overcast: a dome brighter overhead, lit by the Sun's light at Venus as the day is, never letting a star through. */
+function venusSky(): WalkSky {
+  const uUp = uniform(new Vector3(0, 1, 0));
+  const uLight = uniform(1);
+  const uDay = uniform(1);
+  const material = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: false, fog: false });
+  material.colorNode = Fn(() => {
+    const direction = normalize(positionWorld.sub(cameraPosition));
+    const height = max(dot(direction, normalize(uUp)), 0);
+    return vec4(mix(vec3(...VENUS_SKY.horizon), vec3(...VENUS_SKY.zenith), pow(height, 0.6)).mul(uDay.mul(uLight).mul(VENUS_SKY.scale)), 1);
+  })();
+  const mesh = new Mesh(new SphereGeometry(1, 48, 24), material);
+  mesh.name = 'explore-walk-sky';
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -2;
+  mesh.visible = false;
+  let sunDeg = 0;
+  return {
+    mesh,
+    get sunDeg() {
+      return sunDeg;
+    },
+    update(up, sun, radiusKm, light = 1) {
+      uUp.value.set(up.x, up.y, up.z);
+      uLight.value = light;
+      const sin = (up.x * sun.x + up.y * sun.y + up.z * sun.z) / (Math.hypot(up.x, up.y, up.z) * Math.hypot(sun.x, sun.y, sun.z) || 1);
+      sunDeg = (Math.asin(Math.max(-1, Math.min(1, sin))) * 180) / Math.PI;
+      // The day's light through the clouds, from the Sun's height: full from 6 degrees up, gone 12 degrees down.
+      uDay.value = Math.min(1, Math.max(0, (sunDeg + 12) / 18));
+      mesh.scale.setScalar(radiusKm);
+    },
+    dispose() {
+      mesh.geometry.dispose();
+      material.dispose();
+    },
+  };
 }
 
 /** No sky: the mesh is never shown; the Sun's height is still kept, for the readout and the stars. */

@@ -35,6 +35,41 @@
       },
       "minM": -8135.0,
       "maxM": 21160.0
+    },
+    "mercury": {
+      "datumKm": 2439.4,
+      "sourceId": "usgs-dem-mercury",
+      "base": {
+        "path": "assets/walk/mercury/base.png",
+        "ppd": 2
+      },
+      "detail": {
+        "path": "assets/walk/mercury/{col}-{row}.png",
+        "ppd": 8,
+        "tileDeg": 90,
+        "cols": 4,
+        "rows": 2
+      },
+      "minM": -5363.0,
+      "maxM": 4425.0
+    },
+    "venus": {
+      "datumKm": 6051.8,
+      "sourceId": "usgs-magellan-venus",
+      "base": {
+        "path": "assets/walk/venus/base.png",
+        "ppd": 2
+      },
+      "detail": {
+        "path": "assets/walk/venus/{col}-{row}.png",
+        "ppd": 8,
+        "tileDeg": 90,
+        "cols": 4,
+        "rows": 2
+      },
+      "minM": -3676.0,
+      "maxM": 10443.0,
+      "filledShare": 0.0828
     }
   }
 }

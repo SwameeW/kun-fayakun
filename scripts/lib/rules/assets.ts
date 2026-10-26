@@ -301,7 +301,7 @@ function checkPlaces(ctx: ValidationContext, log: RuleLog): void {
 }
 
 const WALK_OWNER = 'walk heights builder, python -I scripts/walk/heights.py';
-const WALK_WORLDS = ['moon', 'mars'] as const;
+const WALK_WORLDS = ['moon', 'mars', 'mercury', 'venus'] as const;
 
 /** A PNG's width and height from its header (IHDR follows the 8-byte signature), or null if it is not a PNG. */
 function pngSize(bytes: Uint8Array): { width: number; height: number } | null {
@@ -311,7 +311,7 @@ function pngSize(bytes: Uint8Array): { width: number; height: number } | null {
   return { width: view.getUint32(16), height: view.getUint32(20) };
 }
 
-/** Walking on the Moon and Mars: each world's heights (the whole world, and its detailed tiles) present at the sizes listed, and credited. */
+/** Walking on the Moon, Mars, Mercury and Venus: each world's heights (the whole world, and its detailed tiles) present at the sizes listed, and credited. */
 function checkWalkHeights(ctx: ValidationContext, log: RuleLog): void {
   const loaded = loadJson<unknown>(rootPath('public', 'assets', 'walk', 'heights.json'));
   const path = relPath(loaded.path);
@@ -345,7 +345,7 @@ function checkWalkHeights(ctx: ValidationContext, log: RuleLog): void {
     for (let col = 0; col < cols; col += 1) for (let row = 0; row < rows; row += 1) sized(String(w.detail.path).replace('{col}', String(col)).replace('{row}', String(row)), tileDeg * ppd, tileDeg * ppd);
   }
   if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${WALK_OWNER})`);
-  else log.pass(`${path}: the Moon's and Mars's heights, ${files} PNGs at the sizes listed, credited to data/sources.json`);
+  else log.pass(`${path}: the heights of ${WALK_WORLDS.join(', ')}, ${files} PNGs at the sizes listed, credited to data/sources.json`);
 }
 
 const SKY_OWNER = 'sky builder, python3 -I scripts/sky/build.py';

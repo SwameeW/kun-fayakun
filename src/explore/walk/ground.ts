@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Group, Matrix4, Mesh, Mesh
 import { abs, attribute, Discard, dot, exp, float, Fn, fwidth, If, length, max, min, mix, modelWorldMatrix, normalize, normalWorldGeometry, positionView, positionWorld, step, uniform, vec3, vec4, viewZToLogarithmicDepth } from 'three/tsl';
 import { bumpGradient, tiltNormal } from '../bodies/shading';
 import { ambient, haze } from './daylight';
-import { MARS_SKY } from './sky';
+import { MARS_SKY, VENUS_SKY } from './sky';
 import { EARTH_SURFACE, sunInFrame, surfaceDetail, type SurfaceStyle } from './surface';
 import { localFrame } from './walker';
 import { zoomFor, type Heights } from './terrain';
@@ -144,6 +144,11 @@ export interface GroundAir {
 export const EARTH_AIR: GroundAir = { fill: [0.32, 0.45, 0.7], haze: { colour: [0.62, 0.72, 0.84], km: 30 } };
 /** None (the Moon's): shadows lit only by the sunlit ground around them, a faint grey; no haze. */
 export const AIRLESS_AIR: GroundAir = { fill: [0.035, 0.035, 0.035], haze: null };
+/**
+ * Venus's: all its light is the overcast's (no Sun is seen), orange, and its deep air's haze over 4 km
+ * fading into the sky's horizon (illustrative).
+ */
+export const VENUS_AIR: GroundAir = { fill: [1.6, 1.05, 0.5], haze: { colour: [VENUS_SKY.horizon[0] * VENUS_SKY.scale, VENUS_SKY.horizon[1] * VENUS_SKY.scale, VENUS_SKY.horizon[2] * VENUS_SKY.scale], km: 4 } };
 /** Mars's: a butterscotch fill, and its dust's haze over 12 km fading into its sky's horizon (illustrative). */
 export const MARS_AIR: GroundAir = { fill: [0.45, 0.34, 0.24], haze: { colour: [MARS_SKY.horizon[0] * MARS_SKY.scale, MARS_SKY.horizon[1] * MARS_SKY.scale, MARS_SKY.horizon[2] * MARS_SKY.scale], km: 12 } };
 

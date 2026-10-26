@@ -1,18 +1,19 @@
-# On foot (ledger GR-5): the Earth, the Moon and Mars
+# On foot (ledger GR-5): the Earth, the Moon, Mars, Mercury and Venus
 
 The explorer's space-suit walk: first person at human height, on real terrain, with a suit's
-readout. The Earth's ground comes from its terrain tiles under the imagery the explorer already
-streams; the Moon's and Mars's from their orbiters' laser altimeters (LOLA, MOLA) under the globes'
-own colour maps. Mercury and Venus follow (see [Next](#next-mercury-and-venus)). The giant planets
-have no surface to stand on; their atmospheres are GR-6.
+readout, on every solid world it shows. The Earth's ground comes from its terrain tiles under the
+imagery the explorer already streams; the Moon's, Mars's and Mercury's from their orbiters'
+altimeters and stereo models (LOLA, MOLA, MESSENGER) under the globes' own colour maps; Venus's from
+Magellan's radar altimetry, under an illustrative overcast. The giant planets have no surface to
+stand on; their atmospheres are GR-6.
 
 ## What a visitor does
 
 - **Begin.**
   - On the Earth, "Walk here" in the Living Earth panel stands the visitor on the ground below the
     view.
-  - On the Moon and Mars, "Walk here" in the navigator does the same, once the world in view is drawn
-    at its true size (`UniverseView.walkHere` says where).
+  - On the Moon, Mars, Mercury and Venus, "Walk here" in the navigator does the same, once the world
+    in view is drawn at its true size (`UniverseView.walkHere` says where).
   - `app.earthCommand({ kind: 'walk', world?, lat?, lon? })` does the same, or walks at a given place
     on a given world (the Earth when not said).
 - **Landing.** The walk waits in orbit ("Landing: the ground here is loading…") until the heights
@@ -36,9 +37,10 @@ have no surface to stand on; their atmospheres are GR-6.
 - **The suit's readout:**
   - the place;
   - the ground's height above the world's datum (the Earth's sea level, the Moon's 1,737.4 km
-    sphere, Mars's areoid), and the distance walked;
+    sphere, Mars's areoid, Mercury's 2,439.4 km sphere, Venus's mean radius of 6,051.8 km), and the
+    distance walked;
   - gravity, from each world's GM (DE440) at its mean radius: 9.82 m/s² on the Earth, 1.62 on the
-    Moon, 3.73 on Mars;
+    Moon, 3.73 on Mars, 3.70 on Mercury, 8.87 on Venus;
   - the air:
     - the Earth: the pressure at the feet in an isothermal atmosphere, 101.4 kPa × e^(−h / 8.5 km),
       from the sea-level pressure and scale height in NASA's Earth Fact Sheet, and the Earth's mean
@@ -47,9 +49,13 @@ have no surface to stand on; their atmospheres are GR-6.
       areoid, where a resting atmosphere's pressure is the same all round), "mostly carbon dioxide",
       and its mean surface temperature, −59 °C (214 K), not today's. In Jezero crater, 2.6 km below
       the datum, that is about 0.80 kPa;
+    - Venus: 9,200 kPa (92 bar) × e^(−h / 15.9 km) from its fact sheet, "mostly carbon dioxide",
+      and its mean surface temperature, 464 °C (737 K);
     - the Moon: no air, a vacuum, and its equator's ground from −178 °C before dawn to 117 °C at noon
       (the fact sheet's 95 K to 390 K);
-  - the Sun's height, and the local solar time;
+    - Mercury: no air, a vacuum (a thin exosphere), its ground averaging 167 °C, and 317 to 452 °C
+      on the side toward the Sun (the fact sheet's 440 K, and 590 to 725 K);
+  - the Sun's height (on Venus "unseen behind the clouds"), and the local solar time;
   - where the ground comes from, and what is illustrative.
 
   On a narrow screen the figures fold under the title, leaving the view and the buttons.
@@ -91,12 +97,18 @@ have no surface to stand on; their atmospheres are GR-6.
   - Terrarium PNGs: height = R × 256 + G + B / 256 − 32768 m. Zoom runs to 15: 4.8 m per pixel at
     the equator, finer toward the poles (3.9 m at the Grand Canyon).
   - Decoded without colour conversion, so the bytes stay exact.
-- **The Moon and Mars.** `scripts/walk/heights.py` writes each world's heights from its altimeter's
-  global grid (16 pixels a degree), averaged down to two grids, both terrarium PNGs to half a metre
-  in `public/assets/walk/`:
+- **The Moon, Mars, Mercury and Venus.** `scripts/walk/heights.py` writes each world's heights from
+  its global grid, averaged down to two grids, both terrarium PNGs to half a metre in
+  `public/assets/walk/`:
   - the whole world at 2 pixels a degree (720 × 360);
   - eight 90° × 90° tiles at 8 pixels a degree (720 × 720 each): about 3.8 km between heights on
-    the Moon and 7.4 km on Mars.
+    the Moon, 7.4 km on Mars, 5.3 km on Mercury and 13 km on Venus.
+
+  The grids: LOLA's (16 pixels a degree) for the Moon; MOLA's MEGDR (16) for Mars; USGS's MESSENGER
+  DEM (64, half-metres above 2,439.4 km) for Mercury; USGS's Magellan topography (22.76, radii above
+  6,051.0 km) for Venus, re-referenced to its mean radius, averaged over each output pixel's exact
+  overlap, and with the 8.3% Magellan did not measure (its poles, and strips further south and
+  north) filled from around them and relaxed smooth.
 
   `src/explore/walk/equirect.ts` serves them to the walk as the same Web Mercator tiles the Earth's
   come in, resampled bilinearly from the finest grid loaded for the place. Tiles finer than a
@@ -113,8 +125,10 @@ have no surface to stand on; their atmospheres are GR-6.
 - **The Earth.** The globe's day map and the streamed Sentinel-2 cloudless imagery, about 10 m per
   pixel at best. While walking, the imagery is aimed at the walker's feet; looking along the
   ground, the view's centre may miss the globe.
-- **The Moon and Mars.** Their globes' own colour maps (the CGI Moon Kit's LROC colour; Viking's
-  colour mosaic, with Mars's hue as the globe keeps it).
+- **The Moon, Mars and Mercury.** Their globes' own colour maps (the CGI Moon Kit's LROC colour;
+  Viking's colour mosaic, with Mars's hue as the globe keeps it; MESSENGER's neutral 430 nm mosaic).
+- **Venus.** Illustrative dark basalt: no camera has mapped its surface in colour (the explorer
+  draws its cloud deck), and the landers that saw it saw it under orange light.
 
 ### The fine detail (illustrative)
 
@@ -124,7 +138,8 @@ ground, and the readout says so.
 - **Grain**, on every world: four octaves of gradient noise (MaterialX's Perlin, smooth at any
   magnification), each turned by the golden angle against the one before so that no direction lines
   up, in brightness and in relief, down to about 5 cm.
-- **Craters**, on the Moon and Mars:
+- **Craters**, on the Moon, Mars and Mercury (none on Venus, whose thick air breaks up the small
+  impactors that would make them):
   - One at most to a cell, in octaves of cells four times larger each time. That gives sixteen
     times fewer craters four times wider: the −2 power law of an old surface battered to
     equilibrium (Gault 1970).
@@ -132,25 +147,31 @@ ground, and the readout says so.
     away to nothing by 1.6 radii.
   - Most are worn shallow; a few are fresh. On the Moon the fresh ones are brighter (young,
     unweathered soil).
-  - The Moon's run from half a metre to about 160 m across, in about half of the cells. Mars's are
-    fewer and none under about 10 m (its air and dust wear the small ones away, and fill them).
+  - The Moon's and Mercury's run from half a metre to about 160 m across, in about half of the
+    cells. Mars's are fewer and none under about 10 m (its air and dust wear the small ones away,
+    and fill them).
   - The rim toward a low Sun shades the floor, as craters near the terminator are drawn in
     shadow.
-- **Stones**: a scattering of grey ones on the Moon (up to 1.2 m across) and more, darker ones on
-  Mars's dust (up to 1 m), each casting a shadow away from the Sun.
+- **Stones**: a scattering of grey ones on the Moon and Mercury (up to 1.2 m across), more, darker
+  ones on Mars's dust (up to 1 m), and flat slabs on Venus (as the Venera landers' pictures show),
+  each casting a shadow away from the Sun where the Sun is seen. They are left out on the lowest
+  detail tier (they are the costliest part).
 - **Fading.** Each octave fades out as its features near a pixel.
 - **Relief is bump mapping.** It tilts the ground's shading but does not move the ground (a stone
   has no silhouette), and the shading never tilts past a slope of about 56°.
 
 ### Light and depth
 
-- **Sunlight.** The Sun's light at the world (1 at 1 au: Mars gets 0.43 of the Earth's) falls on each
-  terrain normal: through the Earth's globe's air model on the Earth, a little reddened by the dust
-  on Mars, unfiltered on the Moon.
+- **Sunlight.** The Sun's light at the world (1 at 1 au: Mars gets 0.43 of the Earth's, Venus 1.9,
+  Mercury about 6.7) falls on each terrain normal: through the Earth's globe's air model on the
+  Earth, a little reddened by the dust on Mars, unfiltered on the Moon and Mercury. On Venus none
+  falls as a beam: all its light is the overcast's.
 - **The sky's fill.** Light from the sky above, as bright as the day is: blue on the Earth,
-  butterscotch on Mars, and on the Moon only a faint grey (the sunlit ground around a shadow).
+  butterscotch on Mars, orange on Venus (where it is all the light there is), and on the Moon and
+  Mercury only a faint grey (the sunlit ground around a shadow).
 - **Haze.** The distance fades into the air's colour: the Earth's pale blue over 30 km (its
-  e-folding distance); Mars's dust over 12 km into its sky's horizon colour; none on the Moon.
+  e-folding distance); Mars's dust over 12 km and Venus's deep air over 4 km, each into its sky's
+  horizon colour; none on the Moon or Mercury.
 - **Depth.** Depth is logarithmic in the ground's material only, from 0.1 m to 2,000 km. The
   renderer keeps standard depth.
 
@@ -158,8 +179,11 @@ ground, and the readout says so.
 
 - **The Earth.** `src/explore/walk/sky.ts` uses Preetham, Shirley and Smits's daylight model, as
   three.js's SkyMesh implements it. Here the local vertical is an input, and there are no clouds.
-- **The Moon.** No sky: the black sky and the explorer's real stars. By day the sunlit ground's glare
-  leaves the eye about a third of the stars' light.
+- **The Moon and Mercury.** No sky: the black sky and the explorer's real stars. By day the sunlit
+  ground's glare leaves the eye about a third of the stars' light.
+- **Venus** (illustrative): the underside of its cloud deck, brightest overhead by day, dark by
+  night, its light dim and orange (the deep air takes the blue out of what the clouds let down).
+  Neither the Sun's disc nor any star is drawn; the readout says where the Sun is.
 - **Mars** (illustrative: no radiative transfer of its dust): butterscotch by day, warmer toward the
   horizon, with a blue glow about the Sun that strengthens as it sets (the dust scatters blue light
   forward, as the rovers' cameras show), dimming through twilight; lit by Mars's sunlight, its
@@ -186,8 +210,9 @@ layer and the readout from orbit.
 
 - On the Earth the sea, and land below sea level (the Dead Sea's shore, the Caspian), are drawn at
   sea level. The tiles hold the sea floor, and there is no land-and-water mask on the CPU yet.
-- The Moon's and Mars's heights are 3.8 and 7.4 km apart. Their mountains, crater walls and
-  canyons are as the altimeters saw them; everything smaller is the illustrative detail above.
+- The Moon's, Mars's, Mercury's and Venus's heights are 3.8, 7.4, 5.3 and 13 km apart. Their
+  mountains, crater walls and canyons are as the instruments saw them; everything smaller is the
+  illustrative detail above. Venus's gaps are smooth fills, not measurements.
 - Walks stop at 85° of latitude, where the Web Mercator tiles stop: not yet the Moon's south pole.
 - **Not drawn yet:**
   - trees, buildings, or stones with silhouettes (the stones are shading only);
@@ -213,6 +238,8 @@ layer and the readout from orbit.
   LOLA data.
 - Mars: the MGS MOLA Mission Experiment Gridded Data Record, PDS Geosciences Node
   (`pds-mola-megdr`).
+- Mercury: USGS's MESSENGER global DEM (`usgs-dem-mercury`), the globe's own relief source.
+- Venus: USGS's Magellan global topography (`usgs-magellan-venus`).
 
 The walk's panel credits each in short. The colour is credited as from orbit.
 
@@ -244,26 +271,26 @@ The walk's panel credits each in short. The colour is credited as from orbit.
     vacuum and its day's range; walking; back to orbit;
   - on Mars: Perseverance's landing site in Jezero crater, its ground within 40 m of the grid's
     reading (about 2.56 km below the areoid; the mission gives 2.57); Mars's gravity; the air at the
-    walker's height.
+    walker's height;
+  - on Mercury: Walk here; Rachmaninoff basin's floor, within 40 m of the grid's reading; its
+    gravity, vacuum and temperatures;
+  - on Venus: Venera 13's landing site, within 40 m of the grid's reading; its gravity; its air at
+    the walker's height; no Sun seen through the clouds.
 - **`tests/explore/mobile.spec.ts` (emulated phone):**
   - Forward held walks, a finger looks round, and Jump jumps;
   - every control is a 44 px target;
   - nothing is wider than the screen;
   - axe finds nothing.
-- **`node --import tsx scripts/validate.ts`:** the Moon's and Mars's 18 height PNGs present at the
-  sizes `heights.json` lists, and credited.
+- **`node --import tsx scripts/validate.ts`:** the four worlds' 36 height PNGs present at the sizes
+  `heights.json` lists, and credited.
 - **Captures checked by hand while building** (not committed):
   - on the Earth: Yavapai Point on the Grand Canyon's South Rim; Gornergrat facing the Matterhorn, on
     Low and on a phone; the canyon at sunset, at dusk both ways, and at night;
-  - on the Moon and Mars: the Sun high, the Sun 8° up (the craters' shadows), and night, looking
-    along the ground, down at the feet, and up at the sky.
+  - on the Moon, Mars, Mercury and Venus: the Sun high, the Sun 8° up (the craters' shadows), and
+    night, looking along the ground, down at the feet, and up at the sky.
 
-## Next: Mercury and Venus
+## Next
 
-The same walk, given each world's figures (`WalkWorldFigures`), its heights and its look:
-
-1. **Mercury.** MESSENGER's global elevation model and colour; no air, as on the Moon.
-2. **Venus.**
-   - Ground: Magellan's radar altimetry.
-   - Air: 9.2 MPa and about 464 °C at the surface. The suit's readout says so, and the light under
-     the clouds is dim and orange (with the cloud deck in GR-6).
+- Finer heights where the sources allow them (a third level of tiles: LOLA and MOLA at 16 pixels a
+  degree, MESSENGER's at 64), and past 85° of latitude (the Moon's south pole).
+- GR-6: down through Venus's clouds and the giants' cloud decks in the suit, with cited profiles.

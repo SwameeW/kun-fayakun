@@ -39,6 +39,8 @@ export interface Navigator {
 
 /** Wide enough (and tall enough) for the side panel; otherwise the bottom sheet. */
 const PANEL_QUERY = '(min-width: 900px) and (min-height: 560px)';
+/** The navigator's Walk here, under each world it offers a walk on. */
+const WALK_HINTS = { moon: 'ui.universe.walk.hereMoon', mars: 'ui.universe.walk.hereMars', mercury: 'ui.universe.walk.hereMercury', venus: 'ui.universe.walk.hereVenus' } as const;
 
 /** `time`: the time machine's line (./time-control and photo mode's button), placed at the head of the body. */
 export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void, time: HTMLElement): Navigator {
@@ -101,7 +103,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   });
   const labEntry = h('div', { class: 'kf-nav-lab-entry' }, labOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.openHint')));
 
-  // On foot on the Moon or Mars, at the point below (the Earth's walk is in its Living Earth): shown with that world in view.
+  // On foot on the Moon, Mars, Mercury or Venus, at the point below (the Earth's walk is in its Living Earth): shown with that world in view.
   const walkGo = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'world-walk' }, i18n.t('ui.universe.walk.here'));
   const walkHint = h('p', { class: 'kf-living-hint' });
   walkGo.addEventListener('click', () => {
@@ -245,12 +247,12 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         living.element.hidden = inLab;
         islamic.hidden = inLab;
         labEntry.hidden = inLab;
-        // A walk on the world in view (the Moon or Mars), once it is drawn at its true size (walkHere says so).
-        const walkWorld = view.focus === 'moon' || view.focus === 'mars' ? view.focus : null;
+        // A walk on the world in view (not the Earth, whose walk is in its Living Earth), once it is drawn at its true size (walkHere says so).
+        const walkWorld = view.focus === 'moon' || view.focus === 'mars' || view.focus === 'mercury' || view.focus === 'venus' ? view.focus : null;
         walkEntry.hidden = inLab || walkWorld === null || view.walk !== null;
         if (walkWorld) {
           walkGo.disabled = view.walkHere?.world !== walkWorld;
-          const hint = i18n.t(walkWorld === 'moon' ? 'ui.universe.walk.hereMoon' : 'ui.universe.walk.hereMars');
+          const hint = i18n.t(WALK_HINTS[walkWorld]);
           if (walkHint.textContent !== hint) walkHint.textContent = hint;
         }
         for (const [id, r] of rows) r.row.hidden = inLab && !view.lab?.bodies.some((b) => b.id === id);

@@ -803,7 +803,24 @@
       "license": "Public domain (U.S. Government data)",
       "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
       "credit": "NASA/JHUAPL/CIW/USGS, MESSENGER DEM",
-      "notes": "Stereo DEM reduced to 4096 pixels and converted to tangent-space relief normals; relief exaggerated as recorded in the manifest.",
+      "notes": "Stereo DEM reduced to 4096 pixels and converted to tangent-space relief normals; relief exaggerated as recorded in the manifest. The same DEM (its values half-metres above a 2,439.4 km sphere), averaged to 8 and 2 pixels a degree, re-centred to start at 180 degrees west and stored terrarium-encoded to half a metre (scripts/walk/heights.py), is the ground a walker stands on (public/assets/walk/mercury).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-magellan-venus",
+      "kind": "dataset",
+      "title": "Venus Magellan Global Topography 4641m (v02), from Magellan's radar altimetry (the Global Topographic Data Record)",
+      "author": "Magellan Team, NASA/JPL; USGS Astrogeology",
+      "url": "https://astrogeology.usgs.gov/search/map/venus_magellan_global_topography_4641m",
+      "version": "Venus_Magellan_Topography_Global_4641m_v02.tif (8192 x 4096, signed 16-bit metres of radius above 6,051,000 m, -32768 where unmeasured), sha256 92dd2c8850b128f9dcceb400f1367e3df96229f5309840fee4275b74f192ea11, retrieved 2026-10-26",
+      "license": "Public domain (U.S. Government data)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "NASA/JPL/USGS, Magellan",
+      "notes": "Venus's ground for walking (public/assets/walk/venus): re-referenced to Venus's mean radius (6,051.8 km: the file's values less 800 m), averaged to 8 and 2 pixels a degree over each output pixel's exact overlap, the 8.3% of the grid Magellan did not measure (its poles beyond about 85 degrees and strips further south and north) filled from around it and relaxed smooth, re-centred, and stored terrarium-encoded to half a metre (scripts/walk/heights.py).",
       "review": {
         "reviewer": null,
         "role": null,

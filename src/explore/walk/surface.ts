@@ -13,8 +13,9 @@
  *   cell's reading is enough); most are worn shallow, a few are fresh, and on the Moon the fresh ones
  *   are brighter (young, unweathered soil). The rim toward a low Sun shades the floor, as the craters
  *   near the terminator are drawn in shadow.
- * - **Stones**: dark rounded ones on Mars's paler dust, a scattering of grey ones on the Moon, each
- *   casting a shadow away from the Sun (from its own cell or a neighbour's).
+ * - **Stones**: dark rounded ones on Mars's paler dust, a scattering of grey ones on the Moon and
+ *   Mercury, flat slabs on Venus, each casting a shadow away from the Sun where the Sun is seen (from
+ *   its own cell or a neighbour's).
  *
  * Every octave fades out as its features near a pixel. The relief is given in metres, for bump
  * mapping: it tilts the ground's shading, it does not move the ground; the shadows dim the sunlight
@@ -31,16 +32,23 @@ type Vec3Node = Node<'vec3'>;
 export interface SurfaceStyle {
   /** Craters: the octaves' cell sizes (m), the chance a cell holds one, and how much brighter a fresh one is (0: no brighter). */
   craters: { cellsM: readonly number[]; chance: number; freshBright: number } | null;
-  /** Stones: the octaves' cell sizes (m), the chance a cell holds one, and their brightness against the ground. */
-  rocks: { cellsM: readonly number[]; chance: number; brightness: number } | null;
+  /** Stones: the octaves' cell sizes (m), the chance a cell holds one, their brightness against the ground, and their height (their radii). */
+  rocks: { cellsM: readonly number[]; chance: number; brightness: number; height: number } | null;
 }
 
 /** The Earth's ground: grain alone (its rocks and plants are not drawn). */
 export const EARTH_SURFACE: SurfaceStyle = { craters: null, rocks: null };
 /** The Moon's: craters from half a metre to about 160 m across, about half the cells holding one, fresh ones a third brighter; a scattering of grey stones. */
-export const MOON_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.35 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9 } };
+export const MOON_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.35 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, height: 0.7 } };
+/** Mercury's: battered as the Moon is, its fresh craters a little less bright against its darker ground. */
+export const MERCURY_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.3 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, height: 0.7 } };
 /** Mars's: fewer craters, none under about 10 m across (its air and dust wear the small ones away, and fill them), and stones on its dust. */
-export const MARS_SURFACE: SurfaceStyle = { craters: { cellsM: [96, 384], chance: 0.3, freshBright: 0 }, rocks: { cellsM: [0.8, 3.2], chance: 0.4, brightness: 0.85 } };
+export const MARS_SURFACE: SurfaceStyle = { craters: { cellsM: [96, 384], chance: 0.3, freshBright: 0 }, rocks: { cellsM: [0.8, 3.2], chance: 0.4, brightness: 0.85, height: 0.7 } };
+/**
+ * Venus's: no small craters at all (its thick air breaks up anything that would make one smaller than
+ * a few kilometres), and flat slabs of rock, as the Venera landers' pictures show.
+ */
+export const VENUS_SURFACE: SurfaceStyle = { craters: null, rocks: { cellsM: [0.6, 2.4], chance: 0.45, brightness: 0.85, height: 0.25 } };
 
 /** The grain's octaves: their sizes (m), weights in brightness, and relief (metres of height per metre of octave). */
 export const GRAIN = { tilesM: [0.8, 3.2, 12.8, 51.2], weights: [0.45, 0.6, 0.75, 0.7], relief: 0.03 } as const;
@@ -50,8 +58,8 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const CRATER = { rim: 0.07, floor: 0.33, reach: 1.6, crest: 0.06 } as const;
 /** A cell's crater radius (cell widths): from the smallest to the largest, most of them small. */
 const CRATER_RADIUS = { min: 0.06, span: 0.25 } as const;
-/** A cell's stone: its radius (cell widths, most of them small: at most 1.2 m across on the Moon and 1 m on Mars) and height (its radii, partly sunk in the ground), and the longest shadow drawn (cell widths). */
-const ROCK = { min: 0.05, span: 0.1, height: 0.7, shadowCells: 1 } as const;
+/** A cell's stone: its radius (cell widths, most of them small: at most 1.2 m across on the Moon and 1 m on Mars), and the longest shadow drawn (cell widths). */
+const ROCK = { min: 0.05, span: 0.1, shadowCells: 1 } as const;
 
 /** Two pseudo-random numbers in [0, 1) for a cell (Hoskins's hash22: no sine, so no precision troubles far from the origin). */
 const hash22 = Fn(([p]: [Vec2Node]) => {
@@ -159,7 +167,7 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
           const d = length(local.sub(own.centre)).div(own.r);
           const dome = pow(max(float(1).sub(d.mul(d)), 0), 1.5);
           const weight = own.there.mul(kept);
-          relief.addAssign(dome.mul(ROCK.height).mul(own.r).mul(cellM).mul(weight));
+          relief.addAssign(dome.mul(rocks.height).mul(own.r).mul(cellM).mul(weight));
           const on = float(1).sub(smoothstep(0.85, 1, d)).mul(weight);
           shade.mulAssign(float(1).add(on.mul(rocks.brightness - 1)));
           // Shadows: a stone's, swept away from the Sun as far as its height throws it (narrowing to its
@@ -176,7 +184,7 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
               const offset = vec2(sx.mul(ox), sy.mul(oy));
               const s = stone(home.add(offset));
               const q = local.sub(offset).sub(s.centre);
-              const reachCells = min(s.r.mul(ROCK.height).div(max(rise, 1e-3)), ROCK.shadowCells);
+              const reachCells = min(s.r.mul(rocks.height).div(max(rise, 1e-3)), ROCK.shadowCells);
               const t = max(min(dot(q, toward.negate()), reachCells), 0);
               const width = s.r.mul(float(1).sub(t.div(max(reachCells, 1e-4)).mul(0.6))).mul(0.9);
               const off = length(q.add(toward.mul(t)));

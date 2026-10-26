@@ -758,7 +758,7 @@ export interface UniverseIslamic {
 }
 
 /** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
-export type WalkableWorld = 'earth' | 'moon' | 'mars';
+export type WalkableWorld = 'earth' | 'moon' | 'mars' | 'mercury' | 'venus';
 
 /** On foot (src/explore/walk) as the view reports it. */
 export interface UniverseWalk {
@@ -767,7 +767,7 @@ export interface UniverseWalk {
   world: WalkableWorld;
   lat: number;
   lon: number;
-  /** The ground and the feet, metres above the world's datum (the Earth's sea level, the Moon's 1,737.4 km sphere, Mars's areoid); heading and look (degrees: heading clockwise from north, look up positive). */
+  /** The ground and the feet, metres above the world's datum (the Earth's sea level, the Moon's 1,737.4 km sphere, Mars's areoid, Mercury's 2,439.4 km sphere, Venus's mean radius); heading and look (degrees: heading clockwise from north, look up positive). */
   groundM: number;
   feetM: number;
   headingDeg: number;
@@ -778,15 +778,16 @@ export interface UniverseWalk {
   walkedM: number;
   /**
    * Surface gravity (m/s^2), the air's pressure at the feet (kPa: null where there is no air), the
-   * world's mean surface temperature (degrees C), and the ground's range through the day at the
-   * equator (degrees C, the Moon's), null where not known or not given.
+   * world's mean surface temperature (degrees C), and the ground's range of temperatures (degrees C:
+   * the Moon's equator through its day, Mercury's sunward side), null where not known or not given.
    */
   gravity: number;
   pressureKpa: number | null;
   meanTempC: number | null;
   dayRangeC: { min: number; max: number } | null;
-  /** The Sun's elevation (degrees) and the local apparent solar time (hours). */
+  /** The Sun's elevation (degrees), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
   sunElevationDeg: number;
+  sunSeen: boolean;
   solarTimeH: number;
   /** The terrain zoom the ground under the feet comes from, the tiles' counts, and the rings of ground filled. */
   groundZoom: number | null;

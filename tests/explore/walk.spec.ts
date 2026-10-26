@@ -4,10 +4,12 @@
  * (the ground's height, the Earth's gravity, the air's pressure at that height from the cited
  * sea-level pressure and scale height); W walks, R jumps, a drag turns; Esc goes back to orbit as it
  * was; the on-screen pad walks as the keys do; a walk at Makkah is refused, as its framing rule
- * keeps every view 25 km away; and a world chosen from the navigator ends a walk. On the Moon and
- * Mars: the navigator's Walk here, the ground at Apollo 11's and Perseverance's landing sites as LOLA
- * and MOLA measured it (public/assets/walk, read here as the page reads it), each world's gravity,
- * the Moon's vacuum and Mars's thin air, and back to orbit. Reduced motion, so flights land at once.
+ * keeps every view 25 km away; and a world chosen from the navigator ends a walk. On the Moon, Mars,
+ * Mercury and Venus: the navigator's Walk here, the ground at Apollo 11's and Perseverance's landing
+ * sites, in Rachmaninoff basin and at Venera 13's as LOLA, MOLA, MESSENGER and Magellan measured it
+ * (public/assets/walk, read here as the page reads it), each world's gravity, the vacuum of the Moon
+ * and Mercury, Mars's thin air and Venus's crushing one (under clouds no Sun shows through), and back
+ * to orbit. Reduced motion, so flights land at once.
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
@@ -119,7 +121,9 @@ test('no walk begins at Makkah: its framing rule keeps every view 25 km away; a 
  * The heights the walk stands on at a place, read from the world's detailed grid as the page reads it
  * (a terrarium PNG decoded in the browser, then bilinear between pixel centres): metres above the datum.
  */
-const gridHeight = (page: Page, world: 'moon' | 'mars', lat: number, lon: number): Promise<number> =>
+type GridWorld = 'moon' | 'mars' | 'mercury' | 'venus';
+
+const gridHeight = (page: Page, world: GridWorld, lat: number, lon: number): Promise<number> =>
   page.evaluate(
     async ([w, la, lo]) => {
       const list = (await (await fetch('assets/walk/heights.json')).json()) as { worlds: Record<string, { detail: { path: string; ppd: number; tileDeg: number } }> };
@@ -149,7 +153,7 @@ const gridHeight = (page: Page, world: 'moon' | 'mars', lat: number, lon: number
     [world, lat, lon] as const,
   );
 
-const walkAt = (page: Page, world: 'moon' | 'mars', lat: number, lon: number): Promise<void> =>
+const walkAt = (page: Page, world: GridWorld, lat: number, lon: number): Promise<void> =>
   page.evaluate(
     ([w, la, lo]) => {
       (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', world: w, lat: la, lon: lo });
@@ -224,6 +228,64 @@ test('on foot on Mars: the ground MOLA measured in Jezero crater, its gravity, i
   await expect(page.getByTestId('walk-air')).toContainText('−59 °C (not today’s)');
   await expect(page.getByTestId('walk-ground')).toContainText(' m below Mars’s areoid');
   await expect(page.getByTestId('walk-credit')).toContainText('MOLA');
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await view(page))?.walk, LIVE).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+test('on foot on Mercury: Walk here, the ground MESSENGER measured in Rachmaninoff basin, its gravity, a vacuum and its hot sunward side', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(300_000 * SLOW);
+  await kf.open('/universe/mercury', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await place(page, { body: 'mercury', distanceKm: 7000, azimuthDeg: 40, elevationDeg: 15 });
+  await expect.poll(async () => (await view(page))?.walkHere?.world ?? null, LIVE).toBe('mercury');
+  await expect(page.getByTestId('world-walk-entry')).toContainText('Stand on Mercury');
+  await page.getByTestId('world-walk').click();
+  await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('walking');
+  // Rachmaninoff basin's floor (27.6 N, 57.6 E).
+  await walkAt(page, 'mercury', 27.6, 57.6);
+  await expect.poll(async () => Math.hypot(((await walkView(page))?.lat ?? 0) - 27.6, ((await walkView(page))?.lon ?? 0) - 57.6), LIVE).toBeLessThan(1e-6);
+  await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('walking');
+  const w = await walkView(page);
+  expect(w?.world).toBe('mercury');
+  // Mercury's GM (DE440) at its mean radius: 3.70 m/s^2, as its fact sheet gives it.
+  expect(w?.gravity).toBeCloseTo(3.70, 2);
+  expect(w?.pressureKpa).toBeNull();
+  expect(w?.meanTempC).toBeCloseTo(440 - 273.15, 6);
+  const expected = await gridHeight(page, 'mercury', 27.6, 57.6);
+  expect(Math.abs((w?.groundM ?? 0) - expected)).toBeLessThan(40);
+  await expect(page.getByTestId('walk-title')).toHaveText('On foot on Mercury');
+  await expect(page.getByTestId('walk-air')).toContainText('No air: a vacuum');
+  await expect(page.getByTestId('walk-air')).toContainText('averages 167 °C, and 317 to 452 °C on the side toward the Sun');
+  await expect(page.getByTestId('walk-ground')).toContainText('Mercury’s 2,439.4 km sphere');
+  await expect(page.getByTestId('walk-credit')).toContainText('MESSENGER');
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await view(page))?.walk, LIVE).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+test('on foot on Venus: the ground Magellan measured at Venera 13’s landing site, its gravity, its crushing air at the walker’s height, and no Sun through the clouds', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(300_000 * SLOW);
+  await kf.open('/universe/venus', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // Venera 13's landing site (7.55 S, 303.69 E).
+  await walkAt(page, 'venus', -7.55, -56.31);
+  await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('walking');
+  const w = await walkView(page);
+  expect(w?.world).toBe('venus');
+  expect(w?.gravity).toBeCloseTo(8.87, 2);
+  const expected = await gridHeight(page, 'venus', -7.55, -56.31);
+  expect(Math.abs((w?.groundM ?? 0) - expected)).toBeLessThan(40);
+  // The fact sheet's 92 bar at the mean radius, falling by e every 15.9 km.
+  expect(w?.pressureKpa ?? 0).toBeCloseTo(9200 * Math.exp(-(w?.feetM ?? 0) / 1000 / 15.9), 4);
+  expect(w?.meanTempC).toBeCloseTo(737 - 273.15, 6);
+  expect(w?.sunSeen).toBe(false);
+  await expect(page.getByTestId('walk-title')).toHaveText('On foot on Venus');
+  await expect(page.getByTestId('walk-air')).toContainText('mostly carbon dioxide');
+  await expect(page.getByTestId('walk-air')).toContainText('464 °C (not today’s)');
+  await expect(page.getByTestId('walk-ground')).toContainText('Venus’s mean radius, 6,051.8 km');
+  await expect(page.getByTestId('walk-credit')).toContainText('Magellan');
+  if ((w?.sunElevationDeg ?? -1) >= 0) await expect(page.getByTestId('walk-sun')).toContainText('unseen behind the clouds');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await view(page))?.walk, LIVE).toBeNull();
   expect(pageErrors).toEqual([]);
