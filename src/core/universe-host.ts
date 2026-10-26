@@ -16,6 +16,7 @@ import type {
   EarthCommand,
   UniverseTimeCommand,
   UniverseSkyCommand,
+  LabCommand,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -89,6 +90,8 @@ export interface UniverseOpenOptions {
   reducedMotion: boolean;
   /** Open on the film's compressed solar system and stretch it out to true scale (from Chapter 7; ignored under reduced motion). */
   stretch?: boolean;
+  /** In the orbital laboratory (an experiment forked from the explorer's system), or back out of it. */
+  lab?: boolean;
 }
 
 type HostState = 'idle' | 'loading' | 'active' | 'leaving';
@@ -311,6 +314,10 @@ export class UniverseHost {
 
   sky(command: UniverseSkyCommand): void {
     this.active?.sky(command);
+  }
+
+  lab(command: LabCommand): void {
+    this.active?.lab(command);
   }
 
   dispose(): void {

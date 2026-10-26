@@ -433,3 +433,74 @@
     transition: none;
   }
 }
+
+/* The orbital laboratory's panel (src/ui/explore/lab-panel.ts). */
+.kf-nav-lab {
+  display: grid;
+  gap: var(--kf-space-2);
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  padding: var(--kf-space-3);
+  border: 1px solid var(--kf-gold-soft);
+  border-radius: var(--kf-radius);
+  background: var(--kf-gold-faint);
+  font-size: 0.8125rem;
+}
+
+.kf-nav-lab[hidden],
+.kf-nav-lab-entry[hidden] {
+  display: none;
+}
+
+.kf-nav-lab-entry {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  padding-block-start: var(--kf-space-2);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-lab-clock {
+  margin: 0;
+  color: var(--kf-gold-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-lab-warning {
+  margin: 0;
+  padding: var(--kf-space-2);
+  border: 1px solid var(--kf-danger);
+  border-radius: var(--kf-radius-small);
+  color: var(--kf-danger);
+}
+
+.kf-lab-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-1);
+}
+
+.kf-lab-row .kf-living-input {
+  flex: 1 1 6rem;
+  min-inline-size: 0;
+}
+
+.kf-lab-vec {
+  max-inline-size: 5.5rem;
+}
+
+.kf-lab-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.kf-lab-file {
+  display: inline-flex;
+  align-items: center;
+}
+
+.kf-nav.is-sheet .kf-nav-lab,
+.kf-nav.is-sheet .kf-nav-lab-entry {
+  order: 2;
+}

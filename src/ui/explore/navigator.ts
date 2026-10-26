@@ -4,6 +4,7 @@ import { icon } from '../icons';
 import { createAbout } from './about';
 import { createBodyIcon, type BodyIcon } from './body-icon';
 import type { Formatters } from './format';
+import type { LabPanel } from './lab-panel';
 import { createLivingEarth } from './living-earth';
 import { createOrrery } from './orrery';
 import { createQualityMenu } from './quality-menu';
@@ -89,6 +90,15 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   // About the world in view (its facts from cited data), under the list; then the sky's layers.
   const about = createAbout(app, f);
   const sky = createSkyPanel(app, f);
+  // The orbital laboratory: its panel (its own chunk, loaded with the first experiment) heads the body during one; outside one, a way in.
+  let lab: LabPanel | null = null;
+  let labLoading = false;
+  const labSlot = h('div', { class: 'kf-nav-lab-slot' });
+  const labOpen = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'lab-open' }, i18n.t('ui.universe.lab.open'));
+  labOpen.addEventListener('click', () => {
+    app.openLab();
+  });
+  const labEntry = h('div', { class: 'kf-nav-lab-entry' }, labOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.openHint')));
 
   // On a phone a flight from the Living Earth folds the sheet, as choosing a world does.
   const living = createLivingEarth(app, f, () => {
@@ -108,7 +118,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, map, list, about.element, sky.element, living.element, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, sky.element, labEntry, living.element, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -126,7 +136,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [time, map, about.element, sky.element, living.element, seen, foot]) el.hidden = !expanded;
+    for (const el of [time, map, about.element, sky.element, labEntry, living.element, seen, foot]) el.hidden = !expanded;
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
     notify();
@@ -193,6 +203,20 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
       }
       if (slow && expanded) orrery.update(view);
       if (expanded) {
+        if (view.lab && !lab && !labLoading) {
+          labLoading = true;
+          void import('./lab-panel').then(({ createLabPanel }) => {
+            lab = createLabPanel(app, f);
+            labSlot.replaceChildren(lab.element);
+          });
+        }
+        lab?.update(view, true);
+        // In an experiment the real world's facts and live observations step aside (the lab panel has its own).
+        const inLab = view.lab !== null;
+        about.element.hidden = inLab;
+        living.element.hidden = inLab;
+        labEntry.hidden = inLab;
+        for (const [id, r] of rows) r.row.hidden = inLab && !view.lab?.bodies.some((b) => b.id === id);
         about.update(view, slow);
         sky.update(view, slow);
         living.update(view, slow);

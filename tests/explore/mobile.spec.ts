@@ -312,3 +312,36 @@ test('short landscape: the detail menu and its close control stay within the vie
   await close.click();
   await expect(page.getByTestId('universe-detail')).toHaveAttribute('aria-expanded', 'false');
 });
+
+test('the orbital laboratory on a phone: opened from the sheet, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('universe-nav-toggle').click();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  await expect(page).toHaveURL(/#\/universe\/lab/);
+  const panel = page.getByTestId('lab-panel');
+  await expect(panel).toBeVisible({ timeout: 60_000 * SLOW });
+  await expect(panel.getByTestId('lab-body-earth')).toBeVisible({ timeout: 60_000 * SLOW });
+  await panel.getByTestId('lab-body-earth').tap();
+  await expect(panel.getByTestId('lab-inspector')).toBeVisible();
+  const width = page.viewportSize()?.width ?? 0;
+  const problems = await page.evaluate((w) => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid="lab-panel"] button, [data-testid="lab-panel"] input, [data-testid="lab-panel"] select, [data-testid="lab-panel"] summary')) {
+      const r = el.getBoundingClientRect();
+      // Visually hidden controls (the file input, whose label is the target) are not touch targets.
+      if (r.width === 0 || r.height === 0 || el.classList.contains('kf-sr-only')) continue;
+      if (r.height < 43.5) out.push(`${el.dataset.testid ?? el.tagName} ${Math.round(r.height)}px tall`);
+      if (r.right > w + 0.5) out.push(`${el.dataset.testid ?? el.tagName} past the screen's edge`);
+    }
+    return out;
+  }, width);
+  expect(problems).toEqual([]);
+  const results = await new AxeBuilder({ page }).include('[data-testid="lab-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+  await panel.getByTestId('lab-back').tap();
+  await expect(page).not.toHaveURL(/lab/);
+  expect(pageErrors).toEqual([]);
+});

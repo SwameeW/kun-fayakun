@@ -37,7 +37,7 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
     app.universeTime(command);
   };
   reverse.addEventListener('click', () => {
-    send({ kind: 'reverse' });
+    if (reverse.getAttribute('aria-disabled') !== 'true') send({ kind: 'reverse' });
   });
   slower.addEventListener('click', () => {
     send({ kind: 'slower' });
@@ -49,7 +49,7 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
     send({ kind: 'faster' });
   });
   now.addEventListener('click', () => {
-    send({ kind: 'now' });
+    if (now.getAttribute('aria-disabled') !== 'true') send({ kind: 'now' });
   });
   // A chosen day at the time of day already shown (UTC), so only the date changes.
   let shownMs = 0;
@@ -87,6 +87,11 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
     update(view) {
       const t = view.time;
       shownMs = view.unixMs;
+      // In an experiment its clock only runs forward (going back is by its checkpoints), from its own epoch.
+      const inLab = view.lab !== null;
+      for (const b of [reverse, now]) b.setAttribute('aria-disabled', String(inLab));
+      reverse.title = inLab ? i18n.t('ui.universe.time.labOnly') : '';
+      date.disabled = inLab;
       reverse.setAttribute('aria-pressed', String(t.rate < 0));
       pause.setAttribute('aria-pressed', String(t.paused));
       const text = t.edge

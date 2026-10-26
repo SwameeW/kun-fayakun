@@ -58,6 +58,10 @@ const CH00_SOURCE = 'src/chapters/ch00/scene.ts';
 const EXPLORE_SOURCES = ['src/explore/index.ts', 'src/ui/explore/index.ts'] as const;
 /** What the explorer's code may add beyond the shell, gzipped. */
 const EXPLORE_BUDGET_BYTES = 150_000;
+/** The orbital laboratory's lazy entry points (loaded with the first experiment): its explorer adapter, with the engine's worker, and its panel. */
+const LAB_SOURCES = ['src/explore/lab.ts', 'src/ui/explore/lab-panel.ts'] as const;
+/** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget). */
+const LAB_BUDGET_BYTES = 250_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -122,9 +126,9 @@ function budgetFiles(manifest: Manifest): Map<string, Group> {
  * The explorer's chunks and their static imports that the shell does not already load (chunks
  * shared with chapters count: a visitor opening the explorer first pays for them).
  */
-function exploreFiles(manifest: Manifest, shell: ReadonlySet<string>): Map<string, Group> {
+function exploreFiles(manifest: Manifest, shell: ReadonlySet<string>, sources: readonly string[] = EXPLORE_SOURCES): Map<string, Group> {
   const files = new Map<string, Group>([...shell].map((file) => [file, 'shell'] as const));
-  for (const source of EXPLORE_SOURCES) {
+  for (const source of sources) {
     const key = Object.keys(manifest).find((k) => k === source || manifest[k]?.src === source);
     if (!key) throw new Error(`manifest has no chunk for ${source}`);
     if (shell.has(manifest[key]?.file ?? '')) throw new Error(`${source} is in the shell: it must load lazily`);
@@ -200,7 +204,16 @@ function main(): void {
   console.log(
     `${exploreOk ? 'PASS' : 'FAIL'}: solar-system explorer (lazy, ${exploreRows.length} files) = ${formatBytes(explore)} bytes gzipped (budget ${formatBytes(EXPLORE_BUDGET_BYTES)})`,
   );
-  if (!totalOk || !shellOk || !exploreOk) process.exitCode = 1;
+  // The laboratory, beyond the shell and the explorer: what starting an experiment adds (its worker counted).
+  const loaded = new Set([...shellFiles, ...exploreRows.map((row) => row.file)]);
+  const labRows = measure(exploreFiles(manifest, loaded, LAB_SOURCES));
+  for (const row of [...labRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`lab      ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const labBytes = labRows.reduce((sum, row) => sum + row.gzip, 0);
+  const labOk = labBytes <= LAB_BUDGET_BYTES;
+  console.log(`${labOk ? 'PASS' : 'FAIL'}: orbital laboratory (lazy, ${labRows.length} files) = ${formatBytes(labBytes)} bytes gzipped (budget ${formatBytes(LAB_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk) process.exitCode = 1;
 }
 
 try {

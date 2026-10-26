@@ -229,7 +229,8 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
       write(sunlight, formatSunlight(view.sunlight));
       filter.hidden = !view.solarFilter;
       readout.classList.toggle('is-filtered', view.solarFilter);
-      write(date, i18n.t('ui.universe.date', { date: dateFormat.format(new Date(view.unixMs)) }));
+      // An experiment's positions are its own integration's, never JPL's.
+      write(date, i18n.t(view.lab ? 'ui.universe.lab.dateLine' : 'ui.universe.date', { date: dateFormat.format(new Date(view.unixMs)) }));
       // What is illustrative in the view now, and whose imagery this is (the focus's maps).
       const note = illustrativeNote(view.illustrative);
       illustrative.hidden = note === '';
