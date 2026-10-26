@@ -752,7 +752,7 @@
     font-size: 0.6875rem;
   }
 
-  .kf-universe.is-walking :is(.kf-note-slot, .kf-universe-hint),
+  .kf-universe:is(.is-walking, .is-descending) :is(.kf-note-slot, .kf-universe-hint),
   .kf-universe.is-sheet-open .kf-walk {
     visibility: hidden;
   }
@@ -769,8 +769,8 @@
   }
 }
 
-/* On foot the readout from orbit steps aside (its height is above the globe, not the ground). */
-.kf-universe.is-walking [data-testid="universe-readout"] {
+/* On foot, or going down through an atmosphere, the readout from orbit steps aside (its height is above the globe, not where the eye is). */
+.kf-universe:is(.is-walking, .is-descending) [data-testid="universe-readout"] {
   display: none;
 }
 
@@ -797,4 +797,10 @@
   .kf-walk-touch {
     display: block;
   }
+}
+
+/* The descent's depth (src/ui/explore/descent-hud.ts): the probe's column, top to bottom. */
+.kf-descent-depth {
+  inline-size: 100%;
+  accent-color: var(--kf-gold-strong);
 }

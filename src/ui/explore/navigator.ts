@@ -112,6 +112,16 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     if (layout === 'sheet') setExpanded(false);
   });
   const walkEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-walk-entry', hidden: true }, walkGo, walkHint);
+  // Down through the clouds of Venus or Jupiter, where a probe went (ledger GR-6): shown with that world in view.
+  const descentGo = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'world-descent' }, i18n.t('ui.universe.descent.here'));
+  const descentHint = h('p', { class: 'kf-living-hint' });
+  let descentWorld: 'venus' | 'jupiter' | null = null;
+  descentGo.addEventListener('click', () => {
+    if (!descentWorld) return;
+    app.earthCommand({ kind: 'descent', world: descentWorld });
+    if (layout === 'sheet') setExpanded(false);
+  });
+  const descentEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-descent-entry', hidden: true }, descentGo, descentHint);
 
   // Saved views (place, height, date; on foot the walk): going back to one folds the sheet on a phone.
   const saved = createSavedViews(app, f, () => {
@@ -153,7 +163,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, walkEntry, sky.element, saved.element, labEntry, living.element, islamic, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, walkEntry, descentEntry, sky.element, saved.element, labEntry, living.element, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -172,7 +182,10 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
     for (const el of [time, map, about.element, sky.element, saved.element, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
-    if (!expanded) walkEntry.hidden = true;
+    if (!expanded) {
+      walkEntry.hidden = true;
+      descentEntry.hidden = true;
+    }
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
     notify();
@@ -256,11 +269,17 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         labEntry.hidden = inLab;
         // A walk on the world in view (not the Earth, whose walk is in its Living Earth), once it is drawn at its true size (walkHere says so).
         const walkWorld = view.focus === 'moon' || view.focus === 'mars' || view.focus === 'mercury' || view.focus === 'venus' ? view.focus : null;
-        walkEntry.hidden = inLab || walkWorld === null || view.walk !== null;
+        walkEntry.hidden = inLab || walkWorld === null || view.walk !== null || view.descent !== null;
         if (walkWorld) {
           walkGo.disabled = view.walkHere?.world !== walkWorld;
           const hint = i18n.t(WALK_HINTS[walkWorld]);
           if (walkHint.textContent !== hint) walkHint.textContent = hint;
+        }
+        descentWorld = view.focus === 'venus' || view.focus === 'jupiter' ? view.focus : null;
+        descentEntry.hidden = inLab || descentWorld === null || view.walk !== null || view.descent !== null;
+        if (descentWorld) {
+          const hint = i18n.t(descentWorld === 'venus' ? 'ui.universe.descent.hereVenus' : 'ui.universe.descent.hereJupiter');
+          if (descentHint.textContent !== hint) descentHint.textContent = hint;
         }
         for (const [id, r] of rows) r.row.hidden = inLab && !view.lab?.bodies.some((b) => b.id === id);
         about.update(view, slow);

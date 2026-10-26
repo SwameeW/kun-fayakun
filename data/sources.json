@@ -828,6 +828,74 @@
       }
     },
     {
+      "id": "pds-pioneer-venus-sed",
+      "kind": "dataset",
+      "title": "Pioneer Venus Special Events Data bundle: the probes' atmosphere structure (LAS, SAS) and the Large Probe's nephelometer",
+      "author": "A. Seiff (atmosphere structure, P.I.) and B. Ragent and J. Blamont (nephelometer); restored by S. A. McLaughlin and Y.-I. Won, NASA Planetary Data System Atmospheres Node",
+      "url": "https://doi.org/10.17189/m5zf-6f12",
+      "version": "pv_sed bundle 1.0 (2024): data_atm_struct/descent_low_atm/las_low_atm_state.csv (sha256 c18ff2f2f1acbf01961a7a44446bb76b29c7e9cf52d01c3bbf1be948ee80da67), data_atm_struct/entry_mid_atm/sas_day_mid_atm_state.csv (f05d4f39b7d2778faf194cc318ded20bea792dc3aec69083af91999896a1c4a1), data_neph/ln_backscatter.csv (3ce434de66228b401c06de166e9e1ce96d90e0d2f77ef006f85d392c7f0ab3ae), retrieved 2026-10-26",
+      "license": "Public domain (NASA Planetary Data System archive)",
+      "licenseUrl": null,
+      "credit": "NASA, Pioneer Venus Multiprobe mission; S. A. McLaughlin and Y.-I. Won (2024), Pioneer Venus Special Events Data Bundle, NASA Planetary Data System, doi:10.17189/m5zf-6f12",
+      "notes": "Venus's descent (public/assets/descent/venus.json, scripts/descent/profiles.py): the Large Probe's pressure, temperature and density from 64.8 km above the 6,052.0 km radius to the ground (9 December 1978, 4.4 N, 304.0 E), the Day Probe's entry profile above 70.5 km, and the Large Probe's nephelometer backscatter placed at the altitudes its own clock gives. Between 64.8 and 70.5 km neither probe's table has readings; the explorer interpolates there and says so.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "pds-galileo-probe-asi",
+      "kind": "dataset",
+      "title": "Galileo Probe Atmospheric Structure Instrument: entry and descent profiles (UPPERATM.TAB, DESCENT.TAB)",
+      "author": "A. Seiff and the ASI team; NASA Planetary Data System, volume GP-J-ASI-3-ENTRY-V1.0",
+      "url": "https://pds.nasa.gov/data/gp-j-asi-3-entry-v1.0/",
+      "version": "gp_0001/DATA/ASI/UPPERATM.TAB (sha256 26841499aef14990d9a38a212fd9fe7ef1e3572cece4204e47d5496e506ae7de) and DESCENT.TAB (85cb03e024e4c26342545abad4b19ed960400e29137bfd5bb8f8701bcdd70d79), retrieved 2026-10-26",
+      "license": "Public domain (NASA Planetary Data System archive)",
+      "licenseUrl": null,
+      "credit": "NASA, Galileo Probe Atmospheric Structure Instrument (Seiff et al. 1998, J. Geophys. Res. 103, 22857)",
+      "notes": "Jupiter's descent (public/assets/descent/jupiter.json): altitude above the 1-bar level, pressure, temperature and density, from the entry profile above the descent's start (0.44 bar) down to 22 bar. The descent profile is the dry adiabat that fits the measurements, as the archive's own notes say.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "pds-galileo-probe-nep",
+      "kind": "dataset",
+      "title": "Galileo Probe Nephelometer: scattering by pressure (SCATTER.TAB)",
+      "author": "B. Ragent and the nephelometer team; NASA Planetary Data System, volume GP-J-NEP-3-ENTRY-V1.0",
+      "url": "https://pds.nasa.gov/data/gp-j-nep-3-entry-v1.0/",
+      "version": "gp_0001/DATA/NEP/SCATTER.TAB (sha256 6e0aa697e50cface17b9f8e058736c621c25f27764d8aceecb65c8161e070073), retrieved 2026-10-26",
+      "license": "Public domain (NASA Planetary Data System archive)",
+      "licenseUrl": null,
+      "credit": "NASA, Galileo Probe Nephelometer (Ragent et al. 1998, J. Geophys. Res. 103, 22891)",
+      "notes": "Jupiter's clouds in the descent: the mean of the 5.8, 16 and 40 degree channels' counts (uncalibrated), placed at the altitude of their pressure in the ASI profile, and drawn as relative haze.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "pds-galileo-probe-dwe",
+      "kind": "dataset",
+      "title": "Galileo Probe Doppler Wind Experiment: winds by pressure (WIND.TAB)",
+      "author": "D. H. Atkinson and the DWE team; NASA Planetary Data System, volume GP-J-DWE-3-ENTRY-V1.0",
+      "url": "https://pds.nasa.gov/data/gp-j-dwe-3-entry-v1.0/",
+      "version": "gp_0001/DATA/DWE/WIND.TAB (sha256 0413c0eda8fd536ba324790d67e08bf8742ddc0399dec49a8b276e17f985af89), retrieved 2026-10-26",
+      "license": "Public domain (NASA Planetary Data System archive)",
+      "licenseUrl": null,
+      "credit": "NASA, Galileo Probe Doppler Wind Experiment (Atkinson et al. 1998, J. Geophys. Res. 103, 22911)",
+      "notes": "Jupiter's winds in the descent, from 87 m/s near 0.57 bar to 172 m/s near 20 bar, placed at the altitude of their pressure in the ASI profile.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "irwin-ice-giant-colours",
       "kind": "dataset",
       "title": "Uniform cloud-colour model informed by Modelling the seasonal cycle of Uranus’s colour and magnitude, and comparison with Neptune",

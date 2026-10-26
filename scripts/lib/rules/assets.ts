@@ -348,6 +348,46 @@ function checkWalkHeights(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: the heights of ${WALK_WORLDS.join(', ')}, ${files} PNGs at the sizes listed, credited to data/sources.json`);
 }
 
+const DESCENT_OWNER = 'descent builder, python -I scripts/descent/profiles.py';
+
+/** The atmospheres descended through: each probe's profile present, in order (highest first), physical, and credited. */
+function checkDescents(ctx: ValidationContext, log: RuleLog): void {
+  const problems: string[] = [];
+  let rows = 0;
+  for (const world of ['venus', 'jupiter'] as const) {
+    const loaded = loadJson<unknown>(rootPath('public', 'assets', 'descent', `${world}.json`));
+    const path = relPath(loaded.path);
+    if (loaded.status !== 'ok') {
+      problems.push(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`}`);
+      continue;
+    }
+    const file = loaded.value;
+    problems.push(...checkFields(file, { world: 'nonempty', probe: 'nonempty', date: 'nonempty', 'site.latDeg': 'number', 'site.lonDeg': 'number', layers: 'array', 'clouds.rows': 'array', sourceIds: 'array' }, path));
+    if (!isRecord(file)) continue;
+    const layers: unknown[] = Array.isArray(file.layers) ? file.layers : [];
+    let previous = Number.POSITIVE_INFINITY;
+    let previousP = 0;
+    layers.forEach((row, i) => {
+      const ok = Array.isArray(row) && row.length === 4 && row.every(isFiniteNumber);
+      if (!ok) {
+        problems.push(`${path}: layers[${i}] must be [altitude km, pressure bar, temperature K, density kg/m^3]`);
+        return;
+      }
+      const [z, p, t, rho] = row as number[];
+      if ((z ?? 0) >= previous) problems.push(`${path}: layers[${i}] is not below the row before it`);
+      if ((p ?? 0) <= previousP) problems.push(`${path}: layers[${i}]'s pressure does not rise downward`);
+      if ((p ?? 0) <= 0 || (t ?? 0) <= 0 || (rho ?? 0) <= 0) problems.push(`${path}: layers[${i}] has a pressure, temperature or density that is not positive`);
+      previous = z ?? 0;
+      previousP = p ?? 0;
+    });
+    rows += layers.length;
+    const ids = Array.isArray(file.sourceIds) ? file.sourceIds : [];
+    for (const id of ids) if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((s) => s.id === id)) problems.push(`data/sources.json: no "${String(id)}" entry for ${path}`);
+  }
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${DESCENT_OWNER})`);
+  else log.pass(`public/assets/descent: Venus's and Jupiter's probe profiles, ${rows} levels in order, physical, credited`);
+}
+
 const SKY_OWNER = 'sky builder, python3 -I scripts/sky/build.py';
 
 /** The explorer's sky: the Bright Star Catalogue's stars (brightest first), IAU names for them, the 88 constellations; every source credited. */
@@ -603,6 +643,7 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkPlanets(ctx, log);
   checkPlaces(ctx, log);
   checkWalkHeights(ctx, log);
+  checkDescents(ctx, log);
   checkSky(ctx, log);
   checkAnalyses(ctx, log);
 }

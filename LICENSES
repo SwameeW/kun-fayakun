@@ -710,6 +710,19 @@ Changes:  re-referenced to Venus's mean radius (6,051.8 km); averaged to 8 and
           to half a metre (public/assets/walk/venus, scripts/walk/heights.py).
 Credit:   NASA/JPL/USGS, Magellan
 
+Atmospheres descended through (NASA Planetary Data System)
+          Pioneer Venus Special Events Data bundle (doi:10.17189/m5zf-6f12):
+          the Large and Day Probes' atmosphere structure and the Large Probe's
+          nephelometer; the Galileo probe's Atmospheric Structure Instrument,
+          Nephelometer and Doppler Wind Experiment volumes (GP-J-ASI, GP-J-NEP,
+          GP-J-DWE-3-ENTRY-V1.0).
+Terms:    Public domain: NASA Planetary Data System archive data.
+Changes:  rows thinned to about one per 0.25 to 1 km of altitude; the
+          nephelometers' readings and the winds placed at altitudes from the
+          probes' own clocks and profiles (public/assets/descent,
+          scripts/descent/profiles.py).
+Credit:   NASA, Pioneer Venus Multiprobe and Galileo Probe missions
+
 Mars walking heights (NASA Planetary Data System)
           MGS MOLA Mission Experiment Gridded Data Record, MGS-M-MOLA-5-MEGDR-
           L3-V1.0, meg016/megt90n000eb.img (16 pixels a degree), PDS

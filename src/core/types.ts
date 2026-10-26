@@ -494,6 +494,8 @@ export interface UniverseView {
    * the laboratory).
    */
   walkHere: { world: WalkableWorld; lat: number; lon: number } | null;
+  /** Down through Venus's or Jupiter's atmosphere where a probe went, while one is under way; else null. */
+  descent: UniverseDescent | null;
   /**
    * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
    * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
@@ -763,6 +765,38 @@ export interface UniverseIslamic {
   marks: { path: number; lines: number; map: number };
 }
 
+/** Down through an atmosphere where a probe went (src/explore/descent; docs/ATMOSPHERES.md), as the view reports it. */
+export interface UniverseDescent {
+  world: 'venus' | 'jupiter';
+  probe: string;
+  /** The day the probe went down (ISO), and where (degrees); and where the descent is (beneath the camera when it began). */
+  date: string;
+  latDeg: number;
+  lonDeg: number;
+  hereLatDeg: number;
+  hereLonDeg: number;
+  /** km above Venus's 6,052.0 km radius at the probe's site, or Jupiter's 1-bar level (negative below it). */
+  altitudeKm: number;
+  reference: 'radius' | 'one-bar';
+  /** What the probe measured at this height. */
+  pressureBar: number;
+  temperatureK: number;
+  densityKgM3: number;
+  /** The clouds here, 0 (clear) to 1 (the thickest the nephelometer saw); the wind (m/s from the west, Jupiter's) or null. */
+  cloud: number;
+  windMs: number | null;
+  /** Between two probes' readings (interpolated). */
+  between: boolean;
+  /** The fall held, and at the bottom of the probe's column. */
+  held: boolean;
+  atBottom: boolean;
+  /** The light here as a share of the light above the atmosphere by day (illustrative). */
+  light: number;
+  /** The probe's column: the pressures at its top and its bottom (bar). */
+  topBar: number;
+  bottomBar: number;
+}
+
 /** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
 export type WalkableWorld = 'earth' | 'moon' | 'mars' | 'mercury' | 'venus';
 
@@ -1025,6 +1059,12 @@ export type EarthCommand =
   | { kind: 'walk'; world?: WalkableWorld; lat?: number; lon?: number; headingDeg?: number; pitchDeg?: number }
   /** A saved view (ledger GR-4): over a place on a body (degrees) at a height (km): a glide there on the body in view, a trip there first from elsewhere. */
   | { kind: 'view'; body: BodyId; lat: number; lon: number; altitudeKm: number }
+  /** Down through an atmosphere where a probe went (ledger GR-6); back to orbit; the on-screen pad (-1 hurry down, 1 climb, 0 fall) and holding the fall. */
+  | { kind: 'descent'; world: 'venus' | 'jupiter' }
+  | { kind: 'descentEnd' }
+  | { kind: 'descentPad'; climb: number; held?: boolean }
+  /** Straight to the height in the probe's column where the pressure is `pressureBar`. */
+  | { kind: 'descentTo'; pressureBar: number }
   | { kind: 'walkEnd' }
   /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
   | { kind: 'walkPad'; forward: number; jump: boolean };
