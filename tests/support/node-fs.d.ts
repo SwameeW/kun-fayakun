@@ -9,3 +9,8 @@ declare module 'node:fs' {
   export function readFileSync(path: URL): Uint8Array;
   export function existsSync(path: string | URL): boolean;
 }
+
+declare module 'node:crypto' {
+  /** A hash of bytes (the REBOUND fixture's input is pinned by its SHA-256). */
+  export function createHash(algorithm: 'sha256'): { update(data: Uint8Array | string): { digest(encoding: 'hex'): string } };
+}

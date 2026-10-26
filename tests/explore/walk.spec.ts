@@ -48,10 +48,10 @@ test('on foot: landing on the ground below, the suit’s figures, walking, jumpi
   // Keys go to the explorer from anywhere but a field: the focus leaves the button that began the walk.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const start = await walkView(page);
+  // Held until it has gone half a metre: a slow machine's frames come seldom, and each advances the walker at most 0.2 s.
   await page.keyboard.down('KeyW');
-  await page.waitForTimeout(1200);
-  await page.keyboard.up('KeyW');
   await expect.poll(async () => (await walkView(page))?.walkedM ?? 0, LIVE).toBeGreaterThan(0.5);
+  await page.keyboard.up('KeyW');
   const moved = await walkView(page);
   expect(Math.hypot((moved?.lat ?? 0) - (start?.lat ?? 0), (moved?.lon ?? 0) - (start?.lon ?? 0))).toBeGreaterThan(0);
   const canvas = page.locator('canvas').first();
@@ -71,13 +71,11 @@ test('on foot: landing on the ground below, the suit’s figures, walking, jumpi
   // The on-screen pad walks too (held down with the mouse, as on a touch screen).
   const padded = (await walkView(page))?.walkedM ?? 0;
   const forward = await page.getByTestId('walk-forward').boundingBox();
-  if (forward) {
-    await page.mouse.move(forward.x + forward.width / 2, forward.y + forward.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(1000);
-    await page.mouse.up();
-  }
+  expect(forward).not.toBeNull();
+  await page.mouse.move((forward?.x ?? 0) + (forward?.width ?? 0) / 2, (forward?.y ?? 0) + (forward?.height ?? 0) / 2);
+  await page.mouse.down();
   await expect.poll(async () => ((await walkView(page))?.walkedM ?? 0) - padded, LIVE).toBeGreaterThan(0.5);
+  await page.mouse.up();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
   // Esc: back to orbit, where the camera was.

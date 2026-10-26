@@ -61,7 +61,7 @@ import type { Islamic } from './islamic';
 import type { Walk } from './walk';
 import type { WalkInput } from './walk/walker';
 import { hijriDate } from './islamic/hijri';
-import type { Lab } from './lab';
+import type { Lab, LabPointerView } from './lab';
 import { composeBulletin } from './field-notes/bulletin';
 import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes/data';
 import { centralAngle, loadPlaces, type Place } from './field-notes/places';
@@ -71,6 +71,7 @@ import { fineDetailShown } from './bodies/earth';
 import { craterDetailShown } from './bodies/moon';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
+import type { SurfaceMark } from './bodies/marks';
 import { DETAIL, EXPLORE_TIERS, type ExploreDetail, type ExploreTier } from './detail';
 import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
 import { createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
@@ -100,6 +101,9 @@ const WALK_FOV = 70;
 const WALK_LENS = { near: 1e-4, far: 2000 } as const;
 /** On foot the imagery is aimed at the walker's feet as if a pixel there spanned a metre, which asks for its finest level (km). */
 const WALK_FOOTPRINT_KM = 0.001;
+/** The worlds drawn with a solid surface the laboratory's craters mark, and no marks at all. */
+const CRATERED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
+const NO_MARKS: readonly SurfaceMark[] = [];
 /** The narrowest lens over the day's mosaic (its 250 m pixels at about four screen pixels each from the lowest orbit). */
 const TODAY_LENS_MIN_DEG = 6;
 /**
@@ -342,6 +346,8 @@ export default function create(): UniverseModule {
   let labInputs: { planets: PlanetsFile; moon: MoonFile; physical: PhysicalFile } | null = null;
   let labLoading = false;
   let wantLab = false;
+  /** A share link's scenario (src/sim/share), waiting for the laboratory to open. */
+  let pendingShare: string | null = null;
   const hiddenBodies = new Set<BodyId>();
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
@@ -360,6 +366,8 @@ export default function create(): UniverseModule {
   let belowEarth: { lat: number; lon: number } | null = null;
   /** The air's figures for the suit's readout (data/constants.json), once the constants have loaded. */
   let walkAir: { surfaceKpa: number | null; scaleHeightKm: number | null; meanTempC: number | null } = { surfaceKpa: null, scaleHeightKm: null, meanTempC: null };
+  /** Each world's J2 and moment of inertia factor (data/constants.json, NASA's fact sheets), for the laboratory's seed. */
+  let labShapes: Record<string, { j2: number | null; inertia: number | null }> = {};
   let islamicLoading = false;
   const islamicWaiting: UniverseIslamicCommand[] = [];
   let hijriDay = Number.NaN;
@@ -728,6 +736,35 @@ export default function create(): UniverseModule {
   };
 
   /** The body under a point of the canvas (client px), nearest the camera when discs overlap. */
+  /** The camera for the laboratory's pointer: points to the canvas (client px), canvas points to rays, the view's direction (render frame). */
+  const labPointer: LabPointerView = {
+    toScreen(rel) {
+      const c = ctx;
+      if (!c) return null;
+      const rect = c.renderer.domElement.getBoundingClientRect();
+      // Within the depth range, along the same line from the camera (the same point on the screen).
+      const d = Math.hypot(rel.x, rel.y, rel.z);
+      const k = d > lens.far * 0.5 ? (lens.far * 0.5) / d : 1;
+      const p = projected.set(rel.x * k, rel.y * k, rel.z * k).project(c.camera);
+      if (p.z < -1 || p.z > 1) return null;
+      return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
+    },
+    ray(x, y) {
+      const c = ctx;
+      if (!c) return { x: 0, y: 0, z: -1 };
+      const rect = c.renderer.domElement.getBoundingClientRect();
+      const v = pointerRay.set(((x - rect.left) / rect.width) * 2 - 1, 1 - ((y - rect.top) / rect.height) * 2, 0.5).unproject(c.camera).sub(c.camera.position).normalize();
+      return { x: v.x, y: v.y, z: v.z };
+    },
+    forward() {
+      const c = ctx;
+      if (!c) return { x: 0, y: 0, z: -1 };
+      const v = pointerRay.set(0, 0, -1).applyQuaternion(c.camera.quaternion);
+      return { x: v.x, y: v.y, z: v.z };
+    },
+  };
+  const pointerRay = new Vector3();
+
   const pick = (clientX: number, clientY: number): BodyId | null => {
     const c = ctx;
     if (!c) return null;
@@ -877,7 +914,8 @@ export default function create(): UniverseModule {
           labLoading = false;
           // The laboratory seeds from the explorer's ephemeris; kilograms by the Earth's GM over JPL's mass of the Earth.
           const earthMassKg = (planets.bodies.find((b) => b.name === 'Earth')?.physical.massE24Kg ?? 0) * 1e24;
-          lab = createLab(createEphemeris(planets, moon, physical), physical, earthMassKg, {});
+          lab = createLab(createEphemeris(planets, moon, physical), physical, earthMassKg, {}, labShapes);
+          lab.setPointerView(labPointer);
           root.add(...lab.objects);
           applyLab();
         })
@@ -895,6 +933,10 @@ export default function create(): UniverseModule {
       markerSet = null;
       lab.start('solar', jdTdb);
       lab.setRun(86_400, false);
+      if (pendingShare) {
+        lab.command({ kind: 'importShared', data: pendingShare });
+        pendingShare = null;
+      }
     } else if (!wantLab && lab.active) {
       lab.stop();
       hiddenBodies.clear();
@@ -1337,6 +1379,8 @@ export default function create(): UniverseModule {
       }
       if (lensMin !== nav.lensMinDeg) nav.setLensMin(lensMin);
     }
+    // The laboratory's craters on the worlds drawn solid (none outside an experiment).
+    for (const id of CRATERED) bodies.setMarks(id, lab?.active ? lab.marks(id) : NO_MARKS);
     unit(sunDir, sys.bodies.mercury.position, sun);
     bodies.mercury.update({ time: ambient, sun: sunDir, light: lightAt('mercury'), earth: toEarth, earthLit: 0 }, origin3);
     unit(sunDir, sys.bodies.venus.position, sun);
@@ -2099,6 +2143,7 @@ export default function create(): UniverseModule {
           }
         };
         walkAir = { surfaceKpa: figure('earth.atmosphere.surfacePressure'), scaleHeightKm: figure('earth.atmosphere.scaleHeight'), meanTempC: figure('earth.atmosphere.averageTemperature') };
+        labShapes = Object.fromEntries(BODY_IDS.map((id) => [id, { j2: figure(`${id}.j2`), inertia: figure(`${id}.momentOfInertia`) }]));
         lightKmS = facts.lightKmS;
         discoveries = new Discoveries(facts);
       } catch (err) {
@@ -2151,6 +2196,11 @@ export default function create(): UniverseModule {
             endWalk();
             return true;
           }
+          // Esc while placing a body leaves placing.
+          if (lab?.active && lab.placing) {
+            lab.command({ kind: 'place', on: false });
+            return true;
+          }
           return steer('stop');
         },
         orbit: () => {
@@ -2161,6 +2211,18 @@ export default function create(): UniverseModule {
           steer('orbit');
         },
         pick,
+        // The laboratory's pointer: its velocity arrow taken by the tip, a placing preview, a tap that places.
+        grab: (x, y) => (lab?.active ? lab.grab(x, y) : false),
+        grabMove: (x, y) => {
+          lab?.grabMove(x, y);
+        },
+        grabEnd: (cancelled) => {
+          lab?.grabEnd(cancelled);
+        },
+        hover: (x, y) => {
+          if (lab?.active) lab.hover(x, y);
+        },
+        tap: (x, y) => (lab?.active ? lab.tap(x, y) : false),
         travel: (id) => {
           nav.flyTo(w, id);
           // The interface keeps the address in step (app.focusBody), as for a choice from its list.
@@ -2171,6 +2233,8 @@ export default function create(): UniverseModule {
 
     configure(options) {
       wantLab = options.lab === true;
+      // A scenario from a share link: loaded once the laboratory is running.
+      if (options.labShare) pendingShare = options.labShare;
       if (entered) applyLab();
       if (options.jdUtc !== null || !entered) pinnedUtc = options.jdUtc;
       if (entered && options.jdUtc !== null) setDate(options.jdUtc);

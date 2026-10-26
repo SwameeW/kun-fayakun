@@ -26,6 +26,7 @@ import type { AirModel, TransmittanceTable } from '../render/air';
 import type { BodySpec } from '../system';
 import { createEarth, type ExploreEarth } from './earth';
 import { createGiant, type ExploreGiant } from './giant';
+import type { SurfaceMark } from './marks';
 import { createMoon, type ExploreMoon } from './moon';
 import { createSun, type ExploreSun, type SunLimb } from './sun';
 
@@ -59,6 +60,8 @@ export interface Bodies {
   suspend(): void;
   /** The credits of the maps a body shows now. */
   credits(body: BodyId): string[];
+  /** The laboratory's craters on a solid world drawn (the Earth, the Moon, Mercury, Mars); the others have no surface to mark here. */
+  setMarks(body: BodyId, marks: readonly SurfaceMark[]): void;
   dispose(): void;
 }
 
@@ -158,6 +161,10 @@ export function createBodies(options: BodiesOptions): Bodies {
     credits(body) {
       if (!isPlanet(body)) return [];
       return planetCredits(textures.boundFiles(body));
+    },
+    setMarks(body, marks) {
+      const solid = { earth, moon, mercury, mars } as const;
+      if (body in solid) solid[body as keyof typeof solid].setMarks(marks);
     },
     dispose() {
       for (const body of all) body.dispose();

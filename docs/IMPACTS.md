@@ -40,10 +40,18 @@ disruption criterion; and every outcome sums to the total mass.
 
 - **The projectile in hit-and-run** carries on whole; the paper's reverse impact (its own erosion)
   comes next.
-- **Fragment velocities** (the paper's eqs. 38 to 43) are not yet applied: debris leaves the remnant on
-  a 60-degree cone about the impact site at 1.05 to 1.6 times its escape speed, spread evenly, and the
-  second remnant goes on downrange; the speeds are halved as often as needed so that a breakup never
-  makes energy from nothing.
+- **Fragment velocities** follow Chambers (2013, Icarus 224, 43), the convention N-body studies of
+  planet formation use: every piece leaves at 1.05 times the pair's mutual escape speed at contact,
+  sqrt(2 G (M_t + M_p) / (R_t + R_p)), the second remnant on downrange and the debris evenly spaced
+  round the collision's plane, half a step off downrange so none follows the second remnant (each
+  piece moved out until clear of the others). The debris have a ring of their own, so their momenta
+  cancel and only the second remnant sets the largest back (a shared ring of unequal pieces sent the
+  largest into its own debris, and a fast breakup cascaded into dozens of collisions). The speeds
+  are halved as often as needed so that a breakup never makes energy from nothing, so after a slow
+  breakup some pieces fall back and are accreted again: a Mars-mass body striking the Earth at 1.1
+  times the escape speed has its remnant come down again some fifteen hours later (ledger IM-5).
+  Leinhardt and Stewart's own fitted speed distribution (their eqs. 38 to 43) is not used: its
+  normalisation needs a histogram bin width the paper does not state.
 - **Material strength** (small bodies, the paper's c* = 5): the laboratory's bodies are taken as
   planet-size and strengthless.
 - **Heat and craters**: the energy is accounted, and a cratering impact's crater size is reported
@@ -74,21 +82,51 @@ disruption criterion; and every outcome sums to the total mass.
   fall included. The history gives it in megatons of TNT (4.184 × 10¹⁵ J each). The engine's own
   "heat" is its bookkeeping: what the closed model's energy loses when the contact is resolved,
   which leaves out the last part of the fall.
-- **In the history.** For example: "Stone struck Planet at 20.6 km/s: partial accretion (the target
-  grew), no debris thrown off, at 0 days; its crater about 18 km across (complex: a central peak and
-  terraces), with the energy of 7.988 × 10⁴ megatons of TNT". The planet has the Earth's mass and
-  size, and the stone is 1 km across.
+- **The depth and the rim.** Rim crest to floor: a simple crater's from its breccia lens (the
+  paper's eqs. 23 to 26: the transient crater D_tc / (2 √2) deep, a lens of 0.032 D³ falling back
+  into it); a complex one's from Herrick et al.'s (1997) fit to the fresh craters of Venus, 0.4 D^0.3
+  km (eq. 28), which the paper uses for the Earth. Fresh complex craters are deeper on lighter worlds,
+  so elsewhere that is scaled by (g_Earth / g)^0.533, the power that carries it onto Pike's (1977)
+  fit to the Moon's, 1.044 D^0.301 km: an interpolation by surface gravity between two published
+  fits, not a law of its own. The rim stands 0.07 D_tc⁴ / D³ above the ground around (eq. 48).
+- **Where.** The point the projectile first touched (along its path in the step it struck), kept in
+  the world's own frame as the world stood then (the IAU rotation model, or the spin the visitor
+  set), so the crater turns with the surface. The history gives it in planetocentric degrees.
+- **Drawn** on the worlds the explorer shows with a solid surface (the Earth, the Moon, Mercury and
+  Mars; `src/explore/bodies/marks.ts`), at its size, depth and rim:
+  - a simple crater a bowl; a complex one a flat floor with a central peak and a wall up to the rim
+    (the floor's width, 0.55 of the radius, and the peak's height are illustrative);
+  - the ejecta beyond the rim thinning as the cube of the distance (the paper's eq. 47);
+  - the relief at its true slope times the world's own relief map's exaggeration (2.5 for the Moon,
+    Mercury and Mars, 12 for the Earth, as planets.json records), so a new crater stands among the
+    old ones at the same scale; inside and near the rim the old relief and colour are buried;
+  - fresh rock bright on the Moon and Mercury, with rays running out to fourteen radii in uneven
+    lengths, as from their young craters; dark on Mars, where an impact blows the bright dust off the
+    basalt; grey brown on the Earth's land (the sea closes over an ocean impact: nothing is drawn
+    there); the colours, the ejecta's hummocky texture and the rays' pattern are illustrative;
+  - the floor glows while its melt is hot, a dull red-orange no brighter than half the sunlit ground
+    (rock near 1,400 K is far fainter than sunlit regolith), its surface crusting over within a few
+    hours of simulated time (illustrative);
+  - nothing appears at once (flash safety): a crater eases in over about a second and a half, its
+    glow rises at most twice its full strength a second and falls at most a third of it a second, so
+    there is never a step in brightness; a crater smaller than a few pixels fades out, and its rays
+    need it larger still, rather than shimmer.
+- **In the history.** For example: "Stone merged into Moon at 0.04 days; its crater about 9 km
+  across and 1.8 km deep (a simple bowl), with the energy of 907 megatons of TNT; at 2.9° S, 6.1° W"
+  (a stone 1 km across dropped on the Moon from 300 km, on the side facing the Earth).
 - **Checked.**
   - The fit itself.
-  - A 50 m iron body at 12.8 km/s gives a simple crater of about 1.5 km (Meteor Crater is 1.2 km).
-  - A 1 km stony body at 20 km/s gives a complex crater of about 16 km on the Earth.
-  - The Moon's transition, and its larger craters for the same impact.
+  - A 50 m iron body at 12.8 km/s gives a simple crater of about 1.5 km (Meteor Crater is 1.2 km),
+    about a fifth as deep as it is wide.
+  - A 1 km stony body at 20 km/s gives a complex crater of about 16 km on the Earth, 0.4 D^0.3 km deep.
+  - The Moon's transition, its larger craters for the same impact, and Pike's lunar depths.
   - No crater for a giant impact, or on a star.
+  - In the browser, a stone dropped on the Moon from the Earth's direction strikes within ten
+    degrees of 0° N, 0° E (the IAU model's prime meridian faces the Earth; libration aside), and the
+    crater stays there as the Moon turns.
 - **Not yet:**
-  - the crater's depth;
-  - its mark on the world's surface (with the terrain the walk now reads, ledger GR-1 and GR-5);
-  - melt;
-  - the hit body's local heating.
+  - the crater on the ground a walker stands on (the walk's terrain, ledger GR-5);
+  - the hit body's heating beyond the crater's glow (ledger WR-2, Phase 3).
 
 ## The steps, in order
 
@@ -96,10 +134,15 @@ disruption criterion; and every outcome sums to the total mass.
 |---|---|---|
 | 1 | Outcome regimes and remnant masses (this module) | The paper's definitions and closed forms, continuity, exact mass accounting (done) |
 | 2 | The engine uses it at contact: a merger, a graze, or the largest remnant (the target's id), the second and up to six debris bodies, within the 64-body limit (debris without room returned to the remnant and reported) | Mass, momentum, angular momentum and the closed model's energy kept to 1e-12 through a breakup; pieces start clear of one another; replay bit-exact; a graze not struck twice (done: `tests/unit/impacts.spec.ts`, and in the browser `tests/explore/lab.spec.ts`) |
-| 3 | Debris speeds from the paper's distribution (eqs. 38 to 43), placed deterministically. Research needed: the fit (log(dv dm/dv) = A - S v, v in units of the combined mass's escape speed at R_C1, relative to the largest remnant) is normalised by the histogram's bin width dv, which the paper does not state; until it is established from its figure 7 or a later source, the placeholder speeds stay | The ejected mass's speed distribution matches the fit; the same scenario gives the same debris |
+| 3 | Debris speeds, placed deterministically: Chambers (2013), 1.05 times the mutual escape speed, the second remnant on downrange and the debris evenly spaced round the collision's plane (their momenta cancel), half a step off downrange. (The paper's own fit, log(dv dm/dv) = A - S v, is normalised by a histogram bin width dv it does not state, so it is not used.) | Pieces start clear of one another and leave at the stated speed; the same scenario gives the same debris; slow breakups re-accrete, fast ones do not cascade (done: `tests/unit/impacts.spec.ts`) |
 | 4 | The reverse impact for hit-and-run projectiles | The paper's projectile remnant law |
 | 5 | Impact heat and a crater size from a cited scaling law, as an event in the history (no surface change until terrain exists, Phase 4) | Crater diameters against the law's published examples (done: `src/sim/craters.ts`, `tests/unit/craters.spec.ts`, and in the browser `tests/explore/lab.spec.ts`; the mark on the surface is next) |
 | 6 | The interface: the outcome named in words, its regime and numbers, debris drawn as bodies | Browser tests; a showcase (a rogue world striking a planet) |
 
-Decorative dust, if any, will be drawn separately from the bodies the integrator moves, and labelled
-as such; a body hidden for the frame budget never removes mass.
+Decorative dust is drawn apart from the bodies the integrator moves (`src/explore/lab.ts`, ledger
+IM-4): at each impact a plume of points thrown up from the site within a 40 degree cone, rising and
+falling back over four seconds of the wall clock whatever the experiment's rate, its height four
+times the crater's width (at least 20 km, at most the target's radius; half the radius for an
+impact with no crater). It turns with the world when the impact was on one drawn with its surface.
+It is dim and fades in and out (flash safety), and none of it is mass: the debris that is are
+bodies. A body hidden for the frame budget never removes mass.

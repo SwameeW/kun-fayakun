@@ -128,7 +128,8 @@ export function createWalk(setup: WalkSetup): Walk {
         s.groundM = Math.max(0, under.metres);
         s.feetM = s.groundM;
       }
-      stepWalker(s, input, Math.min(dt, 0.1), walkWorld);
+      // At most a fifth of a second a frame: a stalled frame does not fling the walker.
+      stepWalker(s, input, Math.min(dt, 0.2), walkWorld);
       return walkerPose(s, world.radiusKm);
     },
     place(frame) {

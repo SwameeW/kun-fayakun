@@ -22,20 +22,71 @@ scripture: destructive experiments stay clear of the film's verses.
   drawing), [ and ] step through the same rates (a second to thirty days a second). Going backwards
   and "now" are disabled: the past is reached through checkpoints, not by running the clock in
   reverse. The panel shows the requested and the achieved rate and the current step.
-- **Inspect and edit.** Choose a body: its mass, radius, speed, speed and distance relative to the
-  body it moves about, escape speed. Set its mass (or double or halve it) and its velocity
-  relative to that body. Duplicate it (a new id) or remove it (the Sun stays: it is the scene's
-  light). Follow it with the camera (the ten worlds).
-- **Add.** A body on a circular orbit about any other (mass, radius, distance), or at a position and
-  velocity relative to it.
-- **See.** Each body's recent path (its trail), and the chosen body's path integrated ahead
-  (10 days, 60 days, a year or ten years), both drawn about the body it moves about; its velocity
-  as an arrow. A collision on that path is announced with when and with what.
+- **Inspect.** Choose a body. The panel shows:
+  - its mass, radius, density, speed, escape speed, and its speed and distance relative to the body
+    it moves about (its primary);
+  - its osculating orbit about the primary (`src/sim/elements.ts`): semi-major axis, eccentricity,
+    inclination, year, nearest and farthest points, and Hill sphere. This is the two-body orbit
+    it would follow if every other pull stopped now: a description, not a forecast;
+  - its rotation (period, and the tilt of its axis from its orbit's) and the fastest it could turn
+    before its equator flew off, 2π √(R³/GM);
+  - its primary's Roche limits for it: rigid R (2ρ_P/ρ_s)^(1/3), and fluid 2.44 R (ρ_P/ρ_s)^(1/3),
+    the coefficient being Chandrasekhar's;
+  - its J2.
+
+  Inside a Roche limit, or turning faster than its gravity holds, the panel says so.
+- **Edit.**
+  - Rename it.
+  - Set its mass, radius or density, holding one of the other two: holding the density, the radius
+    follows the mass; holding the mass, the density follows the radius.
+  - Set its velocity relative to the primary, or drag the gold arrow's tip in the view. The arrow is
+    drawn 90 pixels long, so dragging the tip twice as far doubles the speed.
+  - Give it a push in metres a second: along its motion, out of its orbit's plane, or away from its
+    primary.
+  - Set its whole orbit by elements.
+  - Set its rotation (period, and axial tilt from its orbit's pole). One of the ten worlds then
+    turns as set from that moment, not as the IAU models have it.
+  - Hold it in place. This is an outside constraint, so momentum and energy are not conserved while
+    it holds; the checks say so.
+  - Duplicate it: a new id, sixty degrees ahead on its orbit, or the next free place.
+  - Remove it (the Sun stays: it is the scene's light).
+  - Follow it with the camera (the ten worlds).
+  - Tick several bodies to duplicate or remove them together.
+  - Undo and redo any edit (Ctrl or Cmd + Z, with Shift, or Ctrl + Y).
+- **Add.**
+  - From a palette of real bodies, by kind, with a search. Each body's mass, radius and rotation
+    come from a named source (`src/sim/presets.ts`): JPL's satellite and planetary parameters, the
+    Small-Body Database, and published stellar masses and radii.
+  - By its own numbers: on a circular orbit about any body, or at a position and velocity relative
+    to one.
+  - Placed with the pointer. The click lands in the plane of the primary's orbit and starts a
+    circular orbit there. A mouse sees a preview and the distance first; Esc stops.
+  - At one of the chosen body's Lagrange points with its primary.
+- **See.**
+  - Each body's recent path (its trail), and the chosen body's path integrated ahead (10 days, 60
+    days, a year or ten years), at the experiment's step or four times finer or coarser.
+  - Paths are drawn about each body's primary, in the experiment's own frame, turning with a pair
+    (the chosen body's primary and the heaviest body about it), or turning as the primary turns
+    (body-fixed: a satellite's path over its ground). Frames change the drawing, never the physics.
+    The path ahead in a turning frame assumes the present rate of turning.
+  - A collision on the path ahead is announced with when and with what, and its closest approaches
+    to other bodies with when and how close.
+  - The chosen body's five Lagrange points with its primary.
+- **Measure and follow.**
+  - Measure the distance, light time and angular size between two bodies, and the angle between two
+    of them as seen from a third.
+  - Follow a quantity over time as a chart: distance or speed about the primary, eccentricity, or
+    energy drift. It follows a body into whatever it merges with.
 - **Check.** Relative drift of energy, momentum and angular momentum since the last edit; the
-  history of edits and mergers.
-- **Keep.** Save in this browser (IndexedDB), load it back, export a file, import one. Reset to the
-  fork. Go back to a checkpoint (a new edit there starts a new branch), or replay the whole
-  experiment from its start.
+  history of edits and collisions.
+- **Keep.**
+  - Save in this browser (IndexedDB), and load it back.
+  - Save to a library by name.
+  - Make a link that carries the experiment (deflated, base64url, up to 8,000 characters;
+    `src/sim/share.ts`). Opening the link loads it after the same checks as a file.
+  - Export a file, or import one.
+  - Reset to the fork, go back to a checkpoint (a new edit there starts a new branch), or replay the
+    whole experiment from its start.
 - **Laboratories.** Besides the solar system: a star and a planet, and a star with two planets
   (Sun-, Earth- and Jupiter-like, on circular orbits).
 - **Leave.** "Back to the real explorer" returns to the real explorer exactly as it was (date, rate,
@@ -82,6 +133,21 @@ the same G.
   most six debris bodies, with mass, momentum, angular momentum and the closed model's energy kept
   exactly. A grazing hit-and-run leaves both as they were. The heavier body is the target (the Sun
   always keeps its id).
+- **Rings and belts** (`src/sim/swarms.ts`). Test particles, up to 2,000 in a ring or belt and
+  4,000 in all, feel every body and pull nothing, so the bodies run bit for bit the same with them
+  or without. Each is carried relative to the body it was made about: between two half kicks from
+  everything else (the other bodies, every oblate body's J2 term, and the opposite of its primary's
+  own acceleration), it moves exactly along its conic about the primary (`src/sim/kepler.ts`,
+  universal variables). That is the Wisdom and Holman (1991) split, so a ring about the Earth whose
+  particles turn in two and a half hours keeps its shape under the hour-long steps the Earth and the
+  Moon set, and a belt particle under one-day steps follows a ten-minute leapfrog to half a
+  kilometre in two years. A particle within a body's radius strikes it and is counted; one passing
+  through a body within a single step is not caught. If the primary merges away its particles go on
+  about the survivor, if it is removed about the most massive body. They are made from a seed in
+  the log (semi-major axes uniform between the radii given, eccentricities and inclinations up to
+  the limits, in the primary's equator for a ring, its orbit's plane for a belt), so they replay
+  exactly. A gravitating ring is a dozen ordinary bodies sharing a mass. Saturn's drawn rings are the
+  third kind, decorative: Cassini's measurements, drawn, not simulated, and the panel says so.
 - **Seed.** The solar-system fork takes positions from the explorer's ephemeris (JPL's
   approximate planetary elements, Standish and Williams, and the Horizons Moon table) at the
   explorer's date, clamped inside the Moon table's span; velocities by central differences over
@@ -100,12 +166,20 @@ edit and every eighth of its horizon. Trails are drawn the same way, each about 
 
 ## Interventions, checkpoints and replay
 
-Every edit (mass, velocity, add, remove) is a command logged at the step it was applied and applied
-again at that step on replay, so an experiment is its start plus its log. A checkpoint (a copy of
-the state) is taken before every edit and every 200 to 2,000 steps, keeping at most 48 (the first,
-and then the most recent). Going back restores the nearest checkpoint at or before the step and
-replays to it; an edit made there discards the later log (a new branch). Drift is measured from
-the state just after the last edit, so an edit is an intervention, not an error.
+Every edit (mass, radius, velocity, state, rotation, hold, name, add, remove) is a command logged
+at the step it was applied and applied again at that step on replay, so an experiment is its start
+plus its log.
+
+- **Checkpoints.** A checkpoint (a copy of the state) is taken before every edit and every 200 to
+  2,000 steps, keeping at most 48 (the first, and then the most recent).
+- **Going back.** This restores the nearest checkpoint at or before the step and replays to it. An
+  edit made there discards the later log, a new branch, and drops the checkpoints of the discarded
+  future.
+- **Undo.** Undo takes the run back to the moment of the latest edit, as it was before it, bit for
+  bit. It uses the checkpoint taken just before that edit, even when several edits share a step
+  (made while paused). The edit is kept for redo until another edit is made.
+- **Drift.** Drift is measured from the state just after the last edit, so an edit is an
+  intervention, not an error.
 
 ## The scenario file (schema 1)
 
@@ -135,8 +209,8 @@ the state just after the last edit, so an edit is an intervention, not an error.
 | `epochJdTdb`, `frame` | When and in what frame the bodies are given |
 | `seedNote` | How the start was made, and its approximations |
 | `integrator` | `eta`, step bounds (s), `retimeSteps`, or a `fixedDtS` |
-| `bodies[]` | `id` (stable, unique), `name` (text, at most 60 characters), `gm` (km³ s⁻², 0 for a test particle), `radiusKm`, `pos` (km), `vel` (km/s), `origin` (`observed`, `modelled` or `user-edited`), `sourceIds` (ids in `data/sources.json`) |
-| `log[]` | `{ step, command }`, commands `setMass {id, gm}`, `setVelocity {id, vel}`, `add {body}`, `remove {id}` |
+| `bodies[]` | `id` (stable, unique), `name` (text, at most 60 characters), `gm` (km³ s⁻², 0 for a test particle), `radiusKm`, `pos` (km), `vel` (km/s), `origin` (`observed`, `modelled` or `user-edited`), `sourceIds` (ids in `data/sources.json`); optional `spin` (`{periodS, pole}`, prograde about the pole), `j2`, `inertia` (I / MR², 0.4 when absent) |
+| `log[]` | `{ step, command }`, commands `setMass {id, gm}`, `setVelocity {id, vel}`, `setState {id, pos, vel}`, `setRadius {id, radiusKm, gm?}`, `setSpin {id, periodS, pole}`, `setFixed {id, fixed}`, `rename {id, name}`, `add {body}`, `remove {id}`, `addSwarm {swarm: {id, name, primary, count, innerKm, outerKm, eccentricity, inclinationDeg, normal, seed}}`, `removeSwarm {id}`, `addRing {ring: {id, name, primary, count, innerKm, outerKm, gm, radiusKm, normal, seed}}` (its bodies `<id>-1` on) |
 | `persistentIds` | Bodies that keep their id in any merger and cannot be removed |
 
 Saved in IndexedDB (database `kf-lab`, store `scenarios`, key `current`) and exported as
@@ -159,9 +233,19 @@ be told apart from a fault.
 
 These are deliberate simplifications; the interface does not claim otherwise.
 
-- **Point masses.** No shapes, oblateness (J2), tides, tidal locking, Roche disruption, or rotational
-  breakup. Spin is bookkeeping for mergers, not a modelled rotation; the ten worlds turn by the IAU
-  models whatever the experiment does.
+- **Spheres, with oblateness.**
+  - Each body is a sphere of its mean radius.
+  - J2 is modelled: a flattened body pulls with its J2 term about its spin axis, and is pulled back,
+    and the torque turns its axis.
+  - There are no tides, no tidal locking or spin-down (the tidal part of ledger SB-33, research
+    still needed), and no Roche disruption or rotational breakup. Those limits are shown, not
+    enforced.
+  - The ten worlds turn as the IAU models have them, except one whose rotation the visitor sets.
+  - The seed's J2s and moments of inertia are the NASA fact sheets' (`data/constants.json`):
+    - the Sun's J2 is not on its sheet, so it is spherical;
+    - Neptune's sheet gives no moment of inertia, so 0.4 stands in;
+    - none of these changes its orbit.
+- **The arrow is not to scale.** The velocity arrow shows direction; its length on screen is fixed.
 - **Newtonian only.** No relativity (Mercury's perihelion advance is missing, about 43" a century),
   radiation pressure, drag, or thrust.
 - **Ten bodies only in the fork.** No dwarf planets, asteroids or moons of other planets; their
@@ -170,10 +254,11 @@ These are deliberate simplifications; the interface does not claim otherwise.
   velocities are differenced, so the copy departs from the real system from the start (measured
   below). That departure is the model's, not the Sun's.
 - **Collisions are scaling laws, not hydrodynamics.** The outcome and the remnants' masses follow
-  Leinhardt and Stewart (2012); the debris's directions and launch speeds are a documented placeholder
-  (a cone about the impact site, 1.05 to 1.6 times the remnant's escape speed), not yet their fitted
-  speed distribution; a hit-and-run projectile is not eroded. No craters or melt: the heat is a number,
-  not a temperature.
+  Leinhardt and Stewart (2012); the pieces leave at 1.05 times the pair's mutual escape speed, evenly
+  spaced round the collision's plane (Chambers 2013), not at the paper's own fitted speed distribution;
+  a hit-and-run projectile is not eroded. A cratering impact's crater is drawn on the Earth's land,
+  the Moon, Mercury and Mars by its scaling law, its glow and rays illustrative
+  ([IMPACTS.md](IMPACTS.md#craters-and-energy)); the heat is otherwise a number, not a temperature.
 - **No climate or materials.** Changing a world's mass or orbit does not change its temperature,
   atmosphere or appearance; the Earth is shown with its static imagery, not the day's.
 - **Light.** The Sun lights the scene wherever it is; a body added as a star does not shine.
@@ -229,6 +314,12 @@ no external integrator's fixture (REBOUND) is pinned yet.
 | Merger accounting; no tunnelling | the same |
 | Replay through save and load; branching | the same |
 | Invalid and huge imports fail quickly | the same (in a unit test and in the browser) |
+| Orbital elements round trip; Lagrange points are equilibria; a Trojan stays at L4 for ten Jovian years; Roche limits, breakup period, measurements | `tests/unit/elements.spec.ts` |
+| Oblateness: nodal regression at the textbook rate; the axis precesses with angular momentum kept; held bodies; radius, spin, state and name edits; undo and redo bit for bit (also through edits sharing a step); encounters; the seeded rotations (the Earth's 23.44° and sidereal day) | `tests/unit/lab-engine.spec.ts` |
+| An external reference: REBOUND 5.2.2's IAS15 over a year, within measured bounds, converging as the step squared | `tests/unit/rebound.spec.ts` (fixture `tests/fixtures/rebound/`, script `scripts/rebound/`) |
+| The two-body drift: a quarter turn, Kepler's equation solved independently, a thousand periods, hyperbolas, reversibility | `tests/unit/kepler.spec.ts` |
+| Rings and belts: they pull nothing (bit for bit); a ring about the Earth stays a ring under hour-long steps; a belt particle against a fine reference; replay through save and load; carried over when the primary merges; refused when impossible; a gravitating ring's bodies | `tests/unit/swarms.spec.ts`; in the browser `tests/explore/lab-tools.spec.ts` |
+| The tools in the browser: the inspector's numbers, held edits, rename, hold, undo and redo; a push, elements, rotation, accuracy, encounters, Lagrange points and L4; the palette, placing with the pointer, dragging the arrow; frames, measurements, a chart, the library, a link that reopens it, several bodies at once | `tests/explore/lab-tools.spec.ts` |
 | Predictions: the live state untouched, a closed orbit, stopping at a merger, a moon about its planet | the same |
 | Pause stops the physics, not just the drawing | `tests/explore/lab.spec.ts` |
 | Destroying a selected or followed body leaves no broken camera | the same (a merged planet; the Earth removed under the camera) |
@@ -237,9 +328,25 @@ no external integrator's fixture (REBOUND) is pinned yet.
 | Phone layout and touch targets | `tests/explore/mobile.spec.ts` |
 | WebGPU, forced WebGL2, Brave | every browser spec runs on `webgpu` and `webgl2`; `lab.spec.ts` also on `brave` where installed |
 
+## Against an external reference
+
+The solar-system seed was run for one Julian year by REBOUND 5.2.2's IAS15 (Rein and Spiegel 2015),
+with energy kept to 4 × 10⁻¹⁶. The laboratory's leapfrog at its own settings (8,490 steps) ends:
+
+| Body | Off from REBOUND |
+|---|---|
+| Mercury | 4,370 km |
+| Venus | 602 km |
+| Earth | 179 km |
+| The Moon | 908 km about the Earth (0.25% of its distance: mostly phase) |
+| Mars | 33 km |
+| Jupiter | 0.23 km |
+| The outer giants | metres |
+
+A step five times finer cuts every error about 25 times, which is second order, as a leapfrog
+should be. Only REBOUND's numbers are kept: `tests/fixtures/rebound/`, pinned by the input's
+SHA-256. REBOUND itself is GPL-3.0, and none of its code is here.
+
 ## Not in this slice
 
-Undo and redo, multi-select, renaming, radius and density edits after creation, orbital elements
-as input or readout, dragging a velocity, camera frames other than following a body (co-rotating,
-body-fixed), Lagrange points, graphs over time, impacts beyond merging, materials, climate, other
-stars, and spacecraft. Each is in `docs/FEATURE-LEDGER.md` with its dependencies.
+Tides and tidal spin-down (with Phase 3), materials, climate, other stars' light, and spacecraft. Each is in `docs/FEATURE-LEDGER.md` with its dependencies.

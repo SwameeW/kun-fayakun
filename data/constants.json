@@ -1097,6 +1097,240 @@
         "url": "https://astrogeology.usgs.gov/search/map/mercury_messenger_mdis_global_color_mosaic_665m",
         "accessed": "2026-10-24"
       }
+    },
+    {
+      "id": "mercury.j2",
+      "description": "Mercury's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 5.03e-05,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mercury Fact Sheet: J2 (x 10^-6) 50.3",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mercury.momentOfInertia",
+      "description": "Mercury's moment of inertia factor, I / (M R^2)",
+      "value": 0.35,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mercury Fact Sheet: moment of inertia (I/MR^2) 0.35",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.j2",
+      "description": "Venus's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 4.458e-06,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: J2 (x 10^-6) 4.458",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "venus.momentOfInertia",
+      "description": "Venus's moment of inertia factor, I / (M R^2)",
+      "value": 0.337,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Venus Fact Sheet: moment of inertia (I/MR^2) 0.337",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.j2",
+      "description": "Earth's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.00108263,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: J2 (x 10^-6) 1082.63",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "earth.momentOfInertia",
+      "description": "Earth's moment of inertia factor, I / (M R^2)",
+      "value": 0.3308,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Earth Fact Sheet: moment of inertia (I/MR^2) 0.3308",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "moon.j2",
+      "description": "Moon's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.0002027,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Moon Fact Sheet: J2 (x 10^-6) 202.7",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "moon.momentOfInertia",
+      "description": "Moon's moment of inertia factor, I / (M R^2)",
+      "value": 0.394,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Moon Fact Sheet: moment of inertia (I/MR^2) 0.394",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.j2",
+      "description": "Mars's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.00196045,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: J2 (x 10^-6) 1960.45",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "mars.momentOfInertia",
+      "description": "Mars's moment of inertia factor, I / (M R^2)",
+      "value": 0.366,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Mars Fact Sheet: moment of inertia (I/MR^2) 0.366",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "jupiter.j2",
+      "description": "Jupiter's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.014736,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Jupiter Fact Sheet: J2 (x 10^-6) 14736",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "jupiter.momentOfInertia",
+      "description": "Jupiter's moment of inertia factor, I / (M R^2)",
+      "value": 0.254,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Jupiter Fact Sheet: moment of inertia (I/MR^2) 0.254",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "saturn.j2",
+      "description": "Saturn's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.016298,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Saturn Fact Sheet: J2 (x 10^-6) 16298",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "saturn.momentOfInertia",
+      "description": "Saturn's moment of inertia factor, I / (M R^2)",
+      "value": 0.21,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Saturn Fact Sheet: moment of inertia (I/MR^2) 0.21",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "uranus.j2",
+      "description": "Uranus's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.00334343,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Uranus Fact Sheet: J2 (x 10^-6) 3343.43",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "uranus.momentOfInertia",
+      "description": "Uranus's moment of inertia factor, I / (M R^2)",
+      "value": 0.225,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Uranus Fact Sheet: moment of inertia (I/MR^2) 0.225",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranusfact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "neptune.j2",
+      "description": "Neptune's J2: the lowest zonal harmonic of its gravity field (its flattening's pull), normalised to its equatorial radius",
+      "value": 0.003411,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "as the fact sheet gives it (J2 x 10^-6)",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Neptune Fact Sheet: J2 (x 10^-6) 3411",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/neptunefact.html",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "sun.momentOfInertia",
+      "description": "Sun's moment of inertia factor, I / (M R^2)",
+      "value": 0.07,
+      "uncertainty": null,
+      "unit": "dimensionless",
+      "qualifier": "0.4 for a uniform sphere; lower the more its mass is held toward its centre",
+      "citation": {
+        "text": "D. R. Williams, NASA Space Science Data Coordinated Archive, Sun Fact Sheet: moment of inertia (I/MR^2) 0.07",
+        "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/sunfact.html",
+        "accessed": "2026-10-26"
+      }
     }
   ]
 }

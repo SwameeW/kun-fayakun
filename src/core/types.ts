@@ -811,6 +811,32 @@ export interface UniverseLabBody {
   edited: boolean;
   /** Keeps its identity in mergers and cannot be removed (the scene's light). */
   persistent: boolean;
+  /** Its bulk density (kg/m^3). */
+  densityKgM3: number;
+  /** Its osculating orbit about its primary (src/sim/elements): a description of the moment, not a forecast; null with no primary. */
+  orbit: { aKm: number; e: number; iDeg: number; nodeDeg: number; periapsisArgDeg: number; trueAnomalyDeg: number; periodS: number | null; periapsisKm: number; apoapsisKm: number | null; bound: boolean; hillKm: number | null } | null;
+  /** Its rotation (period, s; null when it does not turn) and the tilt of its pole from its orbit's (degrees; null with no primary), and the fastest it could turn held by its own gravity (s). */
+  rotation: { periodS: number | null; tiltDeg: number | null; breakupPeriodS: number };
+  /** Its primary's Roche limits for it (km): inside the fluid one a fluid body is torn apart, inside the rigid one a rigid one too. */
+  roche: { rigidKm: number; fluidKm: number } | null;
+  /** Held in place by the visitor (an external constraint). */
+  fixed: boolean;
+  /** Named by the visitor (a world's own name gives way to it). */
+  renamed: boolean;
+  /** Its J2 (0: spherical). */
+  j2: number;
+}
+
+/** A quantity the laboratory can follow over time. */
+export type LabQuantity = 'distance' | 'speed' | 'eccentricity' | 'energyDrift';
+/** The laboratory's palette of bodies to add (src/sim/presets): its id, kind, mass and size, and where they come from. */
+export interface LabPreset {
+  id: string;
+  kind: 'star' | 'giant' | 'rocky' | 'moon' | 'dwarf' | 'asteroid' | 'comet';
+  massKg: number;
+  radiusKm: number;
+  rotationH: number | null;
+  source: string;
 }
 
 /** The orbital laboratory as the view reports it. */
@@ -833,15 +859,48 @@ export interface UniverseLab {
   /** Relative drift since the last intervention. */
   drift: { energy: number; momentum: number; angularMomentum: number };
   interventions: ReadonlyArray<{ step: number; t: number; kind: string; id: string }>;
-  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room) or a graze both carried on from; Leinhardt and Stewart's regime and the speed at contact; a merger's crater on a solid world (src/sim/craters: its final diameter, km, and whether complex); the impact's energy (J). */
-  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean; craterKm: number | null; craterComplex: boolean; energyJ: number }>;
+  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room) or a graze both carried on from; Leinhardt and Stewart's regime and the speed at contact; the crater on a solid world (src/sim/craters: its final diameter and depth, km, and whether complex) and, on a world drawn with its surface, where it is drawn (planetocentric degrees, east positive); the impact's energy (J). */
+  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean; craterKm: number | null; craterDepthKm: number | null; craterComplex: boolean; craterSite: { latDeg: number; lonDeg: number } | null; energyJ: number }>;
   checkpoints: ReadonlyArray<{ step: number; t: number }>;
+  /** Rings and belts of test particles (src/sim/swarms): each one's body, particles left and particles that struck a body. */
+  swarms: ReadonlyArray<{ id: string; name: string; primary: string; count: number; lost: number }>;
+  /** Particles drawn now (all the swarms). */
+  particlesDrawn: number;
+  /** km per au (the explorer's data), for distances the interface offers in au. */
+  auKm: number;
   logLength: number;
   discarded: number;
-  prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null } | null;
+  prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null; encounters: ReadonlyArray<{ with: string; t: number; distanceKm: number }> } | null;
   horizonS: number;
+  /** The prediction's step against the live run's: four times coarser, the same, or four times finer. */
+  accuracy: 'fast' | 'normal' | 'precise';
+  /** Edits that can be undone and redone. */
+  undoable: number;
+  redoable: number;
+  /** A body is held in place: momentum and energy are not conserved while it is. */
+  constrained: boolean;
+  /** How paths are drawn: each about its primary, in the scenario's frame, turning with a pair (the chosen body's primary and its partner), or turning with the chosen body's primary's own rotation (body-fixed: a satellite's path over the ground). */
+  view: 'primary' | 'inertial' | 'corotating' | 'bodyfixed';
+  /** The pair the turning frame turns with. */
+  corotatingPair: { a: string; b: string } | null;
+  /** The Lagrange points drawn: those of the chosen body and its primary. */
+  lagrange: { primary: string; secondary: string } | null;
+  /** The measurement asked for: distance, light time and angular size between two bodies, and the angle between two others seen from a third. */
+  measure: { from: string; to: string; distanceKm: number; lightS: number; angularSizeDeg: number; via: string | null; separationDeg: number | null } | null;
+  /** The quantity being followed: its body (the survivor, after a merger), samples (s, value), and what it merged into. */
+  graph: { id: string; quantity: LabQuantity; points: ReadonlyArray<readonly [number, number]>; mergedInto: string | null } | null;
+  /** The palette of bodies to add. */
+  presets: readonly LabPreset[];
+  /** Scenarios saved in this browser's library, by name. */
+  library: readonly string[];
+  /** A link to this scenario, or why there is none (too large). */
+  share: { url: string } | { tooLarge: true; chars: number } | null;
+  /** Placing a body with the pointer: about which body, and where it would go now (km from it, or null off the plane). */
+  placing: { primary: string; name: string; offsetKm: number | null } | null;
+  /** The chosen body's velocity arrow's tip on the canvas (client px; drag it to change the velocity), or null. */
+  handle: { x: number; y: number } | null;
   /** The last save, load, export or reset, or a refusal with its reasons. */
-  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error'; detail: string[] } | null;
+  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error' | 'shared' | 'deleted'; detail: string[] } | null;
   /** Every body's name seen in this scenario (by id), kept after it merges or is removed. */
   names: Readonly<Record<string, string>>;
 }
@@ -850,7 +909,31 @@ export interface UniverseLab {
 export type LabCommand =
   | { kind: 'start'; seed: 'solar' | 'two' | 'three' }
   | { kind: 'select'; id: string | null }
-  | { kind: 'mass'; id: string; massKg: number }
+  | { kind: 'mass'; id: string; massKg: number; keep?: 'radius' | 'density' }
+  | { kind: 'radius'; id: string; radiusKm: number; keep: 'mass' | 'density' }
+  | { kind: 'density'; id: string; densityKgM3: number; keep: 'mass' | 'radius' }
+  | { kind: 'spin'; id: string; periodS: number; tiltDeg: number }
+  | { kind: 'fixed'; id: string; fixed: boolean }
+  | { kind: 'rename'; id: string; name: string }
+  | { kind: 'impulse'; id: string; progradeMs: number; normalMs: number; radialMs: number }
+  | { kind: 'elements'; id: string; aKm: number; e: number; iDeg: number; nodeDeg: number; periapsisArgDeg: number; trueAnomalyDeg: number }
+  | { kind: 'addPreset'; preset: string; primary: string; distanceKm: number; name: string }
+  | { kind: 'addLagrange'; point: 'L1' | 'L2' | 'L3' | 'L4' | 'L5'; massKg: number; radiusKm: number; name: string }
+  | { kind: 'place'; on: boolean; primary?: string; name?: string; massKg?: number; radiusKm?: number; preset?: string | null }
+  | { kind: 'undo' }
+  | { kind: 'redo' }
+  | { kind: 'accuracy'; level: 'fast' | 'normal' | 'precise' }
+  | { kind: 'view'; view: 'primary' | 'inertial' | 'corotating' | 'bodyfixed' }
+  | { kind: 'lagrange'; on: boolean }
+  | { kind: 'measure'; from: string | null; to: string | null; via?: string | null }
+  | { kind: 'track'; id: string | null; quantity: LabQuantity }
+  | { kind: 'saveAs'; name: string }
+  | { kind: 'loadSaved'; name: string }
+  | { kind: 'deleteSaved'; name: string }
+  | { kind: 'share' }
+  | { kind: 'importShared'; data: string }
+  | { kind: 'removeMany'; ids: string[] }
+  | { kind: 'duplicateMany'; ids: string[] }
   | { kind: 'velocity'; id: string; relativeKmS: [number, number, number] }
   | { kind: 'addOrbit'; primary: string; distanceKm: number; massKg: number; radiusKm: number; name: string }
   | { kind: 'addState'; relativeTo: string; posKm: [number, number, number]; velKmS: [number, number, number]; massKg: number; radiusKm: number; name: string }
@@ -863,7 +946,15 @@ export type LabCommand =
   | { kind: 'save' }
   | { kind: 'restoreSaved' }
   | { kind: 'export' }
-  | { kind: 'import'; text: string };
+  | { kind: 'import'; text: string }
+  /**
+   * Rings and belts (ledger IM-6): test particles about a body (semi-major axes from inner to outer,
+   * eccentricities and inclinations up to the limits, in its equator's plane or its orbit's); a
+   * gravitating ring of a few bodies sharing a mass; a swarm removed.
+   */
+  | { kind: 'addSwarm'; primary: string; name: string; count: number; innerKm: number; outerKm: number; eccentricity: number; inclinationDeg: number; plane: 'equator' | 'orbit' }
+  | { kind: 'addRing'; primary: string; name: string; count: number; innerKm: number; outerKm: number; massKg: number; plane: 'equator' | 'orbit' }
+  | { kind: 'removeSwarm'; id: string };
 
 /** The time machine as the view reports it. */
 export interface UniverseTime {
@@ -906,7 +997,7 @@ export interface UniverseModule extends ExperienceModule {
   load(ctx: UniverseContext): Promise<void>;
   enter(ctx: UniverseContext): void;
   /** Applies a route: a body to show (null: the explorer's default) and a pinned UTC Julian date (null: now). */
-  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean; stretch?: boolean; lab?: boolean }): void;
+  configure(options: { body: BodyId | null; jdUtc: number | null; reducedMotion: boolean; stretch?: boolean; lab?: boolean; labShare?: string }): void;
   /** Flies to a body: an eased flight in log distance, never a jump (a dimmed cut with reduced motion). */
   focus(body: BodyId): void;
   view(): UniverseView;
@@ -958,7 +1049,7 @@ export type Route =
   | { name: 'chapter'; chapter: ChapterId; t: number | null }
   | { name: 'sources' }
   /** The solar-system explorer, optionally on a body and at a pinned UTC Julian date; or its orbital laboratory. */
-  | { name: 'universe'; body: BodyId | null; jd: number | null; lab?: boolean };
+  | { name: 'universe'; body: BodyId | null; jd: number | null; lab?: boolean; share?: string };
 
 export interface AppEvents {
   route: { route: Route };

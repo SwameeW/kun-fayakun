@@ -60,35 +60,35 @@ platform.
 | SB-12 | Conservation readout | Relative drift since the last edit | SB-4 | `lab.spec` | implemented |
 | SB-13 | Two laboratories | Star and planet; star and two planets | SB-4 | `lab.spec` collision | implemented |
 | SB-14 | Desktop WebGPU, WebGL2, Brave, phone, keyboard, reduced motion | | | `lab.spec`, `mobile.spec` | implemented |
-| SB-20 | Searchable Add palette by kind (stars, giants, moons, comets...) | Typed presets with cited parameters | SB-7 | Each kind's values cited; added body valid | planned |
-| SB-21 | Add at the cursor with a placement preview | Picking against a reference plane | SB-7 | Placed where previewed | planned |
-| SB-22 | Orbital elements in and out (a, e, i, apsides, period) | Osculating elements about the primary | SB-8 | Round trip elements to state to elements | planned |
-| SB-23 | Drag a velocity, impulse with units | Gizmo in the render frame | SB-21 | Logged as setVelocity | planned |
-| SB-24 | Multi-select, rename, save as preset | Scenario library in IndexedDB | SB-11 | Presets survive reload | planned |
-| SB-25 | Radius and density edits with lock rules | Two of mass, radius, density fixed, third derived | SB-6 | No incompatible triple | planned |
-| SB-26 | Spin and axial tilt edits | Needs a rotating-body model | SB-25 | | research needed |
-| SB-27 | Undo and redo | From the edit log (branching already exists) | SB-11 | Undo restores state bit for bit | planned |
-| SB-28 | Fixed-body constraints | Marked as externally constrained | SB-4 | Momentum budget shows the constraint | deferred |
-| SB-29 | Encounter markers and an accuracy control on predictions | Closest approaches along the path; eta per prediction | SB-8 | | partial (collision announced; no markers) |
-| SB-30 | Camera frames: inertial, body-fixed, two-body co-rotating | Frames change the view, never the physics | SB-8 | Trajectories identical across frames | planned |
-| SB-31 | Lagrange points | Restricted three-body effective potential, labelled where it applies | SB-30 | L4/L5 Trojan stays | planned |
-| SB-32 | Roche-limit and spin-breakup indicators | Fluid and rigid Roche limits, labelled | SB-25 | | planned |
-| SB-33 | J2 and tidal spin | After the baseline | SB-26 | Precession rate against theory | research needed |
-| SB-34 | Measurements (distance, angle, light time, angular size) | | SB-8 | | planned |
-| SB-35 | Graphs over time that survive a merger | Ring buffers per tracked id | SB-12 | | planned |
-| SB-36 | Pinned external reference fixture | REBOUND (GPL: data only, not code) | SB-4 | Fixture hash and agreement recorded | planned |
-| SB-37 | Share link for small scenarios | Seed + log in the URL when small enough | SB-11 | | planned |
+| SB-20 | Searchable Add palette by kind (stars, giants, moons, comets...) | Typed presets with cited parameters (`src/sim/presets.ts`: JPL satellite and planetary parameters, the Small-Body Database, published stellar masses and radii) | SB-7 | Each kind's values cited; added body valid | implemented (`lab-tools.spec`) |
+| SB-21 | Add at the cursor with a placement preview | The pointer's ray meets the plane of the primary's orbit; a circular orbit there; a preview and distance under a mouse | SB-7 | Placed where previewed | implemented (`lab-tools.spec`) |
+| SB-22 | Orbital elements in and out (a, e, i, apsides, period) | Osculating elements about the primary (`src/sim/elements.ts`, Vallado's RV2COE and COE2RV) | SB-8 | Round trip elements to state to elements | implemented (`elements.spec`, `lab-tools.spec`) |
+| SB-23 | Drag a velocity, impulse with units | The arrow's tip dragged across the plane facing the camera; a push in m/s along, out of and away (prograde, normal, radial) | SB-21 | Logged as setVelocity | implemented (`lab-tools.spec`) |
+| SB-24 | Multi-select, rename, save as preset | Ticks to duplicate or remove several; rename logged; a library by name in IndexedDB | SB-11 | Presets survive reload | implemented (`lab-tools.spec`) |
+| SB-25 | Radius and density edits with lock rules | Two of mass, radius, density held, the third derived (`setRadius` may carry the mass) | SB-6 | No incompatible triple | implemented (`lab-tools.spec`) |
+| SB-26 | Spin and axial tilt edits | Rigid rotation: spin angular momentum k M R² ω with the fact sheets' moments of inertia; kept through mergers; a world whose spin is set is drawn turning as set | SB-25 | Period and tilt as set; the seeded Earth tilted 23.44° | implemented (`lab-engine.spec`, `lab-tools.spec`) |
+| SB-27 | Undo and redo | From the edit log and the checkpoint before each edit (also when several share a step) | SB-11 | Undo restores state bit for bit | implemented (`lab-engine.spec`, `lab-tools.spec`) |
+| SB-28 | Fixed-body constraints | Held: no velocity, no force felt; the checks say conservation is off while it holds | SB-4 | Momentum budget shows the constraint | implemented (`lab-engine.spec`, `lab-tools.spec`) |
+| SB-29 | Encounter markers and an accuracy control on predictions | Closest approaches along the path (each other body's interior minimum), marked and listed; the prediction's step four times finer or coarser | SB-8 | | implemented (`lab-engine.spec`, `lab-tools.spec`) |
+| SB-30 | Camera frames: inertial, body-fixed, two-body co-rotating | Paths drawn about each primary, in the scenario frame, turning with a pair, or turning with the primary's own rotation (over its ground); never the physics | SB-8 | Trajectories identical across frames | implemented (`lab-tools.spec`) |
+| SB-31 | Lagrange points | The five points of a pair at its present separation (collinear ones by Newton's method), drawn and labelled; a body placed at one co-rotating | SB-30 | L4/L5 Trojan stays | implemented (`elements.spec`: equilibria, a Trojan at Jupiter's L4 for ten Jovian years) |
+| SB-32 | Roche-limit and spin-breakup indicators | Rigid and fluid Roche limits, breakup period, said when crossed | SB-25 | | implemented (`elements.spec`, `lab-tools.spec`) |
+| SB-33 | J2 and tidal spin | J2 about the spin axis with its reaction and torque (axis precession), the fact sheets' J2s | SB-26 | Precession rate against theory | partial (J2 done: nodal regression at the textbook rate; tides research needed) |
+| SB-34 | Measurements (distance, angle, light time, angular size) | Between any two bodies, and an angle seen from a third | SB-8 | | implemented (`elements.spec`, `lab-tools.spec`) |
+| SB-35 | Graphs over time that survive a merger | A tracked quantity per id, following the survivor through a merger; coarsening, never ending | SB-12 | | implemented (`lab-tools.spec`) |
+| SB-36 | Pinned external reference fixture | REBOUND 5.2.2 IAS15, one year of the seed (data only; the code is GPL) | SB-4 | Fixture hash and agreement recorded | implemented (`rebound.spec`; `docs/LAB.md` gives the agreement) |
+| SB-37 | Share link for small scenarios | Seed + log deflated into the URL (up to 8,000 characters) | SB-11 | | implemented (`lab-tools.spec`) |
 
 ## Phase 2: impacts and debris (US)
 
 | ID | Feature | Model / approximation | Depends on | Status |
 |---|---|---|---|---|
 | IM-1 | Outcome by regime (merge, partial accretion, hit-and-run, erosion, super-catastrophic) | Leinhardt and Stewart (2012) scaling laws (`src/sim/impacts.ts`, `docs/IMPACTS.md`), used by the engine at every contact | SB-10 | implemented |
-| IM-2 | Impact heating and a persistent surface mark | Heat already accounted (SB-10); the impact's energy (½ μ v² at contact) reported in megatons of TNT; per-surface mark | IM-1, WR-1 | partial (energy reported, 2026-10-26; the mark and local heating next) |
-| IM-3 | Crater geometry | Collins, Melosh and Marcus (2005) crater scaling (`src/sim/craters.ts`, `docs/IMPACTS.md`): the final diameter, simple or complex, for every cratering impact on a solid world; next, on a height field | GR-1 | partial (diameter and kind reported, 2026-10-26; depth and the mark on the ground next) |
-| IM-4 | Bounded physical ejecta, separate decorative dust | Fragments as bodies (the second remnant and up to six debris), the rest returned to the remnant; the paper's speed distribution next | IM-1 | partial (bodies and accounting done; launch speeds a placeholder; no dust) |
-| IM-5 | Reaccretion | Fragments under gravity merge back | IM-4 | planned |
-| IM-6 | Rings and belts: decorative, test particles, gravitating | Three explicit classes | SB-4 | planned |
+| IM-2 | Impact heating and a persistent surface mark | Heat already accounted (SB-10); the impact's energy (½ μ v² at contact) reported in megatons of TNT; the crater drawn where it struck, turning with the world, on the Earth (land), the Moon, Mercury and Mars (`src/explore/bodies/marks.ts`), its floor glowing while the melt is hot (illustrative, flash-safe) | IM-1, WR-1 | implemented (2026-10-26: `tests/explore/lab.spec.ts`, internal visual QA); the hit world's heating beyond the crater with WR-2 |
+| IM-3 | Crater geometry | Collins, Melosh and Marcus (2005) crater scaling (`src/sim/craters.ts`, `docs/IMPACTS.md`): the final diameter, simple or complex, its depth (breccia lens; Herrick et al. 1997, scaled by gravity to Pike's 1977 lunar fit) and rim, for every cratering impact on a solid world, drawn as relief on the world | GR-1 | implemented (2026-10-26: `tests/unit/craters.spec.ts`, `tests/explore/lab.spec.ts`); on the walk's terrain with GR-5 |
+| IM-4 | Bounded physical ejecta, separate decorative dust | Fragments as bodies (the second remnant and up to six debris), the rest returned to the remnant, launched at Chambers's (2013) 1.05 times the mutual escape speed; a decorative dust plume (points, a few seconds of the wall clock, no part of the physics) at each impact | IM-1 | implemented (2026-10-26: `tests/unit/impacts.spec.ts`, internal visual QA) |
+| IM-5 | Reaccretion | Fragments under gravity merge back: the engine's own contacts, every piece a body | IM-4 | implemented (2026-10-26: `tests/unit/impacts.spec.ts`, a Mars-mass impactor's remnant falling back) |
+| IM-6 | Rings and belts: decorative, test particles, gravitating | Three explicit classes: Saturn's drawn rings decorative (said so in the laboratory); belts and rings of up to 2,000 test particles (4,000 in all) carried about their primary on exact conics with kicks from everything else, J2 included (Wisdom and Holman 1991; `src/sim/swarms.ts`, `src/sim/kepler.ts`); a gravitating ring of up to 24 bodies | SB-4 | implemented (2026-10-26: `tests/unit/kepler.spec.ts`, `tests/unit/swarms.spec.ts`, `tests/explore/lab-tools.spec.ts`) |
 
 ## Phase 3: worlds that respond (US)
 
@@ -169,9 +169,9 @@ research needed, each with its own model, fixtures and measured feasibility firs
 |---|---|---|
 | Change the Sun's mass | Yes | (SB-6) |
 | A second Moon | Yes: add, watch, go back to a checkpoint, try again | (SB-7, SB-11) |
-| A rogue world striking a planet | Aim, prediction, the breakup and its debris yes; a smaller body's crater size and the impact's energy yes; craters drawn on the surface and heating no | IM-2, IM-3 |
+| A rogue world striking a planet | Yes: aim, prediction, the breakup, its debris and their fall back; a smaller body's crater, drawn where it struck with its depth, rays and glow, and the impact's energy | (heating beyond the crater: WR-2) |
 | An Earth-like world farther out | No | WR-2 to WR-4 |
-| A ring under tidal stress | No | IM-6, SB-32 |
+| A ring under tidal stress | Partly: a ring of test particles (or a gravitating ring) about a world, scattered by a world sent past it | (tides on the ring's bodies: SB-33) |
 | Binary sunset | No | ST-3 |
 | From orbit to a crater floor | No | GR-1 to GR-3 |
 | An equal-mass dark Sun | Orbits yes (mass is all gravity sees); the light no | ST-2 |

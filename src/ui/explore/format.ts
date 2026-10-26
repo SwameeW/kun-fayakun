@@ -40,6 +40,8 @@ export interface Formatters {
   number(value: number, digits?: number): string;
   /** The same text with no line break between a number and its unit, nor inside a duration. */
   keep(text: string): string;
+  /** A latitude and longitude (degrees, east positive) as "12.3° N, 45.6° E". */
+  coordinates(latDeg: number, lonDeg: number, digits?: number): string;
 }
 
 export function formatters(i18n: I18n): Formatters {
@@ -50,6 +52,8 @@ export function formatters(i18n: I18n): Formatters {
     name: (id) => i18n.t(NAME_KEYS[id]),
     number,
     keep: keepTogether,
+    coordinates: (lat, lon, digits = 1) =>
+      `${i18n.t(lat >= 0 ? 'ui.universe.living.latN' : 'ui.universe.living.latS', { value: number(Math.abs(lat), digits) })}, ${i18n.t(lon >= 0 ? 'ui.universe.living.lonE' : 'ui.universe.living.lonW', { value: number(Math.abs(lon), digits) })}`,
     distance(kmValue) {
       const value = Math.max(0, kmValue);
       if (value >= AU_FROM * this.auKm) {

@@ -5,7 +5,7 @@
  */
 import { test as base, expect, type Page } from '@playwright/test';
 import type { App, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
-import { SLOW } from './env';
+import { env, SLOW } from './env';
 import { mockLiveHosts } from './live';
 
 export interface KfOptions {
@@ -125,6 +125,9 @@ export const test = base.extend<Fixtures & KfOptions>({
     if (forceWebGL) await page.addInitScript(ensureForceWebGL);
     // No test reaches the Living Earth's live services (tests/support/live).
     await mockLiveHosts(page);
+    // KF_THROTTLE=4 slows the CPU four times (Chromium only): a local stand-in for CI's slow runners, to check a test's timing holds there.
+    const throttle = Number(env('KF_THROTTLE') ?? 0);
+    if (throttle > 1) await (await page.context().newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
     await use(page);
   },
 

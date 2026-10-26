@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { Engine, Prediction, type Command } from './engine';
+import { commandId, Engine, Prediction } from './engine';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
 
 /**
@@ -37,7 +37,7 @@ let owed = 0;
 let recent: Array<{ wall: number; sim: number }> = [];
 let job: { revision: number; prediction: Prediction } | null = null;
 let revision = 0;
-let pendingPrediction: { id: string | null; horizonS: number } | null = null;
+let pendingPrediction: { id: string | null; horizonS: number; accuracy: number } | null = null;
 
 const post = (reply: LabReply, transfer: Transferable[] = []): void => {
   scope.postMessage(reply, transfer);
@@ -49,8 +49,9 @@ function startPrediction(): void {
     return;
   }
   revision += 1;
-  const { id, horizonS } = pendingPrediction;
-  job = { revision, prediction: new Prediction(engine, id, horizonS, PREDICTION_SAMPLES, PREDICTION_STEPS) };
+  const { id, horizonS, accuracy } = pendingPrediction;
+  // A finer prediction is allowed more steps (four times finer, four times as many).
+  job = { revision, prediction: new Prediction(engine, id, horizonS, PREDICTION_SAMPLES, Math.round(PREDICTION_STEPS / Math.min(1, accuracy)), accuracy) };
 }
 
 function snapshot(): void {
@@ -58,6 +59,8 @@ function snapshot(): void {
   const s = engine.state;
   const pos = Float64Array.from(s.pos);
   const vel = Float64Array.from(s.vel);
+  const spin = Float64Array.from(s.spin);
+  const swarms = s.swarms.map((w) => ({ id: w.id, name: w.name, primary: w.primary, lost: w.lost, rel: Float32Array.from(w.pos) }));
   const reply: LabSnapshot = {
     type: 'snapshot',
     generation,
@@ -72,21 +75,27 @@ function snapshot(): void {
     radius: Float64Array.from(s.radius),
     pos,
     vel,
+    spin,
+    j2: Float64Array.from(s.j2),
+    inertia: Float64Array.from(s.inertia),
+    fixed: [...s.fixed],
+    undoable: engine.undoable,
+    redoable: engine.redoable,
     drift: engine.drift(),
     requestedRate: rate,
     achievedRate: achieved,
     paused,
     failure: engine.failure,
-    interventions: engine.interventions.slice(-40).map((i) => ({ step: i.step, t: i.t, kind: i.command.kind, id: idOf(i.command) })),
+    interventions: engine.interventions.slice(-40).map((i) => ({ step: i.step, t: i.t, kind: i.command.kind, id: commandId(i.command) })),
     events: engine.events.slice(-40),
     checkpoints: engine.checkpoints.map((c) => ({ step: c.step, t: c.t })),
+    swarms,
     logLength: engine.scenario.log.length,
     discarded: engine.discarded,
   };
-  post(reply, [pos.buffer, vel.buffer]);
+  post(reply, [pos.buffer, vel.buffer, spin.buffer, ...swarms.map((w) => w.rel.buffer)]);
 }
 
-const idOf = (c: Command): string => (c.kind === 'add' ? c.body.id : c.id);
 
 function tick(): void {
   const now = performance.now();
@@ -124,7 +133,7 @@ function tick(): void {
       const r = job.prediction.result();
       const path = Float64Array.from(r.path);
       const framePath = Float64Array.from(r.framePath);
-      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, path, merged: r.merged, frame: r.frame, framePath }, [path.buffer, framePath.buffer]);
+      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, path, merged: r.merged, frame: r.frame, framePath, encounters: r.encounters }, [path.buffer, framePath.buffer]);
       job = null;
     }
   }
@@ -163,8 +172,16 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         snapshot();
         break;
       case 'predict':
-        pendingPrediction = { id: msg.id, horizonS: msg.horizonS };
+        pendingPrediction = { id: msg.id, horizonS: msg.horizonS, accuracy: msg.accuracy };
         startPrediction();
+        break;
+      case 'undo':
+      case 'redo':
+        applied += 1;
+        if (msg.type === 'undo') engine.undo();
+        else engine.redo();
+        startPrediction();
+        snapshot();
         break;
       case 'seek':
         engine.seek(msg.step);

@@ -1,13 +1,18 @@
 import type { Object3D } from 'three/webgpu';
 import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
-import { BODY_IDS, type BodyId, type LabCommand, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
-import { validateScenario, type BodySpec, type Command, type Scenario } from '../sim/engine';
-import { joules } from '../sim/craters';
-import { circularOrbit, consumes, primaryOf, type SimState } from '../sim/nbody';
+import { BODY_IDS, type BodyId, type LabCommand, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
+import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
+import { bulkDensity, joules } from '../sim/craters';
+import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
+import { circularOrbit, consumes, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
+import { SWARM_LIMITS } from '../sim/swarms';
+import { presets as presetList, type Preset } from '../sim/presets';
+import { decodeScenario, encodeScenario } from '../sim/share';
 import type { LabReply, LabRequest, LabSnapshot } from '../sim/protocol';
-import { seedLaboratory, seedSolarSystem } from '../sim/seed';
+import { seedLaboratory, seedSolarSystem, type Shapes } from '../sim/seed';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
+import type { SurfaceMark } from './bodies/marks';
 import { createOrbits, type OrbitFrame, type OrbitPath, type Orbits } from './orbits';
 import { km, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
@@ -48,6 +53,13 @@ export interface LabFrame {
   compensation: number;
 }
 
+/** The explorer's camera for the pointer: a point (render frame, km from the camera) on the canvas (CSS px; null behind the camera), a canvas point's ray, and the view's direction (unit vectors, render frame). */
+export interface LabPointerView {
+  toScreen(rel: Km): { x: number; y: number } | null;
+  ray(x: number, y: number): Km;
+  forward(): Km;
+}
+
 export interface Lab {
   readonly objects: readonly Object3D[];
   readonly active: boolean;
@@ -58,6 +70,8 @@ export interface Lab {
   jdTdb(): number;
   /** Puts the built-in worlds where the experiment has them; returns those it no longer has. */
   applyBuiltIns(sys: SolarSystem, hidden: Set<BodyId>): void;
+  /** The craters to draw on a world (in its own frame), eased in and their glow fading (flash-safe); none outside the laboratory. */
+  marks(body: BodyId): SurfaceMark[];
   update(frame: LabFrame, relative: (abs: Km, out: Km) => Km): void;
   labels(out: SceneLabel[]): void;
   /** The requested rate and pause (the time machine's controls drive them here). */
@@ -68,16 +82,93 @@ export interface Lab {
   view(): UniverseLab | null;
   /** A body merged away or removed: the one the camera should go to instead (its survivor), once. */
   takeRefocus(): BodyId | null;
+  /** The explorer's camera, for the pointer. */
+  setPointerView(view: LabPointerView): void;
+  /** A press at a canvas point (client px): true when it takes the chosen body's velocity arrow by its tip (the drag then moves the arrow, not the camera). */
+  grab(x: number, y: number): boolean;
+  grabMove(x: number, y: number): void;
+  /** The arrow let go: its velocity applied (or not, cancelled). */
+  grabEnd(cancelled: boolean): void;
+  /** The pointer over the canvas: while placing, the preview follows it. */
+  hover(x: number, y: number): void;
+  /** A tap or click: true when it placed a body (then nothing else hears it). */
+  tap(x: number, y: number): boolean;
+  /** Placing a body with the pointer. */
+  readonly placing: boolean;
   dispose(): void;
 }
 
+const sub3 = (a: readonly number[], b: readonly number[]): Vec3 => [(a[0] ?? 0) - (b[0] ?? 0), (a[1] ?? 0) - (b[1] ?? 0), (a[2] ?? 0) - (b[2] ?? 0)];
+const add3 = (a: readonly number[], b: readonly number[]): Vec3 => [(a[0] ?? 0) + (b[0] ?? 0), (a[1] ?? 0) + (b[1] ?? 0), (a[2] ?? 0) + (b[2] ?? 0)];
+const scale3 = (a: readonly number[], k: number): Vec3 => [(a[0] ?? 0) * k, (a[1] ?? 0) * k, (a[2] ?? 0) * k];
+const dot3 = (a: readonly number[], b: readonly number[]): number => (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
+const cross3 = (a: readonly number[], b: readonly number[]): Vec3 => [(a[1] ?? 0) * (b[2] ?? 0) - (a[2] ?? 0) * (b[1] ?? 0), (a[2] ?? 0) * (b[0] ?? 0) - (a[0] ?? 0) * (b[2] ?? 0), (a[0] ?? 0) * (b[1] ?? 0) - (a[1] ?? 0) * (b[0] ?? 0)];
+const norm3 = (a: readonly number[]): number => Math.hypot(a[0] ?? 0, a[1] ?? 0, a[2] ?? 0);
+const unit3 = (a: readonly number[], fallback: Vec3 = [0, 0, 1]): Vec3 => {
+  const l = norm3(a);
+  return l > 0 ? scale3(a, 1 / l) : fallback;
+};
+/** Rotates v about the unit axis u by angle a (Rodrigues). */
+const rotate3 = (v: readonly number[], u: readonly number[], a: number): Vec3 => {
+  const c = Math.cos(a);
+  const sn = Math.sin(a);
+  const k = cross3(u, v);
+  const d = dot3(u, v) * (1 - c);
+  return [(v[0] ?? 0) * c + k[0] * sn + (u[0] ?? 0) * d, (v[1] ?? 0) * c + k[1] * sn + (u[1] ?? 0) * d, (v[2] ?? 0) * c + k[2] * sn + (u[2] ?? 0) * d];
+};
+/** Render frame back to the scenario's: the inverse of toRender. */
+const fromRender = (x: number, y: number, z: number): Vec3 => [x, -z, y];
+/** A world turning as the visitor set it: its basis at time t, from the basis captured when the spin was set, turned about the pole by the period's share of a turn. */
+const drawnBasis = (d: { t: number; basis: number[]; pole: Vec3; periodS: number }, t: number): number[] => {
+  const angle = (2 * Math.PI * (t - d.t)) / d.periodS;
+  return [0, 1, 2].flatMap((c) => rotate3(d.basis.slice(c * 3, c * 3 + 3), d.pole, angle));
+};
+
 const TRAIL_SLOTS = 24;
 const TRAIL_POINTS = 384;
-const DOT_SLOTS = 32;
+const DOT_SLOTS = MAX_BODIES;
+/** Rings and belts as drawn: a belt about a star warm grey, a ring about anything else icy; their points' size (CSS px) and strength (added light: dense parts brighten). */
+const PARTICLES = { belt: [0.62, 0.55, 0.45], ring: [0.72, 0.76, 0.82], sizePx: 3.2, opacity: 1 } as const;
+/**
+ * Decorative dust (ledger IM-4): a plume of points thrown up from each impact and falling back, drawn
+ * for a few seconds of the wall clock whatever the experiment's rate, and no part of its physics (the
+ * debris that is, are bodies). Its height from the crater (four times its width, at least 20 km, at
+ * most the target's radius) or, with none, half the target's radius; its spread a 40 degree cone. It
+ * fades in and out, dim (flash safety).
+ */
+const DUST = { perImpact: 240, plumes: 3, seconds: 4, cone: (40 * Math.PI) / 180, color: [0.78, 0.7, 0.6], sizePx: 3, opacity: 0.85 } as const;
+/** A body more massive than this (GM, km^3 s^-2: about 80 Jupiters, the least a star can be) is a star: its belts are drawn as rock. */
+const STAR_GM = 1e10;
+/** A gravitating ring's bodies (ids `moonlets-<n>-<k>`): named on screen only when chosen, so twenty-four labels do not crowd the view. */
+const RING_MEMBER = /^moonlets-\d+-\d+$/u;
 const DEFAULT_HORIZON_S = 60 * 86_400;
 const SAVE_KEY = 'current';
+/** Scenarios saved by name in this browser's library: their keys in the store. */
+const LIBRARY_PREFIX = 'library:';
 const DB_NAME = 'kf-lab';
 const STORE = 'scenarios';
+/** The prediction's step against the live run's, by the accuracy chosen. */
+const ACCURACY = { fast: 4, normal: 1, precise: 0.25 } as const;
+/** A tracked quantity keeps at most this many samples (then every other one goes: the record coarsens, never ends). */
+const GRAPH_POINTS = 480;
+/** The worlds drawn with a solid surface for the laboratory's craters to mark (./bodies/marks). */
+const MARKED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
+/**
+ * A crater's drawing over time: how fast it may appear and its glow rise and fall (shares a second of
+ * the wall clock: never a step in brightness, so never a flash), and the simulated time in which its
+ * melt's surface crusts over and stops glowing (illustrative: a lava surface crusts within hours).
+ */
+const MARK_EASE = { appearPerS: 0.7, glowUpPerS: 2, glowDownPerS: 0.35, crustS: 2 * 3600 } as const;
+/** A share link carries its scenario up to this many characters. */
+const SHARE_MAX_CHARS = 8000;
+/** Colours (display terms) of the Lagrange points, the encounters and the placing preview. */
+const LAGRANGE = [0.55, 0.72, 0.95] as const;
+const ENCOUNTER = [0.95, 0.6, 0.4] as const;
+const PLACING = [0.6, 0.95, 0.7] as const;
+/** The velocity arrow's tip can be taken within this many CSS px; the arrow is drawn this long on screen (its direction is the velocity's; dragging its tip twice as far doubles the speed). */
+const HANDLE_PX = 14;
+const ARROW_PX = 90;
+const DEG = Math.PI / 180;
 /** Colours of the lines (display terms): a trail, the chosen body's trail, its prediction, its velocity. */
 const TRAIL = [0.16, 0.2, 0.3] as const;
 const TRAIL_CHOSEN = [0.55, 0.45, 0.26] as const;
@@ -174,7 +265,7 @@ async function idb<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => 
   });
 }
 
-export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMassKg: number, names: Readonly<Record<string, string>>): Lab {
+export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMassKg: number, names: Readonly<Record<string, string>>, shapes: Shapes = {}): Lab {
   /** One G for every body: the Earth's GM (km^3 s^-2) over its mass (kg). */
   const gPerKg = physical.gmKm3S2.Earth / earthMassKg;
   let worker: Worker | null = null;
@@ -187,7 +278,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let paused = false;
   let selected: string | null = null;
   let horizonS = DEFAULT_HORIZON_S;
-  let prediction: { id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; revision: number } | null = null;
+  let prediction: { id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; revision: number; encounters: Encounter[] } | null = null;
   let predictedAt = Number.NEGATIVE_INFINITY;
   /** Edits sent to the worker in this generation (its snapshots say how many it had). */
   let sentEdits = 0;
@@ -197,11 +288,37 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let refocus: BodyId | null = null;
   const edited = new Set<string>();
   const seenEvents = new Set<string>();
+  /** Craters placed on the worlds drawn, by event: where (the world's own frame, as its surface stood at the impact), and as drawn now. */
+  const craterMarks = new Map<string, { body: BodyId; site: Vec3; latDeg: number; lonDeg: number; appear: number; glow: number; at: number }>();
+  const eventKey = (e: { step: number; absorbed: string; kind: string }): string => `${e.step}:${e.absorbed}:${e.kind}`;
   /** Every body's name seen in this scenario, kept after it merges or is removed (for the history). */
   const knownNames = new Map<string, string>();
+  const palette: Preset[] = presetList(physical);
+  const presetView = palette.map((x) => ({ id: x.id, kind: x.kind, massKg: x.gm / gPerKg, radiusKm: x.radiusKm, rotationH: x.rotationH, source: x.source }));
+  let accuracy: UniverseLab['accuracy'] = 'normal';
+  let viewMode: UniverseLab['view'] = 'primary';
+  let showLagrange = false;
+  let measureAsk: { from: string; to: string; via: string | null } | null = null;
+  let tracked: { id: string; quantity: LabQuantity; points: Array<[number, number]>; mergedInto: string | null; lastT: number } | null = null;
+  let library: string[] = [];
+  let share: UniverseLab['share'] = null;
+  /** Placing a new body with the pointer: about which body, and what (a preset, or the Add form's values). */
+  let placing: { primary: string; name: string; massKg: number; radiusKm: number; preset: Preset | null } | null = null;
+  /** Where the pointer would place it (scenario frame, km from the primary), or null off the plane. */
+  let hoverOffset: Vec3 | null = null;
+  /** The velocity arrow being dragged: the body, the arrow's length per km/s, the plane it moves in, and the velocity shown meanwhile (relative to the primary, scenario frame). */
+  let dragging: { id: string; len: number; tipRel: Vec3; normal: Vec3; vel: Vec3 } | null = null;
+  /** The explorer's camera for the pointer (set by the explorer), and the last frame's relative-position function. */
+  let pointerView: LabPointerView | null = null;
+  /** The velocity arrow's tip on the canvas (client px), and its length per km/s (s), as last drawn. */
+  let handleAt: { x: number; y: number } | null = null;
+  let arrowLen = 0;
+  let lastRelative: ((abs: Km, out: Km) => Km) | null = null;
+  /** Built-in worlds whose spin the visitor set, drawn turning as set: from this moment, this basis (render frame), this pole and period. */
+  const spinDrawn = new Map<BodyId, { t: number; basis: number[]; pole: Vec3; periodS: number; flip: boolean; spin: Vec3 }>();
 
   // Trails: each body's recent positions (scenario frame, km), sampled once a snapshot.
-  const trails = new Map<string, { points: number[]; at: number }>();
+  const trails = new Map<string, { points: number[]; at: number; times: number[] }>();
   const trailPaths = Array.from({ length: TRAIL_SLOTS }, () => polylinePath(TRAIL));
   const chosenTrail = polylinePath(TRAIL_CHOSEN);
   const predictionPath = polylinePath(PREDICTION);
@@ -212,7 +329,24 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const weights = new Array<number>(paths.length).fill(0);
   const dots: Impostors = createImpostors(DOT_SLOTS);
   dots.object.visible = false;
+  /** Markers: the five Lagrange points, the prediction's encounters, the placing preview and the velocity arrow's handle. */
+  const MARKER_SLOTS = 10;
+  const markers: Impostors = createImpostors(MARKER_SLOTS);
+  markers.object.visible = false;
+  const markerList: ImpostorDot[] = Array.from({ length: MARKER_SLOTS }, () => ({ position: km(), color: [1, 1, 1] as const, opacity: 0, sizePx: 0, marker: 0 }));
   const dotList: ImpostorDot[] = Array.from({ length: DOT_SLOTS }, () => ({ position: km(), color: [1, 0.9, 0.75] as const, opacity: 0, sizePx: 0, marker: 0 }));
+  // Rings and belts: a point for every particle.
+  const particles: Impostors = createImpostors(SWARM_LIMITS.total);
+  particles.object.visible = false;
+  const particleList: ImpostorDot[] = Array.from({ length: SWARM_LIMITS.total }, () => ({ position: km(), color: PARTICLES.belt, opacity: 0, sizePx: PARTICLES.sizePx, marker: 0 }));
+  let particlesDrawn = 0;
+  // Dust plumes: where each began (its body, and the site in the scenario's frame), when, how high, and its points' throws.
+  const dust: Impostors = createImpostors(DUST.perImpact * DUST.plumes);
+  dust.object.visible = false;
+  const dustList: ImpostorDot[] = Array.from({ length: DUST.perImpact * DUST.plumes }, () => ({ position: km(), color: DUST.color, opacity: 0, sizePx: DUST.sizePx, marker: 0 }));
+  const plumes: Array<{ key: string; body: string; site: Vec3; born: number; heightKm: number; throws: Float64Array }> = [];
+  /** The worlds' bases now (render frame), so a plume rises from its crater as the world turns. */
+  const basisNow = new Map<BodyId, number[]>();
   const labelList: SceneLabel[] = [];
   const scratch = km();
   const abs = km();
@@ -241,6 +375,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     trails.clear();
     edited.clear();
     seenEvents.clear();
+    craterMarks.clear();
     knownNames.clear();
     if (!worker) {
       worker = new Worker(new URL('../sim/worker.ts', import.meta.url), { type: 'module' });
@@ -254,8 +389,38 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   };
 
   const requestPrediction = (): void => {
-    send({ type: 'predict', generation, id: selected, horizonS });
+    send({ type: 'predict', generation, id: selected, horizonS, accuracy: ACCURACY[accuracy] });
     predictedAt = snap?.t ?? 0;
+  };
+
+  /** The tracked quantity's value for a body now. */
+  const quantity = (s: LabSnapshot, i: number, q: LabQuantity): number | null => {
+    if (q === 'energyDrift') return s.drift.energy;
+    const p = primaryOf(s.gm, s.pos, i);
+    const r = [0, 1, 2].map((k) => (s.pos[i * 3 + k] ?? 0) - (p >= 0 ? (s.pos[p * 3 + k] ?? 0) : 0));
+    const v = [0, 1, 2].map((k) => (s.vel[i * 3 + k] ?? 0) - (p >= 0 ? (s.vel[p * 3 + k] ?? 0) : 0));
+    if (q === 'distance') return p >= 0 ? Math.hypot(...r) : null;
+    if (q === 'speed') return Math.hypot(...v);
+    if (p < 0) return null;
+    return elementsFromState(r, v, (s.gm[p] ?? 0) + (s.gm[i] ?? 0)).e;
+  };
+
+  /** One sample of the tracked quantity (following the body into whatever it merges with). */
+  const sampleTracked = (s: LabSnapshot): void => {
+    const t = tracked;
+    if (!t || s.t === t.lastT) return;
+    const merged = s.events.find((e) => consumes(e) && e.absorbed === t.id);
+    if (merged && !s.ids.includes(t.id)) {
+      t.mergedInto = merged.survivor;
+      t.id = merged.survivor;
+    }
+    const i = s.ids.indexOf(t.id);
+    if (i < 0) return;
+    const value = quantity(s, i, t.quantity);
+    if (value === null || !Number.isFinite(value)) return;
+    t.lastT = s.t;
+    t.points.push([s.t, value]);
+    if (t.points.length > GRAPH_POINTS) t.points = t.points.filter((_, k) => k % 2 === 0);
   };
 
   const onReply = (msg: LabReply): void => {
@@ -266,11 +431,29 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       snap = msg;
       snapAt = performance.now();
       msg.ids.forEach((id, i) => knownNames.set(id, msg.names[i] ?? id));
+      for (const w of msg.swarms) knownNames.set(w.id, w.name);
       sampleTrails(msg);
+      sampleTracked(msg);
       for (const e of msg.events) {
-        const key = `${e.step}:${e.absorbed}:${e.kind}`;
+        const key = eventKey(e);
         if (seenEvents.has(key)) continue;
         seenEvents.add(key);
+        // Dust from the impact (decorative): its throws fixed now, so each plume is the same however it is drawn.
+        const ti = msg.ids.indexOf(e.survivor);
+        const radiusKm = ti >= 0 ? (msg.radius[ti] ?? 0) : 0;
+        if (e.kind !== 'graze' && radiusKm > 0) {
+          let r = (Math.imul(e.step + 1, 2654435761) ^ e.absorbed.length * 40503) >>> 0;
+          const next = (): number => ((r = (Math.imul(r, 1664525) + 1013904223) >>> 0) / 4294967296);
+          const throws = new Float64Array(DUST.perImpact * 3);
+          for (let k = 0; k < DUST.perImpact; k += 1) {
+            throws[k * 3] = DUST.cone * Math.sqrt(next());
+            throws[k * 3 + 1] = 2 * Math.PI * next();
+            throws[k * 3 + 2] = 0.3 + 0.7 * next();
+          }
+          const heightKm = e.crater ? Math.min(radiusKm, Math.max(20, 4 * e.crater.diameterKm)) : 0.5 * radiusKm;
+          plumes.push({ key, body: e.survivor, site: [e.site[0], e.site[1], e.site[2]], born: performance.now(), heightKm, throws });
+          while (plumes.length > DUST.plumes) plumes.shift();
+        }
         // A graze leaves both bodies; a merger or a breakup ends the projectile (the target keeps its id).
         if (!consumes(e)) continue;
         trails.delete(e.absorbed);
@@ -286,7 +469,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       // As simulated time passes, the prediction (from "now") is redone every eighth of its horizon.
       if (selected && Math.abs(msg.t - predictedAt) > horizonS / 8) requestPrediction();
     } else if (msg.type === 'prediction') {
-      if (!prediction || msg.revision >= prediction.revision) prediction = { id: msg.id, horizonS: msg.horizonS, path: msg.path, merged: msg.merged, frame: msg.frame, framePath: msg.framePath, revision: msg.revision };
+      if (!prediction || msg.revision >= prediction.revision) prediction = { id: msg.id, horizonS: msg.horizonS, path: msg.path, merged: msg.merged, frame: msg.frame, framePath: msg.framePath, revision: msg.revision, encounters: msg.encounters };
     } else if (msg.type === 'saved') {
       saveWaiters.get(msg.requestId)?.(msg.scenario);
       saveWaiters.delete(msg.requestId);
@@ -300,13 +483,17 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       const id = s.ids[i] ?? '';
       let t = trails.get(id);
       if (!t) {
-        t = { points: [], at: Number.NEGATIVE_INFINITY };
+        t = { points: [], at: Number.NEGATIVE_INFINITY, times: [] };
         trails.set(id, t);
       }
       if (s.t === t.at) continue;
       t.at = s.t;
       t.points.push(s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0);
-      if (t.points.length > TRAIL_POINTS * 3) t.points.splice(0, t.points.length - TRAIL_POINTS * 3);
+      t.times.push(s.t);
+      if (t.points.length > TRAIL_POINTS * 3) {
+        t.points.splice(0, t.points.length - TRAIL_POINTS * 3);
+        t.times.splice(0, t.times.length - TRAIL_POINTS);
+      }
     }
     for (const id of [...trails.keys()]) if (!s.ids.includes(id)) trails.delete(id);
   };
@@ -322,8 +509,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const edit = (command: Command): void => {
     sentEdits += 1;
     send({ type: 'command', generation, command });
-    if (command.kind !== 'add') edited.add(command.id);
-    else edited.add(command.body.id);
+    edited.add(commandId(command));
   };
 
   /** A fresh id for a new body, never used before in this scenario. */
@@ -353,14 +539,101 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     pos: [s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0],
     vel: [s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0],
     spin: [0, 0, 0],
+    j2: [0],
+    inertia: [0.4],
+    fixed: [],
     t: s.t,
     step: s.step,
     internal: 0,
     passing: [],
+    swarms: [],
   });
 
+  /** Body i relative to its primary (scenario frame): the primary's index, position and velocity, and the pair's GM; null without one. */
+  const relativeTo = (s: LabSnapshot, i: number): { p: number; r: Vec3; v: Vec3; mu: number } | null => {
+    const p = primaryOf(s.gm, s.pos, i);
+    if (p < 0) return null;
+    const at = (a: Float64Array, k: number): Vec3 => [a[k * 3] ?? 0, a[k * 3 + 1] ?? 0, a[k * 3 + 2] ?? 0];
+    return { p, r: sub3(at(s.pos, i), at(s.pos, p)), v: sub3(at(s.vel, i), at(s.vel, p)), mu: (s.gm[p] ?? 0) + (s.gm[i] ?? 0) };
+  };
+  const posNow = (s: LabSnapshot, i: number, ahead: number): Vec3 => [0, 1, 2].map((k) => (s.pos[i * 3 + k] ?? 0) + (s.vel[i * 3 + k] ?? 0) * ahead) as Vec3;
+  const spinOf = (s: LabSnapshot, i: number): Vec3 => [s.spin[i * 3] ?? 0, s.spin[i * 3 + 1] ?? 0, s.spin[i * 3 + 2] ?? 0];
+
+  /** A new body's rotation from a preset's period: prograde (or backwards) about the pole of its orbit. */
+  const presetSpin = (preset: Preset | null, orbitPole: readonly number[]): BodySpec['spin'] =>
+    preset?.rotationH ? { periodS: Math.abs(preset.rotationH) * 3600, pole: scale3(unit3(orbitPole), preset.rotationH < 0 ? -1 : 1) } : undefined;
+
+  /** The chosen body's velocity arrow: its tip (scenario frame), its length per km/s (s), and the velocity it shows (relative to the primary). */
+  const arrow = (s: LabSnapshot, i: number, ahead: number, len: number, shown?: Vec3): { tip: Vec3; len: number; vel: Vec3 } | null => {
+    const rel = relativeTo(s, i);
+    const vel = shown ?? (rel ? rel.v : ([s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0] as Vec3));
+    if (!(norm3(vel) > 0) || !(len > 0)) return null;
+    return { tip: add3(posNow(s, i, ahead), scale3(vel, len)), len, vel };
+  };
+
+  /** Where the pointer meets the plane of the placing primary's orbit (through its centre): the offset from it (scenario frame, km), or null. */
+  const placeOffset = (x: number, y: number): Vec3 | null => {
+    const s = snap;
+    const v = pointerView;
+    const rel = lastRelative;
+    if (!s || !v || !rel || !placing) return null;
+    const p = s.ids.indexOf(placing.primary);
+    if (p < 0) return null;
+    const pole = poleOf(s, p);
+    const n = toRender(pole[0] ?? 0, pole[1] ?? 0, pole[2] ?? 0, km());
+    const c = posNow(s, p, extrapolation());
+    const P = rel(toRender(c[0], c[1], c[2], km()), km());
+    const d = v.ray(x, y);
+    const denom = d.x * n.x + d.y * n.y + d.z * n.z;
+    if (Math.abs(denom) < 1e-9) return null;
+    const t = (P.x * n.x + P.y * n.y + P.z * n.z) / denom;
+    if (!(t > 0)) return null;
+    const off = fromRender(d.x * t - P.x, d.y * t - P.y, d.z * t - P.z);
+    return norm3(off) > (s.radius[p] ?? 0) * 1.05 ? off : null;
+  };
+
+  /** Adds a body at an offset from the placing primary, on a circular orbit about it there (prograde, in the plane of the primary's own orbit). */
+  const addPlaced = (off: Vec3): void => {
+    const s = snap;
+    const pl = placing;
+    if (!s || !pl) return;
+    const p = s.ids.indexOf(pl.primary);
+    if (p < 0) return;
+    const gm = pl.massKg * gPerKg;
+    const pole = poleOf(s, p);
+    const placed = circularOrbit(stateOf(s, p), 0, norm3(off), gm, pole, off);
+    const id = freshId('body');
+    edit({ kind: 'add', body: { id, name: pl.name.slice(0, 60) || id, gm, radiusKm: pl.radiusKm, pos: placed.pos as Vec3, vel: placed.vel as Vec3, origin: 'user-edited', sourceIds: [], ...(presetSpin(pl.preset, pole) ? { spin: presetSpin(pl.preset, pole) } : {}) } });
+    selected = id;
+    placing = null;
+    hoverOffset = null;
+    requestPrediction();
+  };
+
+  const refreshLibrary = (): void => {
+    void idb<IDBValidKey[]>('readonly', (store) => store.getAllKeys()).then(
+      (keys) => {
+        library = keys.map(String).filter((k) => k.startsWith(LIBRARY_PREFIX)).map((k) => k.slice(LIBRARY_PREFIX.length)).sort((a, b) => a.localeCompare(b));
+      },
+      () => {
+        library = [];
+      },
+    );
+  };
+
+  /** The pair the turning frame turns with: the chosen body's primary, and the heaviest body that moves about it (the chosen one itself, when it is). */
+  const corotatingPair = (s: LabSnapshot): { a: number; b: number } | null => {
+    const i = selected ? s.ids.indexOf(selected) : -1;
+    if (i < 0) return null;
+    const a = primaryOf(s.gm, s.pos, i);
+    if (a < 0) return null;
+    let b = -1;
+    for (let k = 0; k < s.ids.length; k += 1) if (k !== a && primaryOf(s.gm, s.pos, k) === a && (b < 0 || (s.gm[k] ?? 0) > (s.gm[b] ?? 0))) b = k;
+    return b < 0 ? null : { a, b };
+  };
+
   const lab: Lab = {
-    objects: [lines.mesh, dots.object],
+    objects: [lines.mesh, dots.object, markers.object, particles.object, dust.object],
     get active() {
       return active;
     },
@@ -368,10 +641,14 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       active = true;
       selected = null;
       status = null;
-      seedScenario = seed === 'solar' ? seedSolarSystem(ephemeris, physical, jdTdb, names) : seedLaboratory(physical, seed === 'three');
+      seedScenario = seed === 'solar' ? seedSolarSystem(ephemeris, physical, jdTdb, names, shapes) : seedLaboratory(physical, seed === 'three');
       load(seedScenario);
       lines.mesh.visible = true;
       dots.object.visible = true;
+      markers.object.visible = true;
+      particles.object.visible = true;
+      dust.object.visible = true;
+      refreshLibrary();
     },
     stop() {
       active = false;
@@ -383,6 +660,14 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       trails.clear();
       lines.mesh.visible = false;
       dots.object.visible = false;
+      markers.object.visible = false;
+      particles.object.visible = false;
+      particlesDrawn = 0;
+      dust.object.visible = false;
+      plumes.length = 0;
+      placing = null;
+      dragging = null;
+      spinDrawn.clear();
     },
     jdTdb() {
       const epoch = seedScenario?.epochJdTdb ?? 0;
@@ -401,8 +686,81 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         }
         toRender((s.pos[i * 3] ?? 0) + (s.vel[i * 3] ?? 0) * ahead, (s.pos[i * 3 + 1] ?? 0) + (s.vel[i * 3 + 1] ?? 0) * ahead, (s.pos[i * 3 + 2] ?? 0) + (s.vel[i * 3 + 2] ?? 0) * ahead, sys.bodies[id].position);
       }
+      // A world whose spin the visitor set turns as set: from the moment it was set, its drawn pole turned
+      // onto the new one (or its opposite, so its north stays the side it was), at the new period. The
+      // rest turn as the IAU models have them.
+      const spinSet = new Set(s.interventions.filter((x) => x.kind === 'setSpin').map((x) => x.id));
+      const tNow = s.t + ahead;
+      for (const id of BODY_IDS) {
+        const i = s.ids.indexOf(id);
+        const L = i < 0 ? ([0, 0, 0] as Vec3) : spinOf(s, i);
+        const Ln = norm3(L);
+        if (i < 0 || !spinSet.has(id) || !(Ln > 0)) {
+          spinDrawn.delete(id);
+          continue;
+        }
+        const basis = sys.bodies[id].basis;
+        let d = spinDrawn.get(id);
+        if (!d || norm3(sub3(d.spin, L)) > 1e-6 * Ln) {
+          const pole = toRender(L[0] / Ln, L[1] / Ln, L[2] / Ln, km());
+          const n: Vec3 = [pole.x, pole.y, pole.z];
+          const current = d ? drawnBasis(d, tNow) : [...basis];
+          const meshPole: Vec3 = [current[3] ?? 0, current[4] ?? 1, current[5] ?? 0];
+          const flip = dot3(meshPole, n) < 0;
+          const target = flip ? scale3(n, -1) : n;
+          const axis = cross3(meshPole, target);
+          const sinA = norm3(axis);
+          const turn = Math.atan2(sinA, dot3(meshPole, target));
+          const u = sinA > 1e-12 ? scale3(axis, 1 / sinA) : ([1, 0, 0] as Vec3);
+          const aligned = [0, 1, 2].flatMap((c) => rotate3(current.slice(c * 3, c * 3 + 3), u, turn));
+          d = { t: tNow, basis: aligned, pole: n, periodS: ((s.inertia[i] ?? 0.4) * (s.gm[i] ?? 0) * (s.radius[i] ?? 0) ** 2 * 2 * Math.PI) / Ln, flip, spin: L };
+          spinDrawn.set(id, d);
+        }
+        const out = drawnBasis(d, tNow);
+        for (let k = 0; k < 9; k += 1) basis[k] = out[k] ?? 0;
+      }
+      // Each crater on a world drawn solid, placed once: where the surface stood at the moment of impact
+      // (turning as the IAU models have it, or as the visitor set it from then on), in the world's own frame.
+      const epoch = seedScenario?.epochJdTdb ?? 0;
+      for (const e of s.events) {
+        const body = e.crater ? builtIn(e.survivor) : null;
+        if (!body || !MARKED.includes(body) || craterMarks.has(eventKey(e))) continue;
+        const d = spinDrawn.get(body);
+        const basis = d && d.t <= e.t ? drawnBasis(d, e.t) : sys.basisAt(body, epoch + e.t / 86_400, new Array<number>(9).fill(0));
+        const r = toRender(e.site[0], e.site[1], e.site[2], km());
+        const site: Vec3 = [0, 1, 2].map((c) => r.x * (basis[c * 3] ?? 0) + r.y * (basis[c * 3 + 1] ?? 0) + r.z * (basis[c * 3 + 2] ?? 0)) as Vec3;
+        // Mesh y is the pole, x the prime meridian, z the body's -y (90 degrees west): planetocentric, east positive.
+        craterMarks.set(eventKey(e), { body, site, latDeg: Math.asin(Math.max(-1, Math.min(1, site[1]))) / DEG, lonDeg: Math.atan2(-site[2], site[0]) / DEG, appear: 0, glow: 0, at: performance.now() });
+      }
+      for (const p of plumes) {
+        const b = builtIn(p.body);
+        if (b) basisNow.set(b, [...sys.bodies[b].basis]);
+      }
+    },
+    marks(body) {
+      const s = snap;
+      if (!active || !s) return [];
+      const i = s.ids.indexOf(body);
+      const radius = i >= 0 ? (s.radius[i] ?? 0) : 0;
+      if (!(radius > 0)) return [];
+      const now = s.t + extrapolation();
+      const wall = performance.now();
+      const out: SurfaceMark[] = [];
+      for (const e of s.events) {
+        const m = e.crater ? craterMarks.get(eventKey(e)) : undefined;
+        if (!m || !e.crater || m.body !== body) continue;
+        // Eased toward where it should be, never faster than the rates allow.
+        const dtS = Math.min(0.25, Math.max(0, (wall - m.at) / 1000));
+        m.at = wall;
+        m.appear = Math.min(1, m.appear + dtS * MARK_EASE.appearPerS);
+        const target = Math.exp(-Math.max(0, now - e.t) / MARK_EASE.crustS);
+        m.glow = target > m.glow ? Math.min(target, m.glow + dtS * MARK_EASE.glowUpPerS) : Math.max(target, m.glow - dtS * MARK_EASE.glowDownPerS);
+        out.push({ site: m.site, angle: e.crater.diameterKm / 2 / radius, depth: e.crater.depthKm / radius, rim: e.crater.rimKm / radius, complex: e.crater.complex, appear: m.appear, glow: m.glow });
+      }
+      return out;
     },
     update(frame, relative) {
+      lastRelative = relative;
       if (!active || !snap) {
         weights.fill(0);
         return;
@@ -414,23 +772,79 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         for (let c = 0; c < 3; c += 1) out[c] = (s.pos[k * 3 + c] ?? 0) + (s.vel[k * 3 + c] ?? 0) * ahead;
         return out;
       };
-      // Trails, each about its primary as the real explorer draws orbits (a moon's about its planet, not
-      // smeared along the planet's path); the chosen body's in gold, the rest faint (as many as there are slots).
-      // Every trail is sampled at the same snapshots, so two trails line up from their ends.
+      // The turning frame (view "corotating"): the chosen body's primary A and the heaviest body about it, B;
+      // its axes now (e1 from A toward B in the pair's plane, e3 the pair's pole), and how fast the pair turns.
+      const pair = viewMode === 'corotating' ? corotatingPair(s) : null;
+      const ta = pair ? trails.get(s.ids[pair.a] ?? '') : undefined;
+      const tb = pair ? trails.get(s.ids[pair.b] ?? '') : undefined;
+      let turning: { aNow: Vec3; e1: Vec3; e2: Vec3; e3: Vec3; omega: number; ta: { points: number[] }; tb: { points: number[] } } | null = null;
+      if (pair && ta && tb) {
+        const aNow = now(pair.a, [0, 0, 0]) as Vec3;
+        const r = sub3(now(pair.b, [0, 0, 0]), aNow);
+        const v = [0, 1, 2].map((k) => (s.vel[pair.b * 3 + k] ?? 0) - (s.vel[pair.a * 3 + k] ?? 0));
+        const e3 = unit3(cross3(r, v));
+        const e1 = unit3(sub3(r, scale3(e3, dot3(r, e3))), [1, 0, 0]);
+        turning = { aNow, e1, e2: cross3(e3, e1), e3, omega: norm3(cross3(r, v)) / Math.max(dot3(r, r), 1e-9), ta, tb };
+      }
+      // The frame turning with the chosen body's primary's own rotation (view "bodyfixed"): its axis and rate.
+      let spinning: { a: number; aNow: Vec3; axis: Vec3; omega: number; ta: { points: number[]; times: number[] } } | null = null;
+      if (viewMode === 'bodyfixed' && selected) {
+        const i0 = s.ids.indexOf(selected);
+        const a = i0 < 0 ? -1 : primaryOf(s.gm, s.pos, i0);
+        const ta0 = a < 0 ? undefined : trails.get(s.ids[a] ?? '');
+        const L = a < 0 ? ([0, 0, 0] as Vec3) : spinOf(s, a);
+        const Ln = norm3(L);
+        if (a >= 0 && ta0 && Ln > 0) {
+          const periodS = ((s.inertia[a] ?? 0.4) * (s.gm[a] ?? 0) * (s.radius[a] ?? 0) ** 2 * 2 * Math.PI) / Ln;
+          spinning = { a, aNow: now(a, [0, 0, 0]) as Vec3, axis: scale3(L, 1 / Ln), omega: (2 * Math.PI) / periodS, ta: ta0 };
+        }
+      }
+      const tNow = s.t + ahead;
+      /** A point of the turning frame's sample k (A and B there) carried to the frame as it stands now. */
+      const turned = (x: readonly number[], a: readonly number[], b: readonly number[], f: NonNullable<typeof turning>): Vec3 => {
+        const d = sub3(x, a);
+        const ab = sub3(b, a);
+        const f1 = unit3(sub3(ab, scale3(f.e3, dot3(ab, f.e3))), f.e1);
+        const f2 = cross3(f.e3, f1);
+        return add3(f.aNow, add3(add3(scale3(f.e1, dot3(d, f1)), scale3(f.e2, dot3(d, f2))), scale3(f.e3, dot3(d, f.e3))));
+      };
+      // Trails: about each body's primary (as the real explorer draws orbits: a moon's about its planet, not
+      // smeared along the planet's path), in the scenario's frame, or in the frame turning with the pair; the
+      // chosen body's in gold, the rest faint (as many as there are slots). Every trail is sampled at the same
+      // snapshots, so two trails line up from their ends.
       let slot = 0;
       weights.fill(0);
       for (const [id, t] of trails) {
         const b = s.ids.indexOf(id);
-        const p = b < 0 ? -1 : primaryOf(s.gm, s.pos, b);
+        const p = viewMode !== 'primary' || b < 0 ? -1 : primaryOf(s.gm, s.pos, b);
         const pt = p < 0 ? undefined : trails.get(s.ids[p] ?? '');
-        const n = Math.min(t.points.length, pt ? pt.points.length : Number.POSITIVE_INFINITY) / 3;
+        const limit = turning ? Math.min(turning.ta.points.length, turning.tb.points.length) : spinning ? spinning.ta.points.length : pt ? pt.points.length : Number.POSITIVE_INFINITY;
+        const n = Math.min(t.points.length, limit) / 3;
         if (n < 2) continue;
         const from = t.points.length / 3 - n;
         const fromP = pt ? pt.points.length / 3 - n : 0;
+        const fromA = turning ? turning.ta.points.length / 3 - n : spinning ? spinning.ta.points.length / 3 - n : 0;
+        const fromB = turning ? turning.tb.points.length / 3 - n : 0;
         if (pt) now(p, anchor);
         const pts = new Array<number>(n * 3);
         for (let k = 0; k < n; k += 1) {
-          for (let c = 0; c < 3; c += 1) point[c] = (t.points[(from + k) * 3 + c] ?? 0) + (pt ? (anchor[c] ?? 0) - (pt.points[(fromP + k) * 3 + c] ?? 0) : 0);
+          if (spinning) {
+            // Turned back by the primary's rotation since that sample: the path as the ground under it sees it.
+            const sa = spinning.ta.points;
+            const rel = [0, 1, 2].map((c) => (t.points[(from + k) * 3 + c] ?? 0) - (sa[(fromA + k) * 3 + c] ?? 0));
+            const q = add3(spinning.aNow, rotate3(rel, spinning.axis, spinning.omega * (tNow - (t.times[from + k] ?? tNow))));
+            point[0] = q[0];
+            point[1] = q[1];
+            point[2] = q[2];
+          } else if (turning) {
+            const at = (arr: number[], k0: number): Vec3 => [arr[k0 * 3] ?? 0, arr[k0 * 3 + 1] ?? 0, arr[k0 * 3 + 2] ?? 0];
+            const q = turned(at(t.points, from + k), at(turning.ta.points, fromA + k), at(turning.tb.points, fromB + k), turning);
+            point[0] = q[0];
+            point[1] = q[1];
+            point[2] = q[2];
+          } else {
+            for (let c = 0; c < 3; c += 1) point[c] = (t.points[(from + k) * 3 + c] ?? 0) + (pt ? (anchor[c] ?? 0) - (pt.points[(fromP + k) * 3 + c] ?? 0) : 0);
+          }
           toRender(point[0] ?? 0, point[1] ?? 0, point[2] ?? 0, scratch);
           pts[k * 3] = scratch.x;
           pts[k * 3 + 1] = scratch.y;
@@ -445,18 +859,29 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           slot += 1;
         }
       }
-      // The prediction (about the body it moved about when it was made, where that body is now), and the
-      // velocity relative to the primary (a day's travel, at least a tenth of the way to it).
+      // The prediction: about the body it moved about when it was made (where that body is now), in the
+      // scenario's frame, or turning with the pair (taken to turn at its present rate over the horizon).
       const i = selected ? s.ids.indexOf(selected) : -1;
+      /** A predicted point (sample k of n, or at time tS) in the frame drawn now. */
+      let framed: ((x: readonly number[], k: number, tS: number) => Vec3) | null = null;
       if (prediction && i >= 0 && prediction.id === selected && prediction.path.length >= 6) {
-        const n = prediction.path.length / 3;
-        const f = prediction.frame === null ? -1 : s.ids.indexOf(prediction.frame);
-        const about = f >= 0 && prediction.framePath.length === prediction.path.length;
-        if (about) now(f, anchor);
+        const pr = prediction;
+        const n = pr.path.length / 3;
+        const f = pr.frame === null ? -1 : s.ids.indexOf(pr.frame);
+        const about = f >= 0 && pr.framePath.length === pr.path.length;
+        const fNow = about ? (now(f, [0, 0, 0]) as Vec3) : null;
+        const frameAt = (k: number): Vec3 => [pr.framePath[k * 3] ?? 0, pr.framePath[k * 3 + 1] ?? 0, pr.framePath[k * 3 + 2] ?? 0];
+        framed = (x, k, tS) => {
+          const kk = Math.max(0, Math.min(n - 1, k));
+          if (spinning && about && pr.frame === s.ids[spinning.a]) return add3(spinning.aNow, rotate3(sub3(x, frameAt(kk)), spinning.axis, -spinning.omega * (tS - ahead)));
+          if (turning && about) return add3(turning.aNow, rotate3(sub3(x, frameAt(kk)), turning.e3, -turning.omega * tS));
+          if (viewMode === 'inertial' || !about || !fNow) return [x[0] ?? 0, x[1] ?? 0, x[2] ?? 0];
+          return add3(x, sub3(fNow, frameAt(kk)));
+        };
         const pts = new Array<number>(n * 3);
         for (let k = 0; k < n; k += 1) {
-          for (let c = 0; c < 3; c += 1) point[c] = (prediction.path[k * 3 + c] ?? 0) + (about ? (anchor[c] ?? 0) - (prediction.framePath[k * 3 + c] ?? 0) : 0);
-          toRender(point[0] ?? 0, point[1] ?? 0, point[2] ?? 0, scratch);
+          const q = framed([pr.path[k * 3] ?? 0, pr.path[k * 3 + 1] ?? 0, pr.path[k * 3 + 2] ?? 0], k, ((k + 1) / n) * pr.horizonS);
+          toRender(q[0], q[1], q[2], scratch);
           pts[k * 3] = scratch.x;
           pts[k * 3 + 1] = scratch.y;
           pts[k * 3 + 2] = scratch.z;
@@ -464,21 +889,22 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         predictionPath.set(pts, n);
         weights[TRAIL_SLOTS + 1] = 1;
       }
-      if (i >= 0) {
-        const p = primaryOf(s.gm, s.pos, i);
-        const vx = (s.vel[i * 3] ?? 0) - (p >= 0 ? (s.vel[p * 3] ?? 0) : 0);
-        const vy = (s.vel[i * 3 + 1] ?? 0) - (p >= 0 ? (s.vel[p * 3 + 1] ?? 0) : 0);
-        const vz = (s.vel[i * 3 + 2] ?? 0) - (p >= 0 ? (s.vel[p * 3 + 2] ?? 0) : 0);
-        const v = Math.hypot(vx, vy, vz);
-        const dist = p >= 0 ? Math.hypot((s.pos[i * 3] ?? 0) - (s.pos[p * 3] ?? 0), (s.pos[i * 3 + 1] ?? 0) - (s.pos[p * 3 + 1] ?? 0), (s.pos[i * 3 + 2] ?? 0) - (s.pos[p * 3 + 2] ?? 0)) : v * 86_400;
-        const len = v > 0 ? Math.max(v * 86_400, dist * 0.1) / v : 0;
-        const x0 = (s.pos[i * 3] ?? 0) + (s.vel[i * 3] ?? 0) * ahead;
-        const y0 = (s.pos[i * 3 + 1] ?? 0) + (s.vel[i * 3 + 1] ?? 0) * ahead;
-        const z0 = (s.pos[i * 3 + 2] ?? 0) + (s.vel[i * 3 + 2] ?? 0) * ahead;
-        const a = toRender(x0, y0, z0, km());
-        const b = toRender(x0 + vx * len, y0 + vy * len, z0 + vz * len, km());
+      // The velocity relative to the primary, ARROW_PX long on screen whatever its speed (kept while dragged, so the tip follows the pointer).
+      const shown = dragging && dragging.id === selected ? dragging.vel : undefined;
+      if (i >= 0 && !dragging) {
+        const b = posNow(s, i, ahead);
+        const at = relative(toRender(b[0], b[1], b[2], km()), km());
+        const rv = relativeTo(s, i)?.v ?? ([s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0] as Vec3);
+        const speedNow = norm3(rv);
+        arrowLen = speedNow > 0 ? (ARROW_PX * Math.hypot(at.x, at.y, at.z)) / Math.max(frame.pxPerTan, 1) / speedNow : 0;
+      }
+      const arrowNow = i >= 0 ? arrow(s, i, ahead, dragging ? dragging.len : arrowLen, shown) : null;
+      if (arrowNow) {
+        const base = posNow(s, i, ahead);
+        const a = toRender(base[0], base[1], base[2], km());
+        const b = toRender(arrowNow.tip[0], arrowNow.tip[1], arrowNow.tip[2], km());
         velocityPath.set([a.x, a.y, a.z, b.x, b.y, b.z], 2);
-        weights[TRAIL_SLOTS + 2] = v > 0 ? 1 : 0;
+        weights[TRAIL_SLOTS + 2] = 1;
       }
       const orbitFrame: OrbitFrame = { camera: frame.camera, forward: frame.forward, near: frame.near, far: frame.far, focus: frame.focus, focusRadius: frame.focusRadius, focusDistance: frame.focusDistance, compensation: frame.compensation, light: 1, weights };
       lines.update(orbitFrame);
@@ -499,7 +925,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         dot.sizePx = Math.max(4, Math.min(40, discPx * 2));
         dot.opacity = 1;
         dot.marker = id === selected ? 1 : 0;
-        labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.9, offset: [10, -10] });
+        if (!RING_MEMBER.test(id) || id === selected) labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.9, offset: [10, -10] });
         d += 1;
       }
       for (let k = d; k < DOT_SLOTS; k += 1) {
@@ -507,6 +933,129 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         if (dot) dot.opacity = 0;
       }
       dots.update(dotList, frame.compensation);
+
+      // Rings and belts: each particle where the snapshot had it about its primary, the primary where it is now.
+      let q = 0;
+      for (const w of s.swarms) {
+        const p = s.ids.indexOf(w.primary);
+        if (p < 0) continue;
+        const primaryAt = posNow(s, p, ahead);
+        const color = (s.gm[p] ?? 0) > STAR_GM ? PARTICLES.belt : PARTICLES.ring;
+        const m = w.rel.length / 3;
+        for (let k = 0; k < m && q < SWARM_LIMITS.total; k += 1) {
+          const dot = particleList[q];
+          if (!dot) break;
+          toRender(primaryAt[0] + (w.rel[k * 3] ?? 0), primaryAt[1] + (w.rel[k * 3 + 1] ?? 0), primaryAt[2] + (w.rel[k * 3 + 2] ?? 0), abs);
+          relative(abs, rel);
+          placeScaled(rel, 1, frame.far, dot.position);
+          dot.color = color;
+          dot.opacity = PARTICLES.opacity;
+          q += 1;
+        }
+      }
+      for (let k = q; k < particlesDrawn; k += 1) {
+        const dot = particleList[k];
+        if (dot) dot.opacity = 0;
+      }
+      particlesDrawn = q;
+      particles.update(particleList, frame.compensation);
+
+      // Dust plumes: up from the crater (turning with its world) and back down, fading, over a few seconds.
+      const wallNow = performance.now();
+      while (plumes.length > 0 && (wallNow - (plumes[0]?.born ?? 0)) / 1000 > DUST.seconds) plumes.shift();
+      let u = 0;
+      for (const plume of plumes) {
+        const p = s.ids.indexOf(plume.body);
+        if (p < 0) continue;
+        const x = Math.min(1, (wallNow - plume.born) / 1000 / DUST.seconds);
+        const fade = DUST.opacity * (1 - x) ** 2 * Math.min(1, x * 8);
+        // The site's way up now: through the world's own frame where it is drawn turning, else as it struck.
+        const mark = craterMarks.get(plume.key);
+        const b = builtIn(plume.body);
+        const basis = b ? basisNow.get(b) : undefined;
+        const up: Vec3 = mark && basis ? unit3([0, 1, 2].map((r) => (basis[r] ?? 0) * mark.site[0] + (basis[3 + r] ?? 0) * mark.site[1] + (basis[6 + r] ?? 0) * mark.site[2])) : unit3([plume.site[0], plume.site[2], -plume.site[1]]);
+        const helper: Vec3 = Math.abs(up[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+        const t1 = unit3(cross3(up, helper));
+        const t2 = cross3(up, t1);
+        const centre = posNow(s, p, ahead);
+        toRender(centre[0], centre[1], centre[2], scratch);
+        const radiusKm = s.radius[p] ?? 0;
+        const rise = 4 * x * (1 - x);
+        for (let k = 0; k < DUST.perImpact && u < dustList.length; k += 1) {
+          const dot = dustList[u];
+          if (!dot) break;
+          const tilt = plume.throws[k * 3] ?? 0;
+          const turn = plume.throws[k * 3 + 1] ?? 0;
+          const reach = (plume.throws[k * 3 + 2] ?? 0) * plume.heightKm;
+          const across = Math.sin(tilt);
+          const along = Math.cos(tilt);
+          // Each point thrown along its cone direction, its height rising and falling, its spread growing.
+          for (let c = 0; c < 3; c += 1) {
+            const way = (up[c] ?? 0) * along * rise + ((t1[c] ?? 0) * Math.cos(turn) + (t2[c] ?? 0) * Math.sin(turn)) * across * x * 1.5;
+            const value = (c === 0 ? scratch.x : c === 1 ? scratch.y : scratch.z) + (up[c] ?? 0) * radiusKm + way * reach;
+            if (c === 0) abs.x = value;
+            else if (c === 1) abs.y = value;
+            else abs.z = value;
+          }
+          relative(abs, rel);
+          placeScaled(rel, 1, frame.far, dot.position);
+          dot.opacity = fade;
+          u += 1;
+        }
+      }
+      for (let k = u; k < dustList.length; k += 1) {
+        const dot = dustList[k];
+        if (dot) dot.opacity = 0;
+      }
+      dust.update(dustList, frame.compensation);
+
+      // Markers: the Lagrange points of the chosen body and its primary, the prediction's encounters, the
+      // placing preview and the velocity arrow's handle.
+      let m = 0;
+      const mark = (at: readonly number[], color: readonly [number, number, number], sizePx: number, ring: number, label: string | null): void => {
+        const dot = markerList[m];
+        if (!dot) return;
+        toRender(at[0] ?? 0, at[1] ?? 0, at[2] ?? 0, abs);
+        relative(abs, rel);
+        placeScaled(rel, 1, frame.far, dot.position);
+        dot.color = color;
+        dot.sizePx = sizePx;
+        dot.opacity = 1;
+        dot.marker = ring;
+        if (label) labelList.push({ id: `lab-marker-${m}`, textKey: 'ui.universe.lab.body', text: label, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.85, offset: [8, 8] });
+        m += 1;
+      };
+      if (showLagrange && i >= 0) {
+        const p = primaryOf(s.gm, s.pos, i);
+        if (p >= 0) {
+          const vel = (k: number): Vec3 => [s.vel[k * 3] ?? 0, s.vel[k * 3 + 1] ?? 0, s.vel[k * 3 + 2] ?? 0];
+          const L = lagrangePoints({ gm: s.gm[p] ?? 0, pos: now(p, [0, 0, 0]), vel: vel(p) }, { gm: s.gm[i] ?? 0, pos: now(i, [0, 0, 0]), vel: vel(i) });
+          for (const name of ['L1', 'L2', 'L3', 'L4', 'L5'] as const) mark(L[name], LAGRANGE, 7, 0, name);
+        }
+      }
+      if (prediction && framed && prediction.id === selected) {
+        const n = prediction.path.length / 3;
+        for (const e of prediction.encounters) {
+          const k = Math.round((e.t / prediction.horizonS) * n) - 1;
+          mark(framed(e.pos, k, e.t), ENCOUNTER, 8, 1, knownNames.get(e.with) ?? e.with);
+        }
+      }
+      if (placing && hoverOffset) {
+        const p = s.ids.indexOf(placing.primary);
+        if (p >= 0) mark(add3(posNow(s, p, ahead), hoverOffset), PLACING, 10, 1, null);
+      }
+      if (arrowNow && !placing) mark(arrowNow.tip, VELOCITY, dragging ? 12 : 9, 1, null);
+      // Where the handle is on the canvas (client px), for the view.
+      handleAt = null;
+      if (arrowNow && !placing && pointerView) {
+        const tipRel = relative(toRender(arrowNow.tip[0], arrowNow.tip[1], arrowNow.tip[2], km()), km());
+        handleAt = pointerView.toScreen(tipRel);
+      }
+      for (let k = m; k < MARKER_SLOTS; k += 1) {
+        const dot = markerList[k];
+        if (dot) dot.opacity = 0;
+      }
+      markers.update(markerList, frame.compensation);
     },
     labels(out) {
       if (active) for (const l of labelList) out.push(l);
@@ -533,8 +1082,251 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           prediction = null;
           requestPrediction();
           return;
-        case 'mass':
-          if (Number.isFinite(c.massKg) && c.massKg >= 0) edit({ kind: 'setMass', id: c.id, gm: c.massKg * gPerKg });
+        case 'mass': {
+          if (!(Number.isFinite(c.massKg) && c.massKg >= 0)) return;
+          const gm = c.massKg * gPerKg;
+          const i = s ? s.ids.indexOf(c.id) : -1;
+          // The density held: the radius follows the mass (as its cube root).
+          if (s && c.keep === 'density' && i >= 0 && (s.gm[i] ?? 0) > 0 && gm > 0) {
+            edit({ kind: 'setRadius', id: c.id, radiusKm: (s.radius[i] ?? 1) * Math.cbrt(gm / (s.gm[i] ?? 1)), gm });
+            return;
+          }
+          edit({ kind: 'setMass', id: c.id, gm });
+          return;
+        }
+        case 'radius': {
+          const i = s ? s.ids.indexOf(c.id) : -1;
+          if (!s || i < 0 || !(Number.isFinite(c.radiusKm) && c.radiusKm > 0)) return;
+          const r0 = s.radius[i] ?? c.radiusKm;
+          edit(c.keep === 'density' ? { kind: 'setRadius', id: c.id, radiusKm: c.radiusKm, gm: (s.gm[i] ?? 0) * (c.radiusKm / r0) ** 3 } : { kind: 'setRadius', id: c.id, radiusKm: c.radiusKm });
+          return;
+        }
+        case 'density': {
+          const i = s ? s.ids.indexOf(c.id) : -1;
+          if (!s || i < 0 || !(Number.isFinite(c.densityKgM3) && c.densityKgM3 > 0)) return;
+          const g = s.gm[i] ?? 0;
+          const r = s.radius[i] ?? 1;
+          if (c.keep === 'mass') {
+            if (!(g > 0)) return;
+            edit({ kind: 'setRadius', id: c.id, radiusKm: Math.cbrt((3 * (g / gPerKg)) / (4 * Math.PI * c.densityKgM3)) / 1000 });
+          } else {
+            edit({ kind: 'setMass', id: c.id, gm: c.densityKgM3 * (4 / 3) * Math.PI * (r * 1000) ** 3 * gPerKg });
+          }
+          return;
+        }
+        case 'spin': {
+          const i = s ? s.ids.indexOf(c.id) : -1;
+          if (!s || i < 0 || !(Number.isFinite(c.periodS) && c.periodS > 0) || !Number.isFinite(c.tiltDeg)) return;
+          // Tilted from its orbit's pole (the frame's with no primary) by tiltDeg, toward where its pole leans now.
+          const rel = relativeTo(s, i);
+          const orbitPole = rel ? unit3(cross3(rel.r, rel.v)) : ([0, 0, 1] as Vec3);
+          const now = unit3(spinOf(s, i), orbitPole);
+          let lean = sub3(now, scale3(orbitPole, dot3(now, orbitPole)));
+          if (norm3(lean) < 1e-9) lean = rel ? sub3(rel.r, scale3(orbitPole, dot3(rel.r, orbitPole))) : [1, 0, 0];
+          lean = unit3(lean, [1, 0, 0]);
+          const t = c.tiltDeg * DEG;
+          edit({ kind: 'setSpin', id: c.id, periodS: c.periodS, pole: add3(scale3(orbitPole, Math.cos(t)), scale3(lean, Math.sin(t))) });
+          return;
+        }
+        case 'fixed':
+          edit({ kind: 'setFixed', id: c.id, fixed: c.fixed });
+          return;
+        case 'rename': {
+          const name = c.name.trim().slice(0, 60);
+          if (name) edit({ kind: 'rename', id: c.id, name });
+          return;
+        }
+        case 'impulse': {
+          const i = s ? s.ids.indexOf(c.id) : -1;
+          if (!s || i < 0 || ![c.progradeMs, c.normalMs, c.radialMs].every(Number.isFinite)) return;
+          const rel = relativeTo(s, i);
+          const v: Vec3 = [s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0];
+          const f = rel ? orbitalFrame(rel.r, rel.v) : orbitalFrame([s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0], v);
+          const dv = add3(add3(scale3(f.prograde, c.progradeMs / 1000), scale3(f.normal, c.normalMs / 1000)), scale3(f.radial, c.radialMs / 1000));
+          edit({ kind: 'setVelocity', id: c.id, vel: add3(v, dv) });
+          return;
+        }
+        case 'elements': {
+          const i = s ? s.ids.indexOf(c.id) : -1;
+          const rel = s && i >= 0 ? relativeTo(s, i) : null;
+          if (!s || !rel || ![c.aKm, c.e, c.iDeg, c.nodeDeg, c.periapsisArgDeg, c.trueAnomalyDeg].every(Number.isFinite)) return;
+          // An ellipse needs a > 0 and e < 1, a hyperbola a < 0 and e > 1; never e = 1 exactly.
+          if (c.e < 0 || Math.abs(c.e - 1) < 1e-9 || (c.e < 1 && !(c.aKm > 0)) || (c.e > 1 && !(c.aKm < 0))) return;
+          const st = stateFromElements({ a: c.aKm, e: c.e, i: c.iDeg * DEG, node: c.nodeDeg * DEG, periapsisArg: c.periapsisArgDeg * DEG, trueAnomaly: c.trueAnomalyDeg * DEG }, rel.mu);
+          if (![...st.r, ...st.v].every(Number.isFinite) || norm3(st.r) <= (s.radius[rel.p] ?? 0)) return;
+          const pp: Vec3 = [s.pos[rel.p * 3] ?? 0, s.pos[rel.p * 3 + 1] ?? 0, s.pos[rel.p * 3 + 2] ?? 0];
+          const pv: Vec3 = [s.vel[rel.p * 3] ?? 0, s.vel[rel.p * 3 + 1] ?? 0, s.vel[rel.p * 3 + 2] ?? 0];
+          edit({ kind: 'setState', id: c.id, pos: add3(pp, st.r), vel: add3(pv, st.v) });
+          return;
+        }
+        case 'addPreset': {
+          const preset = palette.find((x) => x.id === c.preset);
+          if (!s || !preset) return;
+          const p = s.ids.indexOf(c.primary);
+          if (p < 0 || !(c.distanceKm > (s.radius[p] ?? 0) + preset.radiusKm)) return;
+          const pole = poleOf(s, p);
+          const pp = primaryOf(s.gm, s.pos, p);
+          const along = pp >= 0 ? [0, 1, 2].map((k) => (s.pos[p * 3 + k] ?? 0) - (s.pos[pp * 3 + k] ?? 0)) : [1, 0, 0];
+          const placed = circularOrbit(stateOf(s, p), 0, c.distanceKm, preset.gm, pole, along);
+          const id = freshId('body');
+          const spin = presetSpin(preset, pole);
+          edit({ kind: 'add', body: { id, name: c.name.slice(0, 60) || id, gm: preset.gm, radiusKm: preset.radiusKm, pos: placed.pos as Vec3, vel: placed.vel as Vec3, origin: 'user-edited', sourceIds: [], ...(spin ? { spin } : {}) } });
+          selected = id;
+          requestPrediction();
+          return;
+        }
+        case 'addLagrange': {
+          const i = s && selected ? s.ids.indexOf(selected) : -1;
+          const rel = s && i >= 0 ? relativeTo(s, i) : null;
+          if (!s || !rel || !(c.massKg >= 0) || !(c.radiusKm > 0)) return;
+          const p = rel.p;
+          const at = (a: Float64Array, k: number): Vec3 => [a[k * 3] ?? 0, a[k * 3 + 1] ?? 0, a[k * 3 + 2] ?? 0];
+          const L = lagrangePoints({ gm: s.gm[p] ?? 0, pos: at(s.pos, p), vel: at(s.vel, p) }, { gm: s.gm[i] ?? 0, pos: at(s.pos, i), vel: at(s.vel, i) })[c.point];
+          // Turning with the pair: the barycentre's velocity plus the pair's angular velocity crossed with the offset from it.
+          const total = (s.gm[p] ?? 0) + (s.gm[i] ?? 0);
+          const bary = scale3(add3(scale3(at(s.pos, p), s.gm[p] ?? 0), scale3(at(s.pos, i), s.gm[i] ?? 0)), 1 / total);
+          const baryV = scale3(add3(scale3(at(s.vel, p), s.gm[p] ?? 0), scale3(at(s.vel, i), s.gm[i] ?? 0)), 1 / total);
+          const w = scale3(cross3(rel.r, rel.v), 1 / dot3(rel.r, rel.r));
+          const id = freshId('body');
+          edit({ kind: 'add', body: { id, name: c.name.slice(0, 60) || id, gm: c.massKg * gPerKg, radiusKm: c.radiusKm, pos: L, vel: add3(baryV, cross3(w, sub3(L, bary))), origin: 'user-edited', sourceIds: [] } });
+          selected = id;
+          requestPrediction();
+          return;
+        }
+        case 'place': {
+          if (!c.on || !s || !c.primary || !s.ids.includes(c.primary)) {
+            placing = null;
+            hoverOffset = null;
+            return;
+          }
+          const preset = c.preset ? (palette.find((x) => x.id === c.preset) ?? null) : null;
+          const massKg = preset ? preset.gm / gPerKg : (c.massKg ?? 0);
+          const radiusKm = preset ? preset.radiusKm : (c.radiusKm ?? 0);
+          if (!(massKg >= 0) || !(radiusKm > 0)) return;
+          placing = { primary: c.primary, name: c.name ?? '', massKg, radiusKm, preset };
+          hoverOffset = null;
+          return;
+        }
+        case 'undo':
+        case 'redo':
+          sentEdits += 1;
+          send({ type: c.kind, generation });
+          trails.clear();
+          return;
+        case 'accuracy':
+          accuracy = c.level;
+          requestPrediction();
+          return;
+        case 'view':
+          viewMode = c.view;
+          return;
+        case 'lagrange':
+          showLagrange = c.on;
+          return;
+        case 'measure':
+          measureAsk = c.from && c.to && c.from !== c.to ? { from: c.from, to: c.to, via: c.via && c.via !== c.from && c.via !== c.to ? c.via : null } : null;
+          return;
+        case 'track':
+          tracked = c.id ? { id: c.id, quantity: c.quantity, points: [], mergedInto: null, lastT: Number.NEGATIVE_INFINITY } : null;
+          if (snap) sampleTracked(snap);
+          return;
+        case 'saveAs': {
+          const name = c.name.trim().replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 40);
+          if (!name) return;
+          void saved().then((scenario) =>
+            idb('readwrite', (store) => store.put(JSON.stringify({ ...scenario, name: name.toLowerCase().replace(/[^a-z0-9-]+/gu, '-') || scenario.name }), LIBRARY_PREFIX + name)).then(
+              () => {
+                status = { kind: 'saved', detail: [name] };
+                refreshLibrary();
+              },
+              (err: unknown) => {
+                status = { kind: 'error', detail: [String(err)] };
+              },
+            ),
+          );
+          return;
+        }
+        case 'loadSaved':
+          void idb<unknown>('readonly', (store) => store.get(LIBRARY_PREFIX + c.name)).then(
+            (text) => {
+              if (typeof text === 'string') lab.command({ kind: 'import', text });
+              else status = { kind: 'error', detail: ['nothing saved by that name'] };
+            },
+            (err: unknown) => {
+              status = { kind: 'error', detail: [String(err)] };
+            },
+          );
+          return;
+        case 'deleteSaved':
+          void idb('readwrite', (store) => store.delete(LIBRARY_PREFIX + c.name)).then(
+            () => {
+              status = { kind: 'deleted', detail: [c.name] };
+              refreshLibrary();
+            },
+            (err: unknown) => {
+              status = { kind: 'error', detail: [String(err)] };
+            },
+          );
+          return;
+        case 'share':
+          void saved()
+            .then((scenario) => encodeScenario(scenario))
+            .then(
+              (data) => {
+                share = data.length <= SHARE_MAX_CHARS ? { url: `${location.origin}${location.pathname}#/universe/lab?s=${data}` } : { tooLarge: true, chars: data.length };
+                status = { kind: 'shared', detail: [] };
+              },
+              (err: unknown) => {
+                status = { kind: 'error', detail: [String(err)] };
+              },
+            );
+          return;
+        case 'importShared':
+          void decodeScenario(c.data).then((raw) => {
+            if (raw === null) {
+              status = { kind: 'error', detail: ['the link’s scenario could not be read'] };
+              return;
+            }
+            lab.command({ kind: 'import', text: JSON.stringify(raw) });
+          });
+          return;
+        case 'removeMany':
+          for (const id of c.ids) lab.command({ kind: 'remove', id });
+          return;
+        case 'addSwarm':
+        case 'addRing': {
+          if (!s) return;
+          const p = s.ids.indexOf(c.primary);
+          if (p < 0 || !(s.gm[p] ?? 0) || ![c.innerKm, c.outerKm, c.count].every(Number.isFinite) || !(c.innerKm > (s.radius[p] ?? 0)) || !(c.outerKm >= c.innerKm) || !(c.count >= 1)) return;
+          // Its plane: the primary's equator (its spin's pole) or its orbit's; the ecliptic where it has neither.
+          const spin = spinOf(s, p);
+          const pole = c.plane === 'equator' && norm3(spin) > 0 ? unit3(spin) : unit3(poleOf(s, p));
+          const normal: [number, number, number] = [pole[0], pole[1], pole[2]];
+          // A seed from the moment and the count so far: the same edit replays the same particles.
+          const seed = (Math.imul(s.step + 1, 2654435761) + (s.swarms.length + s.ids.length) * 97) >>> 0;
+          const name = c.name.slice(0, 60);
+          if (c.kind === 'addSwarm') {
+            const used = new Set(s.swarms.map((w) => w.id));
+            let n = 1;
+            while (used.has(`swarm-${n}`)) n += 1;
+            edit({ kind: 'addSwarm', swarm: { id: `swarm-${n}`, name, primary: c.primary, count: Math.min(Math.round(c.count), SWARM_LIMITS.perSwarm), innerKm: c.innerKm, outerKm: c.outerKm, eccentricity: Math.min(Math.max(c.eccentricity, 0), 0.95), inclinationDeg: Math.min(Math.max(c.inclinationDeg, 0), 180), normal, seed } });
+          } else {
+            if (!(c.massKg > 0)) return;
+            const base = freshId('moonlets');
+            const count = Math.min(Math.round(c.count), RING_MAX_BODIES);
+            // Each body as dense as icy rock (1,500 kg/m^3: illustrative), from its share of the mass.
+            const radiusKm = Math.cbrt((3 * (c.massKg / count)) / (4 * Math.PI * 1500)) / 1000;
+            knownNames.set(base, name);
+            edit({ kind: 'addRing', ring: { id: base, name, primary: c.primary, count, innerKm: c.innerKm, outerKm: c.outerKm, gm: c.massKg * gPerKg, radiusKm, normal, seed } });
+          }
+          requestPrediction();
+          return;
+        }
+        case 'removeSwarm':
+          if (s?.swarms.some((w) => w.id === c.id)) edit({ kind: 'removeSwarm', id: c.id });
+          return;
+        case 'duplicateMany':
+          for (const id of c.ids) lab.command({ kind: 'duplicate', id });
           return;
         case 'velocity': {
           if (!s) return;
@@ -584,21 +1376,22 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           const pos = [0, 1, 2].map((k) => s.pos[i * 3 + k] ?? 0);
           const vel = [0, 1, 2].map((k) => s.vel[i * 3 + k] ?? 0);
           if (p >= 0) {
+            // Turned about the pole of its orbit (Rodrigues) to the first of these places clear of every body
+            // (a second copy must not land on the first): 60 degrees ahead, then behind, then further round.
             const r = [0, 1, 2].map((k) => (pos[k] ?? 0) - (s.pos[p * 3 + k] ?? 0));
             const v = [0, 1, 2].map((k) => (vel[k] ?? 0) - (s.vel[p * 3 + k] ?? 0));
-            const pole = poleOf(s, i);
-            const n = Math.hypot(...pole) || 1;
-            const u = pole.map((x) => x / n);
-            const rot = (w: number[]): number[] => {
-              // Rodrigues: about the pole by 60 degrees.
-              const c60 = 0.5;
-              const s60 = Math.sqrt(3) / 2;
-              const dot = (u[0] ?? 0) * (w[0] ?? 0) + (u[1] ?? 0) * (w[1] ?? 0) + (u[2] ?? 0) * (w[2] ?? 0);
-              const cr = [(u[1] ?? 0) * (w[2] ?? 0) - (u[2] ?? 0) * (w[1] ?? 0), (u[2] ?? 0) * (w[0] ?? 0) - (u[0] ?? 0) * (w[2] ?? 0), (u[0] ?? 0) * (w[1] ?? 0) - (u[1] ?? 0) * (w[0] ?? 0)];
-              return [0, 1, 2].map((k) => (w[k] ?? 0) * c60 + (cr[k] ?? 0) * s60 + (u[k] ?? 0) * dot * (1 - c60));
+            const u = unit3(poleOf(s, i));
+            const clear = (at: readonly number[]): boolean => {
+              for (let j = 0; j < s.ids.length; j += 1) {
+                const d = Math.hypot((at[0] ?? 0) - (s.pos[j * 3] ?? 0), (at[1] ?? 0) - (s.pos[j * 3 + 1] ?? 0), (at[2] ?? 0) - (s.pos[j * 3 + 2] ?? 0));
+                if (d < 3 * ((s.radius[j] ?? 0) + (s.radius[i] ?? 0))) return false;
+              }
+              return true;
             };
-            const r2 = rot(r);
-            const v2 = rot(v);
+            const angles = [60, -60, 120, -120, 180, 30, -30, 90, -90, 150, -150].map((a) => a * DEG);
+            const turn = angles.find((a) => clear(add3([s.pos[p * 3] ?? 0, s.pos[p * 3 + 1] ?? 0, s.pos[p * 3 + 2] ?? 0], rotate3(r, u, a)))) ?? 60 * DEG;
+            const r2 = rotate3(r, u, turn);
+            const v2 = rotate3(v, u, turn);
             for (let k = 0; k < 3; k += 1) {
               pos[k] = (s.pos[p * 3 + k] ?? 0) + (r2[k] ?? 0);
               vel[k] = (s.vel[p * 3 + k] ?? 0) + (v2[k] ?? 0);
@@ -711,13 +1504,45 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           for (let k = 0; k < 3; k += 1) rel3[k] = (s.vel[i * 3 + k] ?? 0) - (p >= 0 ? (s.vel[p * 3 + k] ?? 0) : 0);
           const rd = p >= 0 ? Math.hypot((s.pos[i * 3] ?? 0) - (s.pos[p * 3] ?? 0), (s.pos[i * 3 + 1] ?? 0) - (s.pos[p * 3 + 1] ?? 0), (s.pos[i * 3 + 2] ?? 0) - (s.pos[p * 3 + 2] ?? 0)) : null;
           const gm = s.gm[i] ?? 0;
+          const radiusKm = s.radius[i] ?? 0;
+          const rel = relativeTo(s, i);
+          const el = rel ? elementsFromState(rel.r, rel.v, rel.mu) : null;
+          const pGm = rel ? (s.gm[rel.p] ?? 0) : 0;
+          const L = spinOf(s, i);
+          const turning = norm3(L) > 0 && gm > 0;
+          const density = gm > 0 ? bulkDensity(gm, radiusKm) : 0;
           bodies.push({
             id,
             name: s.names[i] ?? id,
             builtIn: builtIn(id),
             gm,
             massKg: gm / gPerKg,
-            radiusKm: s.radius[i] ?? 0,
+            radiusKm,
+            densityKgM3: density,
+            orbit: el
+              ? {
+                  aKm: el.a,
+                  e: el.e,
+                  iDeg: el.i / DEG,
+                  nodeDeg: el.node / DEG,
+                  periapsisArgDeg: el.periapsisArg / DEG,
+                  trueAnomalyDeg: el.trueAnomaly / DEG,
+                  periodS: el.periodS,
+                  periapsisKm: el.periapsisKm,
+                  apoapsisKm: el.apoapsisKm,
+                  bound: el.bound,
+                  hillKm: el.bound && gm > 0 && pGm > 0 ? hillRadiusKm(el.a, el.e, gm, pGm) : null,
+                }
+              : null,
+            rotation: {
+              periodS: turning ? ((s.inertia[i] ?? 0.4) * gm * radiusKm * radiusKm * 2 * Math.PI) / norm3(L) : null,
+              tiltDeg: turning && rel ? Math.acos(Math.max(-1, Math.min(1, dot3(unit3(L), unit3(cross3(rel.r, rel.v)))))) / DEG : null,
+              breakupPeriodS: gm > 0 ? breakupPeriodS(gm, radiusKm) : Number.POSITIVE_INFINITY,
+            },
+            roche: rel && pGm > 0 && gm > 0 ? rocheLimits(s.radius[rel.p] ?? 0, bulkDensity(pGm, s.radius[rel.p] ?? 1), density) : null,
+            fixed: s.fixed.includes(id),
+            renamed: s.interventions.some((x) => x.kind === 'rename' && x.id === id),
+            j2: s.j2[i] ?? 0,
             speedKmS: v,
             primary: p >= 0 ? (s.ids[p] ?? null) : null,
             relativeSpeedKmS: rv,
@@ -745,12 +1570,52 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         selected,
         drift: s?.drift ?? { energy: 0, momentum: 0, angularMomentum: 0 },
         interventions: s?.interventions ?? [],
-        events: (s?.events ?? []).map((e) => ({ t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0, craterKm: e.crater?.diameterKm ?? null, craterComplex: e.crater?.complex ?? false, energyJ: joules(e.energy) })),
+        events: (s?.events ?? []).map((e) => {
+          const m = craterMarks.get(eventKey(e));
+          return { t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, created: e.created.length, unresolved: e.unresolved > 0, craterKm: e.crater?.diameterKm ?? null, craterDepthKm: e.crater?.depthKm ?? null, craterComplex: e.crater?.complex ?? false, craterSite: m ? { latDeg: m.latDeg, lonDeg: m.lonDeg } : null, energyJ: joules(e.energy) };
+        }),
         checkpoints: s?.checkpoints ?? [],
+        swarms: (s?.swarms ?? []).map((w) => ({ id: w.id, name: w.name, primary: w.primary, count: w.rel.length / 3, lost: w.lost })),
+        particlesDrawn,
+        auKm: physical.auKm,
         logLength: s?.logLength ?? 0,
         discarded: s?.discarded ?? 0,
-        prediction: prediction && prediction.id === selected ? { id: prediction.id, horizonS: prediction.horizonS, merged: prediction.merged ? { t: prediction.merged.t, with: prediction.merged.with } : null } : null,
+        prediction:
+          prediction && prediction.id === selected
+            ? { id: prediction.id, horizonS: prediction.horizonS, merged: prediction.merged ? { t: prediction.merged.t, with: prediction.merged.with } : null, encounters: prediction.encounters.map((e) => ({ with: e.with, t: e.t, distanceKm: e.distanceKm })) }
+            : null,
         horizonS,
+        accuracy,
+        undoable: s?.undoable ?? 0,
+        redoable: s?.redoable ?? 0,
+        constrained: (s?.fixed.length ?? 0) > 0,
+        view: viewMode,
+        corotatingPair: (() => {
+          const pair = s && viewMode === 'corotating' ? corotatingPair(s) : null;
+          return s && pair ? { a: s.ids[pair.a] ?? '', b: s.ids[pair.b] ?? '' } : null;
+        })(),
+        lagrange: (() => {
+          const i = s && selected && showLagrange ? s.ids.indexOf(selected) : -1;
+          const p = s && i >= 0 ? primaryOf(s.gm, s.pos, i) : -1;
+          return s && selected && p >= 0 ? { primary: s.ids[p] ?? '', secondary: selected } : null;
+        })(),
+        measure: (() => {
+          const m = measureAsk;
+          if (!s || !m) return null;
+          const a = s.ids.indexOf(m.from);
+          const b = s.ids.indexOf(m.to);
+          if (a < 0 || b < 0) return null;
+          const ahead = extrapolation();
+          const r = measureBetween(posNow(s, a, ahead), posNow(s, b, ahead), s.radius[b] ?? 0);
+          const c = m.via === null ? -1 : s.ids.indexOf(m.via);
+          return { from: m.from, to: m.to, distanceKm: r.distanceKm, lightS: r.lightS, angularSizeDeg: r.angularSize / DEG, via: c >= 0 ? m.via : null, separationDeg: c >= 0 ? separation(posNow(s, a, ahead), posNow(s, b, ahead), posNow(s, c, ahead)) / DEG : null };
+        })(),
+        graph: tracked ? { id: tracked.id, quantity: tracked.quantity, points: tracked.points, mergedInto: tracked.mergedInto } : null,
+        presets: presetView,
+        library,
+        share,
+        placing: placing ? { primary: placing.primary, name: placing.name, offsetKm: hoverOffset ? norm3(hoverOffset) : null } : null,
+        handle: handleAt,
         status,
         names: Object.fromEntries(knownNames),
       };
@@ -760,10 +1625,67 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       refocus = null;
       return r;
     },
+    setPointerView(view) {
+      pointerView = view;
+    },
+    grab(x, y) {
+      const s = snap;
+      const v = pointerView;
+      const rel = lastRelative;
+      if (!active || !s || !v || !rel || !selected || placing) return false;
+      const i = s.ids.indexOf(selected);
+      const a = i < 0 ? null : arrow(s, i, extrapolation(), arrowLen);
+      if (!a) return false;
+      const tipRel = rel(toRender(a.tip[0], a.tip[1], a.tip[2], km()), km());
+      const sp = v.toScreen(tipRel);
+      if (!sp || Math.hypot(sp.x - x, sp.y - y) > HANDLE_PX) return false;
+      const f = v.forward();
+      dragging = { id: selected, len: a.len, tipRel: [tipRel.x, tipRel.y, tipRel.z], normal: [f.x, f.y, f.z], vel: a.vel };
+      return true;
+    },
+    grabMove(x, y) {
+      const d = dragging;
+      const v = pointerView;
+      const rel = lastRelative;
+      const s = snap;
+      if (!d || !v || !rel || !s) return;
+      const i = s.ids.indexOf(d.id);
+      if (i < 0) {
+        dragging = null;
+        return;
+      }
+      // The tip follows the pointer across the plane through it that faces the camera.
+      const ray = v.ray(x, y);
+      const denom = ray.x * d.normal[0] + ray.y * d.normal[1] + ray.z * d.normal[2];
+      if (Math.abs(denom) < 1e-9) return;
+      const t = dot3(d.tipRel, d.normal) / denom;
+      if (!(t > 0)) return;
+      const b = posNow(s, i, extrapolation());
+      const body = rel(toRender(b[0], b[1], b[2], km()), km());
+      d.vel = fromRender((ray.x * t - body.x) / d.len, (ray.y * t - body.y) / d.len, (ray.z * t - body.z) / d.len);
+    },
+    grabEnd(cancelled) {
+      const d = dragging;
+      dragging = null;
+      if (d && !cancelled && d.vel.every(Number.isFinite)) lab.command({ kind: 'velocity', id: d.id, relativeKmS: d.vel });
+    },
+    hover(x, y) {
+      if (placing) hoverOffset = placeOffset(x, y);
+    },
+    tap(x, y) {
+      if (!placing) return false;
+      const off = placeOffset(x, y);
+      if (off) addPlaced(off);
+      return true;
+    },
+    get placing() {
+      return placing !== null;
+    },
     dispose() {
       lab.stop();
       lines.dispose();
       dots.dispose();
+      markers.dispose();
     },
   };
   return lab;

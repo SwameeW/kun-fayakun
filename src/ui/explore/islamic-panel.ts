@@ -46,8 +46,7 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
     return format.format(value);
   };
   const when = (ms: number): string => i18n.t('ui.universe.islamic.utc', { time: utc.format(new Date(ms)) });
-  const coords = (lat: number, lon: number): string =>
-    `${i18n.t(lat >= 0 ? 'ui.universe.living.latN' : 'ui.universe.living.latS', { value: f.number(Math.abs(lat), 1) })}, ${i18n.t(lon >= 0 ? 'ui.universe.living.lonE' : 'ui.universe.living.lonW', { value: f.number(Math.abs(lon), 1) })}`;
+  const coords = (lat: number, lon: number): string => f.coordinates(lat, lon);
   const toggleButton = (text: string, testId: string, onChange: (on: boolean) => void): HTMLButtonElement => {
     const b = h('button', { type: 'button', class: 'kf-living-choice', 'aria-pressed': 'false', 'data-testid': testId }, text);
     b.addEventListener('click', () => {

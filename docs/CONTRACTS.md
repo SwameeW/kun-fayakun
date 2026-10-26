@@ -562,7 +562,8 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   `persistentIds`), `seedLaboratory`.
 - **Worker protocol** (`src/sim/protocol.ts`). Requests `load`, `run` (rate, paused), `command`,
   `predict` (id, horizon), `seek`, `replay`, `save`; replies `snapshot` (ids, names, GM, radii,
-  positions, velocities, step, dt, drift, requested and achieved rate, failure, merger events,
+  positions, velocities, step, dt, drift, requested and achieved rate, failure, collision events
+  (with the crater's size, depth and rim, and the contact site in the scenario's frame),
   interventions, checkpoints), `prediction` (path, merger, frame and its path), `saved`, `error`. Every message
   carries the scenario's `generation`; replies from an older one are dropped, and snapshots by
   `seq`. Budgets per 16 ms tick: 8 ms of steps (owed time carried up to 0.25 s), 3 ms of prediction;
@@ -571,8 +572,11 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   exactly as it was), `app.universeLab(command: LabCommand)`; `UniverseModule.lab()`;
   `UniverseView.lab: UniverseLab | null` (seed, elapsed and simulated date, step and dt, requested
   and achieved rate, paused, bodies as `UniverseLabBody` with mass, radius, speeds, primary,
-  relative velocity and escape speed, the selection, its prediction, drift, history, checkpoints,
-  status). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
+  relative velocity and escape speed, the selection, its prediction, drift, history (each collision's
+  crater diameter and depth, and on a world drawn solid its place, planetocentric degrees),
+  checkpoints, status). `Bodies.setMarks(body, marks)` draws the laboratory's craters
+  (`src/explore/bodies/marks.ts`) on the Earth, the Moon, Mercury and Mars; `Lab.marks(body)` gives
+  them, placed in each world's own frame at the moment of impact (`SolarSystem.basisAt`). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
   `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
   `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`. Following a
   world is the explorer's own focus. The time machine's commands drive the experiment's clock

@@ -4,7 +4,9 @@
  *
  * Mouse: drag to orbit (or, in free flight, to look), right or middle drag (or Shift-drag) to pan,
  * wheel to zoom in log height, double-click a body to travel to it. Touch: one finger orbits, two
- * pinch (log zoom) and pan together, a double tap on a body travels there.
+ * pinch (log zoom) and pan together, a double tap on a body travels there. Something under the
+ * pointer may take a drag instead of the camera (the laboratory's velocity arrow, by its tip: grab),
+ * follow a hovering mouse (a placing preview: hover) or take a tap (placing a body: tap).
  * Keys, by physical code so other layouts work: W A S D fly forward, left, back and right, R and F
  * up and down, Q and E roll, Shift for five times the speed, arrows orbit (or look), + and - zoom,
  * O orbits the nearest body again, Esc stops a trip (a second Esc, with nothing to stop, goes on to
@@ -72,6 +74,15 @@ export interface InputTarget {
   pick(clientX: number, clientY: number): BodyId | null;
   /** A double tap or click on a body. */
   travel(body: BodyId): void;
+  /** A press at a point (client px): true when something there takes the drag (then it moves that, not the camera, until let go). */
+  grab?(clientX: number, clientY: number): boolean;
+  grabMove?(clientX: number, clientY: number): void;
+  /** The grabbed thing let go, or cancelled (Esc, a lost pointer). */
+  grabEnd?(cancelled: boolean): void;
+  /** A mouse moving over the canvas with no button held. */
+  hover?(clientX: number, clientY: number): void;
+  /** A tap or click: true when it was used (then it is not the start of a double tap). */
+  tap?(clientX: number, clientY: number): boolean;
 }
 
 export interface ExploreInput {
@@ -95,6 +106,8 @@ interface Pointer {
   type: string;
   /** Pan with this pointer (right or middle mouse button, or Shift held at the start). */
   pan: boolean;
+  /** This pointer took something under it (grab), not the camera. */
+  grab: boolean;
 }
 
 export function createInput(element: HTMLElement, target: InputTarget): ExploreInput {
@@ -145,7 +158,9 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
   const onPointerDown = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     const pan = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2 || e.shiftKey);
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, type: e.pointerType, pan });
+    // The first pointer, a plain press: something under it may take the drag.
+    const grab = pointers.size === 0 && !pan && (target.grab?.(e.clientX, e.clientY) ?? false);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, type: e.pointerType, pan, grab });
     try {
       element.setPointerCapture(e.pointerId);
     } catch {
@@ -161,7 +176,16 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
 
   const onPointerMove = (e: PointerEvent): void => {
     const p = pointers.get(e.pointerId);
-    if (!p) return;
+    if (!p) {
+      if (e.pointerType === 'mouse' && pointers.size === 0) target.hover?.(e.clientX, e.clientY);
+      return;
+    }
+    if (p.grab) {
+      p.x = e.clientX;
+      p.y = e.clientY;
+      target.grabMove?.(e.clientX, e.clientY);
+      return;
+    }
     const dx = e.clientX - p.x;
     const dy = e.clientY - p.y;
     p.x = e.clientX;
@@ -189,9 +213,18 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     const two = twoTouches();
     pinch = two ? Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y) : 0;
     mid = two ? { x: (two[0].x + two[1].x) / 2, y: (two[0].y + two[1].y) / 2 } : null;
+    if (p?.grab) {
+      target.grabEnd?.(e.type === 'pointercancel');
+      lastTap = null;
+      return;
+    }
     if (!p || e.type === 'pointercancel' || pointers.size > 0) return;
     // A tap: little movement. Two in quick succession on a body travel there.
     if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > TAP_PX) {
+      lastTap = null;
+      return;
+    }
+    if (target.tap?.(e.clientX, e.clientY)) {
       lastTap = null;
       return;
     }
@@ -236,9 +269,17 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     if (held.delete(e.code)) syncKeys();
   };
 
-  /** Esc first stops a trip; only when there is none does it go on to the interface. */
+  /** Esc first lets go of a grabbed thing, then stops a trip; only when there is neither does it go on to the interface. */
   const onEscape = (e: KeyboardEvent): void => {
     if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey || ownedElsewhere(e.target)) return;
+    const grabbed = [...pointers.values()].find((p) => p.grab);
+    if (grabbed) {
+      grabbed.grab = false;
+      target.grabEnd?.(true);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (target.stop()) {
       e.preventDefault();
       e.stopPropagation();
@@ -247,6 +288,7 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
 
   const onBlur = (): void => {
     held.clear();
+    if ([...pointers.values()].some((p) => p.grab)) target.grabEnd?.(true);
     pointers.clear();
     pinch = 0;
     mid = null;

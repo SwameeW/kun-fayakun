@@ -84,8 +84,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
   const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, credit);
   suit.open = !window.matchMedia(NARROW).matches;
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.walk.label'), 'data-testid': 'walk-hud', hidden: true }, suit, notice, keys, touch, controls);
-  const coords = (lat: number, lon: number): string =>
-    `${i18n.t(lat >= 0 ? 'ui.universe.living.latN' : 'ui.universe.living.latS', { value: f.number(Math.abs(lat), 4) })}, ${i18n.t(lon >= 0 ? 'ui.universe.living.lonE' : 'ui.universe.living.lonW', { value: f.number(Math.abs(lon), 4) })}`;
+  const coords = (lat: number, lon: number): string => f.coordinates(lat, lon, 4);
   const clock = (hours: number): string => {
     const m = Math.floor(hours * 60) % 1440;
     return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;

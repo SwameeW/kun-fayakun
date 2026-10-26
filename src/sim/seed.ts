@@ -1,5 +1,6 @@
 import type { Ephemeris } from '../astro/ephemeris';
-import type { PhysicalFile } from '../astro/physical';
+import { obliquityRad, type PhysicalFile } from '../astro/physical';
+import { icrfToEcliptic, orientationAt, poleIcrf } from '../astro/rotation';
 import { DEFAULT_INTEGRATOR, ENGINE_VERSION, SCHEMA_VERSION, type BodySpec, type Scenario } from './engine';
 
 /**
@@ -15,7 +16,15 @@ import { DEFAULT_INTEGRATOR, ENGINE_VERSION, SCHEMA_VERSION, type BodySpec, type
  *
  * The approximate elements are not an N-body solution, so the integrated orbits slowly leave the
  * real ones: the laboratory says so (seedNote) and never calls its positions JPL's.
+ *
+ * Each world turns as the IAU models have it at the epoch (NAIF's pck00011: its pole, and its
+ * sidereal period from the prime meridian's rate; Venus and Uranus turn backwards about the IAU
+ * north pole), with its J2 and moment of inertia factor where the caller gives them (`shapes`: the
+ * NASA fact sheets' values, data/constants.json), so oblateness pulls and turns as it should.
  */
+
+/** A world's flattening and the spread of its mass: its J2 and moment of inertia factor (either unknown). */
+export type Shapes = Readonly<Record<string, { j2?: number | null; inertia?: number | null } | undefined>>;
 
 export const VELOCITY_STEP_DAYS = 1 / 24;
 export const SOLAR_FRAME = 'barycentre of the ten bodies, at rest; ecliptic and equinox of J2000; km, km/s';
@@ -43,7 +52,18 @@ export function seedEpoch(ephemeris: Ephemeris, jdTdb: number): number {
   return Math.min(hi, Math.max(lo, jdTdb));
 }
 
-export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jdTdb: number, names: Readonly<Record<string, string>> = {}): Scenario {
+/** A world's rotation at an epoch from its IAU model: its sidereal period and its pole (prograde about it) in the ecliptic of J2000. */
+export function rotationAt(physical: PhysicalFile, key: keyof PhysicalFile['bodies'], jdTdb: number): { periodS: number; pole: [number, number, number] } {
+  const model = physical.bodies[key];
+  const o = orientationAt(model, jdTdb);
+  const icrf = poleIcrf(o, { x: 0, y: 0, z: 0 });
+  const ecl = icrfToEcliptic(icrf, obliquityRad(physical), { x: 0, y: 0, z: 0 });
+  const rate = model.pm[1];
+  const sense = rate < 0 ? -1 : 1;
+  return { periodS: (360 / Math.abs(rate)) * 86_400, pole: [sense * ecl.x, sense * ecl.y, sense * ecl.z] };
+}
+
+export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jdTdb: number, names: Readonly<Record<string, string>> = {}, shapes: Shapes = {}): Scenario {
   const epoch = seedEpoch(ephemeris, jdTdb);
   const at = (id: string, jd: number): V => {
     const out = { x: 0, y: 0, z: 0 };
@@ -60,6 +80,7 @@ export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jd
     const b = at(id, epoch + h);
     const s = (2 * h * 86_400);
     const radii = physical.bodies[key].radiiKm;
+    const shape = shapes[id];
     return {
       id,
       name: names[id] ?? name,
@@ -69,6 +90,9 @@ export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jd
       vel: [(b.x - a.x) / s, (b.y - a.y) / s, (b.z - a.z) / s],
       origin: 'modelled',
       sourceIds: id === 'moon' ? ['jpl-horizons', 'jpl-de440', 'naif-pck00011'] : ['jpl-approx-pos', 'jpl-de440', 'naif-pck00011'],
+      spin: rotationAt(physical, key, epoch),
+      ...(shape?.j2 ? { j2: shape.j2 } : {}),
+      ...(shape?.inertia ? { inertia: shape.inertia } : {}),
     };
   });
   // To the barycentre, at rest.
@@ -85,7 +109,7 @@ export function seedSolarSystem(ephemeris: Ephemeris, physical: PhysicalFile, jd
     name: 'solar-system',
     epochJdTdb: epoch,
     frame: SOLAR_FRAME,
-    seedNote: 'Positions from JPL’s approximate planetary elements (Standish and Williams) and the Horizons Moon table; velocities by central differences over ±1 hour; GM from DE440. The approximate elements are not an N-body solution, so the integrated orbits drift from the real ones.',
+    seedNote: 'Positions from JPL’s approximate planetary elements (Standish and Williams) and the Horizons Moon table; velocities by central differences over ±1 hour; GM from DE440; each world’s rotation from the IAU models, its J2 and moment of inertia from NASA’s fact sheets. The approximate elements are not an N-body solution, so the integrated orbits drift from the real ones.',
     integrator: { ...DEFAULT_INTEGRATOR },
     bodies,
     log: [],

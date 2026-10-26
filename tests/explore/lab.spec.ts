@@ -11,6 +11,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import type { UniverseLab } from '../../src/core/types';
+import { stateFromElements } from '../../src/sim/elements';
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
 import { SLOW } from '../support/env';
 import { JD, view, waitForUniverse } from '../support/universe';
@@ -105,7 +106,10 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   await page.locator('body').press('Space');
   await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(false);
   await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(n0 + 1);
-  // Back to a checkpoint: the clock goes back to it.
+  // Back to a checkpoint: the clock goes back to it (paused first, so no new checkpoint slides the list as it is chosen).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
   const now = (await lab(page))?.elapsedS ?? 0;
   const first = page.getByTestId('lab-checkpoints').getByRole('button').last();
   await first.click();
@@ -145,9 +149,14 @@ test('a laboratory collision is predicted and accounted, files export, and bad o
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await openLab(page);
+  // Paused, so the planet is still where the two-body system starts it (+x of the star) when it is
+  // aimed along -x: a slow machine's few seconds would otherwise carry it a few degrees on, enough to miss.
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
   await page.getByTestId('lab-tools').locator('summary').click();
   await page.getByTestId('lab-preset-two').click();
   await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  expect((await lab(page))?.elapsedS).toBe(0);
   // Aim the planet at the star: the prediction says it will strike, and it does.
   await page.getByTestId('lab-body-planet').click();
   await page.getByTestId('lab-vel-x').fill('-29.8');
@@ -282,12 +291,60 @@ test('a small body’s impact leaves a crater: its size and kind by the scaling 
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.locator('body').press('Space');
   // Collins, Melosh and Marcus's scaling: a complex crater of some 15 to 20 km; about 8 x 10^4 megatons of TNT.
-  await expect(page.getByTestId('lab-history')).toContainText(/Stone struck Planet at [\d.]+ km\/s: .+; its crater about .+ across \(complex: a central peak and terraces\), with the energy of .+ megatons of TNT/, LIVE);
+  await expect(page.getByTestId('lab-history')).toContainText(/Stone struck Planet at [\d.]+ km\/s: .+; its crater about .+ across and .+ deep \(complex: a central peak and terraces\), with the energy of .+ megatons of TNT/, LIVE);
   const e = (await lab(page))?.events.find((x) => x.absorbed === 'body-1');
   expect(e?.craterComplex).toBe(true);
   expect(e?.craterKm ?? 0).toBeGreaterThan(14);
   expect(e?.craterKm ?? Infinity).toBeLessThan(22);
   expect((e?.energyJ ?? 0) / 4.184e15).toBeGreaterThan(5e4);
   expect((e?.energyJ ?? Infinity) / 4.184e15).toBeLessThan(1.2e5);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a crater drawn where it struck: a stone dropped on the Moon from the Earth’s direction lands near the centre of its near side', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  // The Earth from the Moon (paused, so it stays so): the Moon's orbit about it, turned into a place.
+  const moon = await body(page, 'moon');
+  const earth = await body(page, 'earth');
+  expect(moon?.primary).toBe('earth');
+  if (!moon?.orbit || !earth) throw new Error('the Moon has no orbit about the Earth');
+  const o = moon.orbit;
+  const rad = Math.PI / 180;
+  const { r } = stateFromElements({ a: o.aKm, e: o.e, i: o.iDeg * rad, node: o.nodeDeg * rad, periapsisArg: o.periapsisArgDeg * rad, trueAnomaly: o.trueAnomalyDeg * rad }, earth.gm + moon.gm);
+  const d = Math.hypot(...r);
+  const toEarth = r.map((x) => -x / d);
+  // A stone 1 km across, 300 km above the Moon on the Earth's side, falling at 2 km/s: the Moon keeps that face to the
+  // Earth (the IAU model's prime meridian is the mean Earth direction), so it strikes near 0 N, 0 E (libration aside).
+  await page.getByTestId('lab-add').locator('summary').click();
+  await page.getByTestId('lab-add-name').fill('Stone');
+  await page.getByTestId('lab-add-mass').fill('1.571e12');
+  await page.getByTestId('lab-add-radius').fill('0.5');
+  await page.getByTestId('lab-add-primary').selectOption('moon');
+  for (const [k, axis] of (['x', 'y', 'z'] as const).entries()) {
+    await page.getByTestId(`lab-add-pos-${axis}`).fill(String((toEarth[k] ?? 0) * (moon.radiusKm + 300)));
+    await page.getByTestId(`lab-add-vel-${axis}`).fill(String(-(toEarth[k] ?? 0) * 2));
+  }
+  await page.getByTestId('lab-add-state').click();
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(11);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect(page.getByTestId('lab-history')).toContainText(/Stone (merged into|struck) Moon.*its crater about .+ across and .+ deep \(a simple bowl\).*; at [\d.]+° [NS], [\d.]+° [EW]/, LIVE);
+  const e = (await lab(page))?.events.find((x) => x.survivor === 'moon');
+  expect(e?.craterComplex).toBe(false);
+  // Collins et al.'s simple crater, about a fifth as deep as it is wide.
+  expect((e?.craterDepthKm ?? 0) / (e?.craterKm ?? 1)).toBeGreaterThan(0.15);
+  expect((e?.craterDepthKm ?? 1) / (e?.craterKm ?? 1)).toBeLessThan(0.25);
+  expect(Math.abs(e?.craterSite?.latDeg ?? 90)).toBeLessThan(10);
+  expect(Math.abs(e?.craterSite?.lonDeg ?? 180)).toBeLessThan(10);
+  // Its place is the Moon's own: the Moon turns on, the crater stays where it is on it.
+  const placed = e?.craterSite;
+  for (let i = 0; i < 2; i += 1) await page.locator('body').press(']');
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan((e?.t ?? 0) + 5 * 86_400);
+  expect((await lab(page))?.events.find((x) => x.survivor === 'moon')?.craterSite).toEqual(placed);
   expect(pageErrors).toEqual([]);
 });

@@ -1,15 +1,16 @@
 /**
  * The crater scaling (src/sim/craters): Collins, Melosh and Marcus's (2005) transient crater, the
  * final crater simple or complex past the gravity-scaled transition, a Meteor Crater-sized check, the
- * Moon's larger craters for the same impact, and no crater for a giant impact; and in the engine, a
- * merger's crater on a solid world (none on a star), with its energy in joules.
+ * Moon's larger craters for the same impact, and no crater for a giant impact; the depth and rim of
+ * simple and complex craters (the paper's eqs. 23 to 26, 28 and 48); and in the engine, a merger's
+ * crater on a solid world (none on a star), with its energy in joules and the place it struck.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { PhysicalFile } from '../../src/astro/physical';
 import { bulkDensity, contactCrater, CRATER, crater, CRUST_DENSITY, joules, transitionM, type CraterInput } from '../../src/sim/craters';
 import { stateFrom, type BodySpec } from '../../src/sim/engine';
-import { resolveContacts, type ContactEvent } from '../../src/sim/nbody';
+import { contactSite, resolveContacts, type ContactEvent } from '../../src/sim/nbody';
 
 const physical = JSON.parse(readFileSync(new URL('../../public/assets/jpl/physical.json', import.meta.url), 'utf8')) as PhysicalFile;
 const mean = (r: readonly number[]): number => r.reduce((a, b) => a + b, 0) / r.length;
@@ -54,6 +55,47 @@ test('the transition scales inversely with gravity (about 19 km on the Moon), an
   expect((onMoon?.transientM ?? 0) / (onEarth?.transientM ?? 1)).toBeCloseTo((9.81 / 1.62) ** 0.22, 6);
 });
 
+test('the depth and the rim: a simple crater about a fifth as deep as it is wide (its breccia lens), a complex one by Herrick et al.’s fit', () => {
+  // Simple: the transient crater D_tc / (2 sqrt 2) deep, the rim 0.07 D_tc^4 / D^3 high, the lens 2.8 x 0.032 D^3 (d_tc + h) / (d_tc D^2) thick.
+  const iron = crater({ impactorM: 50, impactorDensity: 7800, ...earth, speedMs: 12_800, angle: Math.PI / 4 });
+  const tc = iron?.transientM ?? 0;
+  const final = iron?.finalM ?? 0;
+  const rim = (0.07 * tc ** 4) / final ** 3;
+  const transientDepth = tc / (2 * Math.SQRT2);
+  expect(iron?.rimM).toBeCloseTo(rim, 6);
+  expect(iron?.depthM).toBeCloseTo(transientDepth + rim - (2.8 * 0.032 * final * (transientDepth + rim)) / transientDepth, 6);
+  // Fresh simple craters are about a fifth as deep as wide (Pike 1977); the rim about 3.6% of the width.
+  expect((iron?.depthM ?? 0) / final).toBeGreaterThan(0.18);
+  expect((iron?.depthM ?? 0) / final).toBeLessThan(0.23);
+  expect(rim / final).toBeCloseTo(0.07 / 1.25 ** 4, 6);
+  // Complex: 0.4 D^0.3 km on the Earth, shallower for its width; its rim, by the same law, lower for its width than a simple one's.
+  const stony = crater({ impactorM: 1000, impactorDensity: 3000, ...earth, speedMs: 20_000, angle: Math.PI / 4 });
+  const d = (stony?.finalM ?? 0) / 1000;
+  expect((stony?.depthM ?? 0) / 1000).toBeCloseTo(0.4 * d ** 0.3, 9);
+  expect((stony?.depthM ?? 0) / (stony?.finalM ?? 1)).toBeLessThan(0.1);
+  expect((stony?.rimM ?? 0) / (stony?.finalM ?? 1)).toBeLessThan(rim / final);
+  // On the Moon, Pike's lunar fit, 1.044 D^0.301 km: a 100 km crater about 4.3 km deep (Tycho, 85 km across, is 4.8).
+  const lunar = crater({ impactorM: 12_000, impactorDensity: 3000, targetDensity: 2750, gravity: 1.62, targetRadiusM: 1_737_400, speedMs: 15_000, angle: Math.PI / 4 });
+  const dl = (lunar?.finalM ?? 0) / 1000;
+  expect(lunar?.complex).toBe(true);
+  expect((lunar?.depthM ?? 0) / 1000 / (1.044 * dl ** 0.3)).toBeCloseTo(1, 2);
+});
+
+test('the contact site: the point the projectile first touches along its path, from the target’s centre', () => {
+  // Head-on along -x from +x: the near point, +x.
+  expect(contactSite(10, 0, 0, -1, 0, 0, 2, 100)).toEqual([1, 0, 0]);
+  // Offset by 1 with reach 2, moving along -x: it touches where x^2 + 1 = 4, at x = sqrt 3.
+  const [x, y, z] = contactSite(10, 1, 0, -1, 0, 0, 2, 100);
+  expect(x).toBeCloseTo(Math.sqrt(3) / 2, 12);
+  expect(y).toBeCloseTo(0.5, 12);
+  expect(z).toBe(0);
+  // Already touching: the line of centres. Never reaching within the step: its closest approach.
+  expect(contactSite(0, 1, 0, 5, 0, 0, 2, 100)).toEqual([0, 1, 0]);
+  const miss = contactSite(10, 3, 0, -1, 0, 0, 2, 100);
+  expect(miss[0]).toBeCloseTo(0, 12);
+  expect(miss[1]).toBeCloseTo(1, 12);
+});
+
 test('no crater where the scaling does not hold: a giant impact, no speed, or a grazing miss', () => {
   // Mars-sized into the Earth: the target is reshaped, not cratered.
   expect(crater({ impactorM: 6_779_000, impactorDensity: 3930, targetDensity: 5510, gravity: 9.81, targetRadiusM: 6_371_000, speedMs: 10_000, angle: Math.PI / 4 })).toBeNull();
@@ -74,6 +116,8 @@ test('in the engine, a small body’s impact leaves its crater on a solid world,
   expect(s.ids).toEqual(['earth']);
   expect(e?.crater).toEqual(contactCrater(EARTH, ROCK, e?.speedKmS ?? 0, e?.b ?? 0));
   expect(e?.crater?.complex).toBe(true);
+  // Straight down from +x: it struck the point of the Earth facing it.
+  expect(e?.site).toEqual([1, 0, 0]);
   // The same as the fit for that impactor into crystalline rock (straight down: b = 0).
   const fit = crater({ impactorM: 1000, impactorDensity: 3000, targetDensity: CRUST_DENSITY, gravity: (EARTH.gm / EARTH.radiusKm ** 2) * 1000, targetRadiusM: EARTH.radiusKm * 1000, speedMs: (e?.speedKmS ?? 0) * 1000, angle: Math.PI / 2 });
   expect(e?.crater?.diameterKm).toBeCloseTo((fit?.finalM ?? 0) / 1000, 9);
