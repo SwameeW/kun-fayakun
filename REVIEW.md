@@ -77,11 +77,13 @@ scholarly text or science text change later, that area needs review again.
   the `ui.universe.field.prophet.*` and `ui.universe.field.site.*` messages in
   `src/i18n/en.json`). Check each note: that it is labelled "by tradition",
   states where traditions differ, takes no sectarian position, and that the
-  places chosen are the widely held ones (Mount Judi; Shib Hud in Hadramawt;
+  places chosen are the widely held ones (Adam's Peak in Sri Lanka, for the
+  Sarandib reports in the early histories such as al-Tabari's and Ibn Kathir's,
+  described as weakly attested; Mount Judi; Shib Hud in Hadramawt;
   al-Hijr by Hegra; Harran, Hebron and Makkah; the Dead Sea; Bahr Yussef; al-Bad
   for Madyan; Jabal Musa; Jabal Harun; Jerusalem; Nineveh; the Umayyad Mosque;
-  Nazareth; Madinah). No place is marked for Adam, Idris, Ayyub, Dhul-Kifl, Ilyas
-  or Al-Yasa. Also check the honorifics and the biblical names given in
+  Nazareth; Madinah). No place is marked for Idris, Ayyub, Dhul-Kifl, Ilyas or
+  Al-Yasa. Also check the honorifics and the biblical names given in
   brackets. Only names on the ground are shown; Makkah is never framed closer
   than 30 km across (`MAKKAH_FRAME`).
 

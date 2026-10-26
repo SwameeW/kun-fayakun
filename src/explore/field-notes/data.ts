@@ -76,6 +76,7 @@ export const SITES: readonly FieldPlace[] = [
   { id: 'nineveh', qid: 'Q5680', lat: 36.3667, lon: 43.15, viewKm: 30 },
   { id: 'umayyad-mosque', qid: 'Q183562', lat: 33.5114, lon: 36.3067, viewKm: 25 },
   { id: 'nazareth', qid: 'Q430776', lat: 32.7021, lon: 35.2978, viewKm: 25 },
+  { id: 'adams-peak', qid: 'Q60789', lat: 6.8094, lon: 80.4997, viewKm: 30 },
 ];
 
 export interface Prophet {
@@ -86,7 +87,7 @@ export interface Prophet {
 
 /** The 25 prophets named in the Quran, in their usual order. */
 export const PROPHETS: readonly Prophet[] = [
-  { id: 'adam', sites: [] },
+  { id: 'adam', sites: ['adams-peak'] },
   { id: 'idris', sites: [] },
   { id: 'nuh', sites: ['judi'] },
   { id: 'hud', sites: ['shib-hud'] },
