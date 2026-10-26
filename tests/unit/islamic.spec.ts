@@ -14,6 +14,8 @@
  *   2 and -0.96, and its inputs taken from the place itself (topocentric).
  * - Umm al-Qura: 1 Ramadan 1447 on 18 February 2026 and 1 Shawwal 1447 on 20 March 2026.
  * - WGS 84's quarter meridian: 10,001.965729 km.
+ * - Al-Sufi's "little cloud": the Andromeda Galaxy (M 31) at SIMBAD's ICRS position, about 1.3
+ *   degrees west of nu Andromedae, the star its finders hop from.
  * Places' coordinates come from public/assets/places/places.json (Natural Earth).
  */
 import { readFileSync } from 'node:fs';
@@ -44,6 +46,8 @@ import {
 } from '../../src/explore/islamic/astronomy';
 import { HERITAGE } from '../../src/explore/islamic/heritage';
 import { hijriDate } from '../../src/explore/islamic/hijri';
+import { createSky, LITTLE_CLOUD, skyDirection, type SkyFile } from '../../src/explore/sky';
+import type { SceneLabel } from '../../src/core/types';
 
 const ROOT = new URL('../../', import.meta.url);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
@@ -216,4 +220,31 @@ test('the Umm al-Qura calendar gives the published dates of Ramadan and Shawwal 
   expect(hijriDate(Date.parse('2026-03-20T12:00Z'))).toEqual({ day: 1, month: 10, year: 1447 });
   expect(hijriDate(Date.parse('2026-02-17T23:59Z'))?.month).toBe(8);
   expect(hijriDate(Number.NaN)).toBeNull();
+});
+
+test('al-Sufi’s “little cloud” named on the sky with the stars’ names, beside nu Andromedae', () => {
+  const file = readJson('public/assets/sky/sky.json') as SkyFile;
+  const heavens = createSky(file, sky.obliquityRad);
+  const named = (): SceneLabel | undefined => {
+    const out: SceneLabel[] = [];
+    heavens.labels(out);
+    return out.find((l) => l.id === LITTLE_CLOUD.id);
+  };
+  expect(named()).toBeUndefined();
+  heavens.setLayer('names', true);
+  heavens.update(10);
+  const cloud = named();
+  expect(cloud?.textKey).toBe('ui.universe.sky.littleCloud');
+  // Its angle from nu Andromedae (HR 226) in the sky's own catalogue: about 1.3 degrees, as in any star atlas.
+  const nu = file.stars.find(([hr]) => hr === 226);
+  expect(nu).toBeDefined();
+  const toNu = skyDirection(nu?.[1] ?? 0, nu?.[2] ?? 0, sky.obliquityRad);
+  const p = cloud?.position ?? [0, 0, 0];
+  const r = Math.hypot(...p);
+  const cos = (p[0] * (toNu[0] ?? 0) + p[1] * (toNu[1] ?? 0) + p[2] * (toNu[2] ?? 0)) / r;
+  expect((Math.acos(cos) * 180) / Math.PI).toBeCloseTo(1.345, 2);
+  heavens.setLayer('names', false);
+  heavens.update(10);
+  expect(named()).toBeUndefined();
+  heavens.dispose();
 });

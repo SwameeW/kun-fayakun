@@ -812,6 +812,14 @@ Changes:  public/assets/places/places.json keeps each place's name,
           no country is kept.
 Credit:   Made with Natural Earth
 
+SIMBAD (the Andromeda Galaxy's place on the sky)
+Terms:    Free use with acknowledgement: "This research has made use of the
+          SIMBAD database, operated at CDS, Strasbourg, France" (Wenger et
+          al. 2000, A&AS 143, 9).
+Changes:  Only M 31's ICRS position is used (src/explore/sky.ts), retrieved
+          2026-10-26; the position is 2MASS's (Skrutskie et al. 2006).
+Credit:   SIMBAD, CDS, Strasbourg
+
 Wikidata (coordinates of the field notes' places)
 Licence:  CC0 1.0 Universal: https://creativecommons.org/publicdomain/zero/1.0/
 Credit:   Coordinates: Wikidata (CC0)

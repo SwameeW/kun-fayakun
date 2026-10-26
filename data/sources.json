@@ -1083,6 +1083,23 @@
       }
     },
     {
+      "id": "simbad-m31",
+      "kind": "dataset",
+      "title": "SIMBAD: M 31, the Andromeda Galaxy (its ICRS position)",
+      "author": "Centre de Données astronomiques de Strasbourg (CDS); Wenger et al. (2000), A&AS 143, 9",
+      "url": "https://simbad.cds.unistra.fr/simbad/sim-id?Ident=M31",
+      "version": "retrieved 2026-10-26: 00 42 44.330 +41 16 07.50 (10.684708, +41.268750 degrees), the position from 2MASS (Skrutskie et al. 2006, AJ 131, 1163)",
+      "license": "Free use with acknowledgement: \"This research has made use of the SIMBAD database, operated at CDS, Strasbourg, France\"",
+      "licenseUrl": null,
+      "credit": "SIMBAD, CDS, Strasbourg",
+      "notes": "Where the explorer's sky names the Andromeda Galaxy, the \"little cloud\" Abd al-Rahman al-Sufi described in his Book of Fixed Stars (964). Only its position is used; its light is not drawn (the sky's stars are the Bright Star Catalogue's).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "hipparcos-van-leeuwen-2007",
       "kind": "dataset",
       "title": "Hipparcos, the New Reduction of the Raw Data (CDS I/311/hip2)",

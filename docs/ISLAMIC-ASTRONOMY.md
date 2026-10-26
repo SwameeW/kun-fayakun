@@ -32,6 +32,11 @@ sky allows, not when a month begins.
   so a change of test recolours the map at once; Odeh's zones take the colours of Yallop's nearest
   in meaning (seen by eye green; with optical aid only orange; not even with it red).
 - **The date in the Umm al-Qura calendar** beside the time machine's, named as such.
+- **Al-Sufi's "little cloud" on the sky.** With the sky's star names shown, the explorer names the
+  Andromeda Galaxy at its place (SIMBAD's ICRS position, from 2MASS), as "Andromeda Galaxy, al-Sufi's
+  little cloud": the galaxy Abd al-Rahman al-Sufi described in his Book of Fixed Stars (964), the
+  earliest known record of another galaxy. Only its name is drawn; its faint light is not among the
+  Bright Star Catalogue's stars.
 - **Astronomers and geometers of the Islamic world**: Raqqa (al-Battani), Isfahan (al-Sufi),
   Maragheh (al-Tusi's observatory), Samarkand (Ulugh Beg's), the Darb-i Imam in Isfahan (its girih
   tiles and the golden ratio), and Istanbul (Taqi al-Din's), each a note and a place to fly to.
@@ -53,6 +58,7 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | The Sun over the Kaaba | Each day's solar transit at the Kaaba (and at its antipode); the day the Sun comes nearest the zenith | The ephemeris above |
 | Golden latitude | Meridian arcs on the WGS 84 ellipsoid (Helmert's series); the latitude whose distances to the poles are in the golden ratio, by bisection | WGS 84 (a = 6378.137 km, f = 1/298.257223563) |
 | Hijri date | The browser's Umm al-Qura calendar (ICU, `islamic-umalqura`) for the civil day in UTC | Unicode CLDR / ICU |
+| The little cloud | M 31 at 00h 42m 44.330s, +41 16' 07.50" (ICRS), named with the stars' names | SIMBAD (CDS, Strasbourg), retrieved 2026-10-26; position from 2MASS (Skrutskie et al. 2006) |
 | Heritage places | Wikidata coordinate locations (P625): Q283368, Q42053, Q2461462, Q608580, Q1165662, Q3348357 | Wikidata (CC0), retrieved 2026-10-26 |
 
 ## Checked against published values
@@ -72,6 +78,7 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | Seen from the place | The Moon lower by up to its horizontal parallax (about 57') | On 18 February, the topocentric ARCV 0.95 to 0.96 degrees below the geocentric in each of the eleven places, and the topocentric width 11 to 14 per cent below Yallop's W' |
 | Umm al-Qura | 1 Ramadan 1447 = 18 February 2026; 1 Shawwal 1447 = 20 March 2026 | the same |
 | WGS 84 quarter meridian | 10,001.965729 km | the same, to a millimetre |
+| The little cloud beside nu Andromedae (HR 226) | About 1.3 degrees (star atlases) | 1.345 degrees, against the sky's own catalogue |
 
 In the browser (`tests/explore/islamic.spec.ts`), going to the computed moment of the Sun over the
 Kaaba puts the explorer's own Sun (its "Today on Earth" point beneath the Sun) within half a degree

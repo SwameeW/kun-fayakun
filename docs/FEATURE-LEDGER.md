@@ -37,7 +37,7 @@ platform.
 | IA-4 | New moons and the new crescent's map | Yallop's q-test at the best time | the same (Espenak's 2026 new moons; Ramadan 1447 reports) | implemented |
 | IA-5 | The Umm al-Qura date | ICU's islamic-umalqura | the same (Ramadan and Shawwal 1447) | implemented |
 | IA-6 | Astronomers and geometers of the Islamic world | Wikidata places, cited notes | the same | implemented |
-| IA-7 | Al-Sufi's "little cloud" named on the sky | The Andromeda Galaxy's catalogue position | Label at the cited position | planned |
+| IA-7 | Al-Sufi's "little cloud" named on the sky | The Andromeda Galaxy's position from SIMBAD (2MASS), named with the stars' names | `tests/unit/islamic.spec.ts` (named only with the names; 1.345 degrees from nu Andromedae in the sky's catalogue) | implemented |
 | IA-8 | Star names from Arabic astronomy | Etymologies from a licensed source | Every name cited | research needed |
 | IA-9 | Prayer times | Conventions for twilight and the afternoon differ between communities | Owner and scholar decision first | deferred |
 | IA-10 | Other crescent criteria (Odeh, SAAO), weather | Odeh's test (Experimental Astronomy 18, 2004) beside Yallop's, chosen in the panel; SAAO (a curve read from a figure) and weather not implemented | `tests/unit/islamic.spec.ts` (Odeh's zone bounds; Ramadan 1447 by both tests; topocentric inputs), `tests/explore/islamic.spec.ts` (the map recoloured by Odeh's zones) | partial |

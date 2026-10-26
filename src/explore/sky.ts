@@ -9,7 +9,8 @@ import type { SceneLabel, SkyLayerName } from '../core/types';
  * through Ballesteros's temperature to a blackbody's colour) and brightness (its V magnitude), on a
  * sphere that moves with the camera, so they sit at infinity; and, when asked for, the constellation
  * figures, their boundaries, a grid of right ascension and declination with the celestial equator
- * and the ecliptic, and names (the IAU's for the brightest stars, and the constellations').
+ * and the ecliptic, and names (the IAU's for the brightest stars, and the constellations'; and with
+ * the stars' names, the Andromeda Galaxy's, al-Sufi's "little cloud", at its place).
  *
  * Positions: right ascension and declination (ICRF) to the ecliptic of J2000 by the obliquity, then
  * to the render frame (x to the equinox, y to the ecliptic's north, z = -ecliptic y). Lines join
@@ -52,6 +53,12 @@ const DEG = Math.PI / 180;
 const STEP_DEG = 2;
 /** Stars brighter than this have their IAU name shown (with the names layer). */
 const NAMED_BRIGHTER_THAN = 2.6;
+/**
+ * The Andromeda Galaxy (M 31), named with the stars: SIMBAD's ICRS position (2MASS; data/sources.json
+ * "simbad-m31"), the "little cloud" Abd al-Rahman al-Sufi described in his Book of Fixed Stars (964).
+ * Only named: its faint light is not among the Bright Star Catalogue's stars.
+ */
+export const LITTLE_CLOUD = { id: 'sky-m31', raDeg: 10.684708, decDeg: 41.26875 } as const;
 /** Magnitude to light and size on screen: V = 6.5 at FAINT_LIGHT, rising as the flux to FLUX_POWER; brighter than SIZE_FROM a star grows by SIZE_PER_MAG px a magnitude. */
 const FAINT_MAG = 6.5;
 const FAINT_LIGHT = 0.05;
@@ -203,6 +210,7 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
     return s && s.v < NAMED_BRIGHTER_THAN ? [{ id: `sky-star-${hr}`, text: name, dir: skyDirection(s.ra, s.dec, obliquity) }] : [];
   });
   const constellationNames = file.constellations.map((k) => ({ id: `sky-con-${k.id}`, text: k.name, dir: skyDirection(k.label[0], k.label[1], obliquity) }));
+  const littleCloud = skyDirection(LITTLE_CLOUD.raDeg, LITTLE_CLOUD.decDeg, obliquity);
 
   const layers: Record<SkyLayer, boolean> = { constellations: false, boundaries: false, grid: false, names: false };
   let radius = 400;
@@ -244,6 +252,9 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
       };
       push(starNames, fades.names.value, 'star');
       push(constellationNames, fades.constellations.value, 'constellation');
+      if (fades.names.value > 0.01) {
+        out.push({ id: LITTLE_CLOUD.id, textKey: 'ui.universe.sky.littleCloud', position: [(littleCloud[0] ?? 0) * radius, (littleCloud[1] ?? 0) * radius, (littleCloud[2] ?? 0) * radius], opacity: 0.85 * fades.names.value });
+      }
     },
     dispose() {
       geometry.dispose();
