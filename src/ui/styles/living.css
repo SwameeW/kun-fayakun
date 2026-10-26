@@ -620,6 +620,20 @@
   padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
 }
 
+/* The astrolabe (src/ui/explore/astrolabe-view.ts): drawn at a fixed size, scaled to the panel. */
+.kf-islamic-astrolabe {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 22rem;
+  block-size: auto;
+  aspect-ratio: 1;
+  margin: var(--kf-space-1) auto;
+}
+
+.kf-islamic-astrolabe[hidden] {
+  display: none;
+}
+
 .kf-islamic-figure {
   margin: 0;
   color: var(--kf-text);

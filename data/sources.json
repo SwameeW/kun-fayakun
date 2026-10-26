@@ -1100,6 +1100,40 @@
       }
     },
     {
+      "id": "snyder-1987",
+      "kind": "paper",
+      "title": "Map Projections: A Working Manual (the stereographic projection, its polar aspect)",
+      "author": "John P. Snyder (1987), U.S. Geological Survey Professional Paper 1395",
+      "url": "https://doi.org/10.3133/pp1395",
+      "version": "read 2026-10-26",
+      "license": "Public domain (a work of the United States Government); the projection's formulas, credited",
+      "licenseUrl": null,
+      "credit": "Snyder (1987), USGS",
+      "notes": "The astrolabe in the explorer's section on the qibla and the new moon (src/explore/islamic/astrolabe.ts): the sky projected from the celestial pole below the horizon onto the plane of the equator, a declination d drawn tan(45 - d / 2) from the plate's centre with the equator's radius 1 (the polar aspect).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sciencemuseum-astrolabe-1981-1380",
+      "kind": "dataset",
+      "title": "Islamic Astrolabe, object 1981-1380 (Science Museum Group Collection)",
+      "author": "Science Museum Group, London",
+      "url": "https://collection.sciencemuseumgroup.org.uk/objects/co57101/islamic-astrolabe",
+      "version": "catalogue record read 2026-10-26: brass, made in Syria, 901-1100, with latitude plates and a rete; its uses included timekeeping",
+      "license": "Facts only: the record's date, place, material and parts, credited; no text or image of the record is used",
+      "licenseUrl": null,
+      "credit": "Science Museum Group Collection",
+      "notes": "The history the astrolabe's note gives (src/i18n/en.islamic.json): one surviving instrument, the museum's, its date, place and plates as the catalogue records them. The record also says it was made in the ninth century, at odds with its dates; the note gives the catalogue's dates.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "simbad-m31",
       "kind": "dataset",
       "title": "SIMBAD: M 31, the Andromeda Galaxy (its ICRS position)",

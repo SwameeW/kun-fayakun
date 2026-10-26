@@ -134,6 +134,63 @@ test('the times of prayer at a place, by each convention and either shadow for A
   expect(pageErrors).toEqual([]);
 });
 
+/**
+ * The Sun's altitude and local apparent time at a place, by the Astronomical Almanac's low-precision
+ * formulas (good to about 0.01 degrees, 1950 to 2050): a model independent of the explorer's ephemeris.
+ */
+function almanacSun(jdUtc: number, latDeg: number, lonDeg: number): { altDeg: number; apparentHours: number } {
+  const r = Math.PI / 180;
+  const n = jdUtc - 2451545;
+  const L = 280.46 + 0.9856474 * n;
+  const g = (357.528 + 0.9856003 * n) * r;
+  const lambda = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * r;
+  const eps = (23.439 - 0.0000004 * n) * r;
+  const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda)) / r;
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lambda));
+  const gmstH = 18.697374558 + 24.06570982441908 * n;
+  const hour = ((((gmstH * 15 + lonDeg - ra) % 360) + 540) % 360) - 180;
+  const phi = latDeg * r;
+  const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(hour * r)) / r;
+  return { altDeg: alt, apparentHours: (hour + 180) / 15 };
+}
+
+test('an astrolabe for the place: its plate, the rete turned to the time shown, read by the rule, north and south', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openSection(page);
+  await page.getByTestId('islamic-find').fill('London');
+  await page.getByTestId('islamic-find-results').getByRole('button').first().click();
+  const canvas = page.getByTestId('islamic-astrolabe');
+  await canvas.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await islamic(page))?.astrolabe?.latDeg ?? 0, LIVE).toBeGreaterThan(51);
+  await expect(page.getByTestId('islamic-astrolabe-plate')).toContainText('Plate for 51.5° N', LIVE);
+  // At 06:00 UTC on 23 October the Sun has not risen in London: below the horizon, as the almanac has it.
+  const a = (await islamic(page))?.astrolabe;
+  const sun = almanacSun(Number(JD), a?.latDeg ?? 0, a?.lonDeg ?? 0);
+  await expect.poll(async () => Number((await canvas.getAttribute('data-sun-alt')) ?? 99), LIVE).toBeLessThan(0);
+  expect(Math.abs(Number(await canvas.getAttribute('data-sun-alt')) - sun.altDeg)).toBeLessThan(0.1);
+  await expect(page.getByTestId('islamic-astrolabe-reading')).toContainText('below the horizon');
+  // The rule reads the local apparent time: within a minute of the almanac's (the equation of time some 15.6 minutes then).
+  const reading = (await page.getByTestId('islamic-astrolabe-reading').textContent()) ?? '';
+  const [, hh, mm] = /reads (\d\d):(\d\d)/u.exec(reading) ?? [];
+  expect(Math.abs(Number(hh) + Number(mm) / 60 - sun.apparentHours) * 60).toBeLessThan(1.01);
+  // The northern plate's stars: the named ones brighter than magnitude 2 north of the Tropic of Capricorn.
+  expect(Number(await canvas.getAttribute('data-stars'))).toBeGreaterThanOrEqual(24);
+  expect(await canvas.getAttribute('aria-label')).toContain('51.5° N');
+  // South of the equator: a plate about the south pole.
+  await page.getByTestId('islamic-find').fill('Sydney');
+  await page.getByTestId('islamic-find-results').getByRole('button').first().click();
+  await expect(page.getByTestId('islamic-astrolabe-plate')).toContainText('° S', LIVE);
+  await expect.poll(async () => (await islamic(page))?.astrolabe?.latDeg ?? 0, LIVE).toBeLessThan(-33);
+  const south = (await islamic(page))?.astrolabe;
+  const there = almanacSun(Number(JD), south?.latDeg ?? 0, south?.lonDeg ?? 0);
+  await expect.poll(async () => Math.abs(Number((await canvas.getAttribute('data-sun-alt')) ?? 99) - there.altDeg), LIVE).toBeLessThan(0.1);
+  const results = await new AxeBuilder({ page }).include('[data-testid="islamic-panel"]').withTags(WCAG_TAGS).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test('the new moon and the crescent’s map for the evenings after it, read out for the place in view', async ({ page, kf, pageErrors }) => {
   test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });

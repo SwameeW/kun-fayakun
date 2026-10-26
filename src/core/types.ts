@@ -811,6 +811,20 @@ export interface UniverseIslamic {
   prayer: UniversePrayer | null;
   /** The new crescent's map while one is shown. */
   crescent: UniverseCrescent | null;
+  /**
+   * The astrolabe for the place the qibla is reckoned from (src/explore/islamic/astrolabe.ts): the
+   * place (degrees), the local mean sidereal time and the mean obliquity of the ecliptic of date
+   * (degrees), the Sun's apparent place of date, and the stars the IAU names that are brighter than
+   * magnitude 2, at their places of date (degrees). Null with no place.
+   */
+  astrolabe: {
+    latDeg: number;
+    lonDeg: number;
+    lstDeg: number;
+    obliquityDeg: number;
+    sun: { raDeg: number; decDeg: number };
+    stars: ReadonlyArray<{ name: string; raDeg: number; decDeg: number; vmag: number }>;
+  } | null;
   /** Marks drawn on the globe: the qibla's path, the two latitudes, the map's places. */
   marks: { path: number; lines: number; map: number };
 }

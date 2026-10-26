@@ -383,6 +383,8 @@ export default function create(): UniverseModule {
   let lab: Lab | null = null;
   /** What the laboratory is made from (kept from loading; the laboratory's own code loads only when one starts). */
   let labInputs: { planets: PlanetsFile; moon: MoonFile; physical: PhysicalFile } | null = null;
+  /** The sky's catalogue, kept for the astrolabe's stars. */
+  let skyData: SkyFile | null = null;
   let labLoading = false;
   let wantLab = false;
   /** A share link's scenario (src/sim/share), waiting for the laboratory to open. */
@@ -2487,6 +2489,7 @@ export default function create(): UniverseModule {
       range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
       system = createSolarSystem(planets, moon, physical);
       labInputs = { planets, moon, physical };
+      skyData = skyFile;
       world = navBodies(system);
       ringSphere.innerKm = physical.saturnRings.innerKm;
       ringSphere.outerKm = physical.saturnRings.outerKm;
@@ -2977,7 +2980,7 @@ export default function create(): UniverseModule {
       import('./islamic')
         .then(({ createIslamic }) => {
           islamicLoading = false;
-          islamic = createIslamic({ ephemeris: createEphemeris(planets, moon, physical), time, obliquityRad: obliquityRad(physical) }, radiusKm);
+          islamic = createIslamic({ ephemeris: createEphemeris(planets, moon, physical), time, obliquityRad: obliquityRad(physical) }, radiusKm, skyData ?? undefined);
           root.add(...islamic.objects);
           for (const c of islamicWaiting.splice(0)) islamic.command(c);
         })

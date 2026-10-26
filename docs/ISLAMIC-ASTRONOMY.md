@@ -38,6 +38,17 @@ sky allows, not when a month begins.
   the place in view read out (zone, q or V, best time). Both tests are worked out for every place,
   so a change of test recolours the map at once; Odeh's zones take the colours of Yallop's nearest
   in meaning (seen by eye green; with optical aid only orange; not even with it red).
+- **An astrolabe for the place** (ledger IA-11): the instrument drawn for the latitude the qibla is
+  reckoned from, turned to the time shown. The plate holds the horizon, circles of equal altitude
+  every 10 degrees, lines of equal azimuth every 30, the tropics and the equator, and a dashed circle
+  18 degrees below the horizon (the depression several of the conventions above use for Fajr or
+  Isha); the rete holds the ecliptic, the stars the IAU names that are brighter than magnitude 2 (at
+  their places of date) and the Sun; the rule, from the centre through the Sun, reads the local
+  apparent time on the rim, noon at the top. North of the equator east is on the left and the rete
+  turns clockwise, as on the instrument; south of it the plate is drawn about the south pole and,
+  seen from outside the sphere in the same way, east is on the right. Its note gives one surviving
+  instrument, as the Science Museum Group's catalogue records it: a brass astrolabe made in Syria
+  between 901 and 1100, with plates for three latitudes, used among other things to tell the time.
 - **The date in the Umm al-Qura calendar** beside the time machine's, named as such.
 - **Al-Sufi's "little cloud" on the sky.** With the sky's star names shown, the explorer names the
   Andromeda Galaxy at its place (SIMBAD's ICRS position, from 2MASS), as "Andromeda Galaxy, al-Sufi's
@@ -67,6 +78,7 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | Golden latitude | Meridian arcs on the WGS 84 ellipsoid (Helmert's series); the latitude whose distances to the poles are in the golden ratio, by bisection | WGS 84 (a = 6378.137 km, f = 1/298.257223563) |
 | Hijri date | The browser's Umm al-Qura calendar (ICU, `islamic-umalqura`) for the civil day in UTC | Unicode CLDR / ICU |
 | The little cloud | M 31 at 00h 42m 44.330s, +41 16' 07.50" (ICRS), named with the stars' names | SIMBAD (CDS, Strasbourg), retrieved 2026-10-26; position from 2MASS (Skrutskie et al. 2006) |
+| The astrolabe | Stereographic projection from the celestial pole below the horizon onto the plane of the equator, the equator's radius 1: a declination d at tan(45 - d / 2) from the centre (polar aspect), each direction from its declination and hour angle (local mean sidereal time less right ascension) or its altitude and azimuth; the plate's edge the farther tropic; stars from the Bright Star Catalogue (J2000) precessed to the date (Lieske et al. 1977), named by the IAU; the mean obliquity of date (IAU 1976) | Snyder, *Map Projections: A Working Manual* (USGS Professional Paper 1395, 1987), eq. 21-33; Meeus, ch. 21 and eq. 22.2 |
 | Heritage places | Wikidata coordinate locations (P625): Q283368, Q42053, Q2461462, Q608580, Q1165662, Q3348357 | Wikidata (CC0), retrieved 2026-10-26 |
 
 ## Checked against published values
@@ -90,6 +102,8 @@ None of it appears in the orbital laboratory: its Earth is an experiment's.
 | The times of prayer (Makkah, 20 March 2026, every convention) | Each convention's definition | The Sun at each depression to 0.01 degrees; Asr's shadow its noon shadow and 1 (or 2) to 0.001; Umm al-Qura's Isha 90 minutes after Maghrib (120 in Ramadan) |
 | London at midsummer | The Sun 15.1 degrees below the horizon at most | No Fajr or Isha at 18 degrees; both, near midnight, at 15 |
 | The little cloud beside nu Andromedae (HR 226) | About 1.3 degrees (star atlases) | 1.345 degrees, against the sky's own catalogue |
+| The astrolabe's plate (`tests/unit/astrolabe.spec.ts`) | A circle of equal altitude a at latitude phi is centred cos(phi) / (sin(phi) + sin(a)) up the meridian from the pole, radius cos(a) / (sin(phi) + sin(a)) (both from the projection's two meridian points, A = (phi + a) / 2 and B = (phi - a) / 2: cot A - tan B and cot A + tan B halved); the horizon centred cot(phi), radius 1 / sin(phi), through the east and west points; the tropics at tan(45 -+ e / 2), 1.5235 and 0.6564; the ecliptic touching both | every one to 1e-9 at five latitudes north and south (below the altitude -phi the circle encloses the projection's pole and the expressions turn negative: their magnitudes); 400 stars each on the circle of its own altitude by sin(a) = sin(phi) sin(d) + cos(phi) cos(d) cos(H) |
+| The astrolabe in the browser | The Astronomical Almanac's low-precision Sun (about 0.01 degrees) | London and Sydney at 06:00 UTC on 23 October 2026: the Sun's altitude within 0.1 degrees, and the rule's local apparent time within a minute |
 
 In the browser (`tests/explore/islamic.spec.ts`), going to the computed moment of the Sun over the
 Kaaba puts the explorer's own Sun (its "Today on Earth" point beneath the Sun) within half a degree

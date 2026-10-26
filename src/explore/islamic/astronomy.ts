@@ -212,9 +212,13 @@ function ofDate(x: number, y: number, z: number, eps: number, jdTt: number, out:
   const ye = y * Math.cos(eps) - z * Math.sin(eps);
   const ze = y * Math.sin(eps) + z * Math.cos(eps);
   const r = Math.hypot(xe, ye, ze);
-  const a0 = Math.atan2(ye, xe);
-  const d0 = Math.asin(ze / r);
-  // Precession to the date (Lieske et al. 1977, as in Meeus, Astronomical Algorithms, ch. 21).
+  precess(Math.atan2(ye, xe), Math.asin(ze / r), jdTt, out);
+  out.distKm = r;
+  return out;
+}
+
+/** A J2000 place (right ascension and declination, radians) precessed to the equator and equinox of date: Lieske et al. (1977), as in Meeus, Astronomical Algorithms, ch. 21. */
+export function precess(a0: number, d0: number, jdTt: number, out: Place): Place {
   const t = (jdTt - 2451545) / 36525;
   const zeta = (2306.2181 * t + 0.30188 * t * t + 0.017998 * t * t * t) * ARCSEC;
   const zz = (2306.2181 * t + 1.09468 * t * t + 0.018203 * t * t * t) * ARCSEC;
@@ -224,7 +228,6 @@ function ofDate(x: number, y: number, z: number, eps: number, jdTt: number, out:
   const C = Math.sin(theta) * Math.cos(d0) * Math.cos(a0 + zeta) + Math.cos(theta) * Math.sin(d0);
   out.ra = wrapTau(Math.atan2(A, B) + zz);
   out.dec = Math.asin(Math.max(-1, Math.min(1, C)));
-  out.distKm = r;
   return out;
 }
 

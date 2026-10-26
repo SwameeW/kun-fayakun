@@ -2,6 +2,7 @@ import type { App, CrescentCriterion, CrescentZoneName, PrayerConventionId, Univ
 import { loadPlaces, searchPlaces, type Place } from '../../explore/field-notes/places';
 import islamicMessages from '../../i18n/en.islamic.json';
 import { HERITAGE } from '../../explore/islamic/heritage';
+import { ASTROLABE_PX, drawAstrolabe } from './astrolabe-view';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
 
@@ -151,6 +152,19 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
     return rows.flatMap(([id, term, detail]) => [h('dt', {}, term), h('dd', { 'data-testid': `islamic-prayer-${id}` }, detail)]);
   };
 
+  // The astrolabe for the place (ledger IA-11): drawn when the place or the sidereal time moves (a tenth of a degree, 24 seconds), and only while shown.
+  const astrolabeCanvas = h('canvas', { class: 'kf-islamic-astrolabe', width: String(ASTROLABE_PX), height: String(ASTROLABE_PX), role: 'img', 'data-testid': 'islamic-astrolabe' });
+  const astrolabePlate = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-astrolabe-plate' });
+  const astrolabeReading = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-astrolabe-reading' });
+  let astrolabeKey = '';
+  const latitude = (lat: number): string => i18n.t(lat < 0 ? 'ui.universe.islamic.astrolabe.latS' : 'ui.universe.islamic.astrolabe.latN', { deg: fixed(Math.abs(lat), 1) });
+  /** Degrees of hour angle (or sidereal time) as hours and minutes. */
+  const clock = (deg: number): { h: number; m: number } => {
+    const minutes = Math.round((((deg % 360) + 360) % 360) * 4) % 1440;
+    return { h: Math.floor(minutes / 60), m: minutes % 60 };
+  };
+  const two = (n: number): string => String(n).padStart(2, '0');
+
   // The golden latitude.
   const goldenText = h('p', { class: 'kf-living-hint', 'data-testid': 'islamic-golden' });
   const goldenLine = toggleButton(i18n.t('ui.universe.islamic.showLatitudes'), 'islamic-golden-line', (on) => {
@@ -252,6 +266,13 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
     prayerList,
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.prayer.note')),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.prayer.credit')),
+    h('h3', { class: 'kf-living-label' }, i18n.t('ui.universe.islamic.astrolabe.title')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.astrolabe.intro')),
+    astrolabeCanvas,
+    astrolabePlate,
+    astrolabeReading,
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.astrolabe.how')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.islamic.astrolabe.credit')),
     h('h3', { class: 'kf-living-label' }, i18n.t('ui.universe.islamic.goldenTitle')),
     goldenText,
     h('div', { class: 'kf-lab-row' }, goldenLine, goldenGo),
@@ -332,6 +353,32 @@ export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): I
         write(prayerFor, i18n.t('ui.universe.islamic.noPlace'));
         prayerKey = '';
         prayerList.replaceChildren();
+      }
+      // The astrolabe.
+      const a = s.astrolabe;
+      astrolabeCanvas.hidden = a === null;
+      if (!a) {
+        astrolabeKey = '';
+        write(astrolabePlate, i18n.t('ui.universe.islamic.noPlace'));
+        write(astrolabeReading, '');
+      } else {
+        const key = `${a.latDeg.toFixed(3)}:${a.lonDeg.toFixed(3)}:${a.lstDeg.toFixed(1)}:${String(a.stars.length)}`;
+        // Drawn only while it shows (the section open, the panel unfolded).
+        if (key !== astrolabeKey && astrolabeCanvas.offsetParent !== null) {
+          const drawn = drawAstrolabe(astrolabeCanvas, a, i18n.t('ui.universe.islamic.astrolabe.east'), i18n.t('ui.universe.islamic.astrolabe.west'));
+          if (drawn) {
+            astrolabeKey = key;
+            const lst = clock(a.lstDeg);
+            const time = clock(drawn.sunHourDeg + 180);
+            const alt = fixed(Math.abs(drawn.sunAltDeg), 1);
+            astrolabeCanvas.dataset.stars = String(drawn.stars);
+            astrolabeCanvas.dataset.sunAlt = drawn.sunAltDeg.toFixed(2);
+            astrolabeCanvas.dataset.lst = a.lstDeg.toFixed(3);
+            astrolabeCanvas.setAttribute('aria-label', i18n.t('ui.universe.islamic.astrolabe.label', { lat: latitude(a.latDeg), count: drawn.stars }));
+            write(astrolabePlate, i18n.t('ui.universe.islamic.astrolabe.plate', { lat: latitude(a.latDeg), lst: i18n.t('ui.universe.islamic.astrolabe.hm', { h: lst.h, m: two(lst.m) }) }));
+            write(astrolabeReading, i18n.t(drawn.sunAltDeg >= 0 ? 'ui.universe.islamic.astrolabe.above' : 'ui.universe.islamic.astrolabe.below', { alt, time: `${two(time.h)}:${two(time.m)}` }));
+          }
+        }
       }
       // The golden latitude.
       const g = s.golden;

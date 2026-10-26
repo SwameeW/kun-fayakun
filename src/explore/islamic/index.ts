@@ -1,11 +1,15 @@
 import { Vector3, type Object3D } from 'three/webgpu';
 import type { CrescentCriterion, CrescentZoneName, PrayerConventionId, SceneLabel, UniverseCrescent, UniverseIslamic, UniverseIslamicCommand, UniversePrayer } from '../../core/types';
+import { utcToTdb } from '../../astro/time';
 import { bodyFrame } from '../living/quakes';
+import type { SkyFile } from '../sky';
+import { meanObliquityDeg } from './astrolabe';
 import {
   compassPoint,
   crescentAt,
   eveningSpan,
   GOLDEN_RATIO,
+  gmst,
   goldenLatitude,
   KAABA,
   kaabaSuns,
@@ -14,10 +18,12 @@ import {
   newMoons,
   PRAYER_CONVENTIONS,
   prayerTimes,
+  precess,
   qiblaBearing,
   qiblaDistanceKm,
   qiblaPath,
   skyTrack,
+  sunPlace,
   YALLOP_MAX_LAT,
   type CrescentAt,
   type KaabaSun,
@@ -94,6 +100,12 @@ const LATITUDE_LABELS_WITHIN_KM = 4000;
 /** How far east of the Kaaba (degrees of longitude) the two latitudes are named. */
 const LATITUDE_LABEL_EAST_DEG = 0.15;
 
+const DEG = Math.PI / 180;
+/** The astrolabe's rete: the stars the IAU names that are brighter than this (V magnitude). */
+const RETE_BRIGHTER_THAN = 2;
+/** Its stars are precessed to the date again once the date has moved this far (days): a year moves them 50 seconds of arc. */
+const RETE_REPRECESS_DAYS = 30;
+
 const zero = (): Record<CrescentZoneName | 'none', number> => ({ A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, none: 0 });
 
 /** A circle of latitude as points, gathered toward the Kaaba's longitude (where the view comes close). */
@@ -106,7 +118,7 @@ function latitudeLine(lat: number): number[] {
   return out;
 }
 
-export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
+export function createIslamic(sky: SkyFrame, meanRadiusKm: number, skyFile?: Pick<SkyFile, 'stars' | 'names'>): Islamic {
   const layer = createIslamicLayer();
   const golden = goldenLatitude();
   const goldenView = { latDeg: golden, kaabaLatDeg: KAABA.lat, kaabaLonDeg: KAABA.lon, kaabaRatio: meridianRatio(KAABA.lat), kaabaNorthKm: meridianArcKm(KAABA.lat) - meridianArcKm(golden), ratio: GOLDEN_RATIO };
@@ -187,6 +199,33 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
       noonAltitudeDeg: t.noonAltitudeDeg,
       asrAltitudeDeg: t.asrAltitudeDeg,
     };
+  };
+
+  // The astrolabe: the rete's stars (J2000 in the sky's catalogue) precessed to the date shown, and the Sun's place of date.
+  const names = new Map(skyFile?.names ?? []);
+  const reteStars = (skyFile?.stars ?? []).filter((s) => s[3] <= RETE_BRIGHTER_THAN && names.has(s[0])).map((s) => ({ name: names.get(s[0]) ?? '', raDeg: s[1], decDeg: s[2], vmag: s[3] }));
+  let starsOfDate: Array<{ name: string; raDeg: number; decDeg: number; vmag: number }> = [];
+  let starsJd = Number.NEGATIVE_INFINITY;
+  let sunOfDate = { raDeg: 0, decDeg: 0 };
+  let sunJd = Number.NEGATIVE_INFINITY;
+  const astrolabe = (): UniverseIslamic['astrolabe'] => {
+    const p = place();
+    if (!p || jdNow === 0) return null;
+    const jdTt = utcToTdb(jdNow, sky.time);
+    if (Math.abs(jdNow - starsJd) > RETE_REPRECESS_DAYS) {
+      starsJd = jdNow;
+      const out = { ra: 0, dec: 0, distKm: 0 };
+      starsOfDate = reteStars.map((s) => {
+        precess(s.raDeg * DEG, s.decDeg * DEG, jdTt, out);
+        return { name: s.name, raDeg: out.ra / DEG, decDeg: out.dec / DEG, vmag: s.vmag };
+      });
+    }
+    if (jdNow !== sunJd) {
+      sunJd = jdNow;
+      const q = sunPlace(sky, jdNow);
+      sunOfDate = { raDeg: q.ra / DEG, decDeg: q.dec / DEG };
+    }
+    return { latDeg: p.lat, lonDeg: p.lon, lstDeg: (((gmst(jdNow) / DEG + p.lon) % 360) + 360) % 360, obliquityDeg: meanObliquityDeg(jdTt), sun: { ...sunOfDate }, stars: starsOfDate };
   };
 
   const refreshQibla = (): void => {
@@ -438,6 +477,7 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
         criterion,
         prayer: prayer ? { ...prayer, times: { ...prayer.times } } : null,
         crescent: crescent ? { ...crescent, counts: { ...crescent.counts } } : null,
+        astrolabe: astrolabe(),
         marks: layer.counts(),
       };
     },
