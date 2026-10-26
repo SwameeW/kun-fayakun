@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
 import type { PhysicalFile } from '../../src/astro/physical';
 import { DEFAULT_INTEGRATOR, Engine, ENGINE_VERSION, SCHEMA_VERSION, stateFrom, type BodySpec } from '../../src/sim/engine';
 import { impactOutcome, impactParameter, LS2012, type ImpactBody } from '../../src/sim/impacts';
-import { diagnostics, drift, MAX_BODIES, MAX_DEBRIS, resolveContacts, step, type ContactEvent, type SimState } from '../../src/sim/nbody';
+import { diagnostics, drift, MAX_BODIES, MAX_DEBRIS, resolveContacts, step, TIDAL, type ContactEvent, type SimState } from '../../src/sim/nbody';
 
 const physical = JSON.parse(readFileSync(new URL('../../public/assets/jpl/physical.json', import.meta.url), 'utf8')) as PhysicalFile;
 const mean = (r: readonly number[]): number => r.reduce((a, b) => a + b, 0) / r.length;
@@ -203,4 +203,44 @@ test('a breakup replays to exactly the same bodies, through save and load', () =
   expect(b.state.ids).toEqual(a.state.ids);
   expect(b.state.pos).toEqual(a.state.pos);
   expect(b.state.vel).toEqual(a.state.vel);
+});
+
+test('tidal disruption: a moon inside its planet’s fluid Roche limit is torn into pieces and a ring of dust, everything accounted; the pieces shear into an arc and are not torn again', () => {
+  const MOON: ImpactBody = { gm: physical.gmKm3S2.Moon, radiusKm: mean(physical.bodies.Moon.radiiKm) };
+  // The Moon's fluid Roche limit about the Earth: 2.44 R_E (rho_E / rho_M)^(1/3), about 18,400 km.
+  const rho = (b: ImpactBody): number => b.gm / b.radiusKm ** 3;
+  const limit = 2.44 * EARTH.radiusKm * Math.cbrt(rho(EARTH) / rho(MOON));
+  expect(limit).toBeGreaterThan(18_000);
+  expect(limit).toBeLessThan(18_800);
+  const r = 15_000;
+  const v = Math.sqrt((EARTH.gm + MOON.gm) / r);
+  const s = stateFrom([spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('moon', MOON, [r, 0, 0], [0, v, 0])]);
+  const ref = diagnostics(s);
+  const events: ContactEvent[] = [];
+  const acc: number[] = [];
+  step(s, 60, acc, events);
+  const [torn] = events;
+  expect(torn?.kind).toBe('disrupt');
+  expect(torn?.survivor).toBe('earth');
+  expect(torn?.absorbed).toBe('moon');
+  expect(torn?.created.length).toBe(TIDAL.pieces);
+  expect(s.ids).not.toContain('moon');
+  expect(s.swarms[0]?.primary).toBe('earth');
+  expect((s.swarms[0]?.pos.length ?? 0) / 3).toBe(TIDAL.dust);
+  const now = diagnostics(s);
+  expect(Math.abs(now.gm - ref.gm) / ref.gm).toBeLessThan(1e-14);
+  const d = drift(ref, now);
+  expect(d.momentum).toBeLessThan(1e-12);
+  expect(d.angularMomentum).toBeLessThan(1e-9);
+  // A day on: the pieces have sheared into an arc (inner ones ahead), none torn again.
+  for (let k = 0; k < 1440; k += 1) step(s, 60, acc, events);
+  expect(events.filter((e) => e.kind === 'disrupt').length).toBe(1);
+  // Each piece on its own orbit (they do not pull one another), so in a day they spread round the planet: the widest gap between them well under the circle.
+  const earth = s.ids.indexOf('earth');
+  const angles = (torn?.created ?? []).map((id) => s.ids.indexOf(id)).filter((i) => i >= 0).map((i) => Math.atan2((s.pos[i * 3 + 1] ?? 0) - (s.pos[earth * 3 + 1] ?? 0), (s.pos[i * 3] ?? 0) - (s.pos[earth * 3] ?? 0))).sort((a, b) => a - b);
+  expect(angles.length).toBe(TIDAL.pieces);
+  const gaps = angles.map((a, k) => (k === angles.length - 1 ? (angles[0] ?? 0) + 2 * Math.PI - a : (angles[k + 1] ?? 0) - a));
+  expect(2 * Math.PI - Math.max(...gaps)).toBeGreaterThan(1);
+  // Its dust neither feels nor strikes its pieces: most of it is still there, about the Earth.
+  expect((s.swarms[0]?.pos.length ?? 0) / 3).toBeGreaterThan(TIDAL.dust / 2);
 });

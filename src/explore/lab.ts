@@ -3,10 +3,11 @@ import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
 import { BODY_IDS, type BodyId, type LabCommand, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
 import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
-import { bulkDensity, joules } from '../sim/craters';
+import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
 import { circularOrbit, consumes, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
 import { SWARM_LIMITS } from '../sim/swarms';
+import { airlessRock, climateSummary, noonK, worldClimates } from '../sim/climate';
 import { presets as presetList, type Preset } from '../sim/presets';
 import { decodeScenario, encodeScenario } from '../sim/share';
 import type { LabReply, LabRequest, LabSnapshot } from '../sim/protocol';
@@ -72,6 +73,9 @@ export interface Lab {
   applyBuiltIns(sys: SolarSystem, hidden: Set<BodyId>): void;
   /** The craters to draw on a world (in its own frame), eased in and their glow fading (flash-safe); none outside the laboratory. */
   marks(body: BodyId): SurfaceMark[];
+  /** A world's climate bands to draw (K, south to north), or null; and whether the temperature view is on. */
+  climateBands(body: BodyId): number[] | null;
+  readonly climateView: boolean;
   update(frame: LabFrame, relative: (abs: Km, out: Km) => Km): void;
   labels(out: SceneLabel[]): void;
   /** The requested rate and pause (the time machine's controls drive them here). */
@@ -137,6 +141,8 @@ const PARTICLES = { belt: [0.62, 0.55, 0.45], ring: [0.72, 0.76, 0.82], sizePx: 
  * fades in and out, dim (flash safety).
  */
 const DUST = { perImpact: 240, plumes: 3, seconds: 4, cone: (40 * Math.PI) / 180, color: [0.78, 0.7, 0.6], sizePx: 3, opacity: 0.85 } as const;
+/** The gases whose shares the constants give (data/constants.json, `<world>.atmosphere.<gas>`), in the order shown. */
+const GASES = ['n2', 'o2', 'co2', 'ar', 'co'] as const;
 /** A body more massive than this (GM, km^3 s^-2: about 80 Jupiters, the least a star can be) is a star: its belts are drawn as rock. */
 const STAR_GM = 1e10;
 /** A gravitating ring's bodies (ids `moonlets-<n>-<k>`): named on screen only when chosen, so twenty-four labels do not crowd the view. */
@@ -265,7 +271,11 @@ async function idb<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => 
   });
 }
 
-export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMassKg: number, names: Readonly<Record<string, string>>, shapes: Shapes = {}): Lab {
+export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMassKg: number, names: Readonly<Record<string, string>>, figures: Shapes = {}, figure: (id: string) => number | null = () => null): Lab {
+  // Each world's figure, its climate from the sourced constants (src/sim/climate), and the Sun's light.
+  const climates = worldClimates(figure);
+  const sunLight = figure('sun.luminosity');
+  const shapes: Shapes = Object.fromEntries([...new Set([...Object.keys(figures), ...Object.keys(climates), 'sun'])].map((id) => [id, { ...figures[id], climate: climates[id] ?? null, luminosityW: id === 'sun' ? sunLight : null }]));
   /** One G for every body: the Earth's GM (km^3 s^-2) over its mass (kg). */
   const gPerKg = physical.gmKm3S2.Earth / earthMassKg;
   let worker: Worker | null = null;
@@ -340,6 +350,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   particles.object.visible = false;
   const particleList: ImpostorDot[] = Array.from({ length: SWARM_LIMITS.total }, () => ({ position: km(), color: PARTICLES.belt, opacity: 0, sizePx: PARTICLES.sizePx, marker: 0 }));
   let particlesDrawn = 0;
+  /** The temperature view on the worlds drawn (ledger WR-6). */
+  let climateView = false;
   // Dust plumes: where each began (its body, and the site in the scenario's frame), when, how high, and its points' throws.
   const dust: Impostors = createImpostors(DUST.perImpact * DUST.plumes);
   dust.object.visible = false;
@@ -441,7 +453,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         // Dust from the impact (decorative): its throws fixed now, so each plume is the same however it is drawn.
         const ti = msg.ids.indexOf(e.survivor);
         const radiusKm = ti >= 0 ? (msg.radius[ti] ?? 0) : 0;
-        if (e.kind !== 'graze' && radiusKm > 0) {
+        if ((e.kind === 'merge' || e.kind === 'fragment') && radiusKm > 0) {
           let r = (Math.imul(e.step + 1, 2654435761) ^ e.absorbed.length * 40503) >>> 0;
           const next = (): number => ((r = (Math.imul(r, 1664525) + 1013904223) >>> 0) / 4294967296);
           const throws = new Float64Array(DUST.perImpact * 3);
@@ -506,7 +518,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       send({ type: 'save', generation, requestId: saveRequest });
     });
 
-  const edit = (command: Command): void => {
+  const edit = (given: Command): void => {
+    // A solid body the visitor adds has a temperature too: an airless rock, unless it comes with a climate.
+    const command: Command = given.kind === 'add' && !given.body.climate && given.body.gm > 0 && given.body.gm <= SOLID_MAX_GM ? { ...given, body: { ...given.body, climate: airlessRock() } } : given;
     sentEdits += 1;
     send({ type: 'command', generation, command });
     edited.add(commandId(command));
@@ -518,6 +532,35 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     let n = 1;
     while (used.has(`${base}-${n}`)) n += 1;
     return `${base}-${n}`;
+  };
+
+  /** Every star's light on body `i` (W/m^2): luminosity over 4 pi d^2. */
+  const insolationAt = (s: LabSnapshot, i: number): number => {
+    let sum = 0;
+    for (const [star, watts] of Object.entries(s.light)) {
+      const j = s.ids.indexOf(star);
+      if (j < 0 || j === i) continue;
+      const d = Math.hypot((s.pos[j * 3] ?? 0) - (s.pos[i * 3] ?? 0), (s.pos[j * 3 + 1] ?? 0) - (s.pos[i * 3 + 1] ?? 0), (s.pos[j * 3 + 2] ?? 0) - (s.pos[i * 3 + 2] ?? 0)) * 1000;
+      if (d > 0) sum += watts / (4 * Math.PI * d * d);
+    }
+    return sum;
+  };
+  /** Body `i`'s climate for the view: its bands and their summary, its greenhouse, and an airless world's noon. */
+  const climateOf = (s: LabSnapshot, i: number): UniverseLabBody['climate'] => {
+    const id = s.ids[i] ?? '';
+    const c = s.climate.find((x) => x.id === id);
+    if (!c) return null;
+    const summary = climateSummary({ spec: c.spec, t: c.t });
+    const airless = c.spec.model === 'grey' && c.spec.tau === 0 && c.spec.pressurePa < 1;
+    const world = builtIn(id);
+    const gases: Array<{ gas: string; percent: number }> = [];
+    if (world) {
+      for (const gas of GASES) {
+        const percent = figure(`${world}.atmosphere.${gas}`);
+        if (percent !== null) gases.push({ gas, percent });
+      }
+    }
+    return { model: c.spec.model, bandsK: [...c.t], meanK: summary.meanK, minK: summary.minK, maxK: summary.maxK, ice: summary.ice, liquid: summary.liquid, iceLineDeg: summary.iceLineDeg, tau: c.spec.tau, forcing: c.spec.forcing, pressurePa: c.spec.pressurePa, albedo: c.spec.albedo, noonK: airless ? noonK(insolationAt(s, i), c.spec.albedo, c.spec.emissivity) : null, gases };
   };
 
   /** The pole of a body's orbit about its primary (or, with none, the scenario's mean plane: the ecliptic's). */
@@ -547,6 +590,10 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     internal: 0,
     passing: [],
     swarms: [],
+    stars: {},
+    climate: {},
+    climateAt: 0,
+    rubble: [],
   });
 
   /** Body i relative to its primary (scenario frame): the primary's index, position and velocity, and the pair's GM; null without one. */
@@ -641,7 +688,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       active = true;
       selected = null;
       status = null;
-      seedScenario = seed === 'solar' ? seedSolarSystem(ephemeris, physical, jdTdb, names, shapes) : seedLaboratory(physical, seed === 'three');
+      seedScenario = seed === 'solar' ? seedSolarSystem(ephemeris, physical, jdTdb, names, shapes) : seedLaboratory(physical, seed === 'three', shapes);
       load(seedScenario);
       lines.mesh.visible = true;
       dots.object.visible = true;
@@ -736,6 +783,13 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         const b = builtIn(p.body);
         if (b) basisNow.set(b, [...sys.bodies[b].basis]);
       }
+    },
+    climateBands(body) {
+      if (!active || !snap) return null;
+      return snap.climate.find((c) => c.id === body)?.t ?? null;
+    },
+    get climateView() {
+      return climateView;
     },
     marks(body) {
       const s = snap;
@@ -1325,6 +1379,17 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         case 'removeSwarm':
           if (s?.swarms.some((w) => w.id === c.id)) edit({ kind: 'removeSwarm', id: c.id });
           return;
+        case 'climateView':
+          climateView = c.on;
+          return;
+        case 'atmosphere': {
+          if (!s?.climate.some((x) => x.id === c.id)) return;
+          const tau = c.tau !== undefined && Number.isFinite(c.tau) ? Math.min(Math.max(c.tau, 0), 1e4) : undefined;
+          const forcing = c.forcingWm2 !== undefined && Number.isFinite(c.forcingWm2) ? Math.min(Math.max(c.forcingWm2, -100), 100) : undefined;
+          const pressurePa = c.pressurePa !== undefined && Number.isFinite(c.pressurePa) ? Math.min(Math.max(c.pressurePa, 0), 1e9) : undefined;
+          edit({ kind: 'setAtmosphere', id: c.id, ...(tau !== undefined ? { tau } : {}), ...(forcing !== undefined ? { forcing } : {}), ...(pressurePa !== undefined ? { pressurePa } : {}) });
+          return;
+        }
         case 'duplicateMany':
           for (const id of c.ids) lab.command({ kind: 'duplicate', id });
           return;
@@ -1543,6 +1608,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
             fixed: s.fixed.includes(id),
             renamed: s.interventions.some((x) => x.kind === 'rename' && x.id === id),
             j2: s.j2[i] ?? 0,
+            insolationWm2: insolationAt(s, i),
+            luminosityW: s.light[id] ?? null,
+            climate: climateOf(s, i),
             speedKmS: v,
             primary: p >= 0 ? (s.ids[p] ?? null) : null,
             relativeSpeedKmS: rv,
@@ -1578,6 +1646,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         swarms: (s?.swarms ?? []).map((w) => ({ id: w.id, name: w.name, primary: w.primary, count: w.rel.length / 3, lost: w.lost })),
         particlesDrawn,
         auKm: physical.auKm,
+        climateView,
+        co2DoublingWm2: figure('climate.forcing.co2Doubling'),
         logLength: s?.logLength ?? 0,
         discarded: s?.discarded ?? 0,
         prediction:

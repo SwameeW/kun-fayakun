@@ -148,6 +148,14 @@ the same G.
   the limits, in the primary's equator for a ring, its orbit's plane for a belt), so they replay
   exactly. A gravitating ring is a dozen ordinary bodies sharing a mass. Saturn's drawn rings are the
   third kind, decorative: Cassini's measurements, drawn, not simulated, and the panel says so.
+- **Climates and starlight** ([CLIMATE.md](CLIMATE.md)). Each solid world keeps a temperature for
+  eighteen latitude bands from every star's light (the Sun's nominal luminosity; a body of 0.075 solar
+  masses or more by the main-sequence relation, following its mass), stepped daily after the gravity:
+  North, Cahalan and Coakley's energy balance model for the Earth (its ice can spread and freeze it
+  over), a calibrated grey atmosphere for Venus and Mars, airless rock for the rest.
+- **Tidal disruption.** A body of 100 km or more in radius, inside a much heavier neighbour's fluid
+  Roche limit on an orbit that does not strike it, is torn into eight pieces and a cloud of dust that
+  spread into a ring ([CLIMATE.md](CLIMATE.md#tidal-disruption-sb-33)).
 - **Seed.** The solar-system fork takes positions from the explorer's ephemeris (JPL's
   approximate planetary elements, Standish and Williams, and the Horizons Moon table) at the
   explorer's date, clamped inside the Moon table's span; velocities by central differences over
@@ -209,8 +217,8 @@ plus its log.
 | `epochJdTdb`, `frame` | When and in what frame the bodies are given |
 | `seedNote` | How the start was made, and its approximations |
 | `integrator` | `eta`, step bounds (s), `retimeSteps`, or a `fixedDtS` |
-| `bodies[]` | `id` (stable, unique), `name` (text, at most 60 characters), `gm` (km³ s⁻², 0 for a test particle), `radiusKm`, `pos` (km), `vel` (km/s), `origin` (`observed`, `modelled` or `user-edited`), `sourceIds` (ids in `data/sources.json`); optional `spin` (`{periodS, pole}`, prograde about the pole), `j2`, `inertia` (I / MR², 0.4 when absent) |
-| `log[]` | `{ step, command }`, commands `setMass {id, gm}`, `setVelocity {id, vel}`, `setState {id, pos, vel}`, `setRadius {id, radiusKm, gm?}`, `setSpin {id, periodS, pole}`, `setFixed {id, fixed}`, `rename {id, name}`, `add {body}`, `remove {id}`, `addSwarm {swarm: {id, name, primary, count, innerKm, outerKm, eccentricity, inclinationDeg, normal, seed}}`, `removeSwarm {id}`, `addRing {ring: {id, name, primary, count, innerKm, outerKm, gm, radiusKm, normal, seed}}` (its bodies `<id>-1` on) |
+| `bodies[]` | `id` (stable, unique), `name` (text, at most 60 characters), `gm` (km³ s⁻², 0 for a test particle), `radiusKm`, `pos` (km), `vel` (km/s), `origin` (`observed`, `modelled` or `user-edited`), `sourceIds` (ids in `data/sources.json`); optional `spin` (`{periodS, pole}`, prograde about the pole), `j2`, `inertia` (I / MR², 0.4 when absent), `luminosityW` (a star's), `climate` (`src/sim/climate.ts` `ClimateSpec`) |
+| `log[]` | `{ step, command }`, commands `setMass {id, gm}`, `setVelocity {id, vel}`, `setState {id, pos, vel}`, `setRadius {id, radiusKm, gm?}`, `setSpin {id, periodS, pole}`, `setFixed {id, fixed}`, `rename {id, name}`, `add {body}`, `remove {id}`, `addSwarm {swarm: {id, name, primary, count, innerKm, outerKm, eccentricity, inclinationDeg, normal, seed}}`, `removeSwarm {id}`, `addRing {ring: {id, name, primary, count, innerKm, outerKm, gm, radiusKm, normal, seed}}` (its bodies `<id>-1` on), `setAtmosphere {id, tau?, forcing?, pressurePa?}` |
 | `persistentIds` | Bodies that keep their id in any merger and cannot be removed |
 
 Saved in IndexedDB (database `kf-lab`, store `scenarios`, key `current`) and exported as
@@ -237,9 +245,10 @@ These are deliberate simplifications; the interface does not claim otherwise.
   - Each body is a sphere of its mean radius.
   - J2 is modelled: a flattened body pulls with its J2 term about its spin axis, and is pulled back,
     and the torque turns its axis.
-  - There are no tides, no tidal locking or spin-down (the tidal part of ledger SB-33, research
-    still needed), and no Roche disruption or rotational breakup. Those limits are shown, not
-    enforced.
+  - There is no tidal friction, tidal locking or spin-down (the rest of ledger SB-33, research
+    still needed), and no rotational breakup (that limit is shown, not enforced). A body inside a
+    neighbour's fluid Roche limit is torn apart (above), though one between the rigid and fluid
+    limits is treated the same way.
   - The ten worlds turn as the IAU models have them, except one whose rotation the visitor sets.
   - The seed's J2s and moments of inertia are the NASA fact sheets' (`data/constants.json`):
     - the Sun's J2 is not on its sheet, so it is spherical;
@@ -349,4 +358,4 @@ SHA-256. REBOUND itself is GPL-3.0, and none of its code is here.
 
 ## Not in this slice
 
-Tides and tidal spin-down (with Phase 3), materials, climate, other stars' light, and spacecraft. Each is in `docs/FEATURE-LEDGER.md` with its dependencies.
+Tidal friction and spin-down, materials beyond the air's gases, winds, other stars' light on the scene, and spacecraft. Each is in `docs/FEATURE-LEDGER.md` with its dependencies.

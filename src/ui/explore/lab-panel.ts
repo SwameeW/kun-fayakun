@@ -25,7 +25,7 @@ export interface LabPanel {
 }
 
 /** Leinhardt and Stewart's regimes, as message keys. */
-const REGIME_KEYS = { merge: 'merge', 'partial-accretion': 'partialAccretion', 'hit-and-run': 'hitAndRun', erosion: 'erosion', 'super-catastrophic': 'superCatastrophic' } as const;
+const REGIME_KEYS = { merge: 'merge', 'partial-accretion': 'partialAccretion', 'hit-and-run': 'hitAndRun', erosion: 'erosion', 'super-catastrophic': 'superCatastrophic', tidal: 'tidal' } as const;
 const HORIZONS: ReadonlyArray<readonly [number, string]> = [
   [10 * 86_400, 'days10'],
   [60 * 86_400, 'days60'],
@@ -40,6 +40,13 @@ const QUANTITIES: readonly LabQuantity[] = ['distance', 'speed', 'eccentricity',
 const POINTS = ['L1', 'L2', 'L3', 'L4', 'L5'] as const;
 /** The chart's size (SVG units). */
 const CHART = { w: 280, h: 96, pad: 4 } as const;
+/** The Sun's luminosity (W, IAU nominal) and the Earth's sunlight (W/m^2, the fact sheet's): the units the climate's figures are given in. */
+const SUN_W = 3.828e26;
+const EARTH_LIGHT = 1361;
+/** An atmosphere given to an airless world: a grey infrared optical depth of 1 at a bar (illustrative). */
+const AIR_GIVEN = { tau: 1, pressurePa: 100_000 } as const;
+/** Why a world has no liquid water: air too thin (below water's triple point, 611.657 Pa), too cold everywhere, too hot (above its boiling point at one atmosphere everywhere), or no water in the model. */
+const dryBecause = (c: NonNullable<UniverseLabBody['climate']>): 'thin' | 'cold' | 'hot' | 'none' => (c.pressurePa < 611.657 ? 'thin' : c.maxK < 273.16 ? 'cold' : c.minK > 373.124 ? 'hot' : 'none');
 /** Particles a ring or belt may have. */
 const RING_COUNTS = [500, 1000, 2000] as const;
 /**
@@ -285,12 +292,37 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   });
   const lagrangeGroup = h('div', { class: 'kf-living-group' }, h('div', { class: 'kf-lab-row' }, lagrangeBox, lagrangeLabel), lagrangePoint.label, h('div', { class: 'kf-lab-row' }, lagrangePoint.select, lagrangeAdd));
 
+  // Its climate (ledger WR-2 to WR-6): the light it has, its temperatures, ice and water, its air; the greenhouse changed; the temperature view.
+  const climateFacts = h('dl', { class: 'kf-about-facts', 'data-testid': 'lab-climate-facts' });
+  const climateNote = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-climate-note' });
+  const climateMore = button(i18n.t('ui.universe.lab.climate.more'), 'lab-climate-more', () => {
+    const b = selectedBody();
+    const c = b?.climate;
+    if (!b || !c) return;
+    if (c.model === 'budyko') send({ kind: 'atmosphere', id: b.id, forcingWm2: c.forcing + (lab?.co2DoublingWm2 ?? 0) });
+    else if (c.tau > 0) send({ kind: 'atmosphere', id: b.id, tau: c.tau * 2, pressurePa: c.pressurePa * 2 });
+    else send({ kind: 'atmosphere', id: b.id, tau: AIR_GIVEN.tau, pressurePa: AIR_GIVEN.pressurePa });
+  });
+  const climateLess = button(i18n.t('ui.universe.lab.climate.less'), 'lab-climate-less', () => {
+    const b = selectedBody();
+    const c = b?.climate;
+    if (!b || !c) return;
+    if (c.model === 'budyko') send({ kind: 'atmosphere', id: b.id, forcingWm2: c.forcing - (lab?.co2DoublingWm2 ?? 0) });
+    else send({ kind: 'atmosphere', id: b.id, tau: c.tau / 2, pressurePa: c.pressurePa / 2 });
+  });
+  const climateView = h('button', { type: 'button', class: 'kf-living-choice', 'aria-pressed': 'false', 'data-testid': 'lab-climate-view' }, i18n.t('ui.universe.lab.climate.view'));
+  climateView.addEventListener('click', () => {
+    send({ kind: 'climateView', on: climateView.getAttribute('aria-pressed') !== 'true' });
+  });
+  const climateBox = details('ui.universe.lab.climate.title', 'lab-climate', climateFacts, climateNote, h('div', { class: 'kf-lab-row' }, climateMore, climateLess), climateView, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.climate.scale')));
+
   const inspector = h(
     'section',
     { class: 'kf-living-notes-part', 'data-testid': 'lab-inspector', hidden: true },
     inspectorTitle,
     facts,
     warning,
+    climateBox,
     h('div', { class: 'kf-living-group' }, rename.label, h('div', { class: 'kf-lab-row' }, rename.input, renameApply)),
     h(
       'div',
@@ -749,6 +781,28 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           ...(b.roche ? row(i18n.t('ui.universe.lab.roche'), i18n.t('ui.universe.lab.rocheValue', { fluid: f.distance(b.roche.fluidKm), rigid: f.distance(b.roche.rigidKm) }), 'lab-fact-roche') : []),
           ...(b.j2 > 0 ? row(i18n.t('ui.universe.lab.j2'), scientific(b.j2), 'lab-fact-j2') : []),
         );
+        // Its climate, or the light it gives.
+        const c = b.climate;
+        const celsius = (k: number): string => f.keep(i18n.t('ui.universe.lab.climate.celsius', { value: f.number(k - 273.15, 0) }));
+        climateBox.hidden = !c && b.luminosityW === null && !(b.insolationWm2 > 0);
+        climateFacts.replaceChildren(
+          ...(b.luminosityW !== null ? row(i18n.t('ui.universe.lab.climate.luminosity'), i18n.t('ui.universe.lab.climate.luminosityValue', { value: f.number(b.luminosityW / SUN_W, b.luminosityW < 3.8e25 ? 4 : 2) }), 'lab-climate-luminosity') : []),
+          ...(b.insolationWm2 > 0 && b.luminosityW === null ? row(i18n.t('ui.universe.lab.climate.light'), i18n.t('ui.universe.lab.climate.lightValue', { value: f.number(b.insolationWm2, b.insolationWm2 < 10 ? 2 : 0), earth: f.number(b.insolationWm2 / EARTH_LIGHT, 2) }), 'lab-climate-light') : []),
+          ...(c ? row(i18n.t('ui.universe.lab.climate.surface'), i18n.t('ui.universe.lab.climate.surfaceValue', { mean: celsius(c.meanK), min: celsius(c.minK), max: celsius(c.maxK) }), 'lab-climate-surface') : []),
+          ...(c?.noonK ? row(i18n.t('ui.universe.lab.climate.noon'), celsius(c.noonK), 'lab-climate-noon') : []),
+          ...(c?.model === 'budyko' ? row(i18n.t('ui.universe.lab.climate.ice'), c.ice >= 0.999 ? i18n.t('ui.universe.lab.climate.iceAll') : c.ice <= 0 ? i18n.t('ui.universe.lab.climate.iceNone') : i18n.t('ui.universe.lab.climate.iceValue', { share: f.number(c.ice * 100, 0), line: f.number(c.iceLineDeg ?? 90, 0) }), 'lab-climate-ice') : []),
+          ...(c ? row(i18n.t('ui.universe.lab.climate.water'), c.liquid > 0 ? i18n.t('ui.universe.lab.climate.waterValue', { share: f.number(c.liquid * 100, 0) }) : i18n.t(`ui.universe.lab.climate.water.${dryBecause(c)}`), 'lab-climate-water') : []),
+          ...(c ? row(i18n.t('ui.universe.lab.climate.greenhouse'), c.model === 'budyko' ? i18n.t('ui.universe.lab.climate.budyko', { forcing: f.number(c.forcing, 2) }) : c.tau > 0 ? i18n.t('ui.universe.lab.climate.grey', { tau: f.number(c.tau, c.tau < 10 ? 2 : 0) }) : i18n.t('ui.universe.lab.climate.airless'), 'lab-climate-greenhouse') : []),
+          ...(c && c.pressurePa >= 1 ? row(i18n.t('ui.universe.lab.climate.pressure'), i18n.t('ui.universe.lab.climate.pressureValue', { value: f.number(c.pressurePa / 1000, c.pressurePa < 10_000 ? 3 : 0) }), 'lab-climate-pressure') : []),
+          ...(c && c.gases.length > 0 ? row(i18n.t('ui.universe.lab.climate.gases'), c.gases.map((g) => i18n.t('ui.universe.lab.climate.gas', { gas: i18n.t(`ui.universe.lab.climate.gas.${g.gas}`), share: f.number(g.percent, g.percent < 1 ? 3 : 2) })).join(', '), 'lab-climate-gases') : []),
+        );
+        write(climateNote, c ? i18n.t(c.model === 'budyko' ? 'ui.universe.lab.climate.noteBudyko' : c.noonK ? 'ui.universe.lab.climate.noteAirless' : 'ui.universe.lab.climate.noteGrey') : '');
+        climateMore.hidden = !c;
+        climateLess.hidden = !c || (c.model === 'budyko' ? c.forcing <= 0 : c.tau <= 0);
+        write(climateMore, c ? i18n.t(c.model === 'budyko' ? 'ui.universe.lab.climate.moreCo2' : c.tau > 0 ? 'ui.universe.lab.climate.thicker' : 'ui.universe.lab.climate.giveAir') : '');
+        write(climateLess, c ? i18n.t(c.model === 'budyko' ? 'ui.universe.lab.climate.lessCo2' : 'ui.universe.lab.climate.thinner') : '');
+        climateView.hidden = !c;
+        climateView.setAttribute('aria-pressed', String(l.climateView));
         // What is out of the ordinary: inside a Roche limit, or spinning faster than its gravity holds.
         const inside = b.roche && b.distanceKm !== null ? (b.distanceKm < b.roche.rigidKm ? 'rigid' : b.distanceKm < b.roche.fluidKm ? 'fluid' : null) : null;
         const tooFast = rot.periodS !== null && rot.periodS < rot.breakupPeriodS;
@@ -872,7 +926,9 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
               { class: 'kf-living-hint' },
               (e.kind === 'merge'
                 ? i18n.t('ui.universe.lab.merged', { absorbed: name(e.absorbed), survivor: name(e.survivor), when: days(e.t) })
-                : e.kind === 'graze'
+                : e.kind === 'disrupt'
+                  ? i18n.t('ui.universe.lab.disrupted', { absorbed: name(e.absorbed), survivor: name(e.survivor), count: e.created, when: days(e.t) })
+                  : e.kind === 'graze'
                   ? i18n.t('ui.universe.lab.grazed', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), when: days(e.t) })
                   : i18n.t('ui.universe.lab.impact', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[e.regime]}`), count: e.created, when: days(e.t) })) +
                 (e.craterKm === null ? '' : `; ${i18n.t('ui.universe.lab.crater', { diameter: f.distance(e.craterKm), depth: depthText(e.craterDepthKm ?? 0), kind: i18n.t(e.craterComplex ? 'ui.universe.lab.crater.complex' : 'ui.universe.lab.crater.simple'), energy: megatons(e.energyJ) })}`) +

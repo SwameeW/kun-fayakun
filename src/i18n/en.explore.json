@@ -355,7 +355,7 @@
   "ui.universe.walk.landing": "Landing: the ground here is loading…",
   "ui.universe.walk.ground": "Ground {metres} m above sea level · walked {walked} m",
   "ui.universe.walk.gravity": "Gravity {g} m/s²",
-  "ui.universe.walk.air": "Air {kpa} kPa at your feet · the Earth's mean surface temperature {mean} °C (not today's)",
+  "ui.universe.walk.air": "Air {kpa} kPa at your feet · the Earth’s mean surface temperature {mean} °C (not today’s)",
   "ui.universe.walk.sunUp": "The Sun {degrees}° above the horizon · {time} local solar time",
   "ui.universe.walk.sunDown": "The Sun {degrees}° below the horizon · {time} local solar time",
   "ui.universe.walk.blocked": "Makkah is never approached closer than 25 km here, on foot as from above.",
@@ -370,5 +370,5 @@
   "ui.universe.walk.back": "Back to orbit",
   "ui.universe.walk.credit": "Ground: Terrain Tiles (USGS 3DEP, SRTM and GMTED2010; NOAA ETOPO1; national models; all credited on the Sources page); imagery as from orbit, with illustrative grain up close. Land below sea level, and the sea, are drawn at sea level for now.",
   "ui.universe.walk.here": "Walk here",
-  "ui.universe.walk.hereHint": "Stand on the ground at the point below you, in a space suit, at the Earth's own gravity."
+  "ui.universe.walk.hereHint": "Stand on the ground at the point below you, in a space suit, at the Earth’s own gravity."
 }

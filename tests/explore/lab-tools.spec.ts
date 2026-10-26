@@ -325,3 +325,77 @@ test('rings and belts: a main belt about the Sun and a ring about the Earth, dra
   await expect.poll(async () => (await lab(page))?.bodies.filter((b) => b.id.startsWith('moonlets-1-')).length, LIVE).toBe(12);
   expect(pageErrors).toEqual([]);
 });
+
+test('worlds that respond: the Earth’s climate today, its ice and water, the greenhouse doubled; a planet moved out freezes over; the temperature view', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  await choose(page, 'earth');
+  const climate = page.getByTestId('lab-climate');
+  await climate.locator('summary').click();
+  // North, Cahalan and Coakley's Earth: about 15 C, ice caps at the poles, liquid water on most of the ocean.
+  const earth = async () => (await lab(page))?.bodies.find((b) => b.id === 'earth')?.climate ?? null;
+  const today = await earth();
+  expect(today?.model).toBe('budyko');
+  expect((today?.meanK ?? 0) - 273.15).toBeGreaterThan(12);
+  expect((today?.meanK ?? 0) - 273.15).toBeLessThan(19);
+  expect(today?.ice ?? 0).toBeGreaterThan(0);
+  expect(today?.ice ?? 1).toBeLessThan(0.2);
+  expect(today?.gases.map((g) => g.gas)).toEqual(['n2', 'o2', 'co2', 'ar']);
+  await expect(page.getByTestId('lab-climate-light')).toContainText(/1,3\d\d W\/m², 1\.0\d times the Earth’s|1,3\d\d W\/m², 0\.9\d times the Earth’s/);
+  await expect(page.getByTestId('lab-climate-water')).toContainText('could lie on');
+  await expect(page.getByTestId('lab-climate-gases')).toContainText('nitrogen 78.08%');
+  // The temperature view, on and off.
+  await page.getByTestId('lab-climate-view').click();
+  await expect.poll(async () => (await lab(page))?.climateView, LIVE).toBe(true);
+  await expect(page.getByTestId('lab-climate-view')).toHaveAttribute('aria-pressed', 'true');
+  // Carbon dioxide doubled (IPCC AR6's 3.93 W/m^2): logged, and the Earth warms over the years that follow (slowly: its oceans hold heat).
+  await page.getByTestId('lab-climate-more').click();
+  await expect.poll(async () => (await earth())?.forcing, LIVE).toBeCloseTo(3.93, 6);
+  await expect(page.getByTestId('lab-history')).toContainText('Earth: atmosphere changed');
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (let i = 0; i < 6; i += 1) await page.locator('body').press(']');
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, { timeout: 120_000 * SLOW }).toBeGreaterThan(3 * 365.25 * 86_400);
+  expect(((await earth())?.meanK ?? 0) - (today?.meanK ?? 0)).toBeGreaterThan(0.2);
+  // The two-body laboratory: its planet (the Earth's mass, size and climate) moved out to 1.3 au freezes over.
+  await page.locator('body').press('Space');
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  const planet = async () => (await lab(page))?.bodies.find((b) => b.id === 'planet')?.climate ?? null;
+  expect((await planet())?.ice ?? 1).toBeLessThan(0.3);
+  await page.evaluate(() => {
+    const kf = (window as unknown as { __kf: { app: { universeLab(c: { kind: 'elements'; id: string; aKm: number; e: number; iDeg: number; nodeDeg: number; periapsisArgDeg: number; trueAnomalyDeg: number }): void } } }).__kf;
+    kf.app.universeLab({ kind: 'elements', id: 'planet', aKm: 1.3 * 149_597_870.7, e: 0, iDeg: 0, nodeDeg: 0, periapsisArgDeg: 0, trueAnomalyDeg: 0 });
+  });
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (let i = 0; i < 6; i += 1) await page.locator('body').press(']');
+  await expect.poll(async () => (await planet())?.ice ?? 0, { timeout: 120_000 * SLOW }).toBeGreaterThan(0.999);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the tides tear a moon apart: the Moon sent inside the Earth’s Roche limit becomes pieces and a ring of dust', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.locator('body').press('Space');
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  // The Moon's fluid Roche limit about the Earth is about 18,400 km: put it on a circular orbit at 15,000 km.
+  await choose(page, 'moon');
+  await expect(page.getByTestId('lab-fact-roche')).toContainText('18,');
+  await page.evaluate(() => {
+    const kf = (window as unknown as { __kf: { app: { universeLab(c: { kind: 'elements'; id: string; aKm: number; e: number; iDeg: number; nodeDeg: number; periapsisArgDeg: number; trueAnomalyDeg: number }): void } } }).__kf;
+    kf.app.universeLab({ kind: 'elements', id: 'moon', aKm: 15_000, e: 0, iDeg: 5, nodeDeg: 0, periapsisArgDeg: 0, trueAnomalyDeg: 0 });
+  });
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  await expect(page.getByTestId('lab-history')).toContainText('Moon torn apart by Earth’s tides inside its Roche limit', LIVE);
+  await expect.poll(async () => (await lab(page))?.bodies.filter((b) => b.id.startsWith('moon-piece-')).length, LIVE).toBe(8);
+  await expect.poll(async () => (await lab(page))?.swarms.find((w) => w.id.startsWith('dust-moon'))?.primary, LIVE).toBe('earth');
+  expect((await lab(page))?.bodies.some((b) => b.id === 'moon')).toBe(false);
+  expect(pageErrors).toEqual([]);
+});

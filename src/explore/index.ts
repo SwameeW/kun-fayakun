@@ -368,6 +368,8 @@ export default function create(): UniverseModule {
   let walkAir: { surfaceKpa: number | null; scaleHeightKm: number | null; meanTempC: number | null } = { surfaceKpa: null, scaleHeightKm: null, meanTempC: null };
   /** Each world's J2 and moment of inertia factor (data/constants.json, NASA's fact sheets), for the laboratory's seed. */
   let labShapes: Record<string, { j2: number | null; inertia: number | null }> = {};
+  /** The sourced constants, for the laboratory's climates (built in its own chunk). */
+  let labFigure: (id: string) => number | null = () => null;
   let islamicLoading = false;
   const islamicWaiting: UniverseIslamicCommand[] = [];
   let hijriDay = Number.NaN;
@@ -914,7 +916,7 @@ export default function create(): UniverseModule {
           labLoading = false;
           // The laboratory seeds from the explorer's ephemeris; kilograms by the Earth's GM over JPL's mass of the Earth.
           const earthMassKg = (planets.bodies.find((b) => b.name === 'Earth')?.physical.massE24Kg ?? 0) * 1e24;
-          lab = createLab(createEphemeris(planets, moon, physical), physical, earthMassKg, {}, labShapes);
+          lab = createLab(createEphemeris(planets, moon, physical), physical, earthMassKg, {}, labShapes, labFigure);
           lab.setPointerView(labPointer);
           root.add(...lab.objects);
           applyLab();
@@ -1379,8 +1381,11 @@ export default function create(): UniverseModule {
       }
       if (lensMin !== nav.lensMinDeg) nav.setLensMin(lensMin);
     }
-    // The laboratory's craters on the worlds drawn solid (none outside an experiment).
-    for (const id of CRATERED) bodies.setMarks(id, lab?.active ? lab.marks(id) : NO_MARKS);
+    // The laboratory's craters and climates on the worlds drawn solid (none outside an experiment).
+    for (const id of CRATERED) {
+      bodies.setMarks(id, lab?.active ? lab.marks(id) : NO_MARKS);
+      bodies.setClimate(id, lab?.active ? lab.climateBands(id) : null, lab?.climateView ?? false);
+    }
     unit(sunDir, sys.bodies.mercury.position, sun);
     bodies.mercury.update({ time: ambient, sun: sunDir, light: lightAt('mercury'), earth: toEarth, earthLit: 0 }, origin3);
     unit(sunDir, sys.bodies.venus.position, sun);
@@ -2144,6 +2149,7 @@ export default function create(): UniverseModule {
         };
         walkAir = { surfaceKpa: figure('earth.atmosphere.surfacePressure'), scaleHeightKm: figure('earth.atmosphere.scaleHeight'), meanTempC: figure('earth.atmosphere.averageTemperature') };
         labShapes = Object.fromEntries(BODY_IDS.map((id) => [id, { j2: figure(`${id}.j2`), inertia: figure(`${id}.momentOfInertia`) }]));
+        labFigure = figure;
         lightKmS = facts.lightKmS;
         discoveries = new Discoveries(facts);
       } catch (err) {

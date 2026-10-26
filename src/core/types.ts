@@ -825,6 +825,18 @@ export interface UniverseLabBody {
   renamed: boolean;
   /** Its J2 (0: spherical). */
   j2: number;
+  /** The starlight on it (W/m^2, every star's together), and a star's own luminosity (W; null for anything else). */
+  insolationWm2: number;
+  luminosityW: number | null;
+  /**
+   * Its climate (src/sim/climate), or null: the model; its latitude bands' temperatures (K, south to
+   * north); the area-weighted mean, the coldest and warmest bands; the shares of its surface under ice
+   * and where liquid water could lie; the ice line's latitude (degrees); its greenhouse (a grey
+   * atmosphere's optical depth, or a forcing added to the Earth's, W/m^2), surface pressure (Pa) and
+   * albedo; an airless world's noon temperature under its star (K); its air's main gases (% by volume,
+   * sourced, for the explorer's worlds).
+   */
+  climate: { model: 'budyko' | 'grey'; bandsK: number[]; meanK: number; minK: number; maxK: number; ice: number; liquid: number; iceLineDeg: number | null; tau: number; forcing: number; pressurePa: number; albedo: number; noonK: number | null; gases: Array<{ gas: string; percent: number }> } | null;
 }
 
 /** A quantity the laboratory can follow over time. */
@@ -859,8 +871,8 @@ export interface UniverseLab {
   /** Relative drift since the last intervention. */
   drift: { energy: number; momentum: number; angularMomentum: number };
   interventions: ReadonlyArray<{ step: number; t: number; kind: string; id: string }>;
-  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room) or a graze both carried on from; Leinhardt and Stewart's regime and the speed at contact; the crater on a solid world (src/sim/craters: its final diameter and depth, km, and whether complex) and, on a world drawn with its surface, where it is drawn (planetocentric degrees, east positive); the impact's energy (J). */
-  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean; craterKm: number | null; craterDepthKm: number | null; craterComplex: boolean; craterSite: { latDeg: number; lonDeg: number } | null; energyJ: number }>;
+  /** Collisions (src/sim/nbody, src/sim/impacts): a merger, a breakup (the target keeping its id, `created` bodies made, debris returned to the remnant for want of room), a graze both carried on from, or a tidal disruption (the absorbed body torn into `created` pieces by the survivor's tides); Leinhardt and Stewart's regime and the speed at contact; the crater on a solid world (src/sim/craters: its final diameter and depth, km, and whether complex) and, on a world drawn with its surface, where it is drawn (planetocentric degrees, east positive); the impact's energy (J). */
+  events: ReadonlyArray<{ t: number; kind: 'merge' | 'fragment' | 'graze' | 'disrupt'; regime: 'merge' | 'partial-accretion' | 'hit-and-run' | 'erosion' | 'super-catastrophic' | 'tidal'; survivor: string; absorbed: string; speedKmS: number; created: number; unresolved: boolean; craterKm: number | null; craterDepthKm: number | null; craterComplex: boolean; craterSite: { latDeg: number; lonDeg: number } | null; energyJ: number }>;
   checkpoints: ReadonlyArray<{ step: number; t: number }>;
   /** Rings and belts of test particles (src/sim/swarms): each one's body, particles left and particles that struck a body. */
   swarms: ReadonlyArray<{ id: string; name: string; primary: string; count: number; lost: number }>;
@@ -868,6 +880,9 @@ export interface UniverseLab {
   particlesDrawn: number;
   /** km per au (the explorer's data), for distances the interface offers in au. */
   auKm: number;
+  /** The temperature view on the worlds drawn (ledger WR-6), and the forcing of doubled CO2 the interface offers (W/m^2, IPCC AR6; null without the constants). */
+  climateView: boolean;
+  co2DoublingWm2: number | null;
   logLength: number;
   discarded: number;
   prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null; encounters: ReadonlyArray<{ with: string; t: number; distanceKm: number }> } | null;
@@ -954,7 +969,10 @@ export type LabCommand =
    */
   | { kind: 'addSwarm'; primary: string; name: string; count: number; innerKm: number; outerKm: number; eccentricity: number; inclinationDeg: number; plane: 'equator' | 'orbit' }
   | { kind: 'addRing'; primary: string; name: string; count: number; innerKm: number; outerKm: number; massKg: number; plane: 'equator' | 'orbit' }
-  | { kind: 'removeSwarm'; id: string };
+  | { kind: 'removeSwarm'; id: string }
+  /** The temperature view on the worlds drawn, and a world's atmosphere changed (ledger WR-5): a grey atmosphere's optical depth, a forcing on the Earth's, its surface pressure (Pa). */
+  | { kind: 'climateView'; on: boolean }
+  | { kind: 'atmosphere'; id: string; tau?: number; forcingWm2?: number; pressurePa?: number };
 
 /** The time machine as the view reports it. */
 export interface UniverseTime {

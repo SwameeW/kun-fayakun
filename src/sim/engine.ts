@@ -21,6 +21,7 @@ import {
   type SimState,
   successorIn,
 } from './nbody';
+import { brightestStar, CLIMATE_STEP_S, mainSequenceLuminosityW, settleClimate, STAR_MIN_GM, startingBands, stepClimates, SUN_GM, type ClimateSpec } from './climate';
 import { makeSwarm, particleCount, rehomeSwarms, ringPlaces, SWARM_LIMITS, swarmHomes, type SwarmSpec } from './swarms';
 
 /**
@@ -78,6 +79,10 @@ export interface BodySpec {
   /** Its J2 (flattening's lowest zonal harmonic, normalised to its radius; 0 or none: spherical) and moment of inertia factor (I / M R^2; none: 0.4). */
   j2?: number;
   inertia?: number;
+  /** A star's luminosity (W) at this mass (a body of 0.075 solar masses or more without one shines by the main-sequence relation: ./climate). */
+  luminosityW?: number;
+  /** A solid world's climate (./climate); none: no climate is kept for it. */
+  climate?: ClimateSpec;
 }
 
 export type Command =
@@ -94,7 +99,9 @@ export type Command =
   | { kind: 'addSwarm'; swarm: SwarmSpec }
   | { kind: 'removeSwarm'; id: string }
   /** A gravitating ring: `count` bodies of `gm` in all, on near-circular orbits (ids `<id>-1` on). */
-  | { kind: 'addRing'; ring: RingSpec };
+  | { kind: 'addRing'; ring: RingSpec }
+  /** A world's atmosphere changed (./climate): a grey atmosphere's infrared optical depth, a greenhouse forcing (W/m^2) on the Earth's model, its surface pressure (Pa). */
+  | { kind: 'setAtmosphere'; id: string; tau?: number; forcing?: number; pressurePa?: number };
 
 /** A gravitating ring as made: its bodies are ordinary bodies from then on. */
 export interface RingSpec {
@@ -116,6 +123,33 @@ export const RING_MAX_BODIES = 24;
 
 /** The body, swarm or ring an edit is about. */
 export const commandId = (c: Command): string => (c.kind === 'add' ? c.body.id : c.kind === 'addSwarm' ? c.swarm.id : c.kind === 'addRing' ? c.ring.id : c.id);
+
+/**
+ * A body's light and climate into the state as its spec gives them: a star's luminosity (or, heavy
+ * enough, the main-sequence relation's), and a solid world's climate (returning its id, to settle
+ * once every star is in place).
+ */
+function lightAndClimate(s: SimState, b: BodySpec): string | null {
+  if (b.luminosityW !== undefined && b.luminosityW > 0) s.stars[b.id] = { watts: b.luminosityW, gm: b.gm };
+  else if (b.gm >= STAR_MIN_GM) s.stars[b.id] = { watts: mainSequenceLuminosityW(b.gm / SUN_GM), gm: b.gm };
+  if (!b.climate || b.gm >= STAR_MIN_GM) return null;
+  s.climate[b.id] = { spec: { ...b.climate }, t: startingBands(b.climate) };
+  return b.id;
+}
+
+/** Climates just made put in balance with their light now. */
+function settle(s: SimState, ids: readonly string[]): void {
+  for (const id of ids) {
+    const i = indexOf(s, id);
+    if (i >= 0) settleClimate(s, i, brightestStar(s, i));
+  }
+}
+
+/** Light and climates of bodies that are gone (merged, removed) dropped. */
+function pruneGone(s: SimState): void {
+  if (Object.keys(s.stars).some((id) => indexOf(s, id) < 0)) s.stars = Object.fromEntries(Object.entries(s.stars).filter(([id]) => indexOf(s, id) >= 0));
+  if (Object.keys(s.climate).some((id) => indexOf(s, id) < 0)) s.climate = Object.fromEntries(Object.entries(s.climate).filter(([id]) => indexOf(s, id) >= 0));
+}
 
 export interface LoggedCommand {
   step: number;
@@ -188,7 +222,13 @@ function bodyOf(b: BodySpec): Parameters<typeof addBody>[1] {
 
 export function stateFrom(bodies: readonly BodySpec[]): SimState {
   const s = emptyState();
-  for (const b of bodies) addBody(s, bodyOf(b));
+  const made: string[] = [];
+  for (const b of bodies) {
+    addBody(s, bodyOf(b));
+    const id = lightAndClimate(s, b);
+    if (id) made.push(id);
+  }
+  settle(s, made);
   return s;
 }
 
@@ -319,11 +359,23 @@ export class Engine {
         break;
       }
       case 'add':
-        if (indexOf(s, command.body.id) < 0) addBody(s, bodyOf(command.body));
+        if (indexOf(s, command.body.id) < 0) {
+          addBody(s, bodyOf(command.body));
+          const made = lightAndClimate(s, command.body);
+          if (made) settle(s, [made]);
+        }
         break;
       case 'remove': {
         const i = indexOf(s, command.id);
         if (i >= 0 && !this.keep(command.id)) removeAt(s, i);
+        break;
+      }
+      case 'setAtmosphere': {
+        const c = s.climate[command.id];
+        if (!c) break;
+        if (command.tau !== undefined && Number.isFinite(command.tau) && command.tau >= 0) c.spec.tau = command.tau;
+        if (command.forcing !== undefined && Number.isFinite(command.forcing)) c.spec.forcing = command.forcing;
+        if (command.pressurePa !== undefined && Number.isFinite(command.pressurePa) && command.pressurePa >= 0) c.spec.pressurePa = command.pressurePa;
         break;
       }
       case 'addSwarm': {
@@ -358,6 +410,7 @@ export class Engine {
     resolveContacts(s, 0, null, this.events, this.keep);
     // Rings whose primary was removed or merged go on about another body.
     if (homes) rehomeSwarms(s, homes, successorIn(this.events));
+    pruneGone(s);
     this.acc.length = 0;
     this.retime();
     const after = diagnostics(s);
@@ -445,7 +498,15 @@ export class Engine {
 
   stepOnce(): void {
     this.applyDue();
+    const before = this.events.length;
     const shortest = step(this.state, this.dt, this.acc, this.events, this.keep);
+    const s = this.state;
+    if (this.events.length !== before) pruneGone(s);
+    // The climates, slower than gravity: stepped once a day of the experiment's clock (or sooner after a long step).
+    if (s.t - s.climateAt >= CLIMATE_STEP_S || s.t < s.climateAt) {
+      if (s.t > s.climateAt) stepClimates(s, s.t - s.climateAt);
+      s.climateAt = s.t;
+    }
     if (!healthy(this.state)) {
       this.failure = 'non-finite';
       this.restore(this.checkpoints[this.checkpoints.length - 1]?.step ?? 0, false);
