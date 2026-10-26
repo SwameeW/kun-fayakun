@@ -14,6 +14,7 @@ import type {
   UniverseModule,
   UniverseSteer,
   EarthCommand,
+  UniverseTimeCommand,
   UniverseView,
   ViewInsets,
 } from './types';
@@ -301,6 +302,10 @@ export class UniverseHost {
 
   earth(command: EarthCommand): void {
     this.active?.earth(command);
+  }
+
+  time(command: UniverseTimeCommand): void {
+    this.active?.time(command);
   }
 
   dispose(): void {

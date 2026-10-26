@@ -17,7 +17,7 @@ import { parseQuakes } from '../../src/explore/living/quakes';
 
 const ROOT = new URL('../../', import.meta.url);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
-const en = readJson('src/i18n/en.json') as Record<string, string>;
+const en = { ...(readJson('src/i18n/en.json') as Record<string, string>), ...(readJson('src/i18n/en.explore.json') as Record<string, string>) };
 const DEG = Math.PI / 180;
 const SIDEREAL_MIN = 1436.07;
 

@@ -9,10 +9,23 @@
     "pm": "W, the prime meridian: degrees, degrees per day, degrees per day squared (d = TDB days from J2000)",
     "nutPrec": "ra and pm terms multiply sin(angle), dec terms cos(angle); each angle is [degrees, degrees per century, optional degrees per century squared]",
     "radiiKm": "triaxial ellipsoid a, b, c in km (c along the pole)",
+    "gmKm3S2": "GM, km^3 s^-2, from the DE440 header: the Sun's; Mercury's and Venus's; the Earth's and the Moon's (the barycentre's split by EMRAT); Mars to Neptune each with its moons (DE440 gives the systems')",
     "time": "TDB - TAI = deltaTA + k sin(E), E = M + eb sin(M), M = m0 + m1 t (t = seconds from J2000); taiMinusUtc in seconds from jdUtc on"
   },
   "auKm": 149597870.7,
   "emrat": 81.30056822149722,
+  "gmKm3S2": {
+    "Sun": 132712440041.27942,
+    "Mercury": 22031.868551400003,
+    "Venus": 324858.592,
+    "Earth": 398600.43550702266,
+    "Moon": 4902.80011845755,
+    "Mars": 42828.3758157561,
+    "Jupiter": 126712764.09999998,
+    "Saturn": 37940584.8418,
+    "Uranus": 5794556.3999999985,
+    "Neptune": 6836527.100580399
+  },
   "obliquityJ2000Arcsec": 84381.448,
   "bodies": {
     "Sun": {
@@ -977,7 +990,7 @@
     }
   },
   "assets": {
-    "planets.json": "c84cce2787516f4dbd10707c965803bba4c69c8a350ad88b262bf77a01c08fc2",
+    "planets.json": "33ead9276caf1b15b181b8637d1203775895e734c794907eef3b220e62429430",
     "moon.json": "3276ea7c51c8a85c630ae4f60d493e5015bfc74f88f0f0dde82e60a43a6e3c31"
   }
 }

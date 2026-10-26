@@ -37,6 +37,13 @@ const CATALOGUE_URL = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&
 const CACHE_NAME = 'kf-celestrak';
 const FRESH_HOURS = 6;
 const DAYS_VALID = 3;
+/**
+ * A state further than this from the explorer's instant (ms of explorer time: after a jump in time,
+ * or with time racing ahead of the worker) is not drawn until a fresh one arrives; and the chosen
+ * satellite's orbit line is drawn again each time the clock moves this share of its period.
+ */
+const STALE_MS = 120_000;
+const PATH_REFRESH_SHARE = 1 / 24;
 /** Seconds between the worker's fresh states (the GPU extrapolates between them). */
 const TICK_SECONDS = 1;
 /** Screen sizes (px) of a station and of everything else, and the most a point is brightened. */
@@ -169,6 +176,9 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
   let lastAsked = -Infinity;
   let omega = 0;
   let selectedIndex: number | null = null;
+  /** When the chosen satellite's orbit line was asked for (explorer ms), and whether it is on its way. */
+  let pathAt = 0;
+  let pathPending = false;
   /** The crewed stations' indices (by id) once the catalogue is read. */
   let stationIndex: Partial<Record<StationId, number>> = {};
   let frameNow: SatelliteFrame | null = null;
@@ -314,6 +324,7 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
             kindAttr.needsUpdate = true;
             status.sunlit = countSunlit();
           } else if (msg.type === 'path') {
+            pathPending = false;
             if (msg.index !== selectedIndex) return;
             pathPositions.set(msg.data.subarray(0, pathPositions.length));
             (pathGeometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
@@ -443,7 +454,20 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
       frameNow = frame;
       const fresh = status.fetchedMs > 0 && Math.abs(frame.unixMs - status.fetchedMs) < DAYS_VALID * 86_400_000;
       if (status.state === 'ready' || status.state === 'out-of-range') status.state = fresh ? 'ready' : 'out-of-range';
-      const show = on && frame.visible && status.state === 'ready';
+      const live = on && frame.visible && status.state === 'ready';
+      // Fresh states as fast as the worker gives them (about once a second at real time; every reply when time runs fast).
+      if (live && worker && !pendingTick && Math.abs(frame.unixMs - lastAsked) >= TICK_SECONDS * 1000) {
+        pendingTick = true;
+        lastAsked = frame.unixMs;
+        ask({ type: 'tick', unixMs: frame.unixMs });
+      }
+      const period = selectedIndex === null ? 0 : (periods[selectedIndex] ?? 0) * 60_000;
+      if (live && selectedIndex !== null && !pathPending && period > 0 && Math.abs(frame.unixMs - pathAt) > period * PATH_REFRESH_SHARE) {
+        pathPending = true;
+        pathAt = frame.unixMs;
+        ask({ type: 'path', index: selectedIndex, unixMs: frame.unixMs, samples: PATH_SAMPLES });
+      }
+      const show = live && Math.abs(frame.unixMs - latestMs) <= STALE_MS;
       // Faded in and out (never a pop of sixteen thousand points).
       uFade.value += ((show ? 1 : 0) - uFade.value) * 0.12;
       if (uFade.value < 0.002 && !show) uFade.value = 0;
@@ -456,11 +480,6 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
       uSun.value.set(frame.sun.x, frame.sun.y, frame.sun.z);
       uRadius.value = frame.earthRadiusKm;
       uDt.value = (frame.unixMs - latestMs) / 1000;
-      if (worker && !pendingTick && Math.abs(frame.unixMs - lastAsked) >= TICK_SECONDS * 1000) {
-        pendingTick = true;
-        lastAsked = frame.unixMs;
-        ask({ type: 'tick', unixMs: frame.unixMs });
-      }
     },
     pick(x, y, radiusPx, project) {
       const frame = frameNow;
@@ -483,7 +502,11 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
     select(index) {
       selectedIndex = index;
       path.visible = false;
-      if (index !== null && frameNow) ask({ type: 'path', index, unixMs: frameNow.unixMs, samples: PATH_SAMPLES });
+      if (index !== null && frameNow) {
+        pathPending = true;
+        pathAt = frameNow.unixMs;
+        ask({ type: 'path', index, unixMs: frameNow.unixMs, samples: PATH_SAMPLES });
+      }
     },
     get selected() {
       return info(selectedIndex);

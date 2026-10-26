@@ -11,6 +11,17 @@
   },
   "earthRow": "EM Bary: the Earth-Moon barycentre stands in for the Earth",
   "radiiSource": "https://ssd.jpl.nasa.gov/planets/phys_par.html",
+  "physicalUnits": {
+    "equatorialRadiusKm": "km",
+    "massE24Kg": "10^24 kg",
+    "densityGcm3": "g cm^-3",
+    "rotationDays": "sidereal, days (negative: retrograde)",
+    "orbitYears": "sidereal, Julian years",
+    "absoluteMagnitude": "V(1,0), mag",
+    "geometricAlbedo": "",
+    "equatorialGravityMs2": "m s^-2",
+    "escapeVelocityKmS": "km s^-1"
+  },
   "bodies": [
     {
       "name": "Mercury",
@@ -31,7 +42,18 @@
         "varpi": 0.16047689,
         "Omega": -0.12534081
       },
-      "meanRadiusKm": 2439.4
+      "meanRadiusKm": 2439.4,
+      "physical": {
+        "equatorialRadiusKm": 2440.53,
+        "massE24Kg": 0.330103,
+        "densityGcm3": 5.4289,
+        "rotationDays": 58.6462,
+        "orbitYears": 0.2408467,
+        "absoluteMagnitude": -0.6,
+        "geometricAlbedo": 0.106,
+        "equatorialGravityMs2": 3.7,
+        "escapeVelocityKmS": 4.25
+      }
     },
     {
       "name": "Venus",
@@ -52,7 +74,18 @@
         "varpi": 0.00268329,
         "Omega": -0.27769418
       },
-      "meanRadiusKm": 6051.8
+      "meanRadiusKm": 6051.8,
+      "physical": {
+        "equatorialRadiusKm": 6051.8,
+        "massE24Kg": 4.86731,
+        "densityGcm3": 5.243,
+        "rotationDays": -243.018,
+        "orbitYears": 0.61519726,
+        "absoluteMagnitude": -4.47,
+        "geometricAlbedo": 0.65,
+        "equatorialGravityMs2": 8.87,
+        "escapeVelocityKmS": 10.36
+      }
     },
     {
       "name": "Earth",
@@ -73,7 +106,18 @@
         "varpi": 0.32327364,
         "Omega": 0.0
       },
-      "meanRadiusKm": 6371.0084
+      "meanRadiusKm": 6371.0084,
+      "physical": {
+        "equatorialRadiusKm": 6378.1366,
+        "massE24Kg": 5.97217,
+        "densityGcm3": 5.5134,
+        "rotationDays": 0.99726968,
+        "orbitYears": 1.0000174,
+        "absoluteMagnitude": -3.86,
+        "geometricAlbedo": 0.367,
+        "equatorialGravityMs2": 9.8,
+        "escapeVelocityKmS": 11.19
+      }
     },
     {
       "name": "Mars",
@@ -94,7 +138,18 @@
         "varpi": 0.44441088,
         "Omega": -0.29257343
       },
-      "meanRadiusKm": 3389.5
+      "meanRadiusKm": 3389.5,
+      "physical": {
+        "equatorialRadiusKm": 3396.19,
+        "massE24Kg": 0.641691,
+        "densityGcm3": 3.934,
+        "rotationDays": 1.02595676,
+        "orbitYears": 1.8808476,
+        "absoluteMagnitude": -1.52,
+        "geometricAlbedo": 0.15,
+        "equatorialGravityMs2": 3.71,
+        "escapeVelocityKmS": 5.03
+      }
     },
     {
       "name": "Jupiter",
@@ -115,7 +170,18 @@
         "varpi": 0.21252668,
         "Omega": 0.20469106
       },
-      "meanRadiusKm": 69911.0
+      "meanRadiusKm": 69911.0,
+      "physical": {
+        "equatorialRadiusKm": 71492.0,
+        "massE24Kg": 1898.125,
+        "densityGcm3": 1.3262,
+        "rotationDays": 0.41354,
+        "orbitYears": 11.862615,
+        "absoluteMagnitude": -9.4,
+        "geometricAlbedo": 0.52,
+        "equatorialGravityMs2": 24.79,
+        "escapeVelocityKmS": 60.2
+      }
     },
     {
       "name": "Saturn",
@@ -136,7 +202,18 @@
         "varpi": -0.41897216,
         "Omega": -0.28867794
       },
-      "meanRadiusKm": 58232.0
+      "meanRadiusKm": 58232.0,
+      "physical": {
+        "equatorialRadiusKm": 60268.0,
+        "massE24Kg": 568.317,
+        "densityGcm3": 0.6871,
+        "rotationDays": 0.44401,
+        "orbitYears": 29.447498,
+        "absoluteMagnitude": -8.88,
+        "geometricAlbedo": 0.47,
+        "equatorialGravityMs2": 10.44,
+        "escapeVelocityKmS": 36.09
+      }
     },
     {
       "name": "Uranus",
@@ -157,7 +234,18 @@
         "varpi": 0.40805281,
         "Omega": 0.04240589
       },
-      "meanRadiusKm": 25362.0
+      "meanRadiusKm": 25362.0,
+      "physical": {
+        "equatorialRadiusKm": 25559.0,
+        "massE24Kg": 86.8099,
+        "densityGcm3": 1.27,
+        "rotationDays": -0.71833,
+        "orbitYears": 84.016846,
+        "absoluteMagnitude": -7.19,
+        "geometricAlbedo": 0.51,
+        "equatorialGravityMs2": 8.87,
+        "escapeVelocityKmS": 21.38
+      }
     },
     {
       "name": "Neptune",
@@ -178,7 +266,18 @@
         "varpi": -0.32241464,
         "Omega": -0.00508664
       },
-      "meanRadiusKm": 24622.0
+      "meanRadiusKm": 24622.0,
+      "physical": {
+        "equatorialRadiusKm": 24764.0,
+        "massE24Kg": 102.4092,
+        "densityGcm3": 1.638,
+        "rotationDays": 0.67125,
+        "orbitYears": 164.79132,
+        "absoluteMagnitude": -6.87,
+        "geometricAlbedo": 0.41,
+        "equatorialGravityMs2": 11.15,
+        "escapeVelocityKmS": 23.56
+      }
     }
   ],
   "rawSha256": {

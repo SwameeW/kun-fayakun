@@ -1,4 +1,5 @@
 import { BODY_IDS, type App, type BodyId, type ChapterId, type UniverseView } from '../../core/types';
+import exploreMessages from '../../i18n/en.explore.json';
 import { focusLost, h } from '../dom';
 import { icon } from '../icons';
 import '../styles/explore.css';
@@ -7,6 +8,7 @@ import { formatters } from './format';
 import { createNavigator } from './navigator';
 import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
+import { createTimeControl } from './time-control';
 import { createToast } from './toast';
 
 /**
@@ -14,7 +16,9 @@ import { createToast } from './toast';
  * shell): the celestial navigator (./navigator: every world with a live portrait, its distance and
  * light-time, an orrery to fly by, what has been seen, the detail menu), a heads-up readout of where
  * the camera is and how it moves (./flight-hud, with the trip indicator), quiet notes about what is
- * near (./notes), a way back to the film, and a hint that fades once the visitor has moved.
+ * near (./notes), the time machine's controls (./time-control, heading the navigator), a photo mode that
+ * leaves only the view (H, or its button; H, Esc or "Show the interface" brings everything back), a
+ * way back to the film, and a hint that fades once the visitor has moved.
  *
  * The explorer is told what the interface covers (the header, the side panel or the bottom sheet,
  * the readout where it spans a phone's width) so it frames the bodies in the clear part of the view.
@@ -54,6 +58,8 @@ const SLOW_MS = 250;
 
 export function mountUniverse(app: App, announce: (text: string) => void): UniverseUi {
   const { i18n } = app;
+  // The explorer's own messages come with its chunk, not the shell.
+  i18n.extend('en.explore.json', exploreMessages);
   const f = formatters(i18n);
   const coarse = window.matchMedia('(pointer: coarse)');
 
@@ -66,10 +72,34 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   // A quiet toast marks what joins the log of what was seen, and a detail level applied.
   const toast = createToast('universe-toast');
   const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
-  const notes = createNotes(app, f, announce, () => navigator.layout === 'sheet');
-  const navigator = createNavigator(app, f, (title, line) => {
-    toast.show(title, line);
+  // The time machine heads the navigator, with photo mode's button at the end of its line.
+  const time = createTimeControl(app, announce);
+  const photo = h('button', { type: 'button', class: 'kf-universe-time-button kf-universe-photo', 'aria-label': i18n.t('ui.universe.photo'), 'data-testid': 'universe-photo' }, icon('photo'));
+  const timeRow = h('div', { class: 'kf-nav-time' }, time.element, photo);
+
+  // Photo mode: only the view (and a way back to everything else).
+  const photoExit = h('button', { type: 'button', class: 'kf-btn kf-universe-photo-exit', 'data-testid': 'universe-photo-exit' }, i18n.t('ui.universe.photoExit'));
+  const setPhoto = (on: boolean): void => {
+    if (document.documentElement.classList.contains('kf-photo') === on) return;
+    document.documentElement.classList.toggle('kf-photo', on);
+    (on ? photoExit : photo).focus({ preventScroll: true });
+    requestAnimationFrame(reportInsets);
+  };
+  photo.addEventListener('click', () => {
+    setPhoto(true);
   });
+  photoExit.addEventListener('click', () => {
+    setPhoto(false);
+  });
+  const notes = createNotes(app, f, announce, () => navigator.layout === 'sheet');
+  const navigator = createNavigator(
+    app,
+    f,
+    (title, line) => {
+      toast.show(title, line);
+    },
+    timeRow,
+  );
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));
 
@@ -78,6 +108,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     'section',
     { class: 'kf-universe', 'aria-label': i18n.t('ui.universe.label'), 'data-testid': 'universe', tabindex: '-1', hidden: true },
     back,
+    photoExit,
     hint,
     loading,
     hud.trip,
@@ -114,6 +145,25 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     },
     true,
   );
+
+  // The time machine's keys ([ slower, ] faster, \ backwards; Space is the page's play key) and photo mode's (H; Esc leaves it).
+  window.addEventListener('keydown', (event) => {
+    if (!visible || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.closest('input, textarea, select, [contenteditable="true"], [data-kf-keys="own"], dialog') !== null)) return;
+    const photoOn = document.documentElement.classList.contains('kf-photo');
+    if (event.key === 'Escape' && photoOn) {
+      setPhoto(false);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    const command = event.key === '[' ? 'slower' : event.key === ']' ? 'faster' : event.key === '\\' ? 'reverse' : null;
+    if (command) app.universeTime({ kind: command });
+    else if (event.key === 'h' || event.key === 'H') setPhoto(!photoOn);
+    else return;
+    event.preventDefault();
+  }, true);
 
   // A double tap or click on a body in the scene flies there: the address follows, as for the list.
   window.addEventListener('kf-universe-focus', (event) => {
@@ -176,6 +226,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
+    time.update(view);
     notes.update(view);
     if (settling && ((!view.moving && !view.travelling) || now >= settleBy)) {
       settling = false;
@@ -284,6 +335,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
       visible = next;
       element.hidden = !next;
       document.documentElement.classList.toggle('kf-universe-open', next);
+      if (!next) document.documentElement.classList.remove('kf-photo');
       loading.hidden = ready || !next;
       if (next) {
         requestAnimationFrame(frame);

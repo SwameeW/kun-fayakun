@@ -35,6 +35,21 @@ export interface PlanetBody {
   elements: Elements;
   ratesPerCentury: Elements;
   meanRadiusKm: number;
+  /** The planet's row of JPL's "Planetary Physical Parameters", as the table gives it. */
+  physical: PlanetPhysical;
+}
+
+/** Units: km; 10^24 kg; g cm^-3; sidereal days (negative: retrograde); Julian years; mag; m s^-2; km s^-1. */
+export interface PlanetPhysical {
+  equatorialRadiusKm: number;
+  massE24Kg: number;
+  densityGcm3: number;
+  rotationDays: number;
+  orbitYears: number;
+  absoluteMagnitude: number;
+  geometricAlbedo: number;
+  equatorialGravityMs2: number;
+  escapeVelocityKmS: number;
 }
 
 /** public/assets/jpl/planets.json (the fields used here). */

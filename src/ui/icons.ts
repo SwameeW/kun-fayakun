@@ -10,6 +10,10 @@ const PATHS = {
   close: 'M6 6l12 12M18 6L6 18',
   chevron: 'M6 15l6-6 6 6',
   back: 'M15 6l-6 6 6 6',
+  slower: 'M18.5 6.5l-5.5 5.5 5.5 5.5M11 6.5L5.5 12l5.5 5.5',
+  faster: 'M5.5 6.5l5.5 5.5-5.5 5.5M13 6.5l5.5 5.5-5.5 5.5',
+  reverse: 'M9 5.5L4.5 10 9 14.5M4.5 10h10a5 5 0 0 1 0 10H11',
+  photo: 'M4 8h3.5l2-2.5h5l2 2.5H20v10.5H4zM12 10.2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
 } as const;
 
 export type IconName = keyof typeof PATHS;

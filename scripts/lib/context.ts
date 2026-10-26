@@ -17,7 +17,7 @@ export interface ValidationContext {
   constants: Loaded<ConstantsFile>;
   content: ContentLoad;
   refs: Array<{ chapter: LoadedChapter; refs: ContentRefs }>;
-  i18n: { en: MessageLoad; chapters: MessageLoad; ar: MessageLoad };
+  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; ar: MessageLoad };
   /** The disclaimer from docs/SPEC.md section 1.7, without its quotation marks. */
   specDisclaimer: string;
 }
@@ -46,6 +46,7 @@ export function loadContext(online: boolean): ValidationContext {
     i18n: {
       en: loadMessages('src', 'i18n', 'en.json'),
       chapters: loadMessages('src', 'i18n', 'en.chapters.json'),
+      explore: loadMessages('src', 'i18n', 'en.explore.json'),
       ar: loadMessages('src', 'i18n', 'ar.json'),
     },
     specDisclaimer: readSpecDisclaimer(),

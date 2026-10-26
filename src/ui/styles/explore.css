@@ -1663,3 +1663,126 @@
   .kf-nav.is-panel.is-expanded .kf-nav-distance { font-size: 0.75rem; line-height: 1.25; }
   .kf-nav.is-panel.is-expanded .kf-nav-light { font-size: 0.625rem; line-height: 1.25; }
 }
+
+/* The time machine (./time-control) heads the navigator; photo mode's button ends its line. On a phone's sheet it follows the list. */
+.kf-nav-time {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  padding-block: var(--kf-space-2);
+  border-block-end: 1px solid var(--kf-line);
+  font-size: 0.8125rem;
+}
+
+.kf-nav-time[hidden] {
+  display: none;
+}
+
+.kf-nav.is-sheet .kf-nav-time {
+  order: 2;
+  border-block-start: 1px solid var(--kf-line);
+  border-block-end: 0;
+}
+
+.kf-universe-time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-1) var(--kf-space-2);
+}
+
+.kf-universe-time-buttons {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.kf-universe-time-button,
+.kf-universe-time-now {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 2rem;
+  min-inline-size: 2rem;
+  padding-inline: var(--kf-space-1);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 999px;
+  background: rgb(20 21 29 / 0.9);
+  color: var(--kf-text);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.kf-universe-time-now {
+  padding-inline: var(--kf-space-2);
+}
+
+.kf-universe-time-button .kf-icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.kf-universe-time-button[aria-pressed="true"] {
+  border-color: var(--kf-gold);
+  background: var(--kf-gold-faint);
+  color: var(--kf-gold-strong);
+}
+
+.kf-universe-time-button:hover,
+.kf-universe-time-now:hover {
+  border-color: var(--kf-gold-soft);
+}
+
+.kf-universe-time-rate {
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+}
+
+.kf-universe-time-date {
+  min-block-size: 2rem;
+  padding-inline: var(--kf-space-2);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface);
+  color: var(--kf-text);
+  color-scheme: dark;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  .kf-universe-time-button,
+  .kf-universe-time-now,
+  .kf-universe-time-date {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+  }
+}
+
+/* Photo mode: only the view, and a quiet way back. */
+.kf-universe-photo-exit {
+  display: none;
+}
+
+.kf-photo .kf-header,
+.kf-photo .kf-hud,
+.kf-photo .kf-universe > :not(.kf-universe-photo-exit) {
+  display: none;
+}
+
+.kf-photo .kf-universe-photo-exit {
+  display: inline-flex;
+  position: fixed;
+  inset-block-start: var(--kf-space-3);
+  inset-inline-end: var(--kf-gutter);
+  z-index: 5;
+  opacity: 0.4;
+  transition: opacity 200ms var(--kf-ease);
+}
+
+.kf-photo .kf-universe-photo-exit:hover,
+.kf-photo .kf-universe-photo-exit:focus-visible {
+  opacity: 1;
+}

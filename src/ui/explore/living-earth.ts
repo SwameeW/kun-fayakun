@@ -335,7 +335,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
       const where = s.near && s.near.km < NEAR_KM ? 'ui.universe.field.stationNear' : 'ui.universe.field.stationFar';
       write(today.station.text, i18n.t(where, { altitude: f.distance(s.altitudeKm), place: s.near?.name ?? '', distance: f.distance(s.near?.km ?? 0), lit: lit(s.sunlit) }));
     } else {
-      write(today.station.text, i18n.t('ui.universe.field.stationOff'));
+      write(today.station.text, i18n.t(layerOn.satellites ? 'ui.universe.field.stationAway' : 'ui.universe.field.stationOff'));
     }
     const stationName = s ? i18n.t(`ui.universe.stationName.${s.station ?? 'iss'}`) : null;
     today.station.setGo(stationName, () => {

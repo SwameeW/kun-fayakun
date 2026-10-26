@@ -473,14 +473,14 @@
     {
       "id": "jpl-phys-par",
       "kind": "dataset",
-      "title": "Planetary Physical Parameters (mean radii)",
+      "title": "Planetary Physical Parameters: radii, masses, bulk densities, sidereal rotation and orbital periods, equatorial gravity and escape velocities of the planets",
       "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics",
       "url": "https://ssd.jpl.nasa.gov/planets/phys_par.html",
       "version": "retrieved 2026-10-22",
       "license": "Public information from NASA/JPL",
       "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
-      "credit": "Planet radii: NASA/JPL-Caltech Solar System Dynamics",
-      "notes": "Relative planet sizes in Chapter 7 (compressed, not to scale).",
+      "credit": "Planet radii and physical parameters: NASA/JPL-Caltech Solar System Dynamics",
+      "notes": "Relative planet sizes in Chapter 7 (compressed, not to scale), and the explorer's object information for each planet, shown as the table gives it (public/assets/jpl/planets.json).",
       "review": {
         "reviewer": null,
         "role": null,
@@ -513,8 +513,8 @@
       "version": "DE440, retrieved 2026-10-23",
       "license": "Public information from NASA/JPL",
       "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
-      "credit": "Earth/Moon mass ratio and astronomical unit: NASA/JPL-Caltech DE440 planetary ephemeris",
-      "notes": "EMRAT places the Earth's centre relative to the Earth-Moon barycentre (Earth = barycentre - Moon / (1 + EMRAT)). public/assets/jpl/physical.json records the file's sha256.",
+      "credit": "Earth/Moon mass ratio, astronomical unit and GM values: NASA/JPL-Caltech DE440 planetary ephemeris",
+      "notes": "EMRAT places the Earth's centre relative to the Earth-Moon barycentre (Earth = barycentre - Moon / (1 + EMRAT)). The GM of the Sun and of the Moon give the explorer's object information for them (mass in units of the Earth's, surface gravity GM/R^2, escape speed sqrt(2GM/R)). public/assets/jpl/physical.json records the file's sha256.",
       "review": {
         "reviewer": null,
         "role": null,

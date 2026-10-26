@@ -418,6 +418,23 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   `createStarfield(count, radius, seed, { depthTest, dynamicRadius })` with `setRadius`,
   `createStreakField({ ..., profile: 'trail'|'line', tailColor })`.
 
+## Explorer: time machine and photo mode
+
+- **Time machine** (`src/explore/time.ts`, `src/ui/explore/time-control.ts`). The explorer's clock
+  runs at `UniverseTime.rate` explorer seconds per real second (negative backwards), stepped along
+  `TIME_RATES` (1 to 30 days a second) by `UniverseTimeCommand` (`toggle`, `faster`, `slower`,
+  `reverse`, `now`, `date`, `rate`) through `app.universeTime`. `advanceClock` keeps it inside the
+  data's span (the Moon's table, intersected with the planets'), stopping and pausing at either end
+  (`UniverseTime.edge`). During a trip it runs at real time. Satellites draw up to
+  `SATELLITE_MAX_RATE` (600) and hide a state further than `STALE_MS` from the clock until a fresh
+  one arrives; earthquakes draw only within a day of the present. Keys: Space (the page's play key
+  pauses it in the explorer), [ and ], \. The controls head the navigator (after the list on a
+  phone's sheet); a change is announced politely.
+- **Photo mode.** `kf-photo` on the root hides the header, the HUD tags and everything in the
+  explorer's interface but "Show the interface"; H toggles it and Esc leaves it (before Esc would
+  leave the explorer).
+- Roadmap for the rest of SpaceEngine's mechanics: `docs/EXPLORER-MECHANICS.md`.
+
 ## Living Earth (explorer)
 
 Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Earth.

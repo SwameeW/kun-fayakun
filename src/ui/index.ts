@@ -95,8 +95,12 @@ export function mountUI(app: App, root: HTMLElement): void {
   const inChapter = (): boolean => view === 'chapter' && app.chapter !== null;
   const shortcuts = createShortcuts(i18n, {
     togglePlay() {
-      // The explorer has no film to play (and Space must not start Chapter 0 behind it).
-      if (view === 'sources' || view === 'universe') return;
+      // In the explorer Space pauses and resumes its time machine (and never starts Chapter 0 behind it).
+      if (view === 'universe') {
+        app.universeTime({ kind: 'toggle' });
+        return;
+      }
+      if (view === 'sources') return;
       if (app.chapter === null) begin();
       else app.togglePause();
     },

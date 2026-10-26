@@ -11,6 +11,8 @@ import type { TimeConstants } from './time';
 
 export interface PhysicalFile extends EphemerisConstants {
   obliquityJ2000Arcsec: number;
+  /** GM, km^3 s^-2 (DE440): the Earth's and the Moon's split by EMRAT; Mars to Neptune each with its moons. */
+  gmKm3S2: Record<RotatingBody, number>;
   bodies: Record<RotatingBody, RotationModel>;
   saturnRings: {
     innerKm: number;
