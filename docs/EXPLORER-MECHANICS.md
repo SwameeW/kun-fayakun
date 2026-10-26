@@ -49,6 +49,12 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   constellation figures and names, the brightest stars' IAU names, the IAU boundaries, and a grid
   with the celestial equator and the ecliptic. The Milky Way's glow waits for an all-sky map with a
   clear licence.
+- **The qibla and the new moon** (`docs/ISLAMIC-ASTRONOMY.md`). The qibla from any place, drawn as a
+  great circle on the globe; the four moments a year the Sun stands over the Kaaba or the point
+  opposite it, each a moment to go to; the golden latitude beside the Kaaba's, at its actual size;
+  new moons, and the new crescent's map by Yallop's test for the evenings after one; the date in
+  the Umm al-Qura calendar; and the observatories and tiles of the Islamic world's astronomers and
+  geometers. All from the explorer's ephemeris, checked against published times.
 - **The orbital laboratory** (Universe Sandbox's core, the brief's Phase 1). "Experiment with this
   system" forks the solar system at the explorer's date into an N-body integration in a worker: edit
   masses and velocities, add bodies (on a circular orbit or at a given state), duplicate and

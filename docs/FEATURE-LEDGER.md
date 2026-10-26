@@ -27,6 +27,21 @@ platform.
 | EX-8 | Living Earth (daily imagery, satellites, earthquakes) | GIBS, CelesTrak SGP4, USGS | `tests/unit/living-earth.spec.ts`, `tests/explore/living-earth.spec.ts` | implemented |
 | EX-9 | Detail tiers with a governor | Low to Ultra | `tests/unit/detail-governor.spec.ts`, `tests/explore/quality.spec.ts` | implemented |
 
+## Islamic astronomy (explorer, real data)
+
+| ID | Feature | Model / data | Acceptance | Status |
+|---|---|---|---|---|
+| IA-1 | Qibla from any place, its great circle on the globe | Spherical great circle to Wikidata's Kaaba | `tests/unit/islamic.spec.ts` (published bearings; travelling the bearing reaches the Kaaba), `tests/explore/islamic.spec.ts` | implemented |
+| IA-2 | The Sun over the Kaaba and over its opposite point | Daily transits from the ephemeris | the same (announced 2026 times, within seconds; the explorer's Sun over the Kaaba then) | implemented |
+| IA-3 | The golden latitude beside the Kaaba's | WGS 84 meridian arcs | the same (quarter meridian; ratio; 8.7 km) | implemented |
+| IA-4 | New moons and the new crescent's map | Yallop's q-test at the best time | the same (Espenak's 2026 new moons; Ramadan 1447 reports) | implemented |
+| IA-5 | The Umm al-Qura date | ICU's islamic-umalqura | the same (Ramadan and Shawwal 1447) | implemented |
+| IA-6 | Astronomers and geometers of the Islamic world | Wikidata places, cited notes | the same | implemented |
+| IA-7 | Al-Sufi's "little cloud" named on the sky | The Andromeda Galaxy's catalogue position | Label at the cited position | planned |
+| IA-8 | Star names from Arabic astronomy | Etymologies from a licensed source | Every name cited | research needed |
+| IA-9 | Prayer times | Conventions for twilight and the afternoon differ between communities | Owner and scholar decision first | deferred |
+| IA-10 | Other crescent criteria (Odeh, SAAO), weather | Published criteria | Agreement with each paper's examples | planned |
+
 ## Phase 1: orbital laboratory (US)
 
 | ID | Feature | Model / approximation | Depends on | Acceptance | Status |

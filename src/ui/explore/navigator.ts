@@ -4,6 +4,7 @@ import { icon } from '../icons';
 import { createAbout } from './about';
 import { createBodyIcon, type BodyIcon } from './body-icon';
 import type { Formatters } from './format';
+import type { IslamicPanel } from './islamic-panel';
 import type { LabPanel } from './lab-panel';
 import { createLivingEarth } from './living-earth';
 import { createOrrery } from './orrery';
@@ -15,7 +16,7 @@ import { createSkyPanel } from './sky-panel';
  * the camera sees it), its distance and how long its light takes to arrive, all live from the
  * ephemeris; the time machine (at its head); a compact orrery to fly by; about the world in view
  * (./about: its size, mass, gravity, day, year and orbit, to scale beside the Earth); the Living Earth (./living-earth: its imagery, live layers,
- * place search and field notes); the phenomena seen on this visit (its summary says how many
+ * place search and field notes); the qibla and the new moon (./islamic-panel); the phenomena seen on this visit (its summary says how many
  * entries it holds; no totals, no scores); the detail menu; and the keys. On a wide screen it is a
  * side panel (folding to a rail of portraits); on a phone a bottom sheet (folding to a row of them)
  * that puts the list first, the log next and the orrery last as a small strip, sized to what it holds
@@ -109,6 +110,23 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     requestAnimationFrame(edge);
   });
 
+  // The qibla and the new moon: a section whose panel (its own chunk, with the astronomy behind it) loads when first opened.
+  let islamicPanel: IslamicPanel | null = null;
+  const islamic = h('details', { class: 'kf-nav-islamic', 'data-testid': 'universe-islamic' }, h('summary', {}, i18n.t('ui.universe.islamic.title')));
+  islamic.addEventListener('toggle', () => {
+    if (islamic.open && !islamicPanel) {
+      void import('./islamic-panel').then(({ createIslamicPanel }) => {
+        islamicPanel = createIslamicPanel(app, f, () => {
+          if (layout === 'sheet') setExpanded(false);
+        });
+        islamic.append(islamicPanel.element);
+        requestAnimationFrame(edge);
+      });
+    }
+    if (islamic.open) islamic.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    requestAnimationFrame(edge);
+  });
+
   const quality = createQualityMenu(app, onApplied);
   const keys = h(
     'details',
@@ -118,7 +136,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, sky.element, labEntry, living.element, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, sky.element, labEntry, living.element, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -136,7 +154,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [time, map, about.element, sky.element, labEntry, living.element, seen, foot]) el.hidden = !expanded;
+    for (const el of [time, map, about.element, sky.element, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
     notify();
@@ -215,11 +233,13 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         const inLab = view.lab !== null;
         about.element.hidden = inLab;
         living.element.hidden = inLab;
+        islamic.hidden = inLab;
         labEntry.hidden = inLab;
         for (const [id, r] of rows) r.row.hidden = inLab && !view.lab?.bodies.some((b) => b.id === id);
         about.update(view, slow);
         sky.update(view, slow);
         living.update(view, slow);
+        if (islamic.open) islamicPanel?.update(view, slow);
       }
       if (view.witnessed.length !== seenShown) {
         seenShown = view.witnessed.length;

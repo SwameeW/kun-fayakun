@@ -1740,6 +1740,12 @@
   font-size: 0.75rem;
 }
 
+.kf-universe-time-hijri {
+  flex-basis: 100%;
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+}
+
 .kf-universe-time-date {
   min-block-size: 2rem;
   padding-inline: var(--kf-space-2);

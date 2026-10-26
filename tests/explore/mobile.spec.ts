@@ -345,3 +345,37 @@ test('the orbital laboratory on a phone: opened from the sheet, every control a 
   await expect(page).not.toHaveURL(/lab/);
   expect(pageErrors).toEqual([]);
 });
+
+test('the qibla and the new moon on a phone: opened from the sheet, every control a touch target, the map computed, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('universe-nav-toggle').click();
+  const section = page.getByTestId('universe-islamic');
+  await section.locator('summary').scrollIntoViewIfNeeded();
+  await section.locator('summary').tap();
+  const panel = page.getByTestId('islamic-panel');
+  await expect(panel).toBeVisible({ timeout: 60_000 * SLOW });
+  await expect(panel.getByTestId('islamic-new-moon')).toContainText('New moon', { timeout: 60_000 * SLOW });
+  await panel.getByTestId('islamic-evening-1').tap();
+  await expect.poll(async () => (await view(page))?.islamic?.crescent?.progress ?? 0, { timeout: 60_000 * SLOW }).toBe(1);
+  await expect(panel.getByTestId('islamic-legend')).toBeVisible();
+  const width = page.viewportSize()?.width ?? 0;
+  const problems = await page.evaluate((w) => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid="universe-islamic"] button, [data-testid="universe-islamic"] input, [data-testid="universe-islamic"] summary')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.height < 43.5) out.push(`${el.dataset.testid ?? el.tagName} ${Math.round(r.height)}px tall`);
+      if (r.right > w + 0.5) out.push(`${el.dataset.testid ?? el.tagName} past the screen's edge`);
+    }
+    return out;
+  }, width);
+  expect(problems).toEqual([]);
+  const wide = await overflow(page);
+  expect(wide.offenders).toEqual([]);
+  expect(wide.scroll).toBeLessThanOrEqual(wide.client);
+  const results = await new AxeBuilder({ page }).include('[data-testid="universe-islamic"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});

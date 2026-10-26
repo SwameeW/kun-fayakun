@@ -482,6 +482,8 @@ export interface UniverseView {
   sky: { layers: Record<SkyLayerName, boolean>; stars: number };
   /** The orbital laboratory (src/explore/lab, src/sim) while an experiment runs; null in the real explorer. */
   lab: UniverseLab | null;
+  /** The qibla and the new moon (src/explore/islamic) once their section has been opened; null in the laboratory. */
+  islamic: UniverseIslamic | null;
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -701,6 +703,60 @@ export type UniverseTimeCommand =
 export type SkyLayerName = 'constellations' | 'boundaries' | 'grid' | 'names';
 export type UniverseSkyCommand = { kind: 'layer'; layer: SkyLayerName; on: boolean };
 
+/** A zone of Yallop's test for the new crescent: A easily seen by eye ... F below the Danjon limit. */
+export type CrescentZoneName = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+/** The new crescent's map for an evening after a new moon (src/explore/islamic). */
+export interface UniverseCrescent {
+  /** 0: the evening of the new moon's own day (UTC), 1 and 2 the evenings after. */
+  evening: 0 | 1 | 2;
+  /** That evening's date, 0h UTC (ms). */
+  dateMs: number;
+  /** Share of the map computed (it fills over a few frames). */
+  progress: number;
+  /** Places of the map (every 2 degrees between 60 S and 60 N) in each zone; `none` where the Moon sets first or the evening is before the new moon. */
+  counts: Record<CrescentZoneName | 'none', number>;
+  /** The place the qibla is reckoned from, that evening: its zone (or why none), q, sunset, best time and moonset (ms), and the Moon's age at sunset (hours). */
+  here: {
+    zone: CrescentZoneName | 'moon-sets-first' | 'before-new-moon' | 'no-sunset' | 'high-latitude';
+    q: number | null;
+    sunsetMs: number | null;
+    bestMs: number | null;
+    moonsetMs: number | null;
+    ageHours: number;
+  } | null;
+}
+
+/** The qibla and the new moon as the view reports them (src/explore/islamic). */
+export interface UniverseIslamic {
+  /**
+   * The qibla from a place (the point beneath the camera unless one was chosen; `name` null for that
+   * point): its bearing from true north (degrees), the nearest of 16 compass points (0 north, 4 east),
+   * the great-circle distance to the Kaaba (km), and whether its path is drawn. Null with no place.
+   */
+  qibla: { from: { lat: number; lon: number; name: string | null }; bearingDeg: number; compass: number; distanceKm: number; line: boolean } | null;
+  /** The golden latitude (degrees) beside the Kaaba's: the Kaaba's ratio of its distances to the South and North Poles along its meridian, how far north of the golden latitude it is (km), the golden ratio, and whether both are drawn. */
+  golden: { on: boolean; latDeg: number; kaabaLatDeg: number; kaabaLonDeg: number; kaabaRatio: number; kaabaNorthKm: number; ratio: number };
+  /** The next times the Sun stands over the Kaaba ('over') or the point of the Earth opposite it ('opposite'), from the date shown: that point (degrees) and how near the zenith the Sun comes (degrees). */
+  kaabaSun: ReadonlyArray<{ kind: 'over' | 'opposite'; unixMs: number; lat: number; lon: number; zenithDeg: number }>;
+  /** The new moon chosen (the latest, or the next once the latest is three days old, unless the visitor stepped), its neighbours, and the Moon's age at the date shown (hours since the latest new moon). */
+  newMoon: { unixMs: number; previousMs: number | null; nextMs: number | null; ageHours: number | null } | null;
+  /** The new crescent's map while one is shown. */
+  crescent: UniverseCrescent | null;
+  /** Marks drawn on the globe: the qibla's path, the two latitudes, the map's places. */
+  marks: { path: number; lines: number; map: number };
+}
+
+/** Commands for the qibla and the new moon. */
+export type UniverseIslamicCommand =
+  | { kind: 'open' }
+  | { kind: 'qiblaFrom'; lat: number; lon: number; name: string }
+  | { kind: 'qiblaFromBelow' }
+  | { kind: 'qiblaLine'; on: boolean }
+  | { kind: 'golden'; on: boolean }
+  | { kind: 'newMoon'; step: -1 | 1 }
+  | { kind: 'evening'; evening: 0 | 1 | 2 | null };
+
 /** One body of an experiment as the view reports it (masses in kg by one G: the Earth's GM over its mass). */
 export interface UniverseLabBody {
   id: string;
@@ -785,6 +841,8 @@ export interface UniverseTime {
   /** The span of dates the explorer can show (Unix ms). */
   startMs: number;
   endMs: number;
+  /** The date shown in the Umm al-Qura calendar (its civil day, from midnight UTC); null in the laboratory or where the browser lacks that calendar. */
+  hijri: { day: number; month: number; year: number } | null;
 }
 
 /**
@@ -837,6 +895,8 @@ export interface UniverseModule extends ExperienceModule {
   sky(command: UniverseSkyCommand): void;
   /** The orbital laboratory (src/explore/lab). */
   lab(command: LabCommand): void;
+  /** The qibla and the new moon (src/explore/islamic). */
+  islamic(command: UniverseIslamicCommand): void;
 }
 
 /** A camera pose around a body, for tests and frame captures. */
@@ -929,6 +989,8 @@ export interface AppCommands {
   universeSky(command: UniverseSkyCommand): void;
   /** In the laboratory: an edit, a seek, a save (src/explore/lab). */
   universeLab(command: LabCommand): void;
+  /** In the explorer: the qibla and the new moon (src/explore/islamic). */
+  universeIslamic(command: UniverseIslamicCommand): void;
   /** Opens the orbital laboratory on a copy of the system the explorer shows; closes it back to the explorer. */
   openLab(): void;
   closeLab(): void;

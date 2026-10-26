@@ -15,6 +15,7 @@ import type {
   UniverseSteer,
   EarthCommand,
   UniverseTimeCommand,
+  UniverseIslamicCommand,
   UniverseSkyCommand,
   LabCommand,
   UniverseView,
@@ -310,6 +311,10 @@ export class UniverseHost {
 
   time(command: UniverseTimeCommand): void {
     this.active?.time(command);
+  }
+
+  islamic(command: UniverseIslamicCommand): void {
+    this.active?.islamic(command);
   }
 
   sky(command: UniverseSkyCommand): void {

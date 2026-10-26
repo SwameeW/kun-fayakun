@@ -86,8 +86,20 @@ scholarly text or science text change later, that area needs review again.
   Al-Yasa. Also check the honorifics and the biblical names given in
   brackets. Only names on the ground are shown; Makkah is never framed closer
   than 30 km across (`MAKKAH_FRAME`).
+- **The qibla and the new moon (explorer, `docs/ISLAMIC-ASTRONOMY.md`).** That
+  the section gives no rulings: the qibla as a great-circle direction from true
+  north, the crescent map as what the sky allows (Yallop's criterion) with the
+  note that communities begin each month by their own practice, and the Umm
+  al-Qura date named as such. That the golden-latitude note is worded as a
+  closeness of numbers, not evidence. That no prayer times are shown, and why.
+  The heritage notes (`ui.universe.islamic.heritage.*`): al-Battani, al-Sufi,
+  al-Tusi, Ulugh Beg, the Darb-i Imam's girih tiles, Taqi al-Din.
 
 ### 3. Astrophysicist
+
+- The qibla and the new moon's astronomy (`src/explore/islamic/astronomy.ts`):
+  the checks against published values in `docs/ISLAMIC-ASTRONOMY.md`, and
+  Yallop's test as implemented (best time, geocentric ARCV, topocentric W').
 
 - Every number in `data/constants.json` (value, uncertainty, unit, qualifier,
   citation and access date), and every place it appears in the panels.
