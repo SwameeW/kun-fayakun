@@ -37,23 +37,25 @@ mechanics, not its invented worlds.
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'
   numbers are JPL's "Planetary Physical Parameters" as given; the Sun's and the Moon's come from
   DE440's GM and NAIF's radii.
+- **The real sky** (SpaceEngine's planetarium). The procedural backdrop is gone: behind the worlds
+  are the Bright Star Catalogue's 9,096 naked-eye stars at their real places, colours (from B-V) and
+  brightness, so the planets stand in their real constellations. Switches in the navigator show the
+  constellation figures and names, the brightest stars' IAU names, the IAU boundaries, and a grid
+  with the celestial equator and the ecliptic. The Milky Way's glow waits for an all-sky map with a
+  clear licence.
 
 ## Planned, in this order (each from cited data)
 
-1. **The real sky.** Stars from a public catalogue (the Yale Bright Star Catalogue or Hipparcos)
-   with colours from their measured B-V, the Milky Way from NASA SVS's Deep Star Maps, IAU
-   constellation figures and boundaries, IAU star names, celestial grids. Licences are confirmed
-   before anything is fetched.
-2. **More worlds.** The major moons (JPL's satellite mean elements; NASA and USGS maps), Pluto and
+1. **More worlds.** The major moons (JPL's satellite mean elements; NASA and USGS maps), Pluto and
    Charon, Ceres and Vesta, the asteroid belt as points from JPL's small-body database, and comets.
-3. **Beyond the Sun.** Flights to the nearest stars (catalogue parallaxes), systems with known
+2. **Beyond the Sun.** Flights to the nearest stars (catalogue parallaxes), systems with known
    exoplanets (NASA Exoplanet Archive), out of the Milky Way (the film's model), the Local Group,
    the SDSS cosmic web (Chapter 5's 420,000 galaxies) and the Planck CMB (Chapter 1): from a street
    on the Earth to the edge of the observable universe, without a cut.
-4. **Down to the ground.** Real terrain near the surface (the Earth's terrain tiles, LOLA, MOLA), a
+3. **Down to the ground.** Real terrain near the surface (the Earth's terrain tiles, LOLA, MOLA), a
    view from the ground with the real sky, the next eclipses found from the ephemeris to fly to, and
    saved, shareable locations (place, view and time).
-5. **Ship mode** (optional). Newtonian flight with thrust and gravity, and orbit prediction.
+4. **Ship mode** (optional). Newtonian flight with thrust and gravity, and orbit prediction.
 
 ## Not planned
 

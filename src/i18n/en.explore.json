@@ -244,5 +244,14 @@
   "ui.universe.about.source.jpl-approx-pos": "JPL Approximate Positions of the Planets",
   "ui.universe.about.source.naif-pck00011": "NAIF PCK (IAU rotation models)",
   "ui.universe.about.source.jpl-de440": "JPL DE440 (GM values)",
-  "ui.universe.about.source.jpl-horizons": "JPL Horizons"
+  "ui.universe.about.source.jpl-horizons": "JPL Horizons",
+  "ui.universe.sky.title": "The sky",
+  "ui.universe.sky.intro": "The {count} brightest stars of the Bright Star Catalogue, the stars the eye can see, at their real places, in their own colours and brightness.",
+  "ui.universe.sky.layer.constellations": "Constellations",
+  "ui.universe.sky.layer.names": "Star names",
+  "ui.universe.sky.layer.boundaries": "Boundaries",
+  "ui.universe.sky.layer.grid": "Grid, equator and ecliptic",
+  "ui.universe.sky.sources": "Stars: the Bright Star Catalogue (Hoffleit and Warren, NASA). Names: the IAU. Constellations: d3-celestial (Olaf Frohn), after the IAU’s charts and boundaries.",
+  "ui.universe.sky.star": "Star",
+  "ui.universe.sky.constellation": "Constellation"
 }

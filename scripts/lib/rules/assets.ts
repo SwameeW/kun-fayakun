@@ -300,6 +300,52 @@ function checkPlaces(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: ${places.length} places [name, lat, lon, population] in population order, credited to ${String(source.id)}`);
 }
 
+const SKY_OWNER = 'sky builder, python3 -I scripts/sky/build.py';
+
+/** The explorer's sky: the Bright Star Catalogue's stars (brightest first), IAU names for them, the 88 constellations; every source credited. */
+function checkSky(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'sky', 'sky.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${SKY_OWNER})`);
+    return;
+  }
+  const file = loaded.value;
+  const problems = checkFields(file, { sources: 'object', starFields: 'array', stars: 'array', names: 'array', constellations: 'array' }, path);
+  const sources = isRecord(file) && isRecord(file.sources) ? file.sources : {};
+  const ids = new Set(ctx.sources.status === 'ok' ? ctx.sources.value.sources.map((s) => s.id) : []);
+  for (const key of ['stars', 'names', 'constellations']) {
+    const s = sources[key];
+    const files: unknown = isRecord(s) ? s.files : undefined;
+    if (!isRecord(s) || typeof s.id !== 'string' || !isRecord(files) || !Object.values(files).every((f) => isRecord(f) && typeof f.url === 'string' && typeof f.sha256 === 'string' && SHA256.test(f.sha256))) {
+      problems.push(`${path}: sources.${key} needs an id and its files' urls and sha256`);
+    } else if (ctx.sources.status === 'ok' && !ids.has(s.id)) problems.push(`data/sources.json: no "${s.id}" entry for ${path} sources.${key}`);
+  }
+  const stars: unknown[] = isRecord(file) && Array.isArray(file.stars) ? file.stars : [];
+  let previous = Number.NEGATIVE_INFINITY;
+  const hrs = new Set<number>();
+  stars.forEach((row, i) => {
+    const ok = Array.isArray(row) && row.length === 5 && Number.isInteger(row[0]) && isFiniteNumber(row[1]) && row[1] >= 0 && row[1] < 360
+      && isFiniteNumber(row[2]) && Math.abs(row[2]) <= 90 && isFiniteNumber(row[3]) && (row[4] === null || isFiniteNumber(row[4]));
+    if (!ok) problems.push(`${path}: stars[${i}] must be [hr, raDeg, decDeg, vmag, bv|null]`);
+    else if (Number(row[3]) < previous) problems.push(`${path}: stars[${i}] is out of magnitude order`);
+    else {
+      previous = Number(row[3]);
+      hrs.add(Number(row[0]));
+    }
+  });
+  if (stars.length < 9000) problems.push(`${path}: ${stars.length} stars, expected the Bright Star Catalogue's ~9,100`);
+  const names: unknown[] = isRecord(file) && Array.isArray(file.names) ? file.names : [];
+  const badName = names.findIndex((n) => !Array.isArray(n) || !hrs.has(Number(n[0])) || typeof n[1] !== 'string' || n[1] === '');
+  if (badName >= 0) problems.push(`${path}: names[${badName}] must be [hr, name] for a star in the file`);
+  const constellations: unknown[] = isRecord(file) && Array.isArray(file.constellations) ? file.constellations : [];
+  if (constellations.length !== 89) problems.push(`${path}: ${constellations.length} constellations, expected the 88 (Serpens in two parts)`);
+  const badC = constellations.findIndex((c) => !isRecord(c) || typeof c.name !== 'string' || !isNumberList(c.label, 2) || !Array.isArray(c.lines) || !Array.isArray(c.bounds) || c.bounds.length === 0);
+  if (badC >= 0) problems.push(`${path}: constellations[${badC}] needs a name, a label point, lines and bounds`);
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${SKY_OWNER})`);
+  else log.pass(`${path}: ${stars.length} stars in magnitude order, ${names.length} IAU names, ${constellations.length} constellation parts; every source credited`);
+}
+
 /** Letter analyses: each asset must equal what scripts/build-analysis.ts derives from the verified text now. */
 function checkAnalyses(ctx: ValidationContext, log: RuleLog): void {
   const citations = loadJson<{ analysis?: Record<string, AnalysisSpec | string> }>(rootPath('data', 'citations.json'));
@@ -508,5 +554,6 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkJpl(ctx, log);
   checkPlanets(ctx, log);
   checkPlaces(ctx, log);
+  checkSky(ctx, log);
   checkAnalyses(ctx, log);
 }

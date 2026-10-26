@@ -129,6 +129,7 @@ sources. Nothing is typed from memory or generated.
 | Letter analysis | `npm run preprocess:analysis` | `public/assets/analysis/kullun-fi-falak.json`: the base letters of kullun fi falakin derived from data/quran.json (21:33 and 36:40), checked to read the same both ways |
 | SDSS galaxies | `npm run preprocess:sdss` | `public/assets/sdss/`: 420,000 DR20 galaxies (every one below z = 0.1, a one-in-nine sample beyond) at their comoving positions, `galaxies.bin` plus `galaxies.json`, and the SDSS acknowledgements in `data/sources.json` |
 | Planet textures | `bash scripts/preprocess-planets.sh` | `public/assets/planets/`: KTX2 maps of the Earth (Blue Marble NG day colour, Black Marble night lights, Blue Marble clouds, Natural Earth water mask, ETOPO 2022 relief normals), the Moon (SVS CGI Moon Kit colour, LOLA relief normals), Jupiter and Saturn (Hubble OPAL 2025a) and Saturn's rings (Cassini RSS opacity, PIA11142 colour) at the Low (1024), Medium (2048), High (4096) and Ultra (8192; chosen in the explorer's menu only) detail tiers, plus `planets.json` (size, codec, sha256, credit, longitude convention and row order of every file) and the sources in `data/sources.json`. The extension adds Mercury MDIS monochrome and DEM relief, Mars Viking colour and MOLA relief, and labelled uniform cloud-colour models for Venus, Uranus and Neptune. The complete published set is about 193 MB (17 maps, 54 distinct files); Ultra totals about 147 MB across all worlds. Each downloaded imagery source is pinned by sha256; landmark checks (Sahara and Pacific, Tycho and Mare Imbrium, the Great Red Spot's latitude, the Cassini Division, Caloris Planitia, Olympus Mons and Hellas) run on the sources and again on every decoded file. |
+| Sky | `npm run preprocess:sky` | `public/assets/sky/sky.json`: the Bright Star Catalogue's 9,096 stars (J2000, V, B-V), the IAU's star names and the 88 constellations' figures and boundaries (d3-celestial), every input sha256-pinned, for the explorer's real sky |
 | Places | `npm run preprocess:places` | `public/assets/places/places.json`: Natural Earth's 1:50m populated places (name, coordinates, population; no country), sha256-pinned, for the explorer's place search and field notes |
 
 ## Adding a chapter
@@ -200,6 +201,9 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
   credited with its link whenever it shows), NASA GIBS (VIIRS on NOAA-20), CelesTrak's orbital
   elements propagated with satellite.js (MIT), the USGS earthquake feed (public domain), Natural
   Earth populated places (public domain) and Wikidata coordinates (CC0); section 13 of `LICENSES`.
+- The explorer's sky: the Bright Star Catalogue (Hoffleit and Warren, NASA Astronomical Data Center;
+  public domain), the IAU Catalog of Star Names (CC BY) and d3-celestial's constellations (Olaf
+  Frohn, BSD-3-Clause); section 14 of `LICENSES`.
 - Created by Samee and Muhaimin.
 - Later milestones: live
   recitation from the Quran Foundation API (credited, never cached beyond its terms).
