@@ -1,6 +1,7 @@
 import type { App, I18nKey, UniverseDescent, UniverseView } from '../../core/types';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
+import { withHelp } from './help';
 
 /**
  * The readout while going down through an atmosphere where a probe went (src/explore/descent, ledger
@@ -105,7 +106,7 @@ export function createDescentHud(app: App, f: Formatters, host: () => HTMLElemen
     app.earthCommand({ kind: 'descentTo', pressureBar: Math.exp(Math.log(span.top) + (Math.log(span.bottom) - Math.log(span.top)) * t) });
   });
   const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'descent-credit', 'data-photo-credit': '' });
-  const readout = h('details', { class: 'kf-walk-suit' }, title, place, height, state, cloud, wind, probe, h('div', { class: 'kf-living-group' }, depthLabel, depth), credit);
+  const readout = h('details', { class: 'kf-walk-suit' }, title, place, height, withHelp(app, state, 'descentAir', i18n.t('ui.help.label.descentAir')), cloud, wind, withHelp(app, probe, 'descentProbe', i18n.t('ui.help.label.descentProbe')), h('div', { class: 'kf-living-group' }, depthLabel, depth), credit);
   readout.open = !window.matchMedia(NARROW).matches;
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.descent.label'), 'data-testid': 'descent-hud', hidden: true }, readout, notice, keys, touch, h('div', { class: 'kf-walk-controls' }, pad, back));
 

@@ -1,6 +1,6 @@
 {
   "id": "ch09",
-  "duration": 150,
+  "duration": 144,
   "intro": {
     "titleKey": "ch09.intro.title",
     "subtitleKey": "ch09.intro.subtitle",
@@ -168,34 +168,34 @@
       "duration": 10
     },
     {
-      "t": 96,
+      "t": 90,
       "type": "scene",
       "event": "green"
     },
     {
-      "t": 98,
+      "t": 92,
       "type": "caption",
       "key": "ch09.caption.land",
       "duration": 7
     },
     {
-      "t": 106,
+      "t": 100,
       "type": "panel",
       "section": "scholarly"
     },
     {
-      "t": 110,
+      "t": 104,
       "type": "verse",
       "key": "24:45",
       "duration": 28
     },
     {
-      "t": 140,
+      "t": 134,
       "type": "panel",
       "section": "science"
     },
     {
-      "t": 141,
+      "t": 135,
       "type": "caption",
       "key": "ch09.caption.end",
       "duration": 7
@@ -287,7 +287,7 @@
       "fov": 37.85
     },
     {
-      "t": 96,
+      "t": 90,
       "position": [
         3.0,
         1.2,
@@ -301,7 +301,7 @@
       "fov": 37.85
     },
     {
-      "t": 139,
+      "t": 133,
       "position": [
         -2.2,
         1.0,
@@ -315,7 +315,7 @@
       "fov": 49.55
     },
     {
-      "t": 150,
+      "t": 144,
       "position": [
         -2.5,
         1.1,
@@ -336,6 +336,69 @@
       0
     ],
     "minDistance": 1.6,
-    "maxDistance": 30
+    "maxDistance": 30,
+    "points": [
+      {
+        "id": "ocean",
+        "t": 12,
+        "kind": "illustration",
+        "titleKey": "discover.ch09.ocean.title",
+        "text": {
+          "key": "discover.ch09.ocean.text",
+          "values": {
+            "age": {
+              "constant": "life.evidence.accepted",
+              "field": "value",
+              "digits": 1
+            }
+          }
+        }
+      },
+      {
+        "id": "surface",
+        "t": 64,
+        "kind": "illustration",
+        "titleKey": "discover.ch09.surface.title",
+        "text": {
+          "key": "discover.ch09.surface.text"
+        }
+      },
+      {
+        "id": "oxygen",
+        "t": 80,
+        "kind": "model",
+        "titleKey": "discover.ch09.oxygen.title",
+        "text": {
+          "key": "discover.ch09.oxygen.text",
+          "values": {
+            "start": {
+              "constant": "oxygen.rise.start",
+              "field": "value",
+              "digits": 2
+            }
+          }
+        }
+      },
+      {
+        "id": "green",
+        "t": 100,
+        "kind": "model",
+        "titleKey": "discover.ch09.green.title",
+        "text": {
+          "key": "discover.ch09.green.text"
+        }
+      }
+    ],
+    "process": {
+      "from": 58,
+      "to": 120,
+      "titleKey": "discover.ch09.process",
+      "startKey": "discover.ch09.process.start",
+      "endKey": "discover.ch09.process.end"
+    },
+    "extras": [
+      "water",
+      "earth"
+    ]
   }
 }

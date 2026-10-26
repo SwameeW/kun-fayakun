@@ -3,6 +3,7 @@ import { BODY_IDS, type App, type BodyId, type UniverseView, type WalkableWorld 
 import { readPreferenceString, writePreferenceString } from '../preferences';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
+import { helpButton } from './help';
 
 /**
  * Saved views (ledger GR-4): the world in view, the place beneath the camera and its height, the
@@ -74,7 +75,7 @@ export function createSavedViews(app: App, f: Formatters, onGo: () => void): Sav
     h(
       'div',
       { class: 'kf-living-body' },
-      h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.saved.intro')),
+      h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.saved.intro'), helpButton(app, 'saved', i18n.t('ui.universe.saved.title'))),
       h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: nameId }, i18n.t('ui.universe.saved.name')), nameInput, saveButton, notice),
       empty,
       list,

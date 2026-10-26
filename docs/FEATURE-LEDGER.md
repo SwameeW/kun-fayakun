@@ -21,7 +21,7 @@ platform.
 | EX-2 | True scale from orbit to the surface | Float64 km, floating origin, scaled space | `tests/unit/origin.spec.ts`, `tests/unit/scaled-space.spec.ts`, `tests/explore/route.spec.ts` | implemented |
 | EX-3 | Trips, orbit and free flight (SE "go to") | Distance-scaled speeds, light-time | `tests/unit/flight.spec.ts`, `tests/explore/travel.spec.ts` | implemented |
 | EX-4 | Time machine | `src/explore/time.ts`, 1 s/s to 30 d/s, within the data's span | `tests/unit/time.spec.ts`, `tests/explore/time.spec.ts` | implemented |
-| EX-5 | Photo mode | Interface hidden, H and Esc | the same | implemented |
+| EX-5 | Photo mode | Interface hidden, H and Esc; its controls their own chunk (CR-1 to CR-3) | `tests/explore/photo.spec.ts` | implemented |
 | EX-6 | Object information, size comparison (SE wiki) | JPL physical parameters, DE440 GM | `tests/unit/about.spec.ts`, `tests/explore/about.spec.ts` | implemented |
 | EX-7 | The real sky (SE planetarium) | BSC5 directions, B-V colours, IAU names, constellations | `tests/unit/sky.spec.ts`, `tests/explore/sky.spec.ts` | implemented (directions only: see IS-2) |
 | EX-8 | Living Earth (daily imagery, satellites, earthquakes) | GIBS, CelesTrak SGP4, USGS | `tests/unit/living-earth.spec.ts`, `tests/explore/living-earth.spec.ts` | implemented |
@@ -182,12 +182,17 @@ research needed, each with its own model, fixtures and measured feasibility firs
 
 ## Budgets
 
-| Area | Budget | Measured (2026-10-25) |
+| Area | Budget | Measured (2026-10-26, evening) |
 |---|---|---|
-| Shell (first load) | baseline 327,629 B gzipped + 10,000 | 333,339 (+5,710) |
-| Explorer (lazy) | 150,000 B gzipped | 130,902 |
-| Orbital laboratory (lazy: adapter, panel, worker) | 250,000 B gzipped | 16,441 |
+| Shell (first load) | baseline 327,629 B gzipped + 10,000 | 337,119 (+9,490) |
+| Explorer (lazy) | 150,000 B gzipped | 147,489 |
+| Orbital laboratory (lazy: adapter, panel, worker) | 250,000 B gzipped | 62,782 |
+| The qibla and the new moon (lazy) | 40,000 B gzipped | 18,492 |
+| Walking (lazy) | 30,000 B gzipped | 11,328 |
+| Photo mode's controls (lazy) | 10,000 B gzipped | 2,826 |
+| The film's sound (lazy: voices and score) | 12,000 B gzipped | 5,598 |
+| Explore Mode's dock (lazy: dock, styles, strings) | 20,000 B gzipped | 10,919 |
 | Worker | 8 ms of steps and 3 ms of prediction per 16 ms tick | solar fork: about 130,000 steps a second in Node |
 | GPU | No growth over round trips | level over three (`lab.spec`) |
 
-New phases set their own budgets before they start.
+New phases set their own budgets before they start. To keep the shell under its limit as the plain-words explanations, the hadith's two levels and the film's sound arrived, the explanations (src/i18n/en.plain.json) and the Sources page's content (src/ui/sources-content.ts) moved into chunks of their own, loaded when first needed.

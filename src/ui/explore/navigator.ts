@@ -1,18 +1,20 @@
 import { BODY_IDS, type App, type BodyId, type UniverseView } from '../../core/types';
 import { h, uniqueId } from '../dom';
 import { icon } from '../icons';
-import { readPreference, writePreference } from '../preferences';
+import { sound as soundChoice } from '../sound-preference';
 import { createAbout } from './about';
 import { createBodyIcon, type BodyIcon } from './body-icon';
 import type { Formatters } from './format';
 import type { IslamicPanel } from './islamic-panel';
 import type { LabPanel } from './lab-panel';
 import type { NeighbourhoodPanel } from './neighbourhood-panel';
-import { createLivingEarth } from './living-earth';
+import type { LivingEarth } from './living-earth';
+import '../styles/living.css';
 import { createOrrery } from './orrery';
 import { createQualityMenu } from './quality-menu';
 import { createSavedViews } from './saved-views';
 import { createSkyPanel } from './sky-panel';
+import { helpButton } from './help';
 
 /**
  * The celestial navigator: every world the explorer shows, each with a small live portrait (lit as
@@ -64,12 +66,14 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     },
     (id) => f.name(id),
   );
-  const caption = h('p', { class: 'kf-nav-caption' }, i18n.t('ui.universe.orreryCaption'));
+  const caption = h('p', { class: 'kf-nav-caption' }, i18n.t('ui.universe.orreryCaption'), helpButton(app, 'orrery', i18n.t('ui.help.label.orrery')));
   const map = h('div', { class: 'kf-nav-map' }, orrery.element, caption);
 
   // One button per world: in the list (with its distance beside it) and, folded, as a portrait chip.
   const rows = new Map<BodyId, { button: HTMLButtonElement; icon: BodyIcon; distance: HTMLElement; light: HTMLElement; row: HTMLElement }>();
   const list = h('ul', { id: listId, class: 'kf-nav-list', 'aria-label': i18n.t('ui.universe.bodies') });
+  // What the list's figures mean, beneath it (not on any row, whose buttons fly).
+  const listHead = h('p', { class: 'kf-nav-list-head' }, h('span', {}, i18n.t('ui.universe.listHead')), helpButton(app, 'distance', i18n.t('ui.help.label.distance')), helpButton(app, 'lightTime', i18n.t('ui.help.label.lightTime')));
   for (const id of BODY_IDS) {
     const portrait = createBodyIcon(id);
     const button = h('button', { type: 'button', class: 'kf-nav-body', 'data-body': id }, portrait.element, h('span', { class: 'kf-nav-name' }, f.name(id)));
@@ -84,7 +88,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   }
 
   const seenList = h('ul', { class: 'kf-nav-seen-list' });
-  const seenEmpty = h('p', { class: 'kf-nav-seen-empty' }, i18n.t('ui.universe.seenEmpty'));
+  const seenEmpty = h('p', { class: 'kf-nav-seen-empty' }, i18n.t('ui.universe.seenEmpty'), helpButton(app, 'seen', i18n.t('ui.universe.seen')));
   const seenSummary = h('summary', {}, i18n.t('ui.universe.seen'));
   const seen = h('details', { class: 'kf-nav-seen', 'data-testid': 'universe-seen' }, seenSummary, seenEmpty, seenList);
   // Opened at the foot of the list, it scrolls into view rather than opening out of sight.
@@ -104,7 +108,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   labOpen.addEventListener('click', () => {
     app.openLab();
   });
-  const labEntry = h('div', { class: 'kf-nav-lab-entry' }, labOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.openHint')));
+  const labEntry = h('div', { class: 'kf-nav-lab-entry' }, labOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.openHint'), helpButton(app, 'lab', i18n.t('ui.universe.lab.open'))));
 
   // On foot on the Moon, Mars, Mercury or Venus, at the point below (the Earth's walk is in its Living Earth): shown with that world in view.
   const walkGo = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'world-walk' }, i18n.t('ui.universe.walk.here'));
@@ -113,7 +117,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     app.earthCommand({ kind: 'walk' });
     if (layout === 'sheet') setExpanded(false);
   });
-  const walkEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-walk-entry', hidden: true }, walkGo, walkHint);
+  const walkEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-walk-entry', hidden: true }, walkGo, h('div', { class: 'kf-help-row' }, walkHint, helpButton(app, 'walk', i18n.t('ui.universe.walk.here'))));
   // Down through the clouds of Venus or Jupiter, where a probe went (ledger GR-6): shown with that world in view.
   const descentGo = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'world-descent' }, i18n.t('ui.universe.descent.here'));
   const descentHint = h('p', { class: 'kf-living-hint' });
@@ -123,7 +127,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     app.earthCommand({ kind: 'descent', world: descentWorld });
     if (layout === 'sheet') setExpanded(false);
   });
-  const descentEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-descent-entry', hidden: true }, descentGo, descentHint);
+  const descentEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-descent-entry', hidden: true }, descentGo, h('div', { class: 'kf-help-row' }, descentHint, helpButton(app, 'descent', i18n.t('ui.universe.descent.here'))));
 
   // Among the stars (ledger IS-3): a way out past the planets; its panel (its own chunk) heads the body while there.
   const starsOpen = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'stars-open' }, i18n.t('ui.universe.stars.open'));
@@ -131,7 +135,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     app.earthCommand({ kind: 'stars' });
     if (layout === 'sheet') setExpanded(false);
   });
-  const starsEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'stars-entry' }, starsOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.openHint')));
+  const starsEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'stars-entry' }, starsOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.openHint'), helpButton(app, 'stars', i18n.t('ui.universe.stars.open'))));
   const starsSlot = h('div', { class: 'kf-nav-lab-slot' });
   let starsPanel: NeighbourhoodPanel | null = null;
   let starsLoading = false;
@@ -141,12 +145,28 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     if (layout === 'sheet') setExpanded(false);
   });
 
-  // On a phone a flight from the Living Earth folds the sheet, as choosing a world does.
-  const living = createLivingEarth(app, f, () => {
-    if (layout === 'sheet') setExpanded(false);
-  });
-  living.element.addEventListener('toggle', () => {
-    if (living.element.open) living.element.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  // The Living Earth: a section whose body (its own chunk) loads when it first opens. On a phone a
+  // flight from it folds the sheet, as choosing a world does.
+  let livingPanel: LivingEarth | null = null;
+  let livingLoading = false;
+  const living = h('details', { class: 'kf-nav-living', 'data-testid': 'living-earth' }, h('summary', {}, i18n.t('ui.universe.living.title')));
+  living.addEventListener('toggle', () => {
+    if (living.open && !livingPanel && !livingLoading) {
+      livingLoading = true;
+      void import('./living-earth')
+        .then(({ createLivingEarth }) => {
+          livingPanel = createLivingEarth(app, f, () => {
+            if (layout === 'sheet') setExpanded(false);
+          });
+          living.append(livingPanel.body);
+          livingPanel.opened();
+          requestAnimationFrame(edge);
+        })
+        .finally(() => {
+          livingLoading = false;
+        });
+    } else if (living.open) livingPanel?.opened();
+    if (living.open) living.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     requestAnimationFrame(edge);
   });
 
@@ -168,22 +188,24 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   });
 
   const quality = createQualityMenu(app, onApplied);
-  // Sound where there is air (ledger CR-6): on unless the visitor turned it off, kept for the next visit.
-  let soundOn = readPreference('sound') ?? true;
+  // Sound where there is air (ledger CR-6): one choice with the film's speaker (../sound-preference), kept for the next visit.
+  let shownSound: boolean | null = null;
   const soundValue = h('span', { class: 'kf-nav-detail-value' });
-  const soundButton = h('button', { type: 'button', class: 'kf-btn kf-nav-detail-button', 'aria-pressed': String(soundOn), title: i18n.t('ui.universe.sound.hint'), 'data-testid': 'universe-sound' }, h('span', { class: 'kf-nav-detail-label' }, i18n.t('ui.universe.sound.label')), soundValue);
+  const soundButton = h('button', { type: 'button', class: 'kf-btn kf-nav-detail-button', 'aria-pressed': String(soundChoice.get()), title: i18n.t('ui.universe.sound.hint'), 'data-testid': 'universe-sound' }, h('span', { class: 'kf-nav-detail-label' }, i18n.t('ui.universe.sound.label')), soundValue);
   const showSound = (): void => {
-    soundButton.setAttribute('aria-pressed', String(soundOn));
-    soundValue.textContent = i18n.t(soundOn ? 'ui.universe.sound.on' : 'ui.universe.sound.off');
+    const on = soundChoice.get();
+    if (on === shownSound) return;
+    shownSound = on;
+    soundButton.setAttribute('aria-pressed', String(on));
+    soundValue.textContent = i18n.t(on ? 'ui.universe.sound.on' : 'ui.universe.sound.off');
   };
   showSound();
   soundButton.addEventListener('click', () => {
-    soundOn = !soundOn;
-    writePreference('sound', soundOn);
+    soundChoice.set(!soundChoice.get());
     showSound();
-    app.earthCommand({ kind: 'sound', on: soundOn });
+    app.earthCommand({ kind: 'sound', on: soundChoice.get() });
   });
-  const sound = h('div', { class: 'kf-nav-sound' }, soundButton);
+  const sound = h('div', { class: 'kf-nav-sound' }, soundButton, helpButton(app, 'sound', i18n.t('ui.universe.sound.label')));
   const keys = h(
     'details',
     { class: 'kf-nav-keys' },
@@ -193,7 +215,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   // Detail and Sound share a row, so the foot keeps its height and the list its room on a phone.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, h('div', { class: 'kf-nav-foot-row' }, quality.element, sound));
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living.element, islamic, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -211,7 +233,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [time, map, about.element, sky.element, saved.element, starsEntry, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
+    for (const el of [time, map, listHead, about.element, sky.element, saved.element, starsEntry, labEntry, living, islamic, seen, foot]) el.hidden = !expanded;
     if (!expanded) {
       walkEntry.hidden = true;
       descentEntry.hidden = true;
@@ -264,8 +286,9 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
       return expanded;
     },
     update(view, slow) {
-      // The explorer starts with sound on: told the visitor's choice once it is there to hear it.
-      if (view.sound.on !== soundOn) app.earthCommand({ kind: 'sound', on: soundOn });
+      // The explorer starts with sound on: told the visitor's choice once it is there to hear it (or as the film's speaker changes it).
+      showSound();
+      if (view.sound.on !== soundChoice.get()) app.earthCommand({ kind: 'sound', on: soundChoice.get() });
       for (const b of view.bodies) {
         const row = rows.get(b.id);
         if (!row) continue;
@@ -308,7 +331,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         const aside = inLab || inStars;
         about.element.hidden = aside;
         saved.element.hidden = aside;
-        living.element.hidden = aside;
+        living.hidden = aside;
         islamic.hidden = aside;
         labEntry.hidden = aside;
         starsEntry.hidden = aside;
@@ -332,7 +355,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         about.update(view, slow);
         sky.update(view, slow);
         saved.update(view);
-        living.update(view, slow);
+        livingPanel?.update(view, slow, living.open);
         if (islamic.open) islamicPanel?.update(view, slow);
       }
       if (view.witnessed.length !== seenShown) {

@@ -59,6 +59,8 @@ export class Timeline {
   /** Chapter time the retiring chapter keeps showing (it must not jump back to 0 while it stays lit). */
   private retiringT = 0;
   private t = 0;
+  /** Explore Mode's model time: the scene shown at another moment while the film's clock stays put. */
+  private exploreT: number | null = null;
   private pausedValue = false;
   private introLeft = 0;
   private outroLeft = 0;
@@ -129,6 +131,7 @@ export class Timeline {
     chapter.module.enter(chapter.ctx);
     const active: Active = { ...chapter, content, cues: new CueScheduler(chapter.module.cues) };
     this.active = active;
+    this.exploreT = null;
     this.host.exposure.setFade(1);
     this.host.events.emit('chapter', { chapter: chapter.id, content });
     if (options.skipIntro) {
@@ -201,9 +204,21 @@ export class Timeline {
       this.host.camera.enterExplore(a.content.explore);
       this.setState('explore');
     } else {
+      this.exploreT = null;
       this.host.camera.leaveExplore();
       this.setState('playing');
     }
+  }
+
+  get exploreTime(): number | null {
+    return this.exploreT;
+  }
+
+  /** In Explore Mode only: the scene at another moment of its chapter (null: the film's moment). */
+  setExploreTime(t: number | null): void {
+    const a = this.active;
+    if (!a || this.stateValue !== 'explore') return;
+    this.exploreT = t === null ? null : clamp(t, 0, a.content.duration);
   }
 
   /** Called every frame with real seconds since the last frame. */
@@ -234,7 +249,7 @@ export class Timeline {
     // Cue times count from the end of the intro card.
     if (this.stateValue !== 'intro') this.apply(a, a.cues.advance(this.t));
     this.host.camera.update(this.t, dt);
-    a.module.update(this.t, motionDt);
+    a.module.update(this.stateValue === 'explore' ? (this.exploreT ?? this.t) : this.t, motionDt);
 
     const ending = this.stateValue === 'playing' && this.t >= a.content.duration && this.holds.size === 0;
     if (ending && this.host.continuesAfter(a.id)) {
@@ -284,6 +299,7 @@ export class Timeline {
   private exitActive(): void {
     const a = this.active;
     if (!a) return;
+    this.exploreT = null;
     if (!this.retiring) this.apply(a, a.cues.clear());
     a.module.exit();
     this.active = null;

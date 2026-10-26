@@ -169,7 +169,7 @@ class Engine implements KunFayakunApp {
   private readonly params: LaunchParams;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(DEFAULT_FOV, 1, NEAR, FAR);
-  private readonly audio = createAudioEngine();
+  readonly audio = createAudioEngine();
   private readonly motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly exposure: EngineExposure;
   private readonly chapterExposure: ExposureControl;
@@ -1005,6 +1005,18 @@ class Engine implements KunFayakunApp {
 
   setMode(mode: 'cinematic' | 'explore'): void {
     this.timeline.setMode(mode);
+  }
+
+  get exploreTime(): number | null {
+    return this.timeline.exploreTime;
+  }
+
+  setExploreTime(t: number | null): void {
+    this.timeline.setExploreTime(t);
+  }
+
+  focusView(t: number | null): void {
+    if (this.timeline.mode === 'explore') this.director.focusFilmView(t);
   }
 
   interact(id: string, value: number | null): void {

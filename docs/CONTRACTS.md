@@ -235,6 +235,13 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   else 60 fps. A software-only WebGPU adapter (e.g. SwiftShader
   on GPU-less CI) is treated as unavailable: WebGL2 is used instead.
 
+## Explore Mode's dock (content.json `explore`)
+
+- `explore.points[]`: `{ id, t, titleKey, kind: 'measured' | 'model' | 'illustration', text: ProseBlock }`. Visiting one calls `app.setExploreTime(t)` (the scene's model time; the film's clock stays) and `app.focusView(t)` (the free camera eases to the film's camera pose at t; instantly with reduced motion). The card's text is a prose block: values from data/constants.json, `cite` source ids.
+- `explore.process`: `{ from, to, titleKey, startKey, endKey }`, a slider over model time.
+- `explore.extras[]`: closer looks the dock knows how to build (`terms`, `expansion-model`, `cmb`, `stretch`, `supernovae`, `orbits`, `earth`, `water`, `futures`).
+- `app.exploreTime` is the model time or null; it clears when Explore Mode ends or the chapter changes. Strings: `src/i18n/en.discover.json` (loaded with the dock). Rule h checks the times lie inside the chapter; rules c, e and g check the cards like the notes' prose.
+
 ## Test hooks (engine sets these on `<html>`)
 
 - `data-backend="webgpu|webgl2"`, `data-tier`, `data-state` (TimelineState), `data-chapter`,
@@ -246,7 +253,7 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
   and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
   that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) } }`.
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts).
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
   `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,

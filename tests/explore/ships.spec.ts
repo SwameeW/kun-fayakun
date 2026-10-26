@@ -14,6 +14,22 @@ import { JD, view, waitForUniverse } from '../support/universe';
 const LIVE = { timeout: 60_000 * SLOW };
 const lab = async (page: Page): Promise<UniverseLab | null> => (await view(page))?.lab ?? null;
 const shipOf = async (page: Page) => (await lab(page))?.bodies.find((b) => b.ship !== null) ?? null;
+/**
+ * Paused, and its snapshots settled: the step the same twice, a fifth of a second apart. (The pause is
+ * the panel's at once, the worker's a moment later; a figure read between the two belongs to a step
+ * the experiment then passes, and on an orbit the Earth's oblateness swings the osculating elements.)
+ */
+const settled = async (page: Page): Promise<void> => {
+  let step = -1;
+  await expect
+    .poll(async () => {
+      const now = (await lab(page))?.step ?? -2;
+      const same = now === step;
+      step = now;
+      return same;
+    }, { ...LIVE, intervals: [200] })
+    .toBe(true);
+};
 /** The time machine's Space, with no control focused (Space would press a focused button instead). */
 const playPause = async (page: Page): Promise<void> => {
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -68,11 +84,16 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   await page.getByTestId('lab-ship-plan').click();
   await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 0, LIVE).toBe(1);
   await expect(page.getByTestId('lab-ship-burns')).toContainText(/^Now: 100 m\/s prograde about Earth, burning \d+\s+s in all$/u);
-  // Run: the burn (about 40 s) happens; the propellant spent is the rocket equation's, the far side raised.
-  await playPause(page);
+  // Run, at a minute a second: the burn (about 40 s) happens; the propellant spent is the rocket
+  // equation's, the far side raised. (At the default day a second the pause would come many orbits
+  // later, the ship anywhere on its orbit; at a minute a second it comes near the burn's periapsis.)
+  await page.evaluate(() => {
+    (window as unknown as { __kf: { app: { universeTime(c: { kind: 'rate'; rate: number }): void } } }).__kf.app.universeTime({ kind: 'rate', rate: 60 });
+  });
   await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 1, LIVE).toBe(0);
   await playPause(page);
   await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  await settled(page);
   const after = await shipOf(page);
   expect(10_000 - (after?.ship?.fuelKg ?? 0)).toBeCloseTo(20_000 * (1 - Math.exp(-100 / (320 * 9.80665))), 0);
   expect(after?.orbit?.apoapsisKm ?? 0).toBeGreaterThan(7300);

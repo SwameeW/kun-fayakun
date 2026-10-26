@@ -227,6 +227,17 @@ export class CameraDirector {
     this.explore.enable(limits, this.pose.target);
   }
 
+  /** In Explore Mode: eases the free camera to the film's view at chapter time t (null: back to where exploring began). */
+  focusFilmView(t: number | null): void {
+    if (!this.explore.enabled) return;
+    if (t === null) {
+      this.explore.focus(null);
+      return;
+    }
+    const pose = samplePath(this.path, t, this.from);
+    this.explore.focus({ position: pose.position, target: pose.target, fov: pose.fov });
+  }
+
   leaveExplore(): void {
     if (!this.explore.enabled) return;
     this.from.position.copy(this.camera.position);

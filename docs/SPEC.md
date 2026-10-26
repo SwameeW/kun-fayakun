@@ -6,6 +6,36 @@ Build it in milestones (see DELIVERABLE). Ship a working vertical slice (Chapter
 
 —
 
+## 0. PURPOSE (owner, 2026-10-26)
+
+Kun Fayakun is an Islamic educational and reflective experience. Its purpose is to help people
+contemplate the precision, balance, intricacy and interconnectedness of the universe Allah has
+created, through the cinematic timeline, the scientific explanations, the astronomical explorer, the
+physics laboratory and the interactive features alike.
+
+**The real universe is the reference. The sandbox is the thought experiment. Reflection is the
+purpose.**
+
+- **The laboratory (sandbox) is never a universe-creation game.** It does not make the visitor a
+  creator or give them control over creation. It lets them change physical conditions and see what
+  the scientific models say would follow (a planet's distance from the Sun, the Sun's mass, an orbit's
+  speed, the Moon's orbit, an atmosphere's thickness, its greenhouse gases, an unstable orbit, a
+  collision), so that they understand how the conditions depend on one another and reflect on the
+  relationships in the real universe. Every useful mechanic stays; this is its meaning, not a limit on it.
+- **Four kinds of content are always kept apart, and labelled:** (1) real observed or measured data;
+  (2) scientific theories and models; (3) hypothetical simulation results; (4) Quranic content and
+  Islamic interpretation. Modern scientific theories are never presented as definitive Quranic
+  interpretations, nor as mathematical proofs of theological claims. A simulation's outcome never
+  says what Allah would have decreed under other conditions. Uncertainty, modelling assumptions and a
+  simulation's limits are stated.
+- **Words.** Never "create your universe", "become the creator", "play God" or "control creation".
+  Use "explore the consequences", "what if?", "change the conditions", "experiment with gravity",
+  "compare with reality", "investigate the effects".
+- **Reflection arises from understanding, not commentary.** Religious commentary is not forced into
+  every interaction. A visitor should see what changed, understand why, and compare it with the real
+  baseline; occasional questions ("What changed?", "Why did the orbit become unstable?", "How is this
+  different from the real solar system?") lead from observation to understanding to reflection.
+
 ## 1. CORE PRINCIPLES (non-negotiable)
 
 1. Reflection, not proof. Verses are shown beside science for reflection, never as predictions, proofs, or “scientific miracles”. Never write “the Quran predicted X”. Never time an explosion, burst, or reveal to land on the key word of a verse.
@@ -28,9 +58,12 @@ Build it in milestones (see DELIVERABLE). Ship a working vertical slice (Chapter
 
 - Quranic Arabic: Tanzil Uthmani text, verbatim, full tashkeel. CC BY 3.0. Must not be modified. Keep its copyright block and link to tanzil.net.
 - English translation: a translation whose license permits redistribution, OR Sahih International with written permission (it is copyrighted). Record the license in sources.json.
+  - Owner, 2026-10-26: the translation shown now is Pickthall’s (1930, public domain), which reads as archaic. A modern translation replaces it only once one is confirmed usable (its licence, or the holder’s written permission) and the owner approves it; it then comes in through the same pinned pipeline (scripts/fetch-quran.ts, sha256, sources.json). Never generate a translation, rewrite a published one, or attribute new wording to a translator.
+  - Until then, every cited verse has a plain-words explanation (en.chapters.json `plain.<key>`): explanatory prose like the scholars’ layer, never scripture. It is shown apart from the translation and labelled as an explanation, not a translation, follows the classical commentators, and awaits the scholar’s review (REVIEW.md). In the notes it follows the translation and its attribution; on the film’s verse cards it replaces the translation only when the visitor chooses it, under its label. The validator requires one for every verse in quran.json and holds each verse cue long enough for the longer of the two (rule h).
 - Arabic font: Amiri Quran (SIL OFL), self-hosted WOFF2. Do NOT use KFGQPC Uthmanic Hafs (restrictive license, built for a different text encoding).
 - Recitation audio: Quran Foundation API v4, live and optional. Needs OAuth2 client credentials via a small serverless proxy (secret never in the browser). Terms forbid caching beyond 1 week or bundling, so do not freeze its text. Use it for recitation and for validating the Tanzil text. Credit Quran Foundation.
 - Hadith: entered by a person from the sunnah.com references below. Record collection, number, sunnah.com key, grading, grader, any dispute note, and reviewer.
+  - Owner, 2026-10-26: hadith are shown in two levels. In the film, narrations of the same report share one short card: the verified wording once a person has entered and checked it, until then a sourced summary labelled “Summary, not a quotation”, then discreet references (with each narration’s grading and grader outside the two Sahih collections, so gradings that differ sit side by side) and a pointer to the notes. In the notes every narration keeps its own entry: summary, grading and grading notes in view; narrator, parallels, why the wording is not shown, and the sunnah.com link behind “Source details”. Never invent or modernise wording, never present a summary as the Prophet’s ﷺ words, and never drop a grading to save space. The validator requires a summary on every hadith card without verified wording and holds each card long enough to read (rule h).
 - CMB map: Planck PR3 SMICA HEALPix FITS (Planck Legacy Archive). Convert offline to a 4096x2048 equirectangular texture. Credit “ESA and the Planck Collaboration”.
 - Galaxy positions: latest public SDSS release (DR20, Sept 2026) via SkyServer/CasJobs. Credit per SDSS policy.
 - Solar system: NASA JPL Horizons and DE440/441 ephemerides. Free with credit.
@@ -241,11 +274,13 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 
 - Default: no music. While a verse is recited, ambient sound and scene effects fade to silence (Quran 7:204: listen and pay attention).
 - Between verses: optional ambient track of voice and nature sounds only; instruments off by default.
+  - Owner, 2026-10-26 (“add high quality sounds to the cinematic parts … make sure they make sense”): the film has a sound score of nature and physics only, made in Web Audio (no recordings, nothing to license), on by default with one speaker in the header shared with the explorer’s Sound. Where there was sound it is that sound (the plasma’s acoustic peaks until recombination; the Sun’s acoustic modes; lava, rain, sea, wind); in space, only a low hush. Levels follow each chapter’s scene events, near silence under every verse and lower under hadith cards, silence where the screenplay keeps it, no one-shot on a seek, a fade before a pause. film/screenplay.md “Sound” and the shot list’s sound column describe it; tests/film-sound.spec.ts measures it (headroom, the duck, the silences).
 - Recitation: live via the Quran Foundation proxy, reciter selectable. No effects on recitation (no pitch, speed, or reverb changes). Confirm the audio license.
 
 ## 7. UI AND ACCESSIBILITY
 
 - Cinematic auto-play and free-explore modes (orbit by mouse or touch, WASD, Esc returns to timeline).
+  - Owner, 2026-10-26: free explore is more than a free camera. Each chapter's Discover dock (content.json `explore`: points, process, extras; src/ui/discover-dock.ts) offers moments to visit (the scene at that time, seen from the film's camera then, with a card labelled measured, model or illustration, its numbers from data/constants.json and its sources cited), a slider through the chapter's own process, and closer looks suited to the chapter. The film's clock never moves; "Back to the film's moment" and leaving explore restore the scene and camera; the film's captions and verse cards step aside while another moment is shown. No scores or collectibles. Chapter 0 offers words only (nothing of the unseen is pictured); Chapter 10's futures are labelled models, apart from the Quran's descriptions of the Last Day. Different from the laboratory, which is for hypothetical experiments.
 - Side panel with the three layers; bottom sheet on mobile.
 - Sources page generated from sources.json, including reviewer names and dates.
 - English and Arabic UI via ICU message files; dir=“rtl” with CSS logical properties; Urdu added later by one locale file.

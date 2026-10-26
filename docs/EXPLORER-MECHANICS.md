@@ -38,25 +38,26 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   stops at the ends of the Moon's table (2026 to 2035) and runs at real time during a trip.
   Satellites show up to 600 times real time, and earthquakes only near the present.
 - **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back. "Save
-  the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date, with
-  its credits set in a band below it, never over it: where and when, what in it is illustrative, whose
-  imagery and data it shows (the lines the readouts carry: the planet maps', the streamed imagery's
-  with EOX's link, a walk's or a descent's, the stars'), and the app with its Sources page. "Record a
-  video" (CR-3; where the browser can record a canvas) records the view as it moves, each frame copied
-  as it is drawn, with the same credits below it (their place kept right as a flight moves on), saved
-  as WebM (or MP4). The lens (CR-2) sets the field of view for the picture, from 90 to 5 degrees, in
-  place of the explorer's own framing, and the exposure (CR-2) whole stops brighter or darker than the
-  explorer's own (two either way), reached through the engine's flash-safe limiter like any change of
-  exposure; a picture or video taken with it says so in its credits. "Keep in view" (CR-2's
-  tracking) holds a body in its place in the frame as it moves round the world in view: each frame
-  the view is turned about the focus by the body's own motion round it since the last (the turn the
-  Earth's spin uses to hold the ground below), so the Moon stays beside the Earth as the days run.
-  "Fly through the saved views" (CR-3's keyframes) takes the saved views as keyframes: each in the
-  order it was saved, its date set and its place reached by the explorer's own flight or glide, the
-  view resting there a few seconds before the next; with "Record a video" running, a film of them.
-  Views on foot are left out, a walk not being a camera move. Leaving photo mode gives the framing,
-  the exposure and the tracking back, and stops a flight. Photo mode's controls are their own chunk,
-  loaded the first time it opens (`src/ui/explore/photo-bar.ts`).
+  the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date,
+  with its credits set in a band below it, never over it: where and when, what in it is
+  illustrative, whose imagery and data it shows (the lines the readouts carry: the planet maps', the
+  streamed imagery's with EOX's link, a walk's or a descent's, the stars'), and the app with its
+  Sources page. "Record a video" (CR-3; where the browser can record a canvas) records the view as
+  it moves, each frame copied as it is drawn, with the same credits below it (their place kept right
+  as a flight moves on), saved as WebM (or MP4). Under "Camera", the lens (CR-2) sets the field of
+  view for the picture, from 90 to 5 degrees, in place of the explorer's own framing, and the
+  exposure (CR-2) whole stops brighter or darker than the explorer's own (two either way), reached
+  through the engine's flash-safe limiter like any change of exposure; a picture or video taken with
+  it says so in its credits. "Keep in view" (CR-2's tracking) holds a body in its place in the frame
+  as it moves round the world in view: each frame the view is turned about the focus by the body's
+  own motion round it since the last (the turn the Earth's spin uses to hold the ground below), so
+  the Moon stays beside the Earth as the days run. "Fly through the saved views" (CR-3's keyframes)
+  takes the saved views as keyframes: each in the order it was saved, its date set and its place
+  reached by the explorer's own flight or glide, the view resting there a few seconds before the
+  next; with "Record a video" running, a film of them. Views on foot are left out, a walk not being
+  a camera move. Leaving photo mode gives the framing, the exposure and the tracking back, and stops
+  a flight. Photo mode's controls are their own chunk, loaded the first time it opens
+  (`src/ui/explore/photo-bar.ts`).
 - **Object information** (SpaceEngine's wiki). "About" the world in view, in the navigator: radius,
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'

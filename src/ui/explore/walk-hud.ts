@@ -1,6 +1,7 @@
 import type { App, I18nKey, UniverseView, UniverseWalk, WalkableWorld } from '../../core/types';
 import { h } from '../dom';
 import type { Formatters } from './format';
+import { withHelp } from './help';
 
 /**
  * The suit's readout while walking on the Earth, the Moon, Mars, Mercury or Venus (src/explore/walk): where the
@@ -106,7 +107,15 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
   const controls = h('div', { class: 'kf-walk-controls' }, pad, back);
   const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit', 'data-photo-credit': '' });
   // The suit's figures fold under the title; on a small screen they start folded, leaving the view and the pad.
-  const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, qibla, credit);
+  // The figures a newcomer may not know, each with its "?" (a row hides with its line).
+  const groundRow = withHelp(app, ground, 'walkGround', i18n.t('ui.help.label.walkGround'));
+  const gravityRow = withHelp(app, gravity, 'walkGravity', i18n.t('ui.help.label.walkGravity'));
+  const airRow = withHelp(app, air, 'walkAir', i18n.t('ui.help.label.walkAir'));
+  const sunRow = withHelp(app, sun, 'walkSun', i18n.t('ui.help.label.walkSun'));
+  const qiblaRow = withHelp(app, qibla, 'walkQibla', i18n.t('ui.help.label.walkQibla'));
+  qibla.hidden = false;
+  qiblaRow.hidden = true;
+  const suit = h('details', { class: 'kf-walk-suit' }, title, place, groundRow, gravityRow, airRow, sunRow, qiblaRow, credit);
   suit.open = !window.matchMedia(NARROW).matches;
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.walk.label'), 'data-testid': 'walk-hud', hidden: true }, suit, notice, keys, touch, controls);
   const coords = (lat: number, lon: number): string => f.coordinates(lat, lon, 4);
@@ -140,15 +149,15 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
         write(title, view.walkRefused ? i18n.t('ui.universe.walk.refusedTitle') : '');
         notice.hidden = !view.walkRefused;
         write(notice, view.walkRefused ? i18n.t('ui.universe.walk.refused') : '');
-        for (const el of [place, ground, gravity, air, sun, keys, touch, controls, credit]) el.hidden = view.walkRefused;
-        qibla.hidden = true;
+        for (const el of [place, groundRow, gravityRow, airRow, sunRow, keys, touch, controls, credit]) el.hidden = view.walkRefused;
+        qiblaRow.hidden = true;
         if (held.forward || held.backward || held.jump) {
           held.forward = held.backward = held.jump = false;
           send();
         }
         return;
       }
-      for (const el of [place, ground, gravity, air, sun, keys, touch, controls, credit]) el.hidden = false;
+      for (const el of [place, groundRow, gravityRow, airRow, sunRow, keys, touch, controls, credit]) el.hidden = false;
       const on = WORLD[w.world];
       write(title, i18n.t(w.state === 'landing' ? 'ui.universe.walk.landing' : on.title));
       write(place, coords(w.lat, w.lon));
@@ -159,7 +168,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
       write(sun, i18n.t(w.sunElevationDeg < 0 ? 'ui.universe.walk.sunDown' : w.sunSeen ? 'ui.universe.walk.sunUp' : 'ui.universe.walk.sunClouded', { degrees: f.number(Math.abs(w.sunElevationDeg), 0), time: clock(w.solarTimeH) }));
       notice.hidden = !w.blocked;
       write(notice, w.blocked ? i18n.t('ui.universe.walk.blocked') : '');
-      qibla.hidden = w.qiblaDeg === null;
+      qiblaRow.hidden = w.qiblaDeg === null;
       if (w.qiblaDeg !== null) {
         // How far to turn, and which way, from the heading now (within 2 degrees: ahead).
         const turn = ((((w.qiblaDeg - w.headingDeg) % 360) + 540) % 360) - 180;

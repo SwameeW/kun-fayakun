@@ -1,6 +1,6 @@
 {
   "id": "ch08",
-  "duration": 170,
+  "duration": 167,
   "intro": {
     "titleKey": "ch08.intro.title",
     "subtitleKey": "ch08.intro.subtitle",
@@ -231,35 +231,35 @@
       "duration": 8
     },
     {
-      "t": 126,
+      "t": 123,
       "type": "panel",
       "section": "scholarly"
     },
     {
-      "t": 130,
+      "t": 127,
       "type": "verse",
       "key": "79:30",
       "duration": 9
     },
     {
-      "t": 140,
+      "t": 137,
       "type": "verse",
       "key": "79:31",
       "duration": 9
     },
     {
-      "t": 150,
+      "t": 147,
       "type": "verse",
       "key": "79:32",
       "duration": 9
     },
     {
-      "t": 161,
+      "t": 158,
       "type": "panel",
       "section": "science"
     },
     {
-      "t": 162,
+      "t": 159,
       "type": "caption",
       "key": "ch08.caption.today",
       "duration": 7
@@ -365,7 +365,7 @@
       "fov": 37.85
     },
     {
-      "t": 128,
+      "t": 125,
       "position": [
         3.5,
         1.4,
@@ -379,7 +379,7 @@
       "fov": 49.55
     },
     {
-      "t": 170,
+      "t": 167,
       "position": [
         -3.4,
         1.6,
@@ -400,6 +400,89 @@
       0
     ],
     "minDistance": 1.6,
-    "maxDistance": 30
+    "maxDistance": 30,
+    "points": [
+      {
+        "id": "molten",
+        "t": 10,
+        "kind": "model",
+        "titleKey": "discover.ch08.molten.title",
+        "text": {
+          "key": "discover.ch08.molten.text",
+          "values": {
+            "age": {
+              "constant": "earth.age",
+              "field": "value",
+              "digits": 2
+            }
+          }
+        }
+      },
+      {
+        "id": "impact",
+        "t": 26,
+        "kind": "model",
+        "titleKey": "discover.ch08.impact.title",
+        "text": {
+          "key": "discover.ch08.impact.text",
+          "values": {
+            "early": {
+              "constant": "moon.impact.earliest",
+              "field": "value",
+              "digits": 0
+            },
+            "late": {
+              "constant": "moon.impact.latest",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      },
+      {
+        "id": "moon",
+        "t": 45,
+        "kind": "model",
+        "titleKey": "discover.ch08.moon.title",
+        "text": {
+          "key": "discover.ch08.moon.text"
+        }
+      },
+      {
+        "id": "oceans",
+        "t": 82,
+        "kind": "model",
+        "titleKey": "discover.ch08.oceans.title",
+        "text": {
+          "key": "discover.ch08.oceans.text",
+          "values": {
+            "age": {
+              "constant": "oceans.earliest",
+              "field": "value",
+              "digits": 1
+            }
+          }
+        }
+      },
+      {
+        "id": "continents",
+        "t": 115,
+        "kind": "model",
+        "titleKey": "discover.ch08.continents.title",
+        "text": {
+          "key": "discover.ch08.continents.text"
+        }
+      }
+    ],
+    "process": {
+      "from": 0,
+      "to": 125,
+      "titleKey": "discover.ch08.process",
+      "startKey": "discover.ch08.process.start",
+      "endKey": "discover.ch08.process.end"
+    },
+    "extras": [
+      "earth"
+    ]
   }
 }

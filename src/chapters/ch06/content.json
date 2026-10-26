@@ -1,6 +1,6 @@
 {
   "id": "ch06",
-  "duration": 128,
+  "duration": 125,
   "intro": {
     "titleKey": "ch06.intro.title",
     "subtitleKey": "ch06.intro.subtitle",
@@ -170,7 +170,7 @@
       "duration": 7
     },
     {
-      "t": 124,
+      "t": 122,
       "type": "overlay",
       "id": "decay-chain",
       "visible": false
@@ -308,7 +308,7 @@
       ]
     },
     {
-      "t": 128,
+      "t": 125,
       "position": [
         33,
         6,
@@ -328,6 +328,75 @@
       -3
     ],
     "minDistance": 6,
-    "maxDistance": 90
+    "maxDistance": 90,
+    "points": [
+      {
+        "id": "layers",
+        "t": 8,
+        "kind": "illustration",
+        "titleKey": "discover.ch06.layers.title",
+        "text": {
+          "key": "discover.ch06.layers.text"
+        }
+      },
+      {
+        "id": "collapse",
+        "t": 21,
+        "kind": "model",
+        "titleKey": "discover.ch06.collapse.title",
+        "text": {
+          "key": "discover.ch06.collapse.text"
+        }
+      },
+      {
+        "id": "elements",
+        "t": 36,
+        "kind": "model",
+        "titleKey": "discover.ch06.elements.title",
+        "text": {
+          "key": "discover.ch06.elements.text"
+        }
+      },
+      {
+        "id": "white-dwarf",
+        "t": 93,
+        "kind": "illustration",
+        "titleKey": "discover.ch06.white-dwarf.title",
+        "text": {
+          "key": "discover.ch06.white-dwarf.text"
+        }
+      },
+      {
+        "id": "type-ia",
+        "t": 104,
+        "kind": "model",
+        "titleKey": "discover.ch06.type-ia.title",
+        "text": {
+          "key": "discover.ch06.type-ia.text",
+          "values": {
+            "ni": {
+              "constant": "nuclear.ni56.halfLife",
+              "field": "value",
+              "digits": 1
+            },
+            "co": {
+              "constant": "nuclear.co56.halfLife",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      }
+    ],
+    "process": {
+      "from": 0,
+      "to": 40,
+      "titleKey": "discover.ch06.process",
+      "startKey": "discover.ch06.process.start",
+      "endKey": "discover.ch06.process.end"
+    },
+    "extras": [
+      "supernovae"
+    ]
   }
 }

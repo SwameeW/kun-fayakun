@@ -2,7 +2,14 @@ import { Vector3, type PerspectiveCamera } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ChapterContent } from './types';
 
-export type ExploreLimits = ChapterContent['explore'];
+export type ExploreLimits = Pick<ChapterContent['explore'], 'target' | 'minDistance' | 'maxDistance'>;
+
+/** A view to ease the free camera to: where it stands, what it looks at, its field of view. */
+export interface ExploreView {
+  position: Vector3;
+  target: Vector3;
+  fov: number;
+}
 
 export interface ExploreController {
   readonly enabled: boolean;
@@ -10,6 +17,12 @@ export interface ExploreController {
   readonly target: Vector3;
   /** Starts orbiting from the current view; lookAt is what the camera looks at now. */
   enable(limits: ExploreLimits, lookAt: Vector3): void;
+  /**
+   * Eases to a view (a moment's, from the film's camera path): the orbit then centres on its target,
+   * within limits wide enough for it. Instant when motion should be gentle. null: back to where
+   * Explore Mode began, within the chapter's own limits.
+   */
+  focus(view: ExploreView | null): void;
   disable(): void;
   update(dt: number): void;
   dispose(): void;
@@ -30,6 +43,8 @@ const MOVE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
 const MOVE_SPEED = 0.6;
 /** Time constant for easing into the chapter's explore target and distance limits (no snapping). */
 const SETTLE_SECONDS = 0.6;
+/** Time constant for easing to a moment's view. */
+const FOCUS_SECONDS = 0.45;
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -49,6 +64,10 @@ export function createExploreController(
   const pressed = new Set<string>();
   const center = new Vector3();
   let limits: ExploreLimits | null = null;
+  /** The chapter's own limits and the view Explore Mode began from, for focus(null). */
+  let home: { limits: ExploreLimits; view: ExploreView } | null = null;
+  /** A view being eased to (cleared when the visitor takes the camera). */
+  let goal: ExploreView | null = null;
   // The target eases toward the chapter's explore target until the user takes over.
   let settling = false;
 
@@ -73,6 +92,7 @@ export function createExploreController(
   };
   const onStart = (): void => {
     settling = false;
+    goal = null;
   };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
@@ -113,14 +133,40 @@ export function createExploreController(
       controls.zoomSpeed = gentle ? 0.6 : 1;
       controls.panSpeed = gentle ? 0.6 : 1;
       settling = true;
+      goal = null;
+      home = { limits: next, view: { position: camera.position.clone(), target: lookAt.clone(), fov: camera.fov } };
       pressed.clear();
       controls.enabled = true;
+      controls.update();
+    },
+    focus(view) {
+      if (!controls.enabled || !home) return;
+      const to = view ?? home.view;
+      const distance = to.position.distanceTo(to.target);
+      // Centred on the view's target, with room for its distance (the chapter's own limits when going home).
+      limits = view
+        ? { target: [to.target.x, to.target.y, to.target.z], minDistance: Math.min(home.limits.minDistance, distance * 0.25), maxDistance: Math.max(home.limits.maxDistance, distance * 2) }
+        : home.limits;
+      center.set(...limits.target);
+      controls.minDistance = Math.min(controls.minDistance, limits.minDistance);
+      controls.maxDistance = Math.max(controls.maxDistance, limits.maxDistance, distance);
+      settling = false;
+      pressed.clear();
+      if (options.gentle()) {
+        camera.position.copy(to.position);
+        controls.target.copy(to.target);
+        camera.fov = to.fov;
+        camera.updateProjectionMatrix();
+        goal = null;
+      } else goal = { position: to.position.clone(), target: to.target.clone(), fov: to.fov };
       controls.update();
     },
     disable() {
       controls.enabled = false;
       pressed.clear();
       limits = null;
+      home = null;
+      goal = null;
     },
     update(dt) {
       if (!controls.enabled || !limits) return;
@@ -128,6 +174,15 @@ export function createExploreController(
       controls.minDistance += (limits.minDistance - controls.minDistance) * k;
       controls.maxDistance += (limits.maxDistance - controls.maxDistance) * k;
       if (settling) controls.target.lerp(center, k);
+      if (goal) {
+        // Easing to a moment's view; close enough, and it is the visitor's again.
+        const g = 1 - Math.exp(-dt / FOCUS_SECONDS);
+        camera.position.lerp(goal.position, g);
+        controls.target.lerp(goal.target, g);
+        camera.fov += (goal.fov - camera.fov) * g;
+        camera.updateProjectionMatrix();
+        if (camera.position.distanceTo(goal.position) < 1e-3 * Math.max(1, goal.position.length())) goal = null;
+      }
 
       if (pressed.size > 0) {
         camera.getWorldDirection(forward);

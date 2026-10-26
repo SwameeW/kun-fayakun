@@ -215,6 +215,111 @@
   color: var(--kf-text-muted);
 }
 
+/* The verse in plain words: an explanation, set apart from the translation and its attribution. */
+.kf-plain {
+  margin-block: var(--kf-space-3);
+  padding: var(--kf-space-3);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-2);
+}
+
+.kf-plain p {
+  margin: 0;
+}
+
+.kf-plain-label {
+  margin-block-end: var(--kf-space-1) !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--kf-text-muted);
+}
+
+.kf-plain-text {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--kf-text);
+}
+
+.kf-plain-note {
+  margin-block-start: var(--kf-space-2) !important;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+/* The film cards' English: the translation, or the plain words in its place. */
+.kf-plain-choice {
+  margin-block: 0 var(--kf-space-4);
+}
+
+.kf-plain-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  min-block-size: 2.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--kf-text);
+  text-align: start;
+  cursor: pointer;
+}
+
+.kf-plain-switch-track {
+  position: relative;
+  flex: none;
+  inline-size: 2.25rem;
+  block-size: 1.25rem;
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 999px;
+  background: var(--kf-surface-2);
+  transition: background-color 150ms ease;
+}
+
+.kf-plain-switch-track::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0.1875rem;
+  inline-size: 0.8125rem;
+  block-size: 0.8125rem;
+  border-radius: 50%;
+  background: var(--kf-text-muted);
+  transform: translateY(-50%);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+
+.kf-plain-switch[aria-pressed='true'] .kf-plain-switch-track {
+  border-color: var(--kf-gold-soft);
+  background: var(--kf-gold-faint);
+}
+
+.kf-plain-switch[aria-pressed='true'] .kf-plain-switch-track::after {
+  background: var(--kf-gold);
+  transform: translate(1rem, -50%);
+}
+
+[dir='rtl'] .kf-plain-switch[aria-pressed='true'] .kf-plain-switch-track::after {
+  transform: translate(-1rem, -50%);
+}
+
+.kf-plain-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-plain-switch-track,
+  .kf-plain-switch-track::after {
+    transition: none;
+  }
+}
+
 .kf-pending {
   margin-block: var(--kf-space-2);
   padding: var(--kf-space-3);
@@ -222,6 +327,51 @@
   border-radius: var(--kf-radius-small);
   font-size: 0.875rem;
   color: var(--kf-text-muted);
+}
+
+/* A hadith's source details: open on request, below what most readers need. */
+.kf-hadith-source {
+  margin-block: var(--kf-space-2) 0;
+}
+
+.kf-hadith-source > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  min-block-size: 2.75rem;
+  font-size: 0.875rem;
+  color: var(--kf-gold);
+  list-style: none;
+  cursor: pointer;
+}
+
+.kf-hadith-source > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kf-hadith-source > summary::after {
+  content: "";
+  display: inline-block;
+  inline-size: 0.42rem;
+  block-size: 0.42rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 250ms var(--kf-ease);
+}
+
+.kf-hadith-source[open] > summary::after {
+  transform: translateY(0.12rem) rotate(-135deg);
+}
+
+.kf-hadith-source > :not(summary) {
+  margin-block: var(--kf-space-1) 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-hadith-source > summary::after {
+    transition: none;
+  }
 }
 
 .kf-summary {

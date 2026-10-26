@@ -50,6 +50,27 @@ scholarly text or science text change later, that area needs review again.
 - **Translations.** The Pickthall translation (1930, public domain) for every
   cited ayah. Is it acceptable to show next to the Arabic, and does any ayah
   need a note? Also check the transliteration (Tanzil `en.transliteration`).
+- **The verses in plain words.** Every cited ayah has a short plain-English
+  explanation (`plain.<surah>:<ayah>` in `src/i18n/en.chapters.json`), shown in
+  the notes under the translation and its attribution, labelled "In plain
+  words" with the note that it is an explanation, not a translation, awaiting a
+  scholar's review; a visitor may choose it in place of the translation on the
+  film's verse cards, labelled there too. They were written for this project
+  (not taken from any published translation) from the classical commentaries
+  cited in each chapter's notes, and no scholar has checked them yet. For each:
+  is it faithful to the classical reading, does it add or drop anything, and
+  does it keep to the meaning without passing for the Quran's words? Matters of
+  belief are worded as the commentators word them (for example "rose above the
+  Throne" for istawa in 7:54, 25:59 and 32:4, without explaining how).
+- **Readability (owner, 2026-10-26).** Long sentences in these summaries were split
+  for a first reading, with nothing added or dropped: `ch00.scholarly.classical.command`,
+  `ch01.scholarly.classical.joined`, `ch01.scholarly.classical.rain`,
+  `ch02.scholarly.classical.order`, `ch06.scholarly.classical.might`,
+  `ch07.scholarly.classical.falak`, `ch08.scholarly.classical.order`,
+  `ch10.scholarly.classical.scroll`, and the hadith summaries
+  `ch00.hadith.bukhari3191.summary` and `ch00.hadith.before.summary`. Check that
+  each still says what the scholar or narration says. `ch00.scholarly.classical.pen`
+  keeps the spec's wording.
 - **Tafsir summaries.** The classical reading comes first: Ibn Kathir,
   al-Tabari, al-Qurtubi. Each summary must be faithful to the cited scholar.
   Modern readings must be labelled "Some modern writers read this as...", and
@@ -66,6 +87,13 @@ scholarly text or science text change later, that area needs review again.
   gradings of the Pen hadith must appear: Abu Dawud 4700 (sahih per al-Albani)
   and Tirmidhi 2155 (gharib by this chain). Any hadith wording must be entered by
   a person from sunnah.com and carry `reviewer` and `reviewedAt`.
+- **The hadith cards in the film.** Chapter 0 shows two cards, each a sourced
+  summary labelled "Summary, not a quotation": `ch00.hadith.before.summary` for
+  Sahih al-Bukhari 3191 with Sahih Muslim 2653, and `ch00.hadith.pen.summary`
+  for the hadith of the Pen (Sunan Abi Dawud 4700 with Jami at-Tirmidhi 2155,
+  each with its grading and grader). Check that each summary reports only what
+  the narrations say, attributes nothing more to the Prophet ﷺ, and that
+  joining the two narrations on one card is fair.
 - **Range-of-views statements.** These cover the seven heavens (Chapter 5), the
   six days (Chapter 8) and evolution (Chapter 9), and are due in later
   milestones. Each must state the range of scholarly views and take no side.
@@ -101,7 +129,12 @@ scholarly text or science text change later, that area needs review again.
   and that the note sends people to their own community's timetable. The
   heritage notes (`ui.universe.islamic.heritage.*`): al-Battani, al-Sufi,
   al-Tusi, Ulugh Beg, the Darb-i Imam's girih tiles, Taqi al-Din; and the
-  Andromeda Galaxy named on the sky as al-Sufi's "little cloud".
+  Andromeda Galaxy named on the sky as al-Sufi's "little cloud". The astrolabe's
+  note (`ui.universe.islamic.astrolabe.*`): the one instrument it names (the
+  Science Museum's, from its catalogue) and the line 18 degrees below the
+  horizon described as several conventions' depression for Fajr or Isha. The
+  qibla on foot (`ui.universe.walk.qibla*`): a great-circle bearing and the turn
+  to face it, worded as a direction only.
 
 ### 3. Astrophysicist
 
@@ -111,6 +144,10 @@ scholarly text or science text change later, that area needs review again.
   Odeh's (topocentric ARCV and W at the same best time), and the times of
   prayer (depressions of the Sun's centre without refraction; sunrise and
   sunset by the upper limb with 34' of refraction; Asr from the noon shadow).
+  The astrolabe (`src/explore/islamic/astrolabe.ts`): the stereographic
+  projection from the pole below the horizon, the plate's circles against their
+  classic constructions, the rete turned by the local mean sidereal time with
+  the stars precessed to the date, and the rule's local apparent time.
 
 - Every number in `data/constants.json` (value, uncertainty, unit, qualifier,
   citation and access date), and every place it appears in the panels.

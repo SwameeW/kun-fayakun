@@ -311,7 +311,8 @@ export default function create(): ChapterModule {
         push('not-to-scale', 'ui.hud.orbitsNotToScale', scratch.set(0, -1.6, 0).add(system.position), names);
       }
       push('moon', 'ui.hud.moon', moon?.object.getWorldPosition(scratch) ?? scratch, span(times.moon + 1, times.moon + 2.5, times.moon + 3.5, times.moon + 4.5, t));
-      const path = span(times.galaxy + 11, times.galaxy + 13, 170, 172, t);
+      // The Sun's path stays named until the chapter's last two seconds.
+      const path = span(times.galaxy + 11, times.galaxy + 13, content.duration - 2, content.duration, t);
       if (path > 0) push('sun-path', 'ui.hud.sunPath', scratch.set(0, 0, SUN_KPC / kpc).add(galaxy?.object.position ?? scratch), path);
       return labels;
     },

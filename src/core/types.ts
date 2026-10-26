@@ -227,7 +227,12 @@ export interface PanelContent {
  */
 export type Cue =
   | { t: number; type: 'verse'; key: VerseKey; duration: number }
-  | { t: number; type: 'hadith'; id: HadithId; duration: number }
+  /**
+   * A hadith card. `also` names other narrations of the same report, shown on the same card by
+   * reference (with their gradings where they differ). While none of them has verified wording,
+   * the card shows `summaryKey`, a sourced summary labelled as one, never a quotation.
+   */
+  | { t: number; type: 'hadith'; id: HadithId; duration: number; also?: HadithId[]; summaryKey?: I18nKey }
   | { t: number; type: 'caption'; key: I18nKey; duration: number }
   | { t: number; type: 'panel'; section: 'text' | 'scholarly' | 'science' }
   | { t: number; type: 'overlay'; id: FigureId; visible: boolean }
@@ -249,6 +254,34 @@ export interface CameraKeyframe {
   ease?: Ease;
 }
 
+/**
+ * A moment worth stopping at in a chapter's Explore Mode: the scene as it is at `t` (its model time;
+ * the film's own clock does not move), seen from where the film's camera stands then, with a short
+ * card. `kind` says what the picture is: measured data, a scientific model, or an illustration.
+ */
+export interface ExplorePoint {
+  id: string;
+  t: number;
+  titleKey: I18nKey;
+  /** The card: prose with its numbers from data/constants.json and its sources, as the notes' science is. */
+  text: ProseBlock;
+  kind: 'measured' | 'model' | 'illustration';
+}
+
+/** Small explorations a chapter adds to its dock (src/ui/explore-dock.ts), each its own panel. */
+export type ExploreExtra = 'terms' | 'expansion-model' | 'cmb' | 'stretch' | 'supernovae' | 'orbits' | 'earth' | 'water' | 'futures';
+
+export interface ExploreContent {
+  target: Vec3;
+  minDistance: number;
+  maxDistance: number;
+  /** Moments to visit, in the chapter's order. */
+  points?: ExplorePoint[];
+  /** A slider through the chapter's own process, in its model time (seconds from, to), with its labels. */
+  process?: { from: number; to: number; titleKey: I18nKey; startKey: I18nKey; endKey: I18nKey };
+  extras?: ExploreExtra[];
+}
+
 export interface ChapterContent {
   id: ChapterId;
   /** Cinematic length in seconds. */
@@ -258,8 +291,8 @@ export interface ChapterContent {
   panel: PanelContent;
   cues: Cue[];
   camera: CameraKeyframe[];
-  /** Free-explore orbit limits. */
-  explore: { target: Vec3; minDistance: number; maxDistance: number };
+  /** Free-explore orbit limits, and what there is to discover there (src/ui/explore-dock.ts). */
+  explore: ExploreContent;
   /** Narration captions are shown from cues; this lists WebVTT files if audio narration exists. */
   captions?: Array<{ lang: string; src: string }>;
 }
@@ -1011,6 +1044,12 @@ export interface UniverseLabBody {
   escapeKmS: number;
   /** Changed or made by the visitor in this experiment. */
   edited: boolean;
+  /**
+   * The real world this body began as (a built-in world in an experiment begun from the real solar
+   * system): its mass and radius, and its orbit about its primary at the fork, from the ephemeris.
+   * What an edited world is compared with; null for anything else.
+   */
+  baseline: { massKg: number; radiusKm: number; aKm: number | null; e: number | null; periodS: number | null } | null;
   /** Keeps its identity in mergers and cannot be removed (the scene's light). */
   persistent: boolean;
   /** Its bulk density (kg/m^3). */
@@ -1364,6 +1403,13 @@ export interface AppCommands {
   next(): void;
   prev(): void;
   setMode(mode: 'cinematic' | 'explore'): void;
+  /**
+   * In Explore Mode, shows the scene as it is at chapter time `t` without moving the film's clock
+   * (null: back to the film's moment). Cleared when Explore Mode ends or the chapter changes.
+   */
+  setExploreTime(t: number | null): void;
+  /** In Explore Mode, eases the free camera to where the film's camera stands at chapter time `t` (null: back to the start of Explore Mode's view). */
+  focusView(t: number | null): void;
   /** Forwards a panel control to the active chapter (null: give control back to the film). */
   interact(id: string, value: number | null): void;
   /**
@@ -1469,6 +1515,8 @@ export interface App extends AppCommands {
   readonly paused: boolean;
   /** True while any holdFilm() hold is in place. */
   readonly held: boolean;
+  /** The scene's model time while Explore Mode shows another moment (setExploreTime), else null. */
+  readonly exploreTime: number | null;
   readonly mode: 'cinematic' | 'explore';
   /** The film, or the universe (from the moment it is asked for until it has handed back). */
   readonly experience: ExperienceId;
@@ -1476,6 +1524,8 @@ export interface App extends AppCommands {
   readonly backend: 'webgpu' | 'webgl2';
   readonly reducedMotion: boolean;
   readonly assets: AssetLoader;
+  /** The app's sound buses (src/core/audio.ts): the film's sound plays through the scene bus. Asking for one starts the browser's audio. */
+  readonly audio: AudioBuses;
   /** HUD tags and scale for this frame from the active experience (cheap; the UI polls it once per animation frame). */
   hud(): HudState;
   /** The explorer's camera and focus while it is on screen, else null (cheap; polled per frame by its UI). */

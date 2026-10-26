@@ -4,7 +4,7 @@
  * test hooks (docs/CONTRACTS.md, "Test hooks" and "UI test ids").
  */
 import { test as base, expect, type Page } from '@playwright/test';
-import type { App, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
+import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
 import { env, SLOW } from './env';
 import { mockLiveHosts } from './live';
 
@@ -35,7 +35,21 @@ export interface KfHook {
     resetFrameStats(): void;
     step(frames?: number, dt?: number): void;
     universe: { state(): UniverseView | null; place(pose: UniversePose): void };
+    /** The film's sound (src/ui/film-sound.ts): what plays now, and an offline render of a chapter's stretch. */
+    filmSound?: {
+      state(): FilmSoundState | null;
+      render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
+    };
   };
+}
+
+/** The film's sound as its test hook reports it (src/core/film-score.ts FilmScoreState). */
+export interface FilmSoundState {
+  chapter: ChapterId | null;
+  level: number;
+  voices: Record<string, number>;
+  duck: number;
+  shots: string[];
 }
 
 export interface OpenOptions {

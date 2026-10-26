@@ -20,7 +20,7 @@ are in [docs/CONTRACTS.md](docs/CONTRACTS.md) and [src/core/types.ts](src/core/t
 | M3 | Chapters 7 to 10, JPL ephemerides, the letter analysis, end credits | Done, pending review |
 | Film and simulator brief | Screenplay and shot list ([film/](film/)), then film mode, simulators, sound and showcase features | Screenplay and shot list written; the rest is planned |
 | M4 | Recitation proxy, Arabic UI, accessibility audit, scholarly and scientific review recorded | Not started |
-| Explorer: Universe Sandbox and SpaceEngine brief | Phases 1 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phases 1 to 4 done (the laboratory, impacts, worlds that respond, walks on the five solid worlds and descents through Venus's and Jupiter's air); Phase 5 done but generated systems (left for the owner); Phase 6's stars partly (an HR diagram, star figures, binaries' dynamics); Phase 7's ships, burns and two autopilots (rounding an orbit, a Hohmann transfer); Phase 8's picture and video with credits, a lens, exposure and tracking, lessons and sound; all pending review |
+| Explorer: Universe Sandbox and SpaceEngine brief | Phases 1 to 8 in [the feature ledger](docs/FEATURE-LEDGER.md) | Phases 1 to 4 done (the laboratory, impacts, worlds that respond, walks on the five solid worlds and descents through Venus's and Jupiter's air); Phase 5 done but generated systems (left for the owner); Phase 6's stars partly (an HR diagram, star figures, binaries' dynamics); Phase 7's ships, burns and two autopilots (rounding an orbit, a Hohmann transfer); Phase 8's picture and video with credits, a lens, exposure, tracking and keyframes (a flight through the saved views), lessons and sound; all pending review |
 
 Not for public release until the reviews in [Review process](#review-process) are recorded.
 
@@ -96,6 +96,14 @@ Keyboard: `Space` pauses and resumes, `Right` / `Left` go to the next / previous
 (with `Shift` they seek), `P` shows or hides the panel, `E` enters free explore (orbit,
 `WASD`), `Esc` returns to the timeline, `?` lists the shortcuts.
 
+In free explore each chapter's Discover dock offers its moments (the scene as it was then,
+from the film's own view, each card saying whether it shows measured data, a model or an
+illustration), a slider through the chapter's process, and closer looks: a model of
+expanding space, the Planck map's measurements, two kinds of supernova, Kepler's law from
+JPL's orbits, the Earth today, water, and the words Chapter 0 rests on. The film's clock
+does not move while exploring. The film has sound (nature and physics only, no music),
+under the speaker in the header.
+
 ## Checks
 
 These are the same steps CI runs ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
@@ -126,6 +134,10 @@ projects:
 | `tests/a11y.spec.ts` | axe-core on home, each chapter with the panel open, and Sources: no violations of any impact. |
 | `tests/keyboard.spec.ts` | Keyboard-only run-through with visible focus. |
 | `tests/reduced-motion.spec.ts` | `prefers-reduced-motion` is detected and verses only cross-fade. |
+| `tests/plain-words.spec.ts` | Each verse's translation word for word with its translator named, its plain-words explanation in a separate block labelled as an explanation, and the switch that puts it on the film's cards (labelled, remembered, the Arabic verbatim). |
+| `tests/hadith.spec.ts` | Chapter 0's two hadith cards (labelled summaries, discreet references, the Pen's two gradings side by side) and every narration's entry in the notes, its source details on request. |
+| `tests/film-sound.spec.ts` | The film's sound rendered offline for all eleven chapters (headroom, near silence under every verse, the screenplay's silences and sounds), and live: the speaker, the duck, no one-shot on a seek, a pause, one choice with the explorer. |
+| `tests/discover.spec.ts` | Explore Mode's dock in every chapter: its moments (model time, the film's view, the card's kind), its process, reset; the expansion model's arithmetic, Kepler's law from JPL's orbits, the Earth in the explorer; keyboard, axe and a phone. |
 | `tests/perf/*.spec.ts` (`@perf`) | 60 s auto-play frame stats and first contentful paint on slow 4G. |
 | `tests/unit/islamic.spec.ts`, `tests/unit/astrolabe.spec.ts`, `tests/explore/islamic.spec.ts` | The qibla and the new moon: published qibla bearings, Espenak's new moons, the announced times of the Sun over the Kaaba, Ramadan 1447's crescent reports, Umm al-Qura dates and WGS 84's quarter meridian; in the browser, the panel, the path and map on the globe, going to the Sun over the Kaaba (the explorer's own Sun then over it), the golden latitude near Makkah, the heritage places, the astrolabe's plate against its classic constructions and its Sun against the Astronomical Almanac's, and nothing of it in an experiment. |
 | `tests/unit/sim.spec.ts`, `tests/explore/lab.spec.ts` | The orbital laboratory: orbits against Kepler and an independent RK4, convergence, conservation, mergers, no tunnelling, replay and branching, imports refused; in the browser, pause stopping the physics, edits that change the motion, predictions, save, reset, checkpoints, the camera leaving a removed world, and round trips back to the explorer and the film with GPU memory level. Numbers: `node --import tsx scripts/sim-report.ts`. |
@@ -164,8 +176,11 @@ sources. Nothing is typed from memory or generated.
    loader show as upcoming stops on the timeline.
 2. **Content.** Write `src/chapters/chNN/content.json` (type `ChapterContent` in
    `src/core/types.ts`): duration, intro card, the three-layer panel, cues, camera
-   keyframes and explore limits. Scene cues must not fall inside a verse cue's window or
-   the 2 s before it.
+   keyframes and explore limits (and, for Explore Mode's dock, its moments, process and
+   closer looks, with their strings in `src/i18n/en.discover.json`). Scene cues must not
+   fall inside a verse cue's window or the 2 s before it. Add the chapter's shots to
+   `film/shotlist.json` and `film/screenplay.md`, and its sound to
+   `src/core/film-score.ts`; `npm run validate` checks they agree.
 3. **Scene.** Write `src/chapters/chNN/scene.ts` with
    `export default function create(): ChapterModule`, importing `./content.json`. Shaders
    in TSL only, brightness changes through `ctx.exposure`, and it must run with
@@ -232,7 +247,6 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
 - The explorer's sky: the Bright Star Catalogue (Hoffleit and Warren, NASA Astronomical Data Center;
   public domain), the IAU Catalog of Star Names (CC BY) and d3-celestial's constellations (Olaf
   Frohn, BSD-3-Clause); section 14 of `LICENSES`.
-- Created by Samee and Muhaimin.
 - Later milestones: live
   recitation from the Quran Foundation API (credited, never cached beyond its terms).
 

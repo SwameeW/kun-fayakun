@@ -5,6 +5,7 @@ import { BURN_DIRECTIONS, hohmann, ROUND_E } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { createLabLessons } from './lab-lessons';
+import { helpButton, withHelp } from './help';
 
 /**
  * The orbital laboratory's panel (heading the navigator while an experiment runs): what it is (an
@@ -135,6 +136,21 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   };
   const details = (key: string, testId: string, ...children: Array<Node | null>): HTMLDetailsElement =>
     h('details', { class: 'kf-living-notes-part kf-living-prophets-box', 'data-testid': testId }, h('summary', {}, i18n.t(key)), h('div', { class: 'kf-living-prophets-body' }, ...children));
+  /** A "?" in plain words at the top corner of a section or group. */
+  const corner = (topic: string, label: string): HTMLElement => h('div', { class: 'kf-help-corner' }, helpButton(app, topic, label));
+  /** A section with its "?" at the top corner of its body. */
+  const helpDetails = (key: string, testId: string, topic: string, ...children: Array<Node | null>): HTMLDetailsElement => details(key, testId, corner(topic, i18n.t(key)), ...children);
+  // A fact's "?" is made once per fact: the facts are rewritten as the run goes, and a "?" whose
+  // explanation is open must stay where it is.
+  const factHelp = new Map<string, HTMLButtonElement>();
+  const helpFor = (topic: string, label: string): HTMLButtonElement => {
+    let b = factHelp.get(topic);
+    if (!b) {
+      b = helpButton(app, topic, label);
+      factHelp.set(topic, b);
+    }
+    return b;
+  };
 
   // Head: what this is, and the way back.
   const title = h('h3', { class: 'kf-living-notes-title' }, i18n.t('ui.universe.lab.title'));
@@ -155,7 +171,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const redo = button(i18n.t('ui.universe.lab.redo'), 'lab-redo', () => {
     send({ kind: 'redo' });
   });
-  const history = h('div', { class: 'kf-lab-row' }, undo, redo);
+  const history = h('div', { class: 'kf-lab-row' }, undo, redo, helpButton(app, 'history', i18n.t('ui.universe.lab.history')));
 
   // Bodies, each with a tick for doing something to several at once.
   const list = h('ul', { class: 'kf-living-list kf-lab-bodies', 'aria-label': i18n.t('ui.universe.lab.bodies'), 'data-testid': 'lab-bodies' });
@@ -180,6 +196,13 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   // The inspector.
   const inspectorTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'lab-selected-name' });
   const facts = h('dl', { class: 'kf-about-facts', 'data-testid': 'lab-facts' });
+  // Compared with reality: a built-in world moved away from its real figures, beside them, and one
+  // plain question about the largest change (the real world goes on as it is).
+  const compareTitle = h('h4', { class: 'kf-living-subtitle' });
+  const compareFacts = h('dl', { class: 'kf-about-facts', 'data-testid': 'lab-compare-facts' });
+  const comparePrompt = h('p', { class: 'kf-living-hint kf-lab-prompt', 'data-testid': 'lab-compare-prompt' });
+  const compare = h('section', { class: 'kf-living-notes-part kf-lab-compare', 'data-testid': 'lab-compare', hidden: true }, compareTitle, compareFacts, comparePrompt, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.compare.note')));
+  let compareKey = '';
   const warning = h('p', { class: 'kf-lab-warning', 'data-testid': 'lab-warning', hidden: true });
   const rename = field('ui.universe.lab.renameLabel', 'lab-rename-input', '', 'text');
   const renameApply = button(i18n.t('ui.universe.lab.rename'), 'lab-rename-apply', () => {
@@ -238,7 +261,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     const v = elements.map((x) => num(x.input));
     if (selectedId && v.every(Number.isFinite)) send({ kind: 'elements', id: selectedId, aKm: v[0] ?? 0, e: v[1] ?? 0, iDeg: v[2] ?? 0, nodeDeg: v[3] ?? 0, periapsisArgDeg: v[4] ?? 0, trueAnomalyDeg: v[5] ?? 0 });
   });
-  const elementsBox = details('ui.universe.lab.elements', 'lab-elements', elementsHint, ...elements.flatMap((x) => [x.label, x.input]), elementsApply);
+  const elementsBox = helpDetails('ui.universe.lab.elements', 'lab-elements', 'elements', elementsHint, ...elements.flatMap((x) => [x.label, x.input]), elementsApply);
   // Its rotation.
   const spinPeriod = field('ui.universe.lab.spinPeriod', 'lab-spin-period');
   const spinTilt = field('ui.universe.lab.spinTilt', 'lab-spin-tilt');
@@ -318,7 +341,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   climateView.addEventListener('click', () => {
     send({ kind: 'climateView', on: climateView.getAttribute('aria-pressed') !== 'true' });
   });
-  const climateBox = details('ui.universe.lab.climate.title', 'lab-climate', climateFacts, climateNote, h('div', { class: 'kf-lab-row' }, climateMore, climateLess), climateView, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.climate.scale')));
+  const climateBox = helpDetails('ui.universe.lab.climate.title', 'lab-climate', 'climate', climateFacts, climateNote, h('div', { class: 'kf-lab-row' }, climateMore, climateLess), climateView, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.climate.scale')));
 
   // A ship's rocket (ledger SC-1, SC-3): what is left, a burn to plan by its change of speed, the burns to come.
   const shipReadout = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-ship-readout' });
@@ -355,8 +378,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     'fieldset',
     { class: 'kf-living-group kf-lab-fieldset', 'data-testid': 'lab-ship', hidden: true },
     h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.ship.title')),
-    shipReadout,
-    shipDirection.label,
+    withHelp(app, shipReadout, 'deltaV', i18n.t('ui.help.label.deltaV')),
+    withHelp(app, shipDirection.label, 'burn'),
     shipDirection.select,
     shipRef.label,
     shipRef.select,
@@ -369,7 +392,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     shipPlan,
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.ship.planHint')),
     shipRound,
-    shipRoundText,
+    withHelp(app, shipRoundText, 'autopilot', i18n.t('ui.help.label.autopilot')),
     shipTo.label,
     h('div', { class: 'kf-lab-row' }, shipTo.input, shipTransfer),
     shipTransferText,
@@ -416,7 +439,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     density.label,
     h('div', { class: 'kf-lab-row' }, density.input, densityApply),
   );
-  const spinGroup = h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply);
+  const spinGroup = h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.spin')), corner('spin', i18n.t('ui.universe.lab.spin')), spinPeriod.label, spinPeriod.input, spinTilt.label, spinTilt.input, spinApply);
 
   const inspector = h(
     'section',
@@ -424,6 +447,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     inspectorTitle,
     facts,
     warning,
+    compare,
     climateBox,
     h('div', { class: 'kf-living-group' }, rename.label, h('div', { class: 'kf-lab-row' }, rename.input, renameApply)),
     massGroup,
@@ -434,13 +458,13 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       h('div', { class: 'kf-lab-row' }, ...velInputs.flatMap((input, k) => [h('label', { class: 'kf-sr-only', for: velIds[k] ?? '' }, i18n.t(`ui.universe.lab.axis.${'xyz'[k] ?? 'x'}`)), input]), velApply),
       h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.dragHint')),
     ),
-    h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.impulse')), ...pushes.flatMap((x) => [x.label, x.input]), pushApply),
+    h('fieldset', { class: 'kf-living-group kf-lab-fieldset' }, h('legend', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.impulse')), corner('push', i18n.t('ui.universe.lab.impulse')), ...pushes.flatMap((x) => [x.label, x.input]), pushApply),
     shipBox,
     elementsBox,
     spinGroup,
-    h('div', { class: 'kf-lab-row' }, fixedBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: fixedId }, i18n.t('ui.universe.lab.fixed'))),
+    h('div', { class: 'kf-lab-row' }, fixedBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: fixedId }, i18n.t('ui.universe.lab.fixed')), helpButton(app, 'fixed', i18n.t('ui.universe.lab.fixed'))),
     h('div', { class: 'kf-lab-row' }, duplicate, remove, follow),
-    h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: horizonId }, i18n.t('ui.universe.lab.horizon')), horizon, accuracy.label, accuracy.select, predictionText, encounters),
+    h('div', { class: 'kf-living-group' }, withHelp(app, h('label', { class: 'kf-living-label', for: horizonId }, i18n.t('ui.universe.lab.horizon')), 'prediction'), horizon, accuracy.label, accuracy.select, predictionText, encounters),
     lagrangeGroup,
   );
 
@@ -491,9 +515,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       send({ kind: 'addState', relativeTo: addPrimary.value, posKm: [pos[0] ?? 0, pos[1] ?? 0, pos[2] ?? 0], velKmS: [vel[0] ?? 0, vel[1] ?? 0, vel[2] ?? 0], massKg: m, radiusKm: r, name: addName.input.value.trim() });
     }
   });
-  const add = details(
+  const add = helpDetails(
     'ui.universe.lab.add.title',
     'lab-add',
+    'addBody',
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.add.intro')),
     search.label,
     search.input,
@@ -530,9 +555,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     const v = [shipDry, shipFuel, shipThrust, shipIsp, shipDistance].map((x) => num(x.input));
     if (shipPrimary.value && v.every(Number.isFinite)) send({ kind: 'addShip', primary: shipPrimary.value, distanceKm: v[4] ?? 0, name: shipName.input.value.trim(), dryKg: v[0] ?? 0, fuelKg: v[1] ?? 0, thrustN: v[2] ?? 0, ispS: v[3] ?? 0 });
   }, 'kf-btn kf-living-tour-start');
-  const addShip = details(
+  const addShip = helpDetails(
     'ui.universe.lab.ship.addTitle',
     'lab-add-ship',
+    'ship',
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.ship.intro')),
     ...[shipName, shipDry, shipFuel, shipThrust, shipIsp].flatMap((x) => [x.label, x.input]),
     h('label', { class: 'kf-living-label', for: shipPrimaryId }, i18n.t('ui.universe.lab.ship.primary')),
@@ -554,7 +580,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     send({ kind: 'view', view: v === 'inertial' ? 'inertial' : v === 'corotating' ? 'corotating' : v === 'bodyfixed' ? 'bodyfixed' : 'primary' });
   });
   const viewText = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-view-text' }, i18n.t('ui.universe.lab.viewHint'));
-  const viewBox = details('ui.universe.lab.viewTitle', 'lab-view-box', viewSelect.label, viewSelect.select, viewText);
+  const viewBox = helpDetails('ui.universe.lab.viewTitle', 'lab-view-box', 'frame', viewSelect.label, viewSelect.select, viewText);
 
   // Measurements.
   const none = i18n.t('ui.universe.lab.measure.none');
@@ -567,7 +593,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     send({ kind: 'measure', from: measureFrom.select.value || null, to: measureTo.select.value || null, via: measureVia.select.value || null });
   };
   for (const x of [measureFrom, measureTo, measureVia]) x.select.addEventListener('change', askMeasure);
-  const measureBox = details('ui.universe.lab.measure', 'lab-measure', measureFrom.label, measureFrom.select, measureTo.label, measureTo.select, measureVia.label, measureVia.select, measureResult, measureAngle);
+  const measureBox = helpDetails('ui.universe.lab.measure', 'lab-measure', 'measure', measureFrom.label, measureFrom.select, measureTo.label, measureTo.select, measureVia.label, measureVia.select, measureResult, measureAngle);
 
   // A quantity followed over time.
   const graphBody = select('ui.universe.lab.graph.body', 'lab-graph-body', []);
@@ -581,7 +607,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const line = svg('polyline', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'vector-effect': 'non-scaling-stroke', points: '' });
   const chart = svg('svg', { class: 'kf-lab-chart', viewBox: `0 0 ${CHART.w} ${CHART.h}`, role: 'img', 'aria-label': '', 'data-testid': 'lab-graph', preserveAspectRatio: 'none' }, svg('rect', { x: '0', y: '0', width: String(CHART.w), height: String(CHART.h), fill: 'none', stroke: 'currentColor', 'stroke-opacity': '0.25' }), line);
   const graphSummary = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-graph-summary' });
-  const graphBox = details('ui.universe.lab.graph', 'lab-graph-box', graphBody.label, graphBody.select, graphQuantity.label, graphQuantity.select, chart, graphSummary);
+  const graphBox = helpDetails('ui.universe.lab.graph', 'lab-graph-box', 'graph', graphBody.label, graphBody.select, graphQuantity.label, graphQuantity.select, chart, graphSummary);
   let graphKey = '';
 
   // Checks and history.
@@ -708,9 +734,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     });
   const ringOn = ringButton('ring');
   const moonletsOn = ringButton('moonlets');
-  const rings = details(
+  const rings = helpDetails(
     'ui.universe.lab.rings.title',
     'lab-rings',
+    'rings',
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.rings.intro')),
     ringCount.label,
     ringCount.select,
@@ -724,15 +751,16 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const element = h(
     'section',
     { class: 'kf-nav-lab', 'data-testid': 'lab-panel', 'aria-label': i18n.t('ui.universe.lab.title'), hidden: true },
-    title,
+    withHelp(app, title, 'lab'),
+    h('p', { class: 'kf-living-hint kf-lab-purpose', 'data-testid': 'lab-purpose' }, i18n.t('ui.universe.lab.purpose')),
     note,
     lessons.element,
-    clock,
+    withHelp(app, clock, 'labClock', i18n.t('ui.help.label.labClock')),
     rates,
     failure,
     back,
     history,
-    h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.bodies')),
+    h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.bodies'), helpButton(app, 'labBodies', i18n.t('ui.universe.lab.bodies'))),
     list,
     many,
     inspector,
@@ -742,7 +770,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     viewBox,
     measureBox,
     graphBox,
-    h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.checks')),
+    h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.checks'), helpButton(app, 'checks', i18n.t('ui.universe.lab.checks'))),
     checks,
     constrained,
     thrusting,
@@ -774,7 +802,49 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
    */
   let choosing: { id: string | null } | null = null;
 
-  const row = (term: string, detail: string, testId: string): HTMLElement[] => [h('dt', {}, term), h('dd', { 'data-testid': testId }, detail)];
+  const row = (term: string, detail: string, testId: string, topic?: string): HTMLElement[] => [h('dt', {}, term, topic ? helpFor(topic, term) : null), h('dd', { 'data-testid': testId }, detail)];
+  /**
+   * The comparison with reality: shown once a built-in world's mass or size has been changed by a
+   * thousandth, or its orbit's size or year by 3 per cent (beyond the slow drift of the osculating
+   * elements the other worlds' pulls cause); one question, about the largest change.
+   */
+  const showCompare = (b: UniverseLabBody, name: string): void => {
+    const base = b.baseline;
+    const o = b.orbit;
+    const ratio = (now: number, real: number): number => (real > 0 ? now / real : 1);
+    const mass = base ? ratio(b.massKg, base.massKg) : 1;
+    const size = base ? ratio(b.radiusKm, base.radiusKm) : 1;
+    const a = base?.aKm && o?.bound ? ratio(o.aKm, base.aKm) : 1;
+    const year = base?.periodS && o?.periodS ? ratio(o.periodS, base.periodS) : 1;
+    const changed = { mass: Math.abs(mass - 1) > 1e-3, size: Math.abs(size - 1) > 1e-3, orbit: Math.abs(a - 1) > 0.03 || Math.abs(year - 1) > 0.03 };
+    const on = base !== null && (changed.mass || changed.size || changed.orbit || (o !== null && !o.bound && base.aKm !== null));
+    compare.hidden = !on;
+    if (!on) return;
+    const times = (r: number): string => i18n.t('ui.universe.lab.compare.times', { n: f.number(r, r < 0.1 || r > 10 ? 3 : 2) });
+    const key = `${b.id}:${mass.toPrecision(4)}:${size.toPrecision(4)}:${a.toPrecision(3)}:${year.toPrecision(3)}:${String(o?.bound ?? false)}`;
+    if (key === compareKey) return;
+    compareKey = key;
+    write(compareTitle, i18n.t('ui.universe.lab.compare.title', { name }));
+    compareFacts.replaceChildren(
+      ...(changed.mass ? row(i18n.t('ui.universe.lab.mass'), i18n.t('ui.universe.lab.compare.value', { now: `${scientific(b.massKg)} kg`, real: `${scientific(base.massKg)} kg`, times: times(mass) }), 'lab-compare-mass') : []),
+      ...(changed.size ? row(i18n.t('ui.universe.lab.radius'), i18n.t('ui.universe.lab.compare.value', { now: f.distance(b.radiusKm), real: f.distance(base.radiusKm), times: times(size) }), 'lab-compare-radius') : []),
+      ...(base.aKm !== null && o ? row(i18n.t('ui.universe.lab.compare.orbit'), o.bound ? i18n.t('ui.universe.lab.compare.value', { now: f.distance(o.aKm), real: f.distance(base.aKm), times: times(a) }) : i18n.t('ui.universe.lab.compare.unbound', { real: f.distance(base.aKm) }), 'lab-compare-orbit') : []),
+      ...(base.periodS !== null && o?.periodS ? row(i18n.t('ui.universe.lab.period'), i18n.t('ui.universe.lab.compare.value', { now: duration(o.periodS), real: duration(base.periodS), times: times(year) }), 'lab-compare-period') : []),
+    );
+    // One question, about the largest change.
+    const prompt =
+      o !== null && !o.bound
+        ? 'escaped'
+        : changed.mass && Math.abs(Math.log(mass)) >= Math.max(Math.abs(Math.log(size)), Math.abs(Math.log(a)))
+          ? 'mass'
+          : changed.size && Math.abs(Math.log(size)) >= Math.abs(Math.log(a))
+            ? 'size'
+            : a > 1
+              ? 'wider'
+              : 'tighter';
+    write(comparePrompt, i18n.t(`ui.universe.lab.compare.prompt.${prompt}`, { name }));
+  };
+
   /** The options of a body select (keeping what was chosen, where it still exists). */
   const fillBodies = (s: HTMLSelectElement, bodies: readonly UniverseLabBody[], blank: string | null): void => {
     const keep = s.value;
@@ -932,34 +1002,36 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         spinGroup.hidden = isShip;
         facts.replaceChildren(
           ...(b.ship
-            ? row(i18n.t('ui.universe.lab.mass'), i18n.t('ui.universe.lab.ship.mass', { kg: f.number(b.ship.dryKg + b.ship.fuelKg, 0) }), 'lab-fact-mass')
-            : row(i18n.t('ui.universe.lab.mass'), `${scientific(b.massKg)} kg${b.edited ? ` · ${i18n.t('ui.universe.lab.edited')}` : ''}`, 'lab-fact-mass')),
-          ...(isShip ? [] : row(i18n.t('ui.universe.lab.radius'), f.keep(i18n.t('ui.hud.unit.km', { value: f.number(b.radiusKm, b.radiusKm < 10_000 ? 1 : 0) })), 'lab-fact-radius')),
-          ...(b.densityKgM3 > 0 ? row(i18n.t('ui.universe.lab.density'), i18n.t('ui.universe.lab.densityValue', { value: f.number(b.densityKgM3, 0) }), 'lab-fact-density') : []),
-          ...row(i18n.t('ui.universe.lab.speed'), speed(b.speedKmS), 'lab-fact-speed'),
+            ? row(i18n.t('ui.universe.lab.mass'), i18n.t('ui.universe.lab.ship.mass', { kg: f.number(b.ship.dryKg + b.ship.fuelKg, 0) }), 'lab-fact-mass', 'mass')
+            : row(i18n.t('ui.universe.lab.mass'), `${scientific(b.massKg)} kg${b.edited ? ` · ${i18n.t('ui.universe.lab.edited')}` : ''}`, 'lab-fact-mass', 'mass')),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.radius'), f.keep(i18n.t('ui.hud.unit.km', { value: f.number(b.radiusKm, b.radiusKm < 10_000 ? 1 : 0) })), 'lab-fact-radius', 'radius')),
+          ...(b.densityKgM3 > 0 ? row(i18n.t('ui.universe.lab.density'), i18n.t('ui.universe.lab.densityValue', { value: f.number(b.densityKgM3, 0) }), 'lab-fact-density', 'density') : []),
+          ...row(i18n.t('ui.universe.lab.speed'), speed(b.speedKmS), 'lab-fact-speed', 'speed'),
           ...(b.primary && b.relativeSpeedKmS !== null && b.distanceKm !== null ? row(i18n.t('ui.universe.lab.relative', { primary: pName }), i18n.t('ui.universe.lab.relativeValue', { speed: speed(b.relativeSpeedKmS), distance: f.distance(b.distanceKm) }), 'lab-fact-relative') : []),
-          ...(isShip ? [] : row(i18n.t('ui.universe.lab.escape'), speed(b.escapeKmS), 'lab-fact-escape')),
-          ...(o ? row(i18n.t('ui.universe.lab.orbit', { primary: pName }), i18n.t('ui.universe.lab.orbitValue', { a: o.bound ? f.distance(o.aKm) : f.distance(Math.abs(o.aKm)), e: f.number(o.e, o.e < 0.01 ? 4 : 3), i: degrees(o.iDeg) }), 'lab-fact-orbit') : []),
-          ...(o ? row(i18n.t('ui.universe.lab.period'), o.periodS === null ? i18n.t('ui.universe.lab.unbound') : duration(o.periodS), 'lab-fact-period') : []),
-          ...(o ? row(i18n.t('ui.universe.lab.apsides'), o.apoapsisKm === null ? i18n.t('ui.universe.lab.apsidesNear', { near: f.distance(o.periapsisKm) }) : i18n.t('ui.universe.lab.apsidesValue', { near: f.distance(o.periapsisKm), far: f.distance(o.apoapsisKm) }), 'lab-fact-apsides') : []),
-          ...(o?.hillKm ? row(i18n.t('ui.universe.lab.hill'), i18n.t('ui.universe.lab.hillValue', { value: f.distance(o.hillKm) }), 'lab-fact-hill') : []),
-          ...(isShip ? [] : row(i18n.t('ui.universe.lab.rotation'), rot.periodS === null ? i18n.t('ui.universe.lab.rotationNone') : rot.tiltDeg === null ? i18n.t('ui.universe.lab.rotationNoTilt', { period: duration(rot.periodS) }) : i18n.t('ui.universe.lab.rotationValue', { period: duration(rot.periodS), tilt: degrees(rot.tiltDeg) }), 'lab-fact-rotation')),
-          ...(Number.isFinite(rot.breakupPeriodS) ? row(i18n.t('ui.universe.lab.breakupLabel'), i18n.t('ui.universe.lab.breakup', { period: duration(rot.breakupPeriodS) }), 'lab-fact-breakup') : []),
-          ...(b.roche ? row(i18n.t('ui.universe.lab.roche'), i18n.t('ui.universe.lab.rocheValue', { fluid: f.distance(b.roche.fluidKm), rigid: f.distance(b.roche.rigidKm) }), 'lab-fact-roche') : []),
-          ...(b.j2 > 0 ? row(i18n.t('ui.universe.lab.j2'), scientific(b.j2), 'lab-fact-j2') : []),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.escape'), speed(b.escapeKmS), 'lab-fact-escape', 'escape')),
+          ...(o ? row(i18n.t('ui.universe.lab.orbit', { primary: pName }), i18n.t('ui.universe.lab.orbitValue', { a: o.bound ? f.distance(o.aKm) : f.distance(Math.abs(o.aKm)), e: f.number(o.e, o.e < 0.01 ? 4 : 3), i: degrees(o.iDeg) }), 'lab-fact-orbit', 'elements') : []),
+          ...(o ? row(i18n.t('ui.universe.lab.period'), o.periodS === null ? i18n.t('ui.universe.lab.unbound') : duration(o.periodS), 'lab-fact-period', 'period') : []),
+          ...(o ? row(i18n.t('ui.universe.lab.apsides'), o.apoapsisKm === null ? i18n.t('ui.universe.lab.apsidesNear', { near: f.distance(o.periapsisKm) }) : i18n.t('ui.universe.lab.apsidesValue', { near: f.distance(o.periapsisKm), far: f.distance(o.apoapsisKm) }), 'lab-fact-apsides', 'apsides') : []),
+          ...(o?.hillKm ? row(i18n.t('ui.universe.lab.hill'), i18n.t('ui.universe.lab.hillValue', { value: f.distance(o.hillKm) }), 'lab-fact-hill', 'hill') : []),
+          ...(isShip ? [] : row(i18n.t('ui.universe.lab.rotation'), rot.periodS === null ? i18n.t('ui.universe.lab.rotationNone') : rot.tiltDeg === null ? i18n.t('ui.universe.lab.rotationNoTilt', { period: duration(rot.periodS) }) : i18n.t('ui.universe.lab.rotationValue', { period: duration(rot.periodS), tilt: degrees(rot.tiltDeg) }), 'lab-fact-rotation', 'rotation')),
+          ...(Number.isFinite(rot.breakupPeriodS) ? row(i18n.t('ui.universe.lab.breakupLabel'), i18n.t('ui.universe.lab.breakup', { period: duration(rot.breakupPeriodS) }), 'lab-fact-breakup', 'breakup') : []),
+          ...(b.roche ? row(i18n.t('ui.universe.lab.roche'), i18n.t('ui.universe.lab.rocheValue', { fluid: f.distance(b.roche.fluidKm), rigid: f.distance(b.roche.rigidKm) }), 'lab-fact-roche', 'roche') : []),
+          ...(b.j2 > 0 ? row(i18n.t('ui.universe.lab.j2'), scientific(b.j2), 'lab-fact-j2', 'j2') : []),
         );
+        // Compared with the real world it began as, when it has moved away from it.
+        showCompare(b, nameOf(b));
         // Its climate, or the light it gives.
         const c = b.climate;
         const celsius = (k: number): string => f.keep(i18n.t('ui.universe.lab.climate.celsius', { value: f.number(k - 273.15, 0) }));
         climateBox.hidden = !c && b.luminosityW === null && !(b.insolationWm2 > 0);
         climateFacts.replaceChildren(
-          ...(b.luminosityW !== null ? row(i18n.t('ui.universe.lab.climate.luminosity'), i18n.t('ui.universe.lab.climate.luminosityValue', { value: f.number(b.luminosityW / SUN_W, b.luminosityW < 3.8e25 ? 4 : 2) }), 'lab-climate-luminosity') : []),
-          ...(b.insolationWm2 > 0 && b.luminosityW === null ? row(i18n.t('ui.universe.lab.climate.light'), i18n.t('ui.universe.lab.climate.lightValue', { value: f.number(b.insolationWm2, b.insolationWm2 < 10 ? 2 : 0), earth: f.number(b.insolationWm2 / EARTH_LIGHT, 2) }), 'lab-climate-light') : []),
+          ...(b.luminosityW !== null ? row(i18n.t('ui.universe.lab.climate.luminosity'), i18n.t('ui.universe.lab.climate.luminosityValue', { value: f.number(b.luminosityW / SUN_W, b.luminosityW < 3.8e25 ? 4 : 2) }), 'lab-climate-luminosity', 'luminosity') : []),
+          ...(b.insolationWm2 > 0 && b.luminosityW === null ? row(i18n.t('ui.universe.lab.climate.light'), i18n.t('ui.universe.lab.climate.lightValue', { value: f.number(b.insolationWm2, b.insolationWm2 < 10 ? 2 : 0), earth: f.number(b.insolationWm2 / EARTH_LIGHT, 2) }), 'lab-climate-light', 'sunlight') : []),
           ...(c ? row(i18n.t('ui.universe.lab.climate.surface'), i18n.t('ui.universe.lab.climate.surfaceValue', { mean: celsius(c.meanK), min: celsius(c.minK), max: celsius(c.maxK) }), 'lab-climate-surface') : []),
           ...(c?.noonK ? row(i18n.t('ui.universe.lab.climate.noon'), celsius(c.noonK), 'lab-climate-noon') : []),
           ...(c?.model === 'budyko' ? row(i18n.t('ui.universe.lab.climate.ice'), c.ice >= 0.999 ? i18n.t('ui.universe.lab.climate.iceAll') : c.ice <= 0 ? i18n.t('ui.universe.lab.climate.iceNone') : i18n.t('ui.universe.lab.climate.iceValue', { share: f.number(c.ice * 100, 0), line: f.number(c.iceLineDeg ?? 90, 0) }), 'lab-climate-ice') : []),
           ...(c ? row(i18n.t('ui.universe.lab.climate.water'), c.liquid > 0 ? i18n.t('ui.universe.lab.climate.waterValue', { share: f.number(c.liquid * 100, 0) }) : i18n.t(`ui.universe.lab.climate.water.${dryBecause(c)}`), 'lab-climate-water') : []),
-          ...(c ? row(i18n.t('ui.universe.lab.climate.greenhouse'), c.model === 'budyko' ? i18n.t('ui.universe.lab.climate.budyko', { forcing: f.number(c.forcing, 2) }) : c.tau > 0 ? i18n.t('ui.universe.lab.climate.grey', { tau: f.number(c.tau, c.tau < 10 ? 2 : 0) }) : i18n.t('ui.universe.lab.climate.airless'), 'lab-climate-greenhouse') : []),
+          ...(c ? row(i18n.t('ui.universe.lab.climate.greenhouse'), c.model === 'budyko' ? i18n.t('ui.universe.lab.climate.budyko', { forcing: f.number(c.forcing, 2) }) : c.tau > 0 ? i18n.t('ui.universe.lab.climate.grey', { tau: f.number(c.tau, c.tau < 10 ? 2 : 0) }) : i18n.t('ui.universe.lab.climate.airless'), 'lab-climate-greenhouse', 'greenhouse') : []),
           ...(c && c.pressurePa >= 1 ? row(i18n.t('ui.universe.lab.climate.pressure'), i18n.t('ui.universe.lab.climate.pressureValue', { value: f.number(c.pressurePa / 1000, c.pressurePa < 10_000 ? 3 : 0) }), 'lab-climate-pressure') : []),
           ...(c && c.gases.length > 0 ? row(i18n.t('ui.universe.lab.climate.gases'), c.gases.map((g) => i18n.t('ui.universe.lab.climate.gas', { gas: i18n.t(`ui.universe.lab.climate.gas.${g.gas}`), share: f.number(g.percent, g.percent < 1 ? 3 : 2) })).join(', '), 'lab-climate-gases') : []),
         );

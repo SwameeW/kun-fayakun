@@ -68,8 +68,8 @@
   "ui.universe.stars.beyond.view.milky-way": "face on, from above",
   "ui.universe.stars.beyond.view.local-group": "the galaxies around ours",
   "ui.universe.stars.beyond.view.web": "the galaxies a survey has mapped",
-  "ui.universe.stars.beyond.scale.galaxy": "The Milky Way here is a model, not a picture: its arms where the parallaxes of star-forming regions trace them (Reid et al. 2019), continued more faintly beyond; its disc and bar at their measured sizes (Bland-Hawthorn and Gerhard 2016). Its stars are not individually known.",
-  "ui.universe.stars.beyond.scale.local-group": "The galaxies of the Local Group where McConnachie’s catalogue (2012) puts them, each a glow its own size and brightness; the four largest as discs of points at their measured sizes and tilts (which side of each is nearer is not known). The Milky Way is the model.",
+  "ui.universe.stars.beyond.scale.galaxy": "The Milky Way here is a model, not a picture. Its arms are where the parallaxes of star-forming regions trace them (Reid et al. 2019), continued more faintly beyond; its disc and bar are at their measured sizes (Bland-Hawthorn and Gerhard 2016). Its stars are not individually known.",
+  "ui.universe.stars.beyond.scale.local-group": "The galaxies of the Local Group are where McConnachie’s catalogue (2012) puts them, each a glow of its own size and brightness. The four largest are discs of points at their measured sizes and tilts; which side of each is nearer is not known. The Milky Way is the model.",
   "ui.universe.stars.beyond.scale.universe": "Each point a galaxy the Sloan Digital Sky Survey measured ({count} drawn), placed by its redshift (Planck 2018’s cosmology). The survey covers part of the sky and takes fewer galaxies farther out: the outline is the survey’s, the filaments and voids the universe’s.",
   "ui.universe.stars.beyond.scale.loading": "Fetching the survey’s galaxies…",
   "ui.universe.stars.hr.title": "The stars by colour and brightness",
@@ -88,5 +88,9 @@
   "ui.universe.stars.radius": "Radius, the Sun’s as 1",
   "ui.universe.stars.mass": "Mass, the Sun’s as 1",
   "ui.universe.stars.luminosity": "All its light, the Sun’s as 1",
-  "ui.universe.stars.archiveStar": "Radius, mass and light as the NASA Exoplanet Archive gives them for a planet’s star."
+  "ui.universe.stars.archiveStar": "Radius, mass and light as the NASA Exoplanet Archive gives them for a planet’s star.",
+  "ui.help.label.lightYear": "Light years and parsecs",
+  "ui.help.label.localGroup": "The Local Group",
+  "ui.help.label.cosmicWeb": "The cosmic web",
+  "ui.help.label.exoplanets": "Planets of other stars"
 }

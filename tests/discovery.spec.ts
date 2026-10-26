@@ -243,10 +243,11 @@ test('the film is held while the analysis is open: no cue scrolls it away and th
   await expect(page.getByTestId('film-held')).toHaveText('');
   await expect.poll(async () => (await snapshot(page)).time, { timeout: 10_000 * SLOW }).toBeGreaterThan(before.time + 0.5);
 
-  // Across the chapter's end at t=172: no outro starts and the next chapter never loads.
-  const end = await openAnalysis(page, kf, 167);
+  // Across the chapter's end: no outro starts and the next chapter never loads.
+  const chapterEnd = chapterContent('ch07').duration;
+  const end = await openAnalysis(page, kf, chapterEnd - 5);
   const nearEnd = await snapshot(page);
-  expect(nearEnd.time, 'the hold began before the end at 172 s').toBeLessThan(171.5);
+  expect(nearEnd.time, `the hold began before the end at ${String(chapterEnd)} s`).toBeLessThan(chapterEnd - 0.5);
   await page.waitForTimeout(6000);
   const after = await snapshot(page);
   expect(after.state).not.toBe('outro');

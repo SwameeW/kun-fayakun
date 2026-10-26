@@ -5,11 +5,20 @@
  * the exposure (CR-2), each given back on leaving.
  */
 import { readFileSync } from 'node:fs';
+import AxeBuilder from '@axe-core/playwright';
+import type { Page } from '@playwright/test';
 import { expect, test } from '../support/fixtures';
 import { SLOW } from '../support/env';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 
 const LIVE = { timeout: 60_000 * SLOW };
+
+/** Photo mode's camera settings (the lens, the exposure, a body kept in view), folded under one button until it is opened. */
+async function openCamera(page: Page): Promise<void> {
+  const camera = page.getByTestId('universe-photo-camera');
+  await expect(camera).toBeVisible(LIVE);
+  if (!(await camera.evaluate((d) => (d as HTMLDetailsElement).open))) await camera.locator('summary').click();
+}
 
 test('photo mode saves the picture with its credits below it', async ({ page, kf, pageErrors }, info) => {
   test.setTimeout(120_000 * SLOW);
@@ -73,6 +82,10 @@ test('photo mode’s lens sets the camera’s field of view, and leaving gives t
   const fov = (): Promise<number> => page.evaluate(() => (window as unknown as { __kf: { app: { camera: { fov: number } } } }).__kf.app.camera.fov);
   const framed = await fov();
   await page.getByTestId('universe-photo').click();
+  await openCamera(page);
+  // The bar and its camera settings, open: axe finds nothing.
+  const results = await new AxeBuilder({ page }).include('.kf-universe-photo-bar').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
   await page.getByTestId('universe-photo-lens').selectOption('20');
   await expect.poll(async () => (await view(page))?.lensFov, LIVE).toBe(20);
   await expect.poll(fov, LIVE).toBeCloseTo(20, 6);
@@ -105,6 +118,7 @@ test('photo mode’s exposure: whole stops through the flash-safe limiter, said 
     }, LIVE)
     .toBe(true);
   // One stop brighter: twice the light, reached by the limiter's ramp, not at once.
+  await openCamera(page);
   await page.getByTestId('universe-photo-exposure').selectOption('1');
   expect((await exposure()).bias).toBe(1);
   await expect.poll(async () => (await exposure()).current / before, LIVE).toBeGreaterThan(1.98);
@@ -149,6 +163,7 @@ test('photo mode keeps a body in its place in the frame as it moves round the wo
       (window as unknown as { __kf: { app: { universeTime(c: { kind: 'rate'; rate: number }): void } } }).__kf.app.universeTime({ kind: 'rate', rate: x });
     }, r);
   await page.getByTestId('universe-photo').click();
+  await openCamera(page);
   await page.getByTestId('universe-photo-track').selectOption('moon');
   await expect.poll(async () => (await view(page))?.tracking, LIVE).toBe('moon');
   // The framing settled after the interface left.

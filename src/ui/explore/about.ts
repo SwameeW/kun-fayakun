@@ -4,6 +4,7 @@ import type { App, BodyId, UniverseView } from '../../core/types';
 import { worldFacts, type WorldFacts } from '../../explore/about';
 import { h, svg } from '../dom';
 import type { Formatters } from './format';
+import { helpButton } from './help';
 
 /**
  * The navigator's "About" the world in view (SpaceEngine's wiki), from cited data only
@@ -41,9 +42,11 @@ export function createAbout(app: App, f: Formatters): About {
 
   const summary = h('summary', {}, i18n.t('ui.universe.about.title', { body: f.name('earth') }));
   const facts = h('dl', { class: 'kf-about-facts', 'data-testid': 'universe-about-facts' });
+  // The world in a few plain words, behind its "?".
+  const plain = h('p', { class: 'kf-help-row kf-about-plain' });
   const picture = h('figure', { class: 'kf-about-compare' });
   const sources = h('p', { class: 'kf-about-sources' });
-  const element = h('details', { class: 'kf-nav-about', 'data-testid': 'universe-about' }, summary, h('div', { class: 'kf-about-body' }, facts, picture, sources));
+  const element = h('details', { class: 'kf-nav-about', 'data-testid': 'universe-about' }, summary, h('div', { class: 'kf-about-body' }, plain, facts, picture, sources));
 
   const km = (value: number): string => f.keep(i18n.t('ui.hud.unit.km', { value: f.number(value, value < 10_000 ? 1 : 0) }));
   /** A number of three figures in powers of ten: "1.90 × 10²⁷". */
@@ -66,7 +69,8 @@ export function createAbout(app: App, f: Formatters): About {
   };
   const au = (kmValue: number, auKm: number): string => f.keep(i18n.t('ui.hud.unit.au', { value: f.number(kmValue / auKm, 3) }));
 
-  const row = (term: string, detail: string, testId: string): HTMLElement[] => [h('dt', {}, term), h('dd', { 'data-testid': `about-${testId}` }, detail)];
+  /** A fact, its term with a "?" in plain words where `topic` names one. */
+  const row = (term: string, detail: string, testId: string, topic?: string): HTMLElement[] => [h('dt', {}, term, topic ? helpButton(app, topic, term) : null), h('dd', { 'data-testid': `about-${testId}` }, detail)];
 
   /** The world beside its comparison, both to the same scale. */
   const compare = (a: WorldFacts, b: WorldFacts): void => {
@@ -93,22 +97,25 @@ export function createAbout(app: App, f: Formatters): About {
     const earth = worldFacts('earth', physical, planets);
     const name = f.name(id);
     summary.textContent = i18n.t('ui.universe.about.title', { body: name });
+    plain.replaceChildren(h('span', {}, i18n.t('ui.universe.about.plain', { body: name })), helpButton(app, `body.${id}`, name));
     const isEarth = id === 'earth';
     const items: HTMLElement[] = [
-      ...row(i18n.t('ui.universe.about.radius'), isEarth ? km(w.meanRadiusKm) : `${km(w.meanRadiusKm)}, ${relative(w.meanRadiusKm / earth.meanRadiusKm)}`, 'radius'),
-      ...row(i18n.t('ui.universe.about.mass'), `${scientific(w.massKg)} kg${isEarth ? '' : `, ${relative(w.massEarths)}`}`, 'mass'),
-      ...row(i18n.t('ui.universe.about.density'), i18n.t('ui.universe.about.densityValue', { value: f.number(w.densityGcm3, 2) }), 'density'),
+      ...row(i18n.t('ui.universe.about.radius'), isEarth ? km(w.meanRadiusKm) : `${km(w.meanRadiusKm)}, ${relative(w.meanRadiusKm / earth.meanRadiusKm)}`, 'radius', 'radius'),
+      ...row(i18n.t('ui.universe.about.mass'), `${scientific(w.massKg)} kg${isEarth ? '' : `, ${relative(w.massEarths)}`}`, 'mass', 'mass'),
+      ...row(i18n.t('ui.universe.about.density'), i18n.t('ui.universe.about.densityValue', { value: f.number(w.densityGcm3, 2) }), 'density', 'density'),
       ...row(
         i18n.t(w.gravityAt === 'equator' ? 'ui.universe.about.gravityEquator' : 'ui.universe.about.gravitySurface'),
         `${i18n.t('ui.universe.about.gravityValue', { value: f.number(w.gravityMs2, w.gravityMs2 < 10 ? 2 : 1) })}${isEarth ? '' : `, ${relative(w.gravityEarths)}`}`,
         'gravity',
+        'gravity',
       ),
-      ...row(i18n.t('ui.universe.about.escape'), f.keep(i18n.t('ui.universe.about.speedValue', { value: f.number(w.escapeKmS, w.escapeKmS < 100 ? 2 : 1) })), 'escape'),
+      ...row(i18n.t('ui.universe.about.escape'), f.keep(i18n.t('ui.universe.about.speedValue', { value: f.number(w.escapeKmS, w.escapeKmS < 100 ? 2 : 1) })), 'escape', 'escape'),
       ...row(
         i18n.t('ui.universe.about.day'),
         w.solarDayDays === null
           ? i18n.t('ui.universe.about.turn', { period: period(w.rotationDays) })
           : i18n.t(w.rotationDays < 0 ? 'ui.universe.about.turnBackSolar' : 'ui.universe.about.turnSolar', { period: period(w.rotationDays), solar: period(w.solarDayDays) }),
+        'day',
         'day',
       ),
     ];
@@ -116,7 +123,7 @@ export function createAbout(app: App, f: Formatters): About {
     if (o?.around === 'sun' && o.semiMajorKm !== null) {
       const years = o.periodDays / 365.25;
       items.push(
-        ...row(i18n.t('ui.universe.about.year'), years >= 1 && !isEarth ? i18n.t('ui.universe.about.years', { years: f.number(years, 2), days: f.number(o.periodDays, 0) }) : f.keep(i18n.t('ui.universe.about.days', { value: f.number(o.periodDays, 2) })), 'year'),
+        ...row(i18n.t('ui.universe.about.year'), years >= 1 && !isEarth ? i18n.t('ui.universe.about.years', { years: f.number(years, 2), days: f.number(o.periodDays, 0) }) : f.keep(i18n.t('ui.universe.about.days', { value: f.number(o.periodDays, 2) })), 'year', 'year'),
         ...row(
           i18n.t('ui.universe.about.orbit'),
           i18n.t(isEarth ? 'ui.universe.about.orbitEarth' : 'ui.universe.about.orbitValue', {
@@ -126,15 +133,16 @@ export function createAbout(app: App, f: Formatters): About {
             i: f.number(Math.abs(o.inclinationDeg ?? 0), 2),
           }),
           'orbit',
+          'orbit',
         ),
       );
     } else if (o?.around === 'earth') {
-      items.push(...row(i18n.t('ui.universe.about.orbit'), i18n.t('ui.universe.about.orbitMoon', { period: period(o.periodDays) }), 'orbit'));
+      items.push(...row(i18n.t('ui.universe.about.orbit'), i18n.t('ui.universe.about.orbitMoon', { period: period(o.periodDays) }), 'orbit', 'orbit'));
     }
     if (w.tiltDeg !== null) {
-      items.push(...row(i18n.t(w.kind === 'planet' ? 'ui.universe.about.tilt' : 'ui.universe.about.tiltEcliptic'), i18n.t('ui.universe.about.degrees', { value: f.number(w.tiltDeg, w.tiltDeg < 10 ? 2 : 1) }), 'tilt'));
+      items.push(...row(i18n.t(w.kind === 'planet' ? 'ui.universe.about.tilt' : 'ui.universe.about.tiltEcliptic'), i18n.t('ui.universe.about.degrees', { value: f.number(w.tiltDeg, w.tiltDeg < 10 ? 2 : 1) }), 'tilt', 'tilt'));
     }
-    const now = row(i18n.t(id === 'moon' ? 'ui.universe.about.nowEarth' : id === 'sun' ? 'ui.universe.about.nowFromEarth' : 'ui.universe.about.nowSun'), '', 'now');
+    const now = row(i18n.t(id === 'moon' ? 'ui.universe.about.nowEarth' : id === 'sun' ? 'ui.universe.about.nowFromEarth' : 'ui.universe.about.nowSun'), '', 'now', id === 'moon' || id === 'sun' ? 'distance' : 'fromSun');
     nowDetail = now[1] ?? null;
     items.push(...now);
     facts.replaceChildren(...items);

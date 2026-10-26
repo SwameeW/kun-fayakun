@@ -240,6 +240,88 @@
       0
     ],
     "minDistance": 2,
-    "maxDistance": 40
+    "maxDistance": 40,
+    "points": [
+      {
+        "id": "milky-way",
+        "t": 6,
+        "kind": "illustration",
+        "titleKey": "discover.ch05.milky-way.title",
+        "text": {
+          "key": "discover.ch05.milky-way.text",
+          "cite": [
+            "bland-hawthorn-gerhard-2016"
+          ]
+        }
+      },
+      {
+        "id": "pull-back",
+        "t": 18,
+        "kind": "model",
+        "titleKey": "discover.ch05.pull-back.title",
+        "text": {
+          "key": "discover.ch05.pull-back.text"
+        }
+      },
+      {
+        "id": "survey",
+        "t": 30,
+        "kind": "measured",
+        "titleKey": "discover.ch05.survey.title",
+        "text": {
+          "key": "discover.ch05.survey.text",
+          "values": {
+            "count": {
+              "constant": "sdss.sample.count",
+              "field": "value",
+              "digits": 0
+            },
+            "lookback": {
+              "constant": "sdss.sample.lookback",
+              "field": "value",
+              "digits": 1
+            }
+          },
+          "cite": [
+            "sdss-dr20"
+          ]
+        }
+      },
+      {
+        "id": "wall",
+        "t": 60,
+        "kind": "measured",
+        "titleKey": "discover.ch05.wall.title",
+        "text": {
+          "key": "discover.ch05.wall.text",
+          "cite": [
+            "gott-2005"
+          ]
+        }
+      },
+      {
+        "id": "observable",
+        "t": 98,
+        "kind": "model",
+        "titleKey": "discover.ch05.observable.title",
+        "text": {
+          "key": "discover.ch05.observable.text",
+          "values": {
+            "radius": {
+              "constant": "universe.observable.radius",
+              "field": "value",
+              "digits": 1
+            }
+          }
+        }
+      }
+    ],
+    "process": {
+      "from": 12,
+      "to": 36,
+      "titleKey": "discover.ch05.process",
+      "startKey": "discover.ch05.process.start",
+      "endKey": "discover.ch05.process.end"
+    }
   }
 }

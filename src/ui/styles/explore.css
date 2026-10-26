@@ -307,6 +307,9 @@
 
 .kf-universe summary::after {
   content: "";
+  /* Sized and turned in any summary (an inline box would show only one of its borders, as a bar). */
+  display: inline-block;
+  vertical-align: middle;
   flex: none;
   inline-size: 0.42rem;
   block-size: 0.42rem;
@@ -1295,7 +1298,8 @@
   border-block-start: 1px solid var(--kf-line);
 }
 
-.kf-nav.is-sheet .kf-nav-list {
+.kf-nav.is-sheet .kf-nav-list,
+.kf-nav.is-sheet .kf-nav-list-head {
   order: 1;
 }
 
@@ -1818,6 +1822,37 @@
   display: contents;
 }
 
+/* The camera's settings: a button that drops them down beneath it. */
+.kf-universe-photo-camera {
+  position: relative;
+}
+
+.kf-universe-photo-camera > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.kf-universe-photo-camera > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kf-universe-photo-camera-body {
+  position: absolute;
+  inset-block-start: calc(100% + var(--kf-space-2));
+  inset-inline-start: 0;
+  display: grid;
+  gap: var(--kf-space-2);
+  min-inline-size: 15rem;
+  max-inline-size: calc(100vw - 2 * var(--kf-gutter));
+  padding: var(--kf-space-2);
+  border-radius: var(--kf-radius);
+  background: rgb(10 12 20 / 0.82);
+}
+
+.kf-photo .kf-universe-photo-bar .kf-universe-photo-camera[open] .kf-btn {
+  opacity: 1;
+}
+
 .kf-photo .kf-universe-photo-bar .kf-btn {
   display: inline-flex;
   opacity: 0.4;
@@ -1827,4 +1862,196 @@
 .kf-photo .kf-universe-photo-bar .kf-btn:hover,
 .kf-photo .kf-universe-photo-bar .kf-btn:focus-visible {
   opacity: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Plain-words help (src/ui/explore/help.ts, help-popover.ts)          */
+/* ------------------------------------------------------------------ */
+
+/* The "?" beside a label: small and quiet until pointed at; on a touch screen a full-size target. */
+.kf-help {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin-inline-start: var(--kf-space-1);
+  padding: 0;
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--kf-text-muted);
+  font: 600 0.6875rem/1 var(--kf-font-ui);
+  vertical-align: middle;
+  cursor: help;
+}
+
+.kf-help:hover,
+.kf-help[aria-expanded="true"] {
+  border-color: var(--kf-gold);
+  color: var(--kf-gold-strong);
+}
+
+.kf-help:focus-visible {
+  outline: 2px solid var(--kf-gold-strong);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  /* A 44 px target whose visible circle stays small: the transparent border is the extra reach. */
+  .kf-help,
+  .kf-help:hover,
+  .kf-help[aria-expanded="true"] {
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    margin-block: -0.625rem;
+    border: 0.625rem solid transparent;
+    background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px var(--kf-line-strong);
+  }
+
+  .kf-help[aria-expanded="true"] {
+    box-shadow: inset 0 0 0 1px var(--kf-gold);
+  }
+}
+
+/* A label and its "?" on one line. */
+.kf-help-row {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-1);
+  min-inline-size: 0;
+}
+
+.kf-help-row > :first-child {
+  min-inline-size: 0;
+}
+
+.kf-help-row > .kf-help {
+  margin-inline-start: 0;
+}
+
+/* The explanation: a small card beside its "?", inside the screen. */
+.kf-help-pop {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: var(--kf-space-1);
+  inline-size: max-content;
+  max-inline-size: 20rem;
+  padding: var(--kf-space-3);
+  border: 1px solid var(--kf-gold-soft);
+  border-radius: var(--kf-radius);
+  background: rgb(10 12 20 / 0.96);
+  color: var(--kf-text);
+  box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.5);
+  font-family: var(--kf-font-ui);
+}
+
+.kf-help-pop:focus-visible {
+  outline: 2px solid var(--kf-gold-strong);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kf-help-pop:not([hidden]) {
+    animation: kf-help-in 160ms var(--kf-ease);
+  }
+
+  @keyframes kf-help-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+.kf-help-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+}
+
+.kf-help-title {
+  margin: 0;
+  color: var(--kf-gold-strong);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.kf-help-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.kf-help-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  margin: -0.25rem -0.25rem 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--kf-text-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kf-help-close:hover,
+.kf-help-close:focus-visible {
+  color: var(--kf-text);
+}
+
+@media (pointer: coarse) {
+  .kf-help-close {
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+  }
+}
+
+/* A section's "?" at the top corner of its body (the laboratory's sections and groups). */
+.kf-help-corner {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-end: calc(-1 * var(--kf-space-2));
+}
+
+/* The list's heading in the navigator: what its figures are. */
+.kf-nav-list-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--kf-space-1);
+  margin: var(--kf-space-1) var(--kf-space-3) var(--kf-space-2);
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+}
+
+.kf-nav-list-head > span {
+  margin-inline-end: auto;
+}
+
+.kf-nav-sound {
+  display: flex;
+  align-items: center;
+}
+
+.kf-universe-photo-help {
+  margin: 0;
+  color: var(--kf-text);
+  font-size: 0.8125rem;
+}
+
+.kf-universe-photo-help > span {
+  margin-inline-end: auto;
+}
+
+.kf-universe-time-hijri-row {
+  display: inline-flex;
+  align-items: center;
 }

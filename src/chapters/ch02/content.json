@@ -1,6 +1,6 @@
 {
   "id": "ch02",
-  "duration": 90,
+  "duration": 86,
   "intro": {
     "titleKey": "ch02.intro.title",
     "subtitleKey": "ch02.intro.subtitle",
@@ -329,7 +329,7 @@
       ]
     },
     {
-      "t": 90,
+      "t": 86,
       "position": [
         7.4,
         7,
@@ -349,6 +349,79 @@
       0
     ],
     "minDistance": 16,
-    "maxDistance": 55
+    "maxDistance": 55,
+    "points": [
+      {
+        "id": "plasma",
+        "t": 8,
+        "kind": "model",
+        "titleKey": "discover.ch02.plasma.title",
+        "text": {
+          "key": "discover.ch02.plasma.text"
+        }
+      },
+      {
+        "id": "clear",
+        "t": 21,
+        "kind": "model",
+        "titleKey": "discover.ch02.clear.title",
+        "text": {
+          "key": "discover.ch02.clear.text",
+          "values": {
+            "age": {
+              "constant": "recombination.age",
+              "field": "value",
+              "digits": 0
+            },
+            "temp": {
+              "constant": "recombination.temperature",
+              "field": "value",
+              "digits": 0
+            }
+          }
+        }
+      },
+      {
+        "id": "sky",
+        "t": 36,
+        "kind": "measured",
+        "titleKey": "discover.ch02.sky.title",
+        "text": {
+          "key": "discover.ch02.sky.text",
+          "values": {
+            "temp": {
+              "constant": "cmb.temperature",
+              "field": "value",
+              "digits": 4
+            }
+          },
+          "cite": [
+            "planck-pr3-smica"
+          ]
+        }
+      },
+      {
+        "id": "globe",
+        "t": 50,
+        "kind": "measured",
+        "titleKey": "discover.ch02.globe.title",
+        "text": {
+          "key": "discover.ch02.globe.text",
+          "cite": [
+            "planck-pr3-smica"
+          ]
+        }
+      }
+    ],
+    "process": {
+      "from": 15,
+      "to": 34,
+      "titleKey": "discover.ch02.process",
+      "startKey": "discover.ch02.process.start",
+      "endKey": "discover.ch02.process.end"
+    },
+    "extras": [
+      "cmb"
+    ]
   }
 }

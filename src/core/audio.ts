@@ -1,5 +1,8 @@
 /**
- * Audio policy (spec §6): silent by default, no music, no audio assets in M1.
+ * Audio policy (spec §6): no music, no instrument, no voice. The film's sounds come from what it
+ * shows (src/core/film-score.ts); the explorer's are the wind where there is air, or a suit's fans
+ * where there is none (src/explore/sound.ts). All made in Web Audio, no audio assets; one Sound
+ * choice turns both off (the film's speaker, the navigator's foot).
  *
  * Two buses (ambient, scene) feed the output through gains the engine controls.
  * Recitation (M4) never goes through Web Audio: it plays on its own media
@@ -24,6 +27,8 @@ export interface AudioEngine {
 
 const DUCK_LEVEL = 0.25;
 const RAMP_SECONDS = 0.8;
+/** A pause fades the sound out this fast before the context is suspended. */
+const PAUSE_FADE_SECONDS = 0.12;
 
 export function createAudioEngine(): AudioEngine {
   let context: AudioContext | null = null;
@@ -32,6 +37,7 @@ export function createAudioEngine(): AudioEngine {
   let reciting: HTMLAudioElement | null = null;
   let endRecitation: (() => void) | null = null;
   let paused = false;
+  let suspendTimer = 0;
 
   const level = (): number => (reciting ? 0 : ducked ? DUCK_LEVEL : 1);
 
@@ -41,7 +47,7 @@ export function createAudioEngine(): AudioEngine {
     for (const gain of buses.values()) {
       gain.gain.cancelScheduledValues(now);
       gain.gain.setValueAtTime(gain.gain.value, now);
-      gain.gain.linearRampToValueAtTime(level(), now + RAMP_SECONDS);
+      gain.gain.linearRampToValueAtTime(paused ? 0 : level(), now + RAMP_SECONDS);
     }
   };
 
@@ -67,7 +73,7 @@ export function createAudioEngine(): AudioEngine {
       if (existing) return existing;
       const ctx = ensureContext();
       const gain = ctx.createGain();
-      gain.gain.value = level();
+      gain.gain.value = paused ? 0 : level();
       gain.connect(ctx.destination);
       buses.set(kind, gain);
       return gain;
@@ -111,7 +117,21 @@ export function createAudioEngine(): AudioEngine {
         if (paused) reciting.pause();
         else void reciting.play().catch(() => undefined);
       }
-      if (context) void (paused ? context.suspend() : context.resume());
+      const ctx = context;
+      if (!ctx) return;
+      // Faded out before the context stops, and back in after it starts, so a pause never clicks.
+      const now = ctx.currentTime;
+      for (const gain of buses.values()) {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(paused ? 0 : level(), now + (paused ? PAUSE_FADE_SECONDS : RAMP_SECONDS));
+      }
+      window.clearTimeout(suspendTimer);
+      if (paused) {
+        suspendTimer = window.setTimeout(() => {
+          if (paused) void ctx.suspend();
+        }, PAUSE_FADE_SECONDS * 1000 + 30);
+      } else void ctx.resume();
     },
     dispose() {
       this.stopRecitation();

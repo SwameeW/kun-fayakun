@@ -103,13 +103,13 @@ export function createStageCards(app: App): StageCards {
     if (!next && index >= 0) outro.prepend(credits());
   }
 
-  /** End credits: the creators, then every source and licence, the review status and the disclaimer. */
+  /** End credits: the app's name, then every source and licence, the review status and the disclaimer. */
   function credits(): HTMLElement {
     const file = app.data.sources();
     const roll = h(
       'div',
       { class: 'kf-credits-roll' },
-      h('p', { class: 'kf-credits-made' }, i18n.t('ui.credits.createdBy', { names: i18n.t('ui.credits.creators') })),
+      h('p', { class: 'kf-credits-made' }, i18n.t('ui.credits.app')),
       h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.sources')),
       h('ul', { class: 'kf-credits-list' }, ...file.sources.map((s) => h('li', {}, h('span', { class: 'kf-credits-title' }, s.title), h('span', { class: 'kf-credits-credit' }, s.credit), h('span', { class: 'kf-credits-license' }, s.license)))),
       h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.reviews')),
