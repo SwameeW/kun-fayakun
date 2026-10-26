@@ -34,6 +34,7 @@ export interface KfHook {
     frameStats(): FrameStats;
     resetFrameStats(): void;
     step(frames?: number, dt?: number): void;
+    camera(): { position: [number, number, number]; fov: number };
     universe: { state(): UniverseView | null; place(pose: UniversePose): void };
     /** The film's sound (src/ui/film-sound.ts): what plays now, and an offline render of a chapter's stretch. */
     filmSound?: {

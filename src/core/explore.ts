@@ -19,8 +19,8 @@ export interface ExploreController {
   enable(limits: ExploreLimits, lookAt: Vector3): void;
   /**
    * Eases to a view (a moment's, from the film's camera path): the orbit then centres on its target,
-   * within limits wide enough for it. Instant when motion should be gentle. null: back to where
-   * Explore Mode began, within the chapter's own limits.
+   * within limits wide enough for it. Instant when motion should be gentle. null: back to where the
+   * visitor was before the first moment they visited (or where Explore Mode began), with the limits then.
    */
   focus(view: ExploreView | null): void;
   disable(): void;
@@ -68,6 +68,8 @@ export function createExploreController(
   let home: { limits: ExploreLimits; view: ExploreView } | null = null;
   /** A view being eased to (cleared when the visitor takes the camera). */
   let goal: ExploreView | null = null;
+  /** Where the visitor was, with the limits then, before the first moment was visited: focus(null) goes back there. */
+  let before: { view: ExploreView; limits: ExploreLimits } | null = null;
   // The target eases toward the chapter's explore target until the user takes over.
   let settling = false;
 
@@ -135,18 +137,22 @@ export function createExploreController(
       settling = true;
       goal = null;
       home = { limits: next, view: { position: camera.position.clone(), target: lookAt.clone(), fov: camera.fov } };
+      before = null;
       pressed.clear();
       controls.enabled = true;
       controls.update();
     },
     focus(view) {
-      if (!controls.enabled || !home) return;
-      const to = view ?? home.view;
+      if (!controls.enabled || !home || !limits) return;
+      if (view && !before) before = { view: { position: camera.position.clone(), target: controls.target.clone(), fov: camera.fov }, limits };
+      const back = view ? null : (before ?? { view: home.view, limits: home.limits });
+      if (!view) before = null;
+      const to = view ?? back?.view ?? home.view;
       const distance = to.position.distanceTo(to.target);
-      // Centred on the view's target, with room for its distance (the chapter's own limits when going home).
+      // Centred on the view's target, with room for its distance; back where the visitor was, with the limits then.
       limits = view
         ? { target: [to.target.x, to.target.y, to.target.z], minDistance: Math.min(home.limits.minDistance, distance * 0.25), maxDistance: Math.max(home.limits.maxDistance, distance * 2) }
-        : home.limits;
+        : (back?.limits ?? home.limits);
       center.set(...limits.target);
       controls.minDistance = Math.min(controls.minDistance, limits.minDistance);
       controls.maxDistance = Math.max(controls.maxDistance, limits.maxDistance, distance);
@@ -167,6 +173,7 @@ export function createExploreController(
       limits = null;
       home = null;
       goal = null;
+      before = null;
     },
     update(dt) {
       if (!controls.enabled || !limits) return;

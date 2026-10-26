@@ -100,16 +100,29 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   // The autopilot: round the orbit at its far side, about half an orbit away (some 50 minutes), for
   // a little under the 100 m/s that raised it.
   await expect(page.getByTestId('lab-ship-circularise')).toBeEnabled();
-  const round = (await shipOf(page))?.ship?.circularise;
+  const paused = await shipOf(page);
+  const round = paused?.ship?.circularise;
   expect(round?.possible).toBe(true);
   expect(round?.deltaVMs ?? 0).toBeGreaterThan(80);
   expect(round?.deltaVMs ?? 0).toBeLessThan(100);
+  // The far side comes when Kepler's equation says, from the ship's own elements where it was paused
+  // (wherever on its orbit that is): mean anomaly pi, against its mean anomaly now.
+  const orbit = paused?.orbit;
+  const e = orbit?.e ?? 0;
+  const period = orbit?.periodS ?? 0;
+  const nu = ((orbit?.trueAnomalyDeg ?? 0) * Math.PI) / 180;
+  const E = 2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+  const M = E - e * Math.sin(E);
+  const toFarSide = ((((Math.PI - M) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * period;
+  expect(period).toBeGreaterThan(0);
+  expect(Math.abs((round?.inS ?? 0) - toFarSide), `far side in ${String(round?.inS)} s; Kepler: ${String(toFarSide)} s`).toBeLessThan(0.01 * period);
   await page.getByTestId('lab-ship-circularise').click();
   await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 0, LIVE).toBe(1);
   const planned = (await shipOf(page))?.ship?.burns[0];
   expect(planned?.direction).toBe('prograde');
   expect(planned?.deltaVMs ?? 0).toBeCloseTo(round?.deltaVMs ?? 0, 0);
-  expect(planned?.inS ?? 0).toBeGreaterThan(1500);
+  // Centred on the far side: it starts half its length before it.
+  expect(Math.abs((planned?.inS ?? 0) - ((round?.inS ?? 0) - (planned?.durationS ?? 0) / 2))).toBeLessThan(1);
   await page.getByTestId('lab-ship-cancel').click();
   await expect.poll(async () => (await shipOf(page))?.ship?.burns.length ?? 1, LIVE).toBe(0);
   // A burn planned for an hour from now, and called off.
