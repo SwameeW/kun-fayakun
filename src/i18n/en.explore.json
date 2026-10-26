@@ -173,7 +173,7 @@
   "ui.universe.field.site.nazareth": "Nazareth",
   "ui.universe.field.site.adams-peak": "Adam’s Peak (Sri Pada), Sri Lanka",
   "ui.universe.field.prophet.adam.name": "Adam, peace be upon him",
-  "ui.universe.field.prophet.adam.text": "By tradition, the first human and the first prophet. Early Muslim histories record that he came down to Earth in Sarandib, the island now Sri Lanka, and Muslims have long linked him with the mountain there called Adam’s Peak, marked here (it is holy to other faiths too). These reports are weakly attested, and others name other places.",
+  "ui.universe.field.prophet.adam.text": "By tradition, the first human and the first prophet. Early Muslim histories record that he came down to Earth in Sarandib, the island now called Sri Lanka. Muslims have long linked him with the mountain there called Adam’s Peak, marked here; it is holy to other faiths too. These reports are weakly attested, and others name other places.",
   "ui.universe.field.prophet.idris.name": "Idris, peace be upon him",
   "ui.universe.field.prophet.idris.text": "Little is narrated of his life. Some traditions place him in Babylon and in Egypt; none is certain, so no place is marked.",
   "ui.universe.field.prophet.nuh.name": "Nuh (Noah), peace be upon him",
@@ -183,7 +183,7 @@
   "ui.universe.field.prophet.salih.name": "Salih, peace be upon him",
   "ui.universe.field.prophet.salih.text": "By tradition, sent to the people of Thamud, who carved their homes from the rock. Tradition places them at al-Hijr, by Hegra in north-west Arabia, marked here; the tombs seen there now were cut later, by the Nabataeans.",
   "ui.universe.field.prophet.ibrahim.name": "Ibrahim (Abraham), peace be upon him",
-  "ui.universe.field.prophet.ibrahim.text": "By tradition, he left Mesopotamia, by way of Harran in today’s Türkiye, for the land of Canaan; with his son Ismail he raised the House at Makkah; and he is buried at Hebron, whose Arabic name, al-Khalil, is his.",
+  "ui.universe.field.prophet.ibrahim.text": "By tradition, he left Mesopotamia, by way of Harran in today’s Türkiye, for the land of Canaan. With his son Ismail he raised the House at Makkah, and he is buried at Hebron, whose Arabic name, al-Khalil, is his.",
   "ui.universe.field.prophet.lut.name": "Lut (Lot), peace be upon him",
   "ui.universe.field.prophet.lut.text": "By tradition, sent to the towns of the plain beside the Dead Sea. Where those towns stood is not known; the sea itself is marked.",
   "ui.universe.field.prophet.ismail.name": "Ismail (Ishmael), peace be upon him",
@@ -398,5 +398,5 @@
   "ui.universe.walk.airVenus": "Air {kpa} kPa at your feet, mostly carbon dioxide · Venus’s mean surface temperature {mean} °C (not today’s)",
   "ui.universe.walk.vacuumMercury": "No air: a vacuum (a thin exosphere) · the ground averages {mean} °C, and {min} to {max} °C on the side toward the Sun",
   "ui.universe.walk.creditMercury": "Ground: the heights MESSENGER measured (USGS’s global elevation model), about 5.3 km apart, with illustrative grain, craters and stones between them, credited on the Sources page; its colour as from orbit.",
-  "ui.universe.walk.creditVenus": "Ground: the heights Magellan measured by radar (USGS’s global topography), about 13 km apart, Magellan’s gaps filled from around them, with illustrative grain and stones between them, credited on the Sources page; its colour, light and sky illustrative (no Sun or star is seen under the clouds)."
+  "ui.universe.walk.creditVenus": "Ground: the heights Magellan measured by radar (USGS’s global topography), about 13 km apart, with Magellan’s gaps filled from around them and illustrative grain and stones between them, credited on the Sources page. Its colour, light and sky are illustrative: no Sun or star is seen under the clouds."
 }

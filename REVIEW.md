@@ -62,6 +62,15 @@ scholarly text or science text change later, that area needs review again.
   does it keep to the meaning without passing for the Quran's words? Matters of
   belief are worded as the commentators word them (for example "rose above the
   Throne" for istawa in 7:54, 25:59 and 32:4, without explaining how).
+- **Readability (owner, 2026-10-26).** Long sentences in these summaries were split
+  for a first reading, with nothing added or dropped: `ch00.scholarly.classical.command`,
+  `ch01.scholarly.classical.joined`, `ch01.scholarly.classical.rain`,
+  `ch02.scholarly.classical.order`, `ch06.scholarly.classical.might`,
+  `ch07.scholarly.classical.falak`, `ch08.scholarly.classical.order`,
+  `ch10.scholarly.classical.scroll`, and the hadith summaries
+  `ch00.hadith.bukhari3191.summary` and `ch00.hadith.before.summary`. Check that
+  each still says what the scholar or narration says. `ch00.scholarly.classical.pen`
+  keeps the spec's wording.
 - **Tafsir summaries.** The classical reading comes first: Ibn Kathir,
   al-Tabari, al-Qurtubi. Each summary must be faithful to the cited scholar.
   Modern readings must be labelled "Some modern writers read this as...", and

@@ -56,7 +56,7 @@
   "help.kaabaSun": "Twice a year the Sun passes straight overhead at the Kaaba. At that moment the shadow of anything standing upright in the sunlit half of the world points away from the qibla, so a stick can show the way.",
   "help.prayerTimes": "Muslims pray five times a day, at times set by where the Sun is in the sky: dawn, midday, afternoon, sunset and night. Different organisations use slightly different rules, so you can choose one.",
   "help.convention": "Each organisation has its own rule for working out prayer times. They differ mostly in how far below the horizon the Sun must be for the dawn and night prayers.",
-  "help.asr": "Asr, the afternoon prayer, begins when a stick’s shadow has grown longer than it was at midday: by the stick’s own length in one way of counting, or by twice its length in another.",
+  "help.asr": "Asr, the afternoon prayer, begins when a stick’s shadow has grown longer than it was at midday: by the stick’s own length in one way of counting, by twice its length in another.",
   "help.astrolabe": "An astrolabe is an old instrument that shows the sky on a flat plate. Astronomers in the Islamic world used it to tell the time and find the stars. This one shows the sky for your place right now.",
   "help.golden": "The golden ratio is a special number, about 1.618, found in some shapes in nature and art. This shows how close the Kaaba’s latitude comes to the place that splits the way between the poles in that ratio: a closeness of numbers, not a proof of anything.",
   "help.newMoon": "At new moon the Moon is between the Earth and the Sun, so its lit side faces away and we can’t see it. A day or so later a thin crescent may appear after sunset, and many communities begin each Islamic month when it is seen.",
@@ -65,7 +65,7 @@
   "help.heritage": "Places where great astronomers and mathematicians of the Islamic world lived and worked. Tap Go to visit them.",
 
   "help.lightYear": "A light year is how far light travels in a year: about 9.5 million million kilometres. A parsec is about 3.26 light years.",
-  "help.parallax": "Telescopes find a star’s distance by watching it shift a tiny bit as the Earth goes around the Sun, the way your finger seems to jump when you look at it with one eye and then the other.",
+  "help.parallax": "Telescopes find a star’s distance by watching it shift a tiny bit as the Earth goes around the Sun. It is like the way your finger seems to jump when you look at it with one eye and then the other.",
   "help.spectralType": "A star’s type tells you how hot it is and what colour it shines, from hot blue-white stars to cool red ones. The Sun is a yellow-white star of type G.",
   "help.temperature": "How hot the star’s glowing surface is, in kelvin (degrees above the coldest possible). The Sun’s surface is about 5,800 kelvin.",
   "help.absoluteMagnitude": "How bright the star would look if every star were set at the same distance. The smaller the number, the brighter the star really shines.",
@@ -121,6 +121,6 @@
   "help.graph": "Follow a number over time, like a distance or a speed, as a line on a chart.",
   "help.lessons": "Short guided experiments that show one idea at a time, with the number science expects beside the number the experiment gives.",
 
-  "help.camera": "Settings for your picture: how wide the view is (the lens), how bright it is (the exposure), and whether to keep another world in the same place in the frame as time runs.",
+  "help.camera": "Settings for your picture: how wide the view is (the lens) and how bright it is (the exposure). You can also keep another world in the same place in the frame as time runs.",
   "help.tour": "Fly from one saved view to the next, like a little film. Record a video while it plays!"
 }
