@@ -6,6 +6,7 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import type { App, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
 import { SLOW } from './env';
+import { mockLiveHosts } from './live';
 
 export interface KfOptions {
   /** Add ?forceWebGL=1 to every navigation (the "webgl2" project). */
@@ -122,6 +123,8 @@ export const test = base.extend<Fixtures & KfOptions>({
 
   page: async ({ page, forceWebGL }, use) => {
     if (forceWebGL) await page.addInitScript(ensureForceWebGL);
+    // No test reaches the Living Earth's live services (tests/support/live).
+    await mockLiveHosts(page);
     await use(page);
   },
 

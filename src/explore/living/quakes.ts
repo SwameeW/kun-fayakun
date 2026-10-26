@@ -208,6 +208,8 @@ export function createQuakeLayer(): QuakeLayer {
       const x = frame.earth.x + v.x * (m[0] ?? 1) + v.y * (m[3] ?? 0) + v.z * (m[6] ?? 0);
       const y = frame.earth.y + v.x * (m[1] ?? 0) + v.y * (m[4] ?? 1) + v.z * (m[7] ?? 0);
       const z = frame.earth.z + v.x * (m[2] ?? 0) + v.y * (m[5] ?? 0) + v.z * (m[8] ?? 1);
+      // Only on the side of the Earth facing the camera (at the origin): never through the planet.
+      if ((x - frame.earth.x) * x + (y - frame.earth.y) * y + (z - frame.earth.z) * z > 0) return [];
       return [{ id: `quake-${top.id}`, textKey: 'ui.universe.quake', text: `M${top.magnitude.toFixed(1)}`, position: [x, y, z], opacity: 0.9 * uFade.value, offset: [14, -14] }];
     },
     dispose() {

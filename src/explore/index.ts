@@ -56,6 +56,9 @@ import { createUploader } from './assets/upload';
 import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createEarthTiles, type EarthTiles } from './earth-tiles';
 import { lastWholeDay } from './earth-tiles/sources';
+import { composeBulletin } from './field-notes/bulletin';
+import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes/data';
+import { centralAngle, loadPlaces, type Place } from './field-notes/places';
 import { createQuakeLayer, type QuakeLayer } from './living/quakes';
 import { createSatelliteLayer, type SatelliteLayer } from './living/satellites';
 import { fineDetailShown } from './bodies/earth';
@@ -86,6 +89,14 @@ const SATELLITE_PICK_PX = 9;
 const LIVING_RANGE_KM = 4e6;
 /** The narrowest lens over the day's mosaic (its 250 m pixels at about four screen pixels each from the lowest orbit). */
 const TODAY_LENS_MIN_DEG = 6;
+/**
+ * The field notes' names on the ground: shown within this distance of the Earth's centre (km), kept
+ * this many CSS px apart (in their list's order: the rest give way until the view comes closer), and
+ * eased in and out at this share a frame.
+ */
+const MARKER_RANGE_KM = 60_000;
+const MARKER_SPACING_PX = 64;
+const MARKER_EASE = 0.12;
 const UNIX_EPOCH_JD = 2440587.5;
 
 /** Exposure adapts to sunlight as r^EXPOSURE_POWER (2 would be full adaptation), r in au. */
@@ -265,6 +276,11 @@ export default function create(): UniverseModule {
   let satellites: SatelliteLayer | null = null;
   let quakes: QuakeLayer | null = null;
   const living = { earth: { x: 0, y: 0, z: 0 }, sun: { x: 1, y: 0, z: 0 } };
+  /** The field notes: the world's places (for the bulletin's "near"), the set named on the ground, and their fades. */
+  let places: readonly Place[] = [];
+  let markerSet: 'atlas' | 'prophets' | null = null;
+  const markerFade = new Map<string, number>();
+  let bulletinClock = Number.POSITIVE_INFINITY;
   /** The Earth's transmittance table: baked on the first frame (it needs the renderer). */
   let airTable: TransmittanceTable | null = null;
   /**
@@ -484,8 +500,10 @@ export default function create(): UniverseModule {
   const detailView: UniverseView['detail'] = { tier: detail.tier, choice: 'auto', available, renderScale, fixed };
   const tripView: NonNullable<UniverseView['trip']> = { progress: 0, remainingKm: 0, startKm: 0, endKm: 0 };
   const livingView: UniverseLiving = {
-    satellites: { state: 'off', count: 0, byKind: { station: 0, starlink: 0, oneweb: 0, navigation: 0, geostationary: 0, other: 0 }, fetchedMs: 0, selected: null },
+    satellites: { state: 'off', count: 0, byKind: { station: 0, starlink: 0, oneweb: 0, navigation: 0, geostationary: 0, other: 0 }, sunlit: 0, fetchedMs: 0, selected: null },
     quakes: { state: 'off', fetchedMs: 0, list: [] },
+    station: null,
+    bulletin: null,
   };
   const lensView = { deg: 50, metresPerPixel: 0 };
   const viewState: UniverseView = {
@@ -553,6 +571,7 @@ export default function create(): UniverseModule {
     v.imagery = earthTiles ? earthTiles.stats : null;
     livingView.satellites = satellites ? { ...satellites.status, selected: satellites.selected } : livingView.satellites;
     livingView.quakes = quakes ? { state: quakes.status.state, fetchedMs: quakes.status.fetchedMs, list: quakes.quakes } : livingView.quakes;
+    livingView.station = satellites?.station ?? null;
     v.living = satellites || quakes ? livingView : null;
     if (nav.lensActive && placed.earth.distance > 0) {
       lensView.deg = nav.lens;
@@ -761,6 +780,12 @@ export default function create(): UniverseModule {
     return { altitudeKm: floor, lensDeg: MathUtils.radToDeg(2 * Math.atan(viewKm / 2 / floor)) };
   };
 
+  /** Whether a point on the Earth (degrees) is near enough to Makkah that the view keeps its distance (MAKKAH_FRAME). */
+  const nearMakkah = (sys: SolarSystem, lat: number, lon: number): boolean => {
+    const makkah = site('mecca');
+    return makkah !== undefined && centralAngle(lat, lon, makkah.lat, makkah.lon) * sys.specs.earth.radiusKm < MAKKAH_FRAME.radiusKm;
+  };
+
   /** Flies to a place on the Earth (degrees) framing `viewKm` of ground: to the Earth first if elsewhere. */
   const goToPlace = (lat: number, lon: number, viewKm: number): void => {
     if (!world || !system || !entered) return;
@@ -770,8 +795,59 @@ export default function create(): UniverseModule {
       pendingPlace = { lat, lon, viewKm };
       return;
     }
-    const { altitudeKm, lensDeg } = framing(viewKm);
+    const { altitudeKm, lensDeg } = framing(nearMakkah(system, lat, lon) ? Math.max(viewKm, MAKKAH_FRAME.minWidthKm) : viewKm);
     nav.glideTo(world, placeDirection(system, lat, lon, km()), altitudeKm, lensDeg);
+  };
+
+  /** Where the Sun is overhead on the Earth now (degrees): its direction (living.sun) in the Earth's own frame. */
+  const subSolar = (sys: SolarSystem): { lat: number; lon: number } => {
+    const m = sys.bodies.earth.basis;
+    const s = living.sun;
+    const bx = s.x * (m[0] ?? 1) + s.y * (m[1] ?? 0) + s.z * (m[2] ?? 0);
+    const by = s.x * (m[3] ?? 0) + s.y * (m[4] ?? 1) + s.z * (m[5] ?? 0);
+    const bz = s.x * (m[6] ?? 0) + s.y * (m[7] ?? 0) + s.z * (m[8] ?? 1);
+    const r = Math.max(Math.hypot(bx, by, bz), 1e-12);
+    return { lat: MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, by / r)))), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)) };
+  };
+
+  const markerAt = km();
+  const markerSpots: Array<[number, number, number]> = [];
+  /**
+   * The field notes' places named on the ground (the set the interface chose): each on the Earth's
+   * side facing the camera, and kept MARKER_SPACING_PX from those before it in its list, eased in and
+   * out (a name never pops).
+   */
+  const pushMarkers = (sys: SolarSystem, show: boolean, pxPerTan: number): void => {
+    const list: readonly FieldPlace[] = markerSet === 'atlas' ? ATLAS : markerSet === 'prophets' ? SITES : [];
+    const radius = sys.specs.earth.radiusKm * 1.0005;
+    const e = placed.earth.drawn;
+    markerSpots.length = 0;
+    const wanted = new Set<string>();
+    for (const p of list) {
+      if (!show) break;
+      const n = placeDirection(sys, p.lat, p.lon, markerAt);
+      const x = e.x + n.x * radius;
+      const y = e.y + n.y * radius;
+      const z = e.z + n.z * radius;
+      // Facing the camera (at the origin): the ground's normal points back toward it.
+      if (n.x * x + n.y * y + n.z * z > 0) continue;
+      const d = Math.max(Math.hypot(x, y, z), 1e-9);
+      if (markerSpots.some(([qx, qy, qz]) => (Math.hypot(qx - x, qy - y, qz - z) / d) * pxPerTan < MARKER_SPACING_PX)) continue;
+      markerSpots.push([x, y, z]);
+      wanted.add(p.id);
+    }
+    for (const p of [...ATLAS, ...SITES]) {
+      const target = wanted.has(p.id) ? 1 : 0;
+      const fade = (markerFade.get(p.id) ?? 0) + (target - (markerFade.get(p.id) ?? 0)) * MARKER_EASE;
+      if (fade < 0.01 && target === 0) {
+        markerFade.delete(p.id);
+        continue;
+      }
+      markerFade.set(p.id, fade);
+      const n = placeDirection(sys, p.lat, p.lon, markerAt);
+      const textKey = ATLAS.includes(p) ? `ui.universe.field.atlas.${p.id}.name` : `ui.universe.field.site.${p.id}`;
+      labels.push({ id: `field-${p.id}`, textKey, position: [e.x + n.x * radius, e.y + n.y * radius, e.z + n.z * radius], opacity: 0.92 * fade, offset: [0, -14] });
+    }
   };
 
   /**
@@ -1010,7 +1086,16 @@ export default function create(): UniverseModule {
       }
       // Scene pixels: the canvas's, at the internal render scale.
       const scenePxPerTan = (c.renderer.domElement.height * renderScale) / (2 * tanHalf);
-      earthTiles.update(entering || stretch.amount < 1 ? null : earthAim(sys, scenePxPerTan), dt, c.reducedMotion);
+      const aim = entering || stretch.amount < 1 ? null : earthAim(sys, scenePxPerTan);
+      earthTiles.update(aim, dt, c.reducedMotion);
+      // How far the lens may narrow: the day mosaic stops at 250 m per pixel, and over Makkah the
+      // view stays wide enough to frame the city in its valley (MAKKAH_FRAME), never closer.
+      let lensMin = earthTiles.mode === 'today' ? TODAY_LENS_MIN_DEG : ZOOM_LENS.minDeg;
+      if (aim && nav.focus === 'earth' && nearMakkah(sys, MathUtils.radToDeg(aim.lat), MathUtils.radToDeg(aim.lon))) {
+        const above = Math.max(1, placed.earth.distance - sys.specs.earth.radiusKm);
+        lensMin = Math.max(lensMin, MathUtils.radToDeg(2 * Math.atan(MAKKAH_FRAME.minWidthKm / 2 / above)));
+      }
+      if (lensMin !== nav.lensMinDeg) nav.setLensMin(lensMin);
     }
     unit(sunDir, sys.bodies.mercury.position, sun);
     bodies.mercury.update({ time: ambient, sun: sunDir, light: lightAt('mercury'), earth: toEarth, earthLit: 0 }, origin3);
@@ -1114,6 +1199,20 @@ export default function create(): UniverseModule {
       quakes?.update({ unixMs, earth: living.earth, basis: sys.bodies.earth.basis, earthRadiusKm: sys.specs.earth.radiusKm, visible: near, time: ambient, reducedMotion: c.reducedMotion });
       if (satellites) for (const l of satellites.labels()) labels.push(l);
       if (quakes) for (const l of quakes.labels()) labels.push(l);
+      pushMarkers(sys, near && pe.distance < MARKER_RANGE_KM, pxPerTan);
+      // The field notes' bulletin, about once a second (its facts change slowly; the places it names, slower).
+      bulletinClock += dt;
+      if (bulletinClock >= 1 && places.length > 0) {
+        bulletinClock = 0;
+        livingView.bulletin = composeBulletin({
+          sun: subSolar(sys),
+          radiusKm: sys.specs.earth.radiusKm,
+          places,
+          station: satellites?.station ?? null,
+          satellites: satellites?.status.state === 'ready' ? { count: satellites.status.count, sunlit: satellites.status.sunlit } : null,
+          quakes: quakes?.status.state === 'ready' ? quakes.quakes : null,
+        });
+      }
     }
 
     // Points of light for bodies under about 2 px, and rings marking them where they are named.
@@ -1695,6 +1794,9 @@ export default function create(): UniverseModule {
       satellites.setEarthRotation((physical.bodies.Earth.pm[1] * Math.PI) / 180 / SECONDS_PER_DAY);
       quakes = createQuakeLayer();
       root.add(...satellites.objects, quakes.object);
+      void loadPlaces(c.assets).then((list) => {
+        places = list;
+      });
 
       // Notes from cited data: without the constants file they are left out, never guessed.
       try {
@@ -1874,6 +1976,9 @@ export default function create(): UniverseModule {
           return;
         case 'select':
           satellites?.select(command.id === null ? null : Number(command.id));
+          return;
+        case 'markers':
+          markerSet = command.set;
           return;
       }
     },

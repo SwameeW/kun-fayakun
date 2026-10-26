@@ -71,6 +71,19 @@ scholarly text or science text change later, that area needs review again.
   milestones. Each must state the range of scholarly views and take no side.
 - **Depictions.** Allah, angels, prophets, the Throne, the water beneath the
   Throne, the Pen, the Tablet and the Kaaba must not be depicted in any form.
+- **The prophets' lands (explorer, Living Earth, "Field notes, by Claude").**
+  The 25 prophets named in the Quran, each with a short note and, where a
+  tradition is widely held, the place it points to (`src/explore/field-notes/data.ts`,
+  the `ui.universe.field.prophet.*` and `ui.universe.field.site.*` messages in
+  `src/i18n/en.json`). Check each note: that it is labelled "by tradition",
+  states where traditions differ, takes no sectarian position, and that the
+  places chosen are the widely held ones (Mount Judi; Shib Hud in Hadramawt;
+  al-Hijr by Hegra; Harran, Hebron and Makkah; the Dead Sea; Bahr Yussef; al-Bad
+  for Madyan; Jabal Musa; Jabal Harun; Jerusalem; Nineveh; the Umayyad Mosque;
+  Nazareth; Madinah). No place is marked for Adam, Idris, Ayyub, Dhul-Kifl, Ilyas
+  or Al-Yasa. Also check the honorifics and the biblical names given in
+  brackets. Only names on the ground are shown; Makkah is never framed closer
+  than 30 km across (`MAKKAH_FRAME`).
 
 ### 3. Astrophysicist
 

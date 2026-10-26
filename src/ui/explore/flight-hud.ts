@@ -1,6 +1,6 @@
 import type { App, BodyId, UniverseIllustration, UniverseView } from '../../core/types';
 import { PLANETS_MANIFEST_URL, planetCredits, type PlanetCredit, type PlanetsManifest } from '../../explore/assets/planets';
-import { h } from '../dom';
+import { externalLink, h } from '../dom';
 import type { Formatters } from './format';
 
 /**
@@ -10,7 +10,9 @@ import type { Formatters } from './format';
  * drawn in scaled space and one metres-per-pixel bar would mislead: the world in view and the height
  * above it, how the camera moves (orbiting it, or in free flight at a stated speed, with a way back
  * to orbiting), and plainly what the view is (true scale; the date and its source; the Sun through a
- * filter when it fills the view; whose imagery the surface is, folded into one short line).
+ * filter when it fills the view; whose imagery the surface is, folded into one short line). Zoomed
+ * in on the Earth it also gives the lens and the ground one pixel spans, and credits the streamed
+ * imagery on screen in the words its licence asks for (EOX's, with its link; NASA GIBS's).
  *
  * During a trip a short indicator shows the distance falling through its orders of magnitude: a
  * scale with a tick for each factor of ten from the height the trip began at (named in plain words
@@ -59,7 +61,9 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   const creditsToggle = h('summary', { class: 'kf-universe-credits-toggle' }, i18n.t('ui.universe.credits'));
   const creditsBox = h('details', { class: 'kf-universe-credits', 'data-testid': 'universe-credits' }, creditsToggle, creditsPanel);
   const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true }, imageryText, creditsBox);
-  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, illustrative, sunlight, filter, date, imagery);
+  const lens = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-lens', 'data-testid': 'universe-lens', hidden: true });
+  const tiles = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-tiles', 'data-testid': 'universe-tiles', hidden: true });
+  const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, illustrative, sunlight, filter, date, imagery, lens, tiles);
 
   /**
    * A source's name as the short line shows it: its full credit where no short name is kept (OPAL's
@@ -173,6 +177,27 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
     write(endLabel, f.name(to));
   };
 
+  /** The streamed imagery's credits (rebuilt when what shows changes): EOX's sentence with its link, as its licence asks. */
+  let tilesShown = '';
+  const EOX_LINK = 'https://s2maps.eu';
+  const writeTiles = (view: UniverseView): void => {
+    const im = view.focus === 'earth' ? view.imagery : null;
+    const key = im ? `${im.showing.clear ? 'clear' : ''}|${im.showing.today ? im.date : ''}` : '|';
+    if (key === tilesShown) return;
+    tilesShown = key;
+    const parts: Node[] = [];
+    if (im?.showing.clear) {
+      const [before = '', after = ''] = i18n.t('ui.universe.tilesClear').split(EOX_LINK);
+      parts.push(h('span', {}, before, externalLink(EOX_LINK, EOX_LINK), after));
+    }
+    if (im?.showing.today) parts.push(h('span', {}, i18n.t('ui.universe.tilesToday', { date: im.date })));
+    tiles.hidden = parts.length === 0;
+    tiles.replaceChildren(...parts.flatMap((part, i) => (i > 0 ? [' ', part] : [part])));
+  };
+  /** Ground one pixel spans: metres to two figures, or km from a kilometre. */
+  const pixelSize = (metres: number): string =>
+    metres < 1000 ? f.keep(i18n.t('ui.hud.unit.m', { value: f.number(Number(metres.toPrecision(2)), 0) })) : f.distance(metres / 1000);
+
   let tripShown = false;
   return {
     readout,
@@ -217,6 +242,9 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
         creditsBox.open = false;
         creditsPanel.replaceChildren(...(lines?.full ?? []).map((line) => h('p', { class: 'kf-universe-credits-line' }, line)));
       }
+      lens.hidden = view.lens === null;
+      if (view.lens) write(lens, i18n.t('ui.universe.lens', { deg: f.number(view.lens.deg, view.lens.deg < 10 ? 1 : 0), size: pixelSize(view.lens.metresPerPixel) }));
+      writeTiles(view);
 
       const t = view.travelling ? view.trip : null;
       trip.classList.toggle('is-active', t !== null);

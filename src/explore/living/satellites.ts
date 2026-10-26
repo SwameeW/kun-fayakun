@@ -12,9 +12,10 @@ import {
   Vector3,
   type Node,
 } from 'three/webgpu';
-import { attribute, dot, exp, float, instancedBufferAttribute, length, max, mix, select, smoothstep, uniform, uv, vec3 } from 'three/tsl';
+import { attribute, clamp, dot, exp, float, instancedBufferAttribute, length, max, mix, select, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import type { SceneLabel } from '../../core/types';
-import { KIND_COLOURS, SATELLITE_KINDS, SatelliteKind, type SatelliteKindName } from './satellite-kinds';
+import { subPoint } from '../field-notes/bulletin';
+import { KIND_COLOURS, SATELLITE_KINDS, SatelliteKind, STATION_IDS, type SatelliteKindName, type StationId } from './satellite-kinds';
 import type { SatelliteReply, SatelliteRequest } from './satellites.worker';
 
 /**
@@ -42,6 +43,13 @@ const TICK_SECONDS = 1;
 const SIZE = { station: 7, other: 2.4 } as const;
 /** Samples along a chosen satellite's orbit line. */
 const PATH_SAMPLES = 181;
+/**
+ * Seen from afar the low orbits crowd into a few pixels around the Earth, and sixteen thousand points
+ * of light added together would glow like a halo: beyond this many Earth radii each point (but a
+ * station's) dims with distance, to no less than FAR_DIM_FLOOR of its brightness.
+ */
+const FAR_DIM_FROM_RADII = 4;
+const FAR_DIM_FLOOR = 0.15;
 
 export interface SatelliteFrame {
   /** The explorer's instant (Unix ms). */
@@ -58,9 +66,14 @@ export interface SatelliteFrame {
 
 export interface SatelliteInfo {
   index: number;
+  /** The catalogue's name, and for a crewed station its id (the interface names it plainly). */
   name: string;
+  station: StationId | null;
   norad: number;
   kind: SatelliteKindName;
+  /** The point beneath it (degrees), and its height above a sphere of the Earth's mean radius. */
+  lat: number;
+  lon: number;
   altitudeKm: number;
   periodMin: number;
   sunlit: boolean;
@@ -70,6 +83,8 @@ export interface SatelliteStatus {
   state: 'off' | 'loading' | 'ready' | 'failed' | 'out-of-range';
   count: number;
   byKind: Record<SatelliteKindName, number>;
+  /** How many are in sunlight now (outside the Earth's shadow), as of the latest state. */
+  sunlit: number;
   /** When the catalogue was fetched (Unix ms; 0 before). */
   fetchedMs: number;
 }
@@ -83,6 +98,8 @@ export interface SatelliteLayer {
   pick(x: number, y: number, radiusPx: number, project: (p: Vector3) => { x: number; y: number; front: boolean }): number | null;
   select(index: number | null): void;
   readonly selected: SatelliteInfo | null;
+  /** The International Space Station, while it is in the catalogue. */
+  readonly station: SatelliteInfo | null;
   readonly status: SatelliteStatus;
   /** Labels for the stations and the chosen satellite (camera-relative positions). */
   labels(): SceneLabel[];
@@ -152,11 +169,14 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
   let lastAsked = -Infinity;
   let omega = 0;
   let selectedIndex: number | null = null;
+  /** The crewed stations' indices (by id) once the catalogue is read. */
+  let stationIndex: Partial<Record<StationId, number>> = {};
   let frameNow: SatelliteFrame | null = null;
   const status: SatelliteStatus = {
     state: 'off',
     count: 0,
     byKind: Object.fromEntries(SATELLITE_KINDS.map((k) => [k, 0])) as Record<SatelliteKindName, number>,
+    sunlit: 0,
     fetchedMs: 0,
   };
 
@@ -204,7 +224,8 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
     const along = dot(fromCentre, uSun);
     const off = length(fromCentre.sub(uSun.mul(along)));
     const shadowed = smoothstep(0, -50, along).mul(float(1).sub(smoothstep(uRadius.mul(0.995), uRadius.mul(1.01), off)));
-    const light = mix(float(1), float(0.12), shadowed);
+    const far = clamp(uRadius.mul(FAR_DIM_FROM_RADII).div(max(length(uEarth), 1)), FAR_DIM_FLOOR, 1);
+    const light = mix(float(1), float(0.12), shadowed).mul(select(k.equal(SatelliteKind.station), float(1), far));
     const c = uv().sub(0.5).mul(2);
     const r2 = dot(c, c);
     const glow = exp(r2.mul(-4)).mul(max(float(1).sub(r2), 0));
@@ -254,6 +275,11 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
             bindMaterial();
             points.count = count;
             status.count = count;
+            stationIndex = {};
+            names.forEach((n, i) => {
+              const id = STATION_IDS[n.toUpperCase()];
+              if (id && stationIndex[id] === undefined) stationIndex[id] = i;
+            });
             for (const k of SATELLITE_KINDS) status.byKind[k] = 0;
             for (const k of kinds) {
               const name = SATELLITE_KINDS[k];
@@ -286,6 +312,7 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
             positions.needsUpdate = true;
             velocities.needsUpdate = true;
             kindAttr.needsUpdate = true;
+            status.sunlit = countSunlit();
           } else if (msg.type === 'path') {
             if (msg.index !== selectedIndex) return;
             pathPositions.set(msg.data.subarray(0, pathPositions.length));
@@ -329,13 +356,46 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
   const label = (index: number, frame: SatelliteFrame, id: string): SceneLabel | null => {
     const p = placeOf(index, frame, scratch);
     if (!p) return null;
-    return { id, textKey: 'ui.universe.satellite', text: names[index] ?? '', position: [p.x, p.y, p.z], opacity: 0.92 * uFade.value };
+    const name = names[index] ?? '';
+    // A crewed station by its plain name (the catalogue's names the module that carries its elements).
+    const station = STATION_IDS[name.toUpperCase()];
+    const base = { id, position: [p.x, p.y, p.z] as [number, number, number], opacity: 0.92 * uFade.value, offset: [10, -10] as [number, number] };
+    return station ? { ...base, textKey: `ui.universe.station.${station}` } : { ...base, textKey: 'ui.universe.satellite', text: name };
   };
 
-  const info = (): SatelliteInfo | null => {
+  /** The Sun's direction in the Earth-fixed frame (x Greenwich, y 90 E, z north), from the frame's. */
+  const sunFixed = (frame: SatelliteFrame): [number, number, number] => {
+    const m = frame.basis;
+    const s = frame.sun;
+    const bx = (m[0] ?? 1) * s.x + (m[1] ?? 0) * s.y + (m[2] ?? 0) * s.z;
+    const by = (m[3] ?? 0) * s.x + (m[4] ?? 1) * s.y + (m[5] ?? 0) * s.z;
+    const bz = (m[6] ?? 0) * s.x + (m[7] ?? 0) * s.y + (m[8] ?? 1) * s.z;
+    return [bx, -bz, by];
+  };
+
+  /** How many objects of the latest state are outside the Earth's shadow cylinder (the points' test). */
+  const countSunlit = (): number => {
     const frame = frameNow;
-    if (selectedIndex === null || !frame) return null;
-    const o = selectedIndex * 6;
+    if (!frame) return 0;
+    const [sx, sy, sz] = sunFixed(frame);
+    const r = frame.earthRadiusKm;
+    let lit = 0;
+    for (let i = 0; i < count; i += 1) {
+      const o = i * 6;
+      const x = latest[o] ?? Number.NaN;
+      if (!Number.isFinite(x)) continue;
+      const y = latest[o + 1] ?? 0;
+      const z = latest[o + 2] ?? 0;
+      const along = x * sx + y * sy + z * sz;
+      if (along >= 0 || Math.hypot(x - sx * along, y - sy * along, z - sz * along) >= r) lit += 1;
+    }
+    return lit;
+  };
+
+  const info = (index: number | null): SatelliteInfo | null => {
+    const frame = frameNow;
+    if (index === null || !frame) return null;
+    const o = index * 6;
     const x = latest[o];
     if (x === undefined || !Number.isFinite(x)) return null;
     const dt = (frame.unixMs - latestMs) / 1000;
@@ -344,7 +404,7 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
     const pz = (latest[o + 2] ?? 0) + (latest[o + 5] ?? 0) * dt;
     const r = Math.hypot(px, py, pz);
     // Sunlit unless inside the Earth's shadow cylinder (the same test as the points').
-    const p = placeOf(selectedIndex, frame, scratch);
+    const p = placeOf(index, frame, scratch);
     let sunlit = true;
     if (p) {
       const cx = p.x - frame.earth.x;
@@ -354,13 +414,18 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
       const off = Math.hypot(cx - frame.sun.x * along, cy - frame.sun.y * along, cz - frame.sun.z * along);
       sunlit = !(along < 0 && off < frame.earthRadiusKm);
     }
+    const name = names[index] ?? '';
+    const under = subPoint(px, py, pz);
     return {
-      index: selectedIndex,
-      name: names[selectedIndex] ?? '',
-      norad: ids[selectedIndex] ?? 0,
-      kind: SATELLITE_KINDS[kinds[selectedIndex] ?? SatelliteKind.other] ?? 'other',
+      index,
+      name,
+      station: STATION_IDS[name.toUpperCase()] ?? null,
+      norad: ids[index] ?? 0,
+      kind: SATELLITE_KINDS[kinds[index] ?? SatelliteKind.other] ?? 'other',
+      lat: under.lat,
+      lon: under.lon,
       altitudeKm: r - frame.earthRadiusKm,
-      periodMin: periods[selectedIndex] ?? 0,
+      periodMin: periods[index] ?? 0,
       sunlit,
     };
   };
@@ -421,7 +486,10 @@ export function createSatelliteLayer(snapshotUrl: string): SatelliteLayer {
       if (index !== null && frameNow) ask({ type: 'path', index, unixMs: frameNow.unixMs, samples: PATH_SAMPLES });
     },
     get selected() {
-      return info();
+      return info(selectedIndex);
+    },
+    get station() {
+      return info(stationIndex.iss ?? null);
     },
     status,
     labels() {

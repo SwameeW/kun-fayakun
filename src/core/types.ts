@@ -512,13 +512,47 @@ export interface UniverseView {
 }
 
 /** The Living Earth's live layers as the view's state reports them. */
+/** One satellite as the explorer reports it: the point beneath it (degrees), its height (km) and period (min). */
+export interface UniverseSatellite {
+  index: number;
+  name: string;
+  /** A crewed station's id ('iss', 'css'), which the interface names plainly; null for the rest. */
+  station: string | null;
+  norad: number;
+  kind: string;
+  lat: number;
+  lon: number;
+  altitudeKm: number;
+  periodMin: number;
+  sunlit: boolean;
+}
+
+/** A place named in the field notes' bulletin, and how far it is from the point it is named for (km over the ground). */
+export interface UniverseNearPlace {
+  name: string;
+  lat: number;
+  lon: number;
+  km: number;
+}
+
+/** "Today on Earth" (src/explore/field-notes/bulletin): live facts with places to fly to. */
+export interface UniverseBulletin {
+  sun: { lat: number; lon: number; near: UniverseNearPlace | null };
+  dawn: { name: string; lat: number; lon: number } | null;
+  dusk: { name: string; lat: number; lon: number } | null;
+  station: (UniverseSatellite & { near: UniverseNearPlace | null }) | null;
+  satellites: { count: number; sunlit: number } | null;
+  quakes: { count: number; strongest: { id: string; magnitude: number; lat: number; lon: number; place: string; timeMs: number; depthKm: number } | null } | null;
+}
+
 export interface UniverseLiving {
   satellites: {
     state: 'off' | 'loading' | 'ready' | 'failed' | 'out-of-range';
     count: number;
     byKind: Record<'station' | 'starlink' | 'oneweb' | 'navigation' | 'geostationary' | 'other', number>;
+    sunlit: number;
     fetchedMs: number;
-    selected: { index: number; name: string; norad: number; kind: string; altitudeKm: number; periodMin: number; sunlit: boolean } | null;
+    selected: UniverseSatellite | null;
   };
   quakes: {
     state: 'off' | 'loading' | 'ready' | 'failed';
@@ -526,6 +560,10 @@ export interface UniverseLiving {
     /** Events of the past day, strongest first. */
     list: ReadonlyArray<{ id: string; magnitude: number; lat: number; lon: number; depthKm: number; timeMs: number; place: string; url: string }>;
   };
+  /** The International Space Station, while the catalogue has it. */
+  station: UniverseSatellite | null;
+  /** The field notes' "Today on Earth", refreshed about once a second (null until the places have loaded). */
+  bulletin: UniverseBulletin | null;
 }
 
 /** The Earth's streamed imagery as the view's state reports it. */
@@ -536,6 +574,8 @@ export interface UniverseImagery {
   today: { zoom: number; requested: number; loaded: number; failed: number; pending: number };
   /** Share of the cloud shell still shown (it fades as the view closes in). */
   clouds: number;
+  /** Which streamed imagery is on screen now (its credit is shown while it is). */
+  showing: { clear: boolean; today: boolean };
 }
 
 /** One body as the explorer's camera sees it (live from the ephemeris). */
@@ -645,7 +685,9 @@ export type EarthCommand =
   | { kind: 'goto'; lat: number; lon: number; viewKm: number }
   | { kind: 'imagery'; mode: 'clear' | 'today' }
   | { kind: 'layer'; layer: EarthLayer; on: boolean }
-  | { kind: 'select'; id: string | null };
+  | { kind: 'select'; id: string | null }
+  /** Names on the ground for a set of the field notes' places (src/explore/field-notes), or none. */
+  | { kind: 'markers'; set: 'atlas' | 'prophets' | null };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';

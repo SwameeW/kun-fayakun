@@ -11,8 +11,10 @@ export type SatelliteKind = (typeof SatelliteKind)[keyof typeof SatelliteKind];
 export const SATELLITE_KINDS = ['station', 'starlink', 'oneweb', 'navigation', 'geostationary', 'other'] as const;
 export type SatelliteKindName = (typeof SATELLITE_KINDS)[number];
 
-/** The crewed stations' catalogue names (the modules that carry the station's elements). */
-const STATIONS = ['ISS (ZARYA)', 'CSS (TIANHE)'];
+/** The crewed stations' catalogue names (the modules that carry the station's elements) and their ids. */
+export const STATION_IDS: Readonly<Record<string, StationId>> = { 'ISS (ZARYA)': 'iss', 'CSS (TIANHE)': 'css' };
+export type StationId = 'iss' | 'css';
+const STATIONS = Object.keys(STATION_IDS);
 const NAVIGATION = /^(NAVSTAR|GPS |COSMOS \d+ \(GLONASS|GSAT0|GALILEO|BEIDOU|QZS|IRNSS|NAVIC)/u;
 /** Periods within this many minutes of a sidereal day are the geostationary (and geosynchronous) ring. */
 const GEO_WITHIN_MINUTES = 30;

@@ -31,6 +31,8 @@ export interface EarthImageryStats {
   today: ClipmapStats;
   /** Share of the cloud shell still shown (it fades as the view closes in, and is off for today's mosaic). */
   clouds: number;
+  /** True while streamed imagery covers part of the view (the readout credits it). */
+  showing: { clear: boolean; today: boolean };
 }
 
 export interface EarthTiles {
@@ -45,8 +47,6 @@ export interface EarthTiles {
   /** The day the today mosaic shows (YYYY-MM-DD). */
   setDate(date: string): void;
   readonly stats: EarthImageryStats;
-  /** True while streamed imagery covers part of the view (the readout credits it). */
-  readonly showing: { clear: boolean; today: boolean };
   suspend(): void;
   dispose(): void;
 }
@@ -72,8 +72,8 @@ export function createEarthTiles(renderer: WebGPURenderer, detail: ExploreDetail
   let mode: ImageryMode = 'clear';
   let date = '';
   let todayBlend = 0;
-  const stats: EarthImageryStats = { mode, date, clear: clear.stats, today: today.stats, clouds: 1 };
   const showing = { clear: false, today: false };
+  const stats: EarthImageryStats = { mode, date, clear: clear.stats, today: today.stats, clouds: 1, showing };
   // GIBS z2: 72 degrees a tile; the fixed aim and footprint that select exactly that level.
   const GLOBAL_AIM = { lat: 0, lon: 0, footprint: (72 / 512) * (Math.PI / 180) };
 
@@ -121,7 +121,6 @@ export function createEarthTiles(renderer: WebGPURenderer, detail: ExploreDetail
       todayGlobal.setDate(next);
     },
     stats,
-    showing,
     suspend() {
       clear.suspend();
       today.suspend();
