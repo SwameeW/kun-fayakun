@@ -88,5 +88,9 @@
   "ui.universe.stars.radius": "Radius, the Sun’s as 1",
   "ui.universe.stars.mass": "Mass, the Sun’s as 1",
   "ui.universe.stars.luminosity": "All its light, the Sun’s as 1",
-  "ui.universe.stars.archiveStar": "Radius, mass and light as the NASA Exoplanet Archive gives them for a planet’s star."
+  "ui.universe.stars.archiveStar": "Radius, mass and light as the NASA Exoplanet Archive gives them for a planet’s star.",
+  "ui.help.label.lightYear": "Light years and parsecs",
+  "ui.help.label.localGroup": "The Local Group",
+  "ui.help.label.cosmicWeb": "The cosmic web",
+  "ui.help.label.exoplanets": "Planets of other stars"
 }

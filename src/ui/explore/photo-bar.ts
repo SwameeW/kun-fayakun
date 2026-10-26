@@ -2,6 +2,7 @@ import { BODY_IDS, type App, type BodyId } from '../../core/types';
 import photoMessages from '../../i18n/en.photo.json';
 import { h } from '../dom';
 import { load as loadSavedViews, type Saved } from './saved-views';
+import { helpButton } from './help';
 
 /**
  * Photo mode's bar (its own chunk, loaded the first time photo mode opens; ./index keeps the mode
@@ -162,8 +163,10 @@ export function createPhotoBar(app: App, announce: (text: string) => void, onExi
   const tour = h('button', { type: 'button', class: 'kf-btn kf-universe-photo-record', 'aria-pressed': 'false', 'data-testid': 'universe-photo-tour' }, i18n.t('ui.universe.photoTour'));
   let touring: { views: Saved[]; next: number; still: number; restUntil: number; since: number; frame: number } | null = null;
   const overhead = (): Saved[] => loadSavedViews().filter((v) => v.walk === null).reverse();
+  const tourHelp = helpButton(app, 'tour', i18n.t('ui.universe.photoTour'));
   const showTour = (): void => {
     tour.hidden = overhead().length < 2 && !touring;
+    tourHelp.hidden = tour.hidden;
   };
   const stopTour = (said: string | null): void => {
     if (!touring) return;
@@ -228,11 +231,18 @@ export function createPhotoBar(app: App, announce: (text: string) => void, onExi
     'details',
     { class: 'kf-universe-photo-camera', 'data-testid': 'universe-photo-camera' },
     h('summary', { class: 'kf-btn' }, i18n.t('ui.universe.photoCamera')),
-    h('div', { class: 'kf-universe-photo-camera-body' }, lens, exposure, track),
+    h(
+      'div',
+      { class: 'kf-universe-photo-camera-body' },
+      h('p', { class: 'kf-help-row kf-universe-photo-help' }, h('span', {}, i18n.t('ui.universe.photoCamera')), helpButton(app, 'camera', i18n.t('ui.universe.photoCamera')), helpButton(app, 'photo', i18n.t('ui.universe.photoMode'))),
+      lens,
+      exposure,
+      track,
+    ),
   );
 
   return {
-    element: h('div', { class: 'kf-universe-photo-controls' }, camera, tour, record, save, exit),
+    element: h('div', { class: 'kf-universe-photo-controls' }, camera, tour, tourHelp, record, save, exit),
     exit,
     opened() {
       showTour();

@@ -1,4 +1,5 @@
 import type { App, LabCommand, UniverseLab, UniverseLabBody } from '../../core/types';
+import { helpButton } from './help';
 import { h } from '../dom';
 import type { Formatters } from './format';
 
@@ -307,7 +308,7 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
     'details',
     { class: 'kf-living-notes-part kf-living-prophets-box', 'data-testid': 'lab-lessons' },
     h('summary', {}, i18n.t('ui.universe.lab.lesson.title')),
-    h('div', { class: 'kf-living-prophets-body' }, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.lesson.intro')), list, current),
+    h('div', { class: 'kf-living-prophets-body' }, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.lesson.intro'), helpButton(app, 'lessons', i18n.t('ui.universe.lab.lesson.title'))), list, current),
   );
 
   return {

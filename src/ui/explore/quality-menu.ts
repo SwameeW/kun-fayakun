@@ -1,6 +1,7 @@
 import type { App, UniverseDetail } from '../../core/types';
 import { DETAIL, textureTier, type ExploreTier } from '../../explore/detail';
 import { h, uniqueId } from '../dom';
+import { helpButton } from './help';
 import { icon } from '../icons';
 import { readPreferenceString, writePreferenceString } from '../preferences';
 
@@ -87,7 +88,7 @@ export function createQualityMenu(app: App, onApplied: (title: string, line: str
   const panel = h(
     'div',
     { id: panelId, class: 'kf-nav-detail-panel', hidden: true, 'data-kf-keys': 'own' },
-    h('div', { class: 'kf-nav-detail-head' }, heading, closeButton),
+    h('div', { class: 'kf-nav-detail-head' }, h('div', { class: 'kf-help-row' }, heading, helpButton(app, 'detail', i18n.t('ui.universe.detailTitle'))), closeButton),
     fieldset,
     note,
   );

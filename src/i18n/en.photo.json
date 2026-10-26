@@ -28,5 +28,6 @@
   "ui.universe.photoTouring": "Flying through {count} saved views, in the order they were saved.",
   "ui.universe.photoTourDone": "The flight through the saved views is over.",
   "ui.universe.photoTourStopped": "The flight through the saved views stopped.",
-  "ui.universe.photoCamera": "Camera"
+  "ui.universe.photoCamera": "Camera",
+  "ui.universe.photoMode": "Photo mode"
 }

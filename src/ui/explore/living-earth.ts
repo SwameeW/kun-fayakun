@@ -3,7 +3,7 @@ import { ATLAS, PROPHETS, site, type FieldPlace } from '../../explore/field-note
 import { loadPlaces, searchPlaces, type Place } from '../../explore/field-notes/places';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
-import '../styles/living.css';
+import { helpButton, withHelp } from './help';
 
 /**
  * The navigator's Living Earth: the imagery (cloud-free, or the last whole day's), the live layers
@@ -19,9 +19,15 @@ import '../styles/living.css';
  * every second).
  */
 
+/**
+ * Its own chunk, loaded the first time the navigator's section opens (the section and its summary are
+ * the navigator's): the section's body, its update (`open`: whether the section shows), and what to
+ * do each time it opens.
+ */
 export interface LivingEarth {
-  readonly element: HTMLDetailsElement;
-  update(view: UniverseView, slow: boolean): void;
+  readonly body: HTMLElement;
+  update(view: UniverseView, slow: boolean, open: boolean): void;
+  opened(): void;
 }
 
 /** Below this distance (km) a point is "near" the place named for it; beyond, the distance is said. */
@@ -77,7 +83,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
   const imagery = h(
     'div',
     { class: 'kf-living-group' },
-    h('p', { id: imageryLabel, class: 'kf-living-label' }, i18n.t('ui.universe.living.imagery')),
+    withHelp(app, h('p', { id: imageryLabel, class: 'kf-living-label' }, i18n.t('ui.universe.living.imagery')), 'imagery'),
     h('div', { class: 'kf-living-choices', role: 'group', 'aria-labelledby': imageryLabel }, ...imageryButtons.map(([, b]) => b)),
     imageryHint,
   );
@@ -104,7 +110,17 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
   const quakeSwitch = layerSwitch('quakes');
   const quakeStatus = h('p', { class: 'kf-living-hint', 'data-testid': 'living-quakes-status' });
   const quakeList = h('ul', { class: 'kf-living-list', 'aria-label': i18n.t('ui.universe.living.quakeList'), 'data-testid': 'living-quake-list' });
-  const layers = h('div', { class: 'kf-living-group' }, h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.living.layers')), satSwitch, satStatus, selected, quakeSwitch, quakeStatus, quakeList);
+  const layers = h(
+    'div',
+    { class: 'kf-living-group' },
+    h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.living.layers')),
+    withHelp(app, satSwitch, 'satellites'),
+    satStatus,
+    selected,
+    withHelp(app, quakeSwitch, 'quakes'),
+    quakeStatus,
+    quakeList,
+  );
 
   // Find a place.
   let places: readonly Place[] = [];
@@ -127,7 +143,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     );
   };
   findInput.addEventListener('input', showFound);
-  const find = h('form', { class: 'kf-living-group', role: 'search' }, h('label', { class: 'kf-living-label', for: findId }, i18n.t('ui.universe.living.find')), findInput, findNone, findResults);
+  const find = h('form', { class: 'kf-living-group', role: 'search' }, withHelp(app, h('label', { class: 'kf-living-label', for: findId }, i18n.t('ui.universe.living.find')), 'findPlace'), findInput, findNone, findResults);
   find.addEventListener('submit', (event) => {
     event.preventDefault();
     findResults.querySelector('button')?.click();
@@ -239,7 +255,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
   const atlasBox = h(
     'section',
     { class: 'kf-living-notes-part', 'data-testid': 'field-atlas' },
-    h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.field.atlas')),
+    withHelp(app, h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.field.atlas')), 'atlas'),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.field.atlasIntro', { count: ATLAS.length })),
     atlasTour,
   );
@@ -275,7 +291,7 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
   const prophetsBody = h(
     'div',
     { class: 'kf-living-prophets-body' },
-    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.field.prophetsIntro')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.field.prophetsIntro'), helpButton(app, 'prophets', i18n.t('ui.universe.field.prophets'))),
     h('p', { class: 'kf-living-review' }, i18n.t('ui.universe.field.prophetsReview')),
     prophetsTour,
     prophetList,
@@ -290,9 +306,9 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
   const notes = h(
     'section',
     { class: 'kf-living-notes', 'data-testid': 'field-notes' },
-    h('h3', { class: 'kf-living-notes-title' }, i18n.t('ui.universe.field.title')),
+    withHelp(app, h('h3', { class: 'kf-living-notes-title' }, i18n.t('ui.universe.field.title')), 'fieldNotes'),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.field.intro')),
-    h('section', { class: 'kf-living-notes-part' }, h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.field.today')), todayLoading, todayList),
+    h('section', { class: 'kf-living-notes-part' }, withHelp(app, h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.field.today')), 'today'), todayLoading, todayList),
     atlasBox,
     prophets,
   );
@@ -303,22 +319,9 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     app.earthCommand({ kind: 'walk' });
     onGo();
   });
-  const walkHere = h('div', { class: 'kf-living-group' }, walkButton, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.walk.hereHint')));
+  const walkHere = h('div', { class: 'kf-living-group' }, walkButton, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.walk.hereHint'), helpButton(app, 'walk', i18n.t('ui.universe.walk.here'))));
 
-  const summary = h('summary', {}, i18n.t('ui.universe.living.title'));
-  const element = h(
-    'details',
-    { class: 'kf-nav-living', 'data-testid': 'living-earth' },
-    summary,
-    h('div', { class: 'kf-living-body' }, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.living.intro')), imagery, layers, find, walkHere, notes),
-  );
-  element.addEventListener('toggle', () => {
-    if (!element.open) return;
-    void loadPlaces(app.assets).then((list) => {
-      places = list;
-      if (findInput.value) showFound();
-    });
-  });
+  const body = h('div', { class: 'kf-living-body' }, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.living.intro'), helpButton(app, 'living', i18n.t('ui.universe.living.title'))), imagery, layers, find, walkHere, notes);
 
   let imageryMode: 'clear' | 'today' | null = null;
   const writeBulletin = (b: UniverseBulletin): void => {
@@ -364,14 +367,20 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
 
   let quakesShown = '';
   return {
-    element,
-    update(view, slow) {
+    body,
+    opened() {
+      void loadPlaces(app.assets).then((list) => {
+        places = list;
+        if (findInput.value) showFound();
+      });
+    },
+    update(view, slow, open) {
       const im = view.imagery;
       if (im && im.mode !== imageryMode) {
         imageryMode = im.mode;
         for (const [mode, b] of imageryButtons) b.setAttribute('aria-pressed', String(mode === im.mode));
       }
-      if (!slow || !element.open) return;
+      if (!slow || !open) return;
       write(imageryHint, im?.mode === 'today' ? i18n.t('ui.universe.living.todayHint', { date: im.date }) : i18n.t('ui.universe.living.clearHint'));
       const living = view.living;
       if (!living) return;

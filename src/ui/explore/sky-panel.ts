@@ -1,6 +1,7 @@
 import type { App, SkyLayerName, UniverseView } from '../../core/types';
 import { h } from '../dom';
 import type { Formatters } from './format';
+import { withHelp } from './help';
 
 /**
  * The navigator's "The sky": what the stars behind the worlds are (the Bright Star Catalogue's,
@@ -30,7 +31,7 @@ export function createSkyPanel(app: App, f: Formatters): SkyPanel {
     'details',
     { class: 'kf-nav-about kf-nav-sky', 'data-testid': 'universe-sky' },
     h('summary', {}, i18n.t('ui.universe.sky.title')),
-    h('div', { class: 'kf-about-body' }, intro, h('div', { class: 'kf-living-group' }, ...switches.map(([, b]) => b)), h('p', { class: 'kf-about-sources' }, i18n.t('ui.universe.sky.sources'))),
+    h('div', { class: 'kf-about-body' }, withHelp(app, intro, 'sky', i18n.t('ui.universe.sky.title')), h('div', { class: 'kf-living-group' }, ...switches.map(([, b]) => b)), h('p', { class: 'kf-about-sources' }, i18n.t('ui.universe.sky.sources'))),
   );
   let shownStars = -1;
   return {

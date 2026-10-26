@@ -49,7 +49,8 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   const islamic = available(ctx.i18n.islamic, 'explorer builder', log);
   const stars = available(ctx.i18n.stars, 'explorer builder', log);
   const photo = available(ctx.i18n.photo, 'explorer builder', log);
-  const files = [en, chapters, explore, lab, islamic, stars, photo].filter((f): f is MessageFile => f !== null);
+  const help = available(ctx.i18n.help, 'explorer builder', log);
+  const files = [en, chapters, explore, lab, islamic, stars, photo, help].filter((f): f is MessageFile => f !== null);
   const ar = ctx.i18n.ar.status === 'ok' ? ctx.i18n.ar.file : null;
 
   const parseIssues = [...files.flatMap((f) => fileProblems(f, true)), ...(ar ? fileProblems(ar, false) : [])];
@@ -57,7 +58,7 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   log.expectNone(parseIssues, `${messageCount} English message(s) parse with intl-messageformat and avoid forbidden phrasing`);
 
   const collisions = files.flatMap((a, i) => files.slice(i + 1).flatMap((b) => [...a.messages.keys()].filter((k) => !k.startsWith('$') && b.messages.has(k)).map((k) => `${k}: defined in both ${a.path} and ${b.path}`)));
-  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json, en.explore.json, en.lab.json, en.islamic.json, en.stars.json and en.photo.json');
+  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json, en.explore.json, en.lab.json, en.islamic.json, en.stars.json, en.photo.json and en.help.json');
 
   const merged = new Map<string, string>();
   for (const f of files) for (const [k, v] of f.messages) merged.set(k, v);

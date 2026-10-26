@@ -2,6 +2,7 @@ import { julianDateUtc } from '../../astro/time';
 import type { App, UniverseView } from '../../core/types';
 import { rateParts } from '../../explore/time';
 import { h, uniqueId } from '../dom';
+import { helpButton } from './help';
 import { icon } from '../icons';
 
 /**
@@ -63,15 +64,18 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
   // The same day in the Umm al-Qura calendar (its civil day), named as such: communities that begin
   // each month by sighting the crescent may be a day apart.
   const hijri = h('span', { class: 'kf-universe-time-hijri', 'data-testid': 'universe-time-hijri', hidden: true });
+  const hijriHelp = helpButton(app, 'hijri', i18n.t('ui.help.label.hijri'));
+  hijriHelp.hidden = true;
 
   const element = h(
     'div',
     { class: 'kf-universe-time', role: 'group', 'aria-label': i18n.t('ui.universe.time.label'), 'data-testid': 'universe-time' },
     h('span', { class: 'kf-universe-time-buttons' }, reverse, slower, pause, faster, now),
     rate,
+    helpButton(app, 'time', i18n.t('ui.universe.time.label')),
     dateLabel,
     date,
-    hijri,
+    h('span', { class: 'kf-universe-time-hijri-row' }, hijri, hijriHelp),
   );
 
   /** The rate in words. */
@@ -118,6 +122,7 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
         if (date.max !== max) date.max = max;
       }
       hijri.hidden = t.hijri === null;
+      hijriHelp.hidden = t.hijri === null;
       if (t.hijri) write(hijri, i18n.t('ui.universe.hijri.date', { day: t.hijri.day, month: i18n.t(`ui.universe.hijri.month.${t.hijri.month}`), year: t.hijri.year }));
       // Never rewritten under the visitor's typing.
       if (document.activeElement !== date) {
