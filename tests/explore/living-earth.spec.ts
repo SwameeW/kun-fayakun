@@ -94,7 +94,8 @@ test('a found place is flown to, its imagery streamed and credited, and the lens
 });
 
 test('the atlas tour moves only when asked, names its places on the globe and ends where it was begun', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(150_000 * SLOW);
+  // Streaming each place's imagery in software rendering (CI) takes nearly eight minutes.
+  test.setTimeout(240_000 * SLOW);
   const living = await openLiving(page, kf);
   const start = living.getByTestId('field-atlas-tour');
   await start.click();
@@ -117,7 +118,8 @@ test('the atlas tour moves only when asked, names its places on the globe and en
 });
 
 test('the prophets’ lands: the 25 with their honorifics, by tradition, named on the globe, and Makkah framed as a city', async ({ page, kf, pageErrors }) => {
-  test.setTimeout(150_000 * SLOW);
+  // As the tour: nearly eight minutes in software rendering (CI), most of it streaming Makkah's imagery.
+  test.setTimeout(240_000 * SLOW);
   const living = await openLiving(page, kf);
   const prophets = living.getByTestId('field-prophets');
   await prophets.locator('summary').click();
