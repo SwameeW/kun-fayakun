@@ -60,6 +60,10 @@ import { createBodies, SUN_KELVIN, type Bodies } from './bodies';
 import { createEarthTiles, type EarthTiles } from './earth-tiles';
 import { lastWholeDay, RELIEF } from './earth-tiles/sources';
 import type { Islamic } from './islamic';
+import type { Descent } from './descent';
+import type { Neighbourhood } from './neighbourhood';
+import type { NeighbourhoodFile } from './neighbourhood/data';
+import type { DescentFile } from './descent/profile';
 import type { Walk } from './walk';
 import type { EquirectGrids } from './walk/equirect';
 import type { WalkInput } from './walk/walker';
@@ -104,12 +108,18 @@ const WALK_FOV = 70;
 const WALK_LENS = { near: 1e-4, far: 2000 } as const;
 /** On foot the imagery is aimed at the walker's feet as if a pixel there spanned a metre, which asks for its finest level (km). */
 const WALK_FOOTPRINT_KM = 0.001;
+/** The worlds there is an atmosphere to descend through where a probe went (ledger GR-6). */
+type DescentWorld = 'venus' | 'jupiter';
+const DESCENT_IDS: readonly DescentWorld[] = ['venus', 'jupiter'];
+/** The dip into or out of a walk: seconds to dark, and back to light. */
+const WALK_DIP = { downS: 0.25, upS: 0.4 } as const;
 /** The worlds there is ground to walk on. */
 type WalkWorld = WalkableWorld;
 const WALKABLE: readonly BodyId[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
 /** Each walkable world's entry in JPL's physical file (its radii and GM). */
 const WALK_KEYS: Record<WalkWorld, RotatingBody> = { earth: 'Earth', moon: 'Moon', mars: 'Mars', mercury: 'Mercury', venus: 'Venus' };
 const walkable = (id: BodyId): id is WalkWorld => WALKABLE.includes(id);
+const WALK_IDS: readonly WalkWorld[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
 /** The worlds drawn with a solid surface the laboratory's craters mark, and no marks at all. */
 const CRATERED: readonly BodyId[] = ['earth', 'moon', 'mercury', 'mars'];
 const NO_MARKS: readonly SurfaceMark[] = [];
@@ -286,6 +296,8 @@ const dot3 = (a: Km, b: Km): number => a.x * b.x + a.y * b.y + a.z * b.z;
 
 export default function create(): UniverseModule {
   const root = new Group();
+  /** The stars around the Sun (./neighbourhood), drawn instead of the solar system while there. */
+  const starsRoot = new Group();
   root.name = 'universe';
   let ctx: UniverseContext | null = null;
   let system: SolarSystem | null = null;
@@ -300,6 +312,10 @@ export default function create(): UniverseModule {
    */
   let placeLock = false;
   let pendingPlace: { lat: number; lon: number; viewKm: number } | null = null;
+  /** A saved view to glide to once the trip to its body has arrived (ledger GR-4). */
+  let pendingView: { body: BodyId; lat: number; lon: number; altitudeKm: number } | null = null;
+  /** The place beneath the camera on the body in view (UniverseView.place). */
+  let placeBelow: { body: BodyId; lat: number; lon: number; altitudeKm: number } | null = null;
   const earthMeridianBefore = km();
   const earthPole = km();
   let earthMeridianKnown = false;
@@ -361,14 +377,49 @@ export default function create(): UniverseModule {
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
   /** On foot (./walk, its own chunk): each world's walk made the first time it is asked for; `walk` the one in use, on `walkWorld`. */
-  const walks: Partial<Record<WalkWorld, Walk>> = {};
+  const walks: Partial<Record<WalkWorld, Walk | undefined>> = {};
   let walk: Walk | null = null;
   let walkWorld: WalkWorld = 'earth';
   let walkLoading = false;
-  let walkAsked: { on: WalkWorld; lat: number; lon: number } | null = null;
+  let walkAsked: { on: WalkWorld; lat: number; lon: number; headingDeg: number; pitchDeg: number } | null = null;
+  /**
+   * Whether the walker's view is shown (it is once the walk has landed, any glide down has ended and
+   * the picture has dipped), and the dip into or out of it under way: the picture dims, the camera
+   * moves while it is dark (the exposure jumping to the new light), and it comes back, as a
+   * reduced-motion cut does.
+   */
+  let walkShown = false;
+  let walkDip: { into: boolean; t: number; switched: boolean } | null = null;
+  /**
+   * Down through an atmosphere (./descent, its own chunk): each world's made the first time, `descent`
+   * the one under way, shown once the picture has dipped into it; the on-screen pad's climb (-1 hurry
+   * down, 1 climb); and this frame's eye there.
+   */
+  const descents: Partial<Record<DescentWorld, Descent | undefined>> = {};
+  let descent: Descent | null = null;
+  let descentLoading = false;
+  let descentShown = false;
+  let descentDip: { into: boolean; t: number; switched: boolean } | null = null;
+  const descentPad = { climb: 0 };
+  let descending = false;
+  /**
+   * Among the stars (./neighbourhood, its own chunk): made the first time, shown once the picture
+   * has dipped into it (the solar system hidden), and this frame's veil from its dip.
+   */
+  let hood: Neighbourhood | null = null;
+  let hoodLoading = false;
+  let hoodShown = false;
+  let hoodDip: { into: boolean; t: number; switched: boolean } | null = null;
+  let hoodVeil = 1;
+  /** The orbit a walk's descent left (its body, the direction from it, render frame, and the height), to climb back to. */
+  let walkReturn: { body: BodyId; dir: Km; altitudeKm: number } | null = null;
   let walkRefused = false;
   /** This frame's walker pose, once landed (the camera is there instead of where the navigator has it). */
   let walking = false;
+  /** This frame's veils from a walk's and a descent's dips (1 none), and whether the camera switched under one. */
+  let walkVeil = 1;
+  let descentVeil = 1;
+  let walkCut = false;
   const walkInput: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
   /** The on-screen pad's (touch) Forward or Back and Jump, and the keys and pad together as the walker gets them. */
   const walkPad = { forward: 0, jump: false };
@@ -547,8 +598,9 @@ export default function create(): UniverseModule {
   /** How much of the Sun's disc no nearer body covers, 0 to 1. */
   const sunVisible = (): number => {
     if (!system) return 1;
-    // Under Venus's clouds the Sun is never seen.
+    // Under Venus's clouds the Sun is never seen; descending, it shows only through the cloud above.
     if (walking && walk && !walk.skySeen) return 0;
+    if (descending && descent) return descent.sunSeen();
     const s = placed.sun;
     const a = Math.asin(Math.min(1, system.specs.sun.radiusKm / Math.max(s.distance, 1)));
     let share = 1;
@@ -608,6 +660,9 @@ export default function create(): UniverseModule {
     walk: null,
     walkRefused: false,
     walkHere: null,
+    place: null,
+    descent: null,
+    neighbourhood: null,
     mode: 'orbit',
     speedKmS: 0,
     trip: null,
@@ -659,9 +714,15 @@ export default function create(): UniverseModule {
     }
     v.time.hijri = lab?.active ? null : hijri;
     v.islamic = lab?.active ? null : (islamic?.view() ?? null);
-    v.walk = walk?.view() ?? null;
+    const walkView = walk?.view() ?? null;
+    // Landed but not yet shown (the glide down, the dip): still landing, as far as anyone looking can tell.
+    if (walkView && !walkShown) walkView.state = 'landing';
+    v.walk = walkView;
     v.walkRefused = walkRefused;
     v.walkHere = walkHere;
+    v.place = placeBelow;
+    v.descent = descent?.view() ?? null;
+    v.neighbourhood = hoodShown ? (hood?.view() ?? null) : null;
     // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
     v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
     v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
@@ -739,7 +800,7 @@ export default function create(): UniverseModule {
     // The detail's share of the sky: its brightest stars (the catalogue is sorted by magnitude).
     if (stars) stars.object.count = Math.min(stars.count, detail.starCount);
     // On foot, the ground's illustrative detail.
-    for (const w of Object.values(walks)) w.setDetail(detail.groundDetail === 'full');
+    for (const id of WALK_IDS) walks[id]?.setDetail(detail.groundDetail === 'full');
     if (entered && ctx) {
       ctx.graphics.setBloom(detail.bloom);
       ctx.graphics.setDprCap(detail.dprCap);
@@ -794,6 +855,12 @@ export default function create(): UniverseModule {
     const rect = c.renderer.domElement.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+    // Among the stars: a star under the pointer is flown to.
+    if (hoodShown && hood) {
+      const star = hood.pick(x, y, rect.width, rect.height);
+      if (star) hood.goTo(star);
+      return null;
+    }
     // A satellite under the pointer is chosen instead (its name, orbit and height show).
     const camera = c.camera;
     const hit = satellites?.pick(x, y, SATELLITE_PICK_PX, (v) => {
@@ -895,14 +962,14 @@ export default function create(): UniverseModule {
   };
 
   /** A place on the Earth (degrees) as a unit direction from its centre, render frame. */
-  const placeDirection = (sys: SolarSystem, latDeg: number, lonDeg: number, out: Km): Km => {
+  const placeDirection = (sys: SolarSystem, latDeg: number, lonDeg: number, out: Km, id: BodyId = 'earth'): Km => {
     const lat = MathUtils.degToRad(latDeg);
     const lon = MathUtils.degToRad(lonDeg);
-    // The Earth's frame: x the prime meridian, y the north pole, east longitude toward -z.
+    // The body's frame: x the prime meridian, y the north pole, east longitude toward -z.
     const bx = Math.cos(lat) * Math.cos(lon);
     const by = Math.sin(lat);
     const bz = -Math.cos(lat) * Math.sin(lon);
-    const m = sys.bodies.earth.basis;
+    const m = sys.bodies[id].basis;
     out.x = bx * (m[0] ?? 1) + by * (m[3] ?? 0) + bz * (m[6] ?? 0);
     out.y = bx * (m[1] ?? 0) + by * (m[4] ?? 1) + bz * (m[7] ?? 0);
     out.z = bx * (m[2] ?? 0) + by * (m[5] ?? 0) + bz * (m[8] ?? 1);
@@ -987,19 +1054,26 @@ export default function create(): UniverseModule {
    * made the first time it is asked for (the walk's own chunk, and for the Moon and Mars their heights'
    * list, public/assets/walk/heights.json); a walk under way on another world ends first.
    */
-  const startWalk = (on: WalkWorld, lat: number, lon: number): void => {
+  const startWalk = (on: WalkWorld, lat: number, lon: number, headingDeg = 0, pitchDeg = 0): void => {
     const sys = system;
     const c = ctx;
     if (!sys || !c || lab?.active) return;
     walkRefused = on === 'earth' && nearMakkah(sys, lat, lon);
     if (walkRefused) return;
-    if (walk?.active && walkWorld !== on) endWalk();
-    walkAsked = { on, lat, lon };
+    if (walk?.active && walkWorld !== on) endWalk(true);
+    walkAsked = { on, lat, lon, headingDeg, pitchDeg };
+    // The descent: with the world in view, the camera glides down over the place to the lowest orbit
+    // while the ground loads (at once with reduced motion); the walk is dipped into once both are done.
+    if (world && nav.focus === on && !walkShown && !descentShown) {
+      const p = placed[on];
+      if (!walkReturn && p.distance > 0) walkReturn = { body: on, dir: km(-p.rel.x / p.distance, -p.rel.y / p.distance, -p.rel.z / p.distance), altitudeKm: p.distance - sys.specs[on].radiusKm };
+      nav.glideTo(world, placeDirection(sys, lat, lon, km(), on), sys.specs[on].minAltitudeKm, DEFAULT_FOV);
+    }
     const ready = walks[on];
     if (ready) {
       walk = ready;
       walkWorld = on;
-      ready.start(lat, lon);
+      ready.start(lat, lon, MathUtils.degToRad(headingDeg), MathUtils.degToRad(pitchDeg));
       walkAsked = null;
       return;
     }
@@ -1043,7 +1117,7 @@ export default function create(): UniverseModule {
         if (walkAsked?.on === on) {
           walk = made;
           walkWorld = on;
-          made.start(walkAsked.lat, walkAsked.lon);
+          made.start(walkAsked.lat, walkAsked.lon, MathUtils.degToRad(walkAsked.headingDeg), MathUtils.degToRad(walkAsked.pitchDeg));
         }
         walkAsked = null;
       })
@@ -1051,14 +1125,136 @@ export default function create(): UniverseModule {
         walkLoading = false;
       });
   };
-  const endWalk = (): void => {
-    walk?.stop();
+  /**
+   * Down through an atmosphere where a probe went (ledger GR-6): the descent made the first time
+   * (its chunk and the probe's profile, public/assets/descent), from the top of the probe's column;
+   * the picture dips into it. Its altitudes are above Venus's 6,052.0 km radius at the probe's site,
+   * or Jupiter's 1-bar level (the drawn ellipsoid's radius at the probe's latitude).
+   */
+  const startDescent = (on: DescentWorld): void => {
+    const sys = system;
+    const c = ctx;
+    if (!sys || !c || lab?.active) return;
+    if (walk?.active) endWalk(true);
+    if (descent?.active && descent.world !== on) endDescent(true);
+    // Over the place beneath the camera when the world is in view (most often in daylight), else over the probe's own site.
+    const below = placeBelow?.body === on ? placeBelow : null;
+    const ready = descents[on];
+    if (ready) {
+      descent = ready;
+      ready.start(below?.lat ?? ready.profile.file.site.latDeg, below?.lon ?? ready.profile.file.site.lonDeg);
+      return;
+    }
+    if (descentLoading) return;
+    descentLoading = true;
+    void Promise.all([import('./descent'), c.assets.json<DescentFile>(`assets/descent/${on}.json`)])
+      .then(([{ createDescent }, file]) => {
+        descentLoading = false;
+        const spec = sys.specs[on];
+        const lat = MathUtils.degToRad(file.site.latDeg);
+        const base = file.radiusKm ?? (spec.radiusKm * spec.polarKm) / Math.hypot(spec.polarKm * Math.cos(lat), spec.radiusKm * Math.sin(lat));
+        const made = createDescent(file, base);
+        descents[on] = made;
+        root.add(...made.objects);
+        descent = made;
+        made.start(below?.lat ?? file.site.latDeg, below?.lon ?? file.site.lonDeg);
+      })
+      .catch(() => {
+        descentLoading = false;
+      });
+  };
+  /**
+   * Out among the stars (ledger IS-3): the neighbourhood made the first time (its chunk, the stars'
+   * file public/assets/stars/neighbourhood.json and the Sun's magnitude and colour from the
+   * constants), then the picture dips into it, round the Sun from three parsecs. Not from an
+   * experiment; a walk or a descent ends first.
+   */
+  const startStars = (): void => {
+    const c = ctx;
+    if (!c || !labInputs || lab?.active || hoodShown || hoodLoading) return;
+    if (walk?.active) endWalk(true);
+    if (descent?.active) endDescent(true);
+    const begin = (made: Neighbourhood): void => {
+      made.enter(3);
+      hoodDip = { into: true, t: 0, switched: false };
+    };
+    if (hood) {
+      begin(hood);
+      return;
+    }
+    hoodLoading = true;
+    const obliquity = obliquityRad(labInputs.physical);
+    void Promise.all([import('./neighbourhood'), c.assets.json<NeighbourhoodFile>('assets/stars/neighbourhood.json')])
+      .then(([{ createNeighbourhood }, file]) => {
+        hoodLoading = false;
+        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN });
+        hood = made;
+        starsRoot.add(...made.objects);
+        begin(made);
+      })
+      .catch(() => {
+        hoodLoading = false;
+      });
+  };
+  /** Back to the solar system from the stars: dipped out (at once when `now`). */
+  const endStars = (now = false): void => {
+    if (!hoodShown) return;
+    if (!now) {
+      if (!hoodDip || hoodDip.into) hoodDip = { into: false, t: 0, switched: false };
+      return;
+    }
+    hood?.exit();
+    hoodShown = false;
+    hoodDip = null;
+    root.visible = true;
+    starsRoot.visible = false;
+  };
+
+  /** Back to orbit from a descent: dipped out of one that is shown, at once otherwise (or when `now`). */
+  const endDescent = (now = false): void => {
+    descentPad.climb = 0;
+    if (descentShown && !now) {
+      if (!descentDip || descentDip.into) descentDip = { into: false, t: 0, switched: false };
+      return;
+    }
+    descent?.stop();
+    descent = null;
+    descentShown = false;
+    descentDip = null;
+  };
+
+  /** Back to orbit: dipped out of a walk that is shown, at once otherwise (or when `now`). */
+  const endWalk = (now = false): void => {
     walkAsked = null;
     for (const k of ['forward', 'right', 'turn', 'tip'] as const) walkInput[k] = 0;
     walkInput.run = false;
     walkInput.jump = false;
     walkPad.forward = 0;
     walkPad.jump = false;
+    if (walkShown && !now) {
+      if (!walkDip || walkDip.into) walkDip = { into: false, t: 0, switched: false };
+      return;
+    }
+    walk?.stop();
+    walkShown = false;
+    walkDip = null;
+    walkReturn = null;
+  };
+
+  /**
+   * Goes to a saved view (ledger GR-4): over a place on a body (degrees) at a height (km), gliding
+   * there on the body in view, after a trip to it from elsewhere. (On the Earth no height a view can
+   * have frames Makkah narrower than MAKKAH_FRAME: the lowest orbit, 150 km, already spans more.)
+   */
+  const goToView = (body: BodyId, lat: number, lon: number, altitudeKm: number): void => {
+    if (!world || !system || !entered) return;
+    if (walk?.active) endWalk(true);
+    if (nav.focus !== body || nav.busy) {
+      if (nav.focus !== body) nav.flyTo(world, body);
+      pendingView = { body, lat, lon, altitudeKm };
+      return;
+    }
+    nav.glideTo(world, placeDirection(system, lat, lon, km(), body), altitudeKm, DEFAULT_FOV);
   };
 
   /** Flies to a place on the Earth (degrees) framing `viewKm` of ground: to the Earth first if elsewhere. */
@@ -1192,6 +1388,51 @@ export default function create(): UniverseModule {
       }
     }
     sys.update(jdTdb);
+    // Among the stars: the dip into or out of them, and then their own scene and camera instead of the solar system's.
+    hoodVeil = 1;
+    const hdip = hoodDip;
+    let hoodCut = false;
+    if (hdip) {
+      hdip.t += dt;
+      if (!hdip.switched && hdip.t >= WALK_DIP.downS) {
+        hdip.switched = true;
+        hoodCut = true;
+        hoodShown = hdip.into;
+        if (!hdip.into) hood?.exit();
+        root.visible = !hoodShown;
+        starsRoot.visible = hoodShown;
+      }
+      hoodVeil = hdip.switched ? smoothstep(0, 1, (hdip.t - WALK_DIP.downS) / WALK_DIP.upS) : 1 - smoothstep(0, 1, hdip.t / WALK_DIP.downS);
+      if (hdip.t >= WALK_DIP.downS + WALK_DIP.upS) hoodDip = null;
+    }
+    if (hoodShown && hood) {
+      const camera = c.camera;
+      const pose = hood.update(dt, jdTdb - 2451545, camera);
+      camera.position.set(0, 0, 0);
+      target.set(...pose.forward);
+      up.set(...pose.up);
+      look.lookAt(eye, target, up);
+      camera.quaternion.setFromRotationMatrix(look);
+      camera.up.copy(up);
+      camera.near = pose.near;
+      camera.far = pose.far;
+      camera.fov = DEFAULT_FOV;
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+      c.exposure.setTarget(1);
+      c.exposure.setVeil(hoodVeil);
+      adaptation.setTarget(1);
+      if (hoodCut) {
+        c.exposure.jump();
+        adaptation.jump();
+      }
+      adaptation.update(dt);
+      labels.length = 0;
+      hood.labels(labels);
+      refreshView();
+      entering = false;
+      return;
+    }
     // In the laboratory the experiment puts the worlds where it has them (their turn still the IAU models').
     if (lab?.active) {
       lab.applyBuiltIns(sys, hiddenBodies);
@@ -1241,6 +1482,11 @@ export default function create(): UniverseModule {
       pendingPlace = null;
       goToPlace(p.lat, p.lon, p.viewKm);
     }
+    if (pendingView && nav.focus === pendingView.body && !nav.busy) {
+      const p = pendingView;
+      pendingView = null;
+      goToView(p.body, p.lat, p.lon, p.altitudeKm);
+    }
     if (placeLock && (nav.focus !== 'earth' || (!nav.lensActive && !nav.gliding && placed.earth.distance - sys.specs.earth.radiusKm > PLACE_LOCK_KM))) placeLock = false;
     nav.placeView = placeLock;
 
@@ -1248,26 +1494,89 @@ export default function create(): UniverseModule {
     nav.update(world, dt, navOut);
     // On foot, the walker's eye replaces the navigator's camera (which keeps its own place for the way
     // back); a trip elsewhere (a world chosen, a place flown to) ends the walk.
-    if (walk?.active && nav.travelling) endWalk();
+    if (walk?.active && nav.travelling && !walkDip) endWalk();
+    if (descent?.active && nav.travelling && !descentDip) endDescent();
     walking = false;
+    /** An eye's pose in a world's own frame (km from its centre) put in place of the navigator's camera. */
+    const eyeAt = (pose: { position: readonly number[]; forward: readonly number[]; up: readonly number[] }, id: BodyId): void => {
+      const m = sys.bodies[id].basis;
+      const e = sys.bodies[id].position;
+      const toRender = (v: readonly number[], out: Km, from: Km | null): void => {
+        out.x = (from?.x ?? 0) + (v[0] ?? 0) * (m[0] ?? 1) + (v[1] ?? 0) * (m[3] ?? 0) + (v[2] ?? 0) * (m[6] ?? 0);
+        out.y = (from?.y ?? 0) + (v[0] ?? 0) * (m[1] ?? 0) + (v[1] ?? 0) * (m[4] ?? 1) + (v[2] ?? 0) * (m[7] ?? 0);
+        out.z = (from?.z ?? 0) + (v[0] ?? 0) * (m[2] ?? 0) + (v[1] ?? 0) * (m[5] ?? 0) + (v[2] ?? 0) * (m[8] ?? 1);
+      };
+      toRender(pose.position, navOut.position, e);
+      toRender(pose.forward, navOut.forward, null);
+      toRender(pose.up, navOut.up, null);
+      navOut.fov = WALK_FOV;
+    };
+    // The dip into or out of a walk: dark, the switch while it is dark, light again.
+    walkVeil = 1;
+    walkCut = false;
+    const dip = walkDip;
+    if (dip) {
+      dip.t += dt;
+      if (!dip.switched && dip.t >= WALK_DIP.downS) {
+        dip.switched = true;
+        walkCut = true;
+        if (dip.into) {
+          walkShown = true;
+          // Landed from a descent (Venus's): the descent ends as the walk shows.
+          if (descent) endDescent(true);
+        } else {
+          walk?.stop();
+          walkShown = false;
+          // Back up to the orbit the descent left (unless a trip has taken the camera elsewhere).
+          const back = walkReturn;
+          walkReturn = null;
+          if (back && nav.focus === back.body && !nav.travelling) nav.glideTo(world, back.dir, back.altitudeKm, DEFAULT_FOV);
+        }
+      }
+      walkVeil = dip.switched ? smoothstep(0, 1, (dip.t - WALK_DIP.downS) / WALK_DIP.upS) : 1 - smoothstep(0, 1, dip.t / WALK_DIP.downS);
+      if (dip.t >= WALK_DIP.downS + WALK_DIP.upS) walkDip = null;
+    }
     if (walk?.active) {
       Object.assign(walkStep, walkInput);
       walkStep.forward = Math.max(-1, Math.min(1, walkInput.forward + walkPad.forward));
       walkStep.jump = walkInput.jump || walkPad.jump;
       const pose = walk.step(dt, walkStep);
-      if (pose) {
+      // Landed: once any glide down has ended, the picture dips into the walk.
+      if (pose && !walkShown && !walkDip && !nav.gliding) walkDip = { into: true, t: 0, switched: false };
+      if (pose && walkShown) {
         walking = true;
-        const m = sys.bodies[walkWorld].basis;
-        const e = sys.bodies[walkWorld].position;
-        const toRender = (v: readonly number[], out: Km, from: Km | null): void => {
-          out.x = (from?.x ?? 0) + (v[0] ?? 0) * (m[0] ?? 1) + (v[1] ?? 0) * (m[3] ?? 0) + (v[2] ?? 0) * (m[6] ?? 0);
-          out.y = (from?.y ?? 0) + (v[0] ?? 0) * (m[1] ?? 0) + (v[1] ?? 0) * (m[4] ?? 1) + (v[2] ?? 0) * (m[7] ?? 0);
-          out.z = (from?.z ?? 0) + (v[0] ?? 0) * (m[2] ?? 0) + (v[1] ?? 0) * (m[5] ?? 0) + (v[2] ?? 0) * (m[8] ?? 1);
-        };
-        toRender(pose.position, navOut.position, e);
-        toRender(pose.forward, navOut.forward, null);
-        toRender(pose.up, navOut.up, null);
-        navOut.fov = WALK_FOV;
+        eyeAt(pose, walkWorld);
+      }
+    }
+    // Down through an atmosphere: its dip, then its eye in place of the navigator's.
+    descending = false;
+    descentVeil = 1;
+    const ddip = descentDip;
+    if (ddip) {
+      ddip.t += dt;
+      if (!ddip.switched && ddip.t >= WALK_DIP.downS) {
+        ddip.switched = true;
+        walkCut = true;
+        if (ddip.into) descentShown = true;
+        else {
+          descent?.stop();
+          descent = null;
+          descentShown = false;
+        }
+      }
+      descentVeil = ddip.switched ? smoothstep(0, 1, (ddip.t - WALK_DIP.downS) / WALK_DIP.upS) : 1 - smoothstep(0, 1, ddip.t / WALK_DIP.downS);
+      if (ddip.t >= WALK_DIP.downS + WALK_DIP.upS) descentDip = null;
+    }
+    if (descent?.active && !walking) {
+      const climb = Math.max(-1, Math.min(1, walkInput.forward + descentPad.climb));
+      const pose = descent.step(dt, climb, walkInput.run);
+      if (pose && !descentShown && !descentDip) descentDip = { into: true, t: 0, switched: false };
+      if (pose && descentShown) {
+        descending = true;
+        eyeAt(pose, descent.world);
+        // On Venus, at the bottom of the probe's column: the walk lands where the probe did.
+        const v = descent.view();
+        if (v?.atBottom && descent.world === 'venus' && !walk?.active && !walkAsked) startWalk('venus', v.hereLatDeg, v.hereLonDeg);
       }
     }
     origin.setCamera(navOut.position);
@@ -1288,7 +1597,7 @@ export default function create(): UniverseModule {
     ringSphere.pole.z = pole[5] ?? 0;
     nearestKm = nearestAltitude(spheres);
     lensFor(nearestKm, lens);
-    if (walking) {
+    if (walking || descending) {
       lens.near = WALK_LENS.near;
       lens.far = WALK_LENS.far;
     }
@@ -1327,9 +1636,9 @@ export default function create(): UniverseModule {
     // A reduced-motion cut dims through the veil, and the exposure jumps while it is dim.
     const exposure = exposureTarget();
     c.exposure.setTarget(exposure);
-    c.exposure.setVeil(navOut.dim);
+    c.exposure.setVeil(navOut.dim * walkVeil * descentVeil * hoodVeil);
     adaptation.setTarget(exposure);
-    if (navOut.cut) {
+    if (navOut.cut || walkCut || hoodCut) {
       c.exposure.jump();
       adaptation.jump();
     }
@@ -1346,7 +1655,7 @@ export default function create(): UniverseModule {
       p.radiusPx = pxPerTan * Math.tan(Math.asin(Math.min(1, radiusKm / Math.max(p.distance, radiusKm))));
       const object = bodies.objects[id];
       // On foot, the ground under the walker stands in for the globe.
-      object.visible = !hiddenBodies.has(id) && !(walking && id === walkWorld);
+      object.visible = !hiddenBodies.has(id) && !(walking && id === walkWorld) && !(descending && id === descent?.world);
       object.position.set(p.drawn.x, p.drawn.y, p.drawn.z);
       object.scale.setScalar(radiusKm * p.k);
       const b = sys.bodies[id].basis;
@@ -1383,7 +1692,7 @@ export default function create(): UniverseModule {
       time: ambient,
       kelvin: SUN_KELVIN,
       // Under Venus's clouds no Sun is seen (no light: the disc is not drawn).
-      light: walking && walk?.skySeen === false ? 0 : sunDisplay / adapted,
+      light: (walking && walk?.skySeen === false ? 0 : sunDisplay / adapted) * (descending ? (descent?.sunSeen() ?? 1) : 1),
       exposure: adapted,
       filter: filterColor,
       filtered: filterAmount,
@@ -1485,7 +1794,7 @@ export default function create(): UniverseModule {
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
     // On foot by day, the sky hides the stars (and through twilight lets them through).
-    const starlight = walking ? (walk?.starlight() ?? 1) : 1;
+    const starlight = walking ? (walk?.starlight() ?? 1) : descending ? (descent?.starlight() ?? 1) : 1;
     stars.setLight(STARS.light * adapted ** (STARS.follow - 1) * starlight);
     stars.update(dt);
 
@@ -1503,7 +1812,7 @@ export default function create(): UniverseModule {
       const fromCentre = Math.hypot(path.centre.x - origin.camera.x, path.centre.y - origin.camera.y, path.centre.z - origin.camera.z);
       const outside = smoothstep(ORBIT_INSIDE.from * size, ORBIT_INSIDE.to * size, fromCentre);
       // The worlds' real orbits are the ephemeris's: not drawn over an experiment (its trails are).
-      const want = lab?.active || walking ? 0 : (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
+      const want = lab?.active || walking || descending ? 0 : (own ? 1 : wideness) * nearBody * outside * (1 - filterAmount);
       const current = orbitWeights[i] ?? 0;
       orbitWeights[i] = current + (want - current) * (entering ? 1 : orbitSettle);
     });
@@ -1553,8 +1862,8 @@ export default function create(): UniverseModule {
       belowEarth = near && r > 0 ? { lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)) } : null;
       // The qibla and the new moon: their marks turn with the Earth (near it, at true scale, never over an experiment or on foot).
       if (islamic) {
-        islamic.update({ jdUtc, earth: pe.drawn, basis: m, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && !walking, below: belowEarth });
-        if (!walking) islamic.labels(labels);
+        islamic.update({ jdUtc, earth: pe.drawn, basis: m, earthRadiusKm: sys.specs.earth.radiusKm, visible: near && !walking && !descending, below: belowEarth });
+        if (!walking && !descending) islamic.labels(labels);
       }
     }
     // Where a walk would begin: beneath the camera on the world in view, when there is ground to walk
@@ -1563,6 +1872,15 @@ export default function create(): UniverseModule {
     {
       const id = nav.focus;
       const p = placed[id];
+      // The place beneath the camera on any body in view, at its true size (for saving the view).
+      if (!lab?.active && !nav.travelling && p.k > 0.999 && grow[id] === 1) {
+        const m = sys.bodies[id].basis;
+        const bx = -p.drawn.x * (m[0] ?? 1) - p.drawn.y * (m[1] ?? 0) - p.drawn.z * (m[2] ?? 0);
+        const by = -p.drawn.x * (m[3] ?? 0) - p.drawn.y * (m[4] ?? 1) - p.drawn.z * (m[5] ?? 0);
+        const bz = -p.drawn.x * (m[6] ?? 0) - p.drawn.y * (m[7] ?? 0) - p.drawn.z * (m[8] ?? 1);
+        const r = Math.hypot(bx, by, bz);
+        placeBelow = r > 0 ? { body: id, lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)), altitudeKm: r - sys.specs[id].radiusKm } : null;
+      } else placeBelow = null;
       if (walkable(id) && !lab?.active && p.k > 0.999 && grow[id] === 1) {
         const m = sys.bodies[id].basis;
         const dx = -p.drawn.x;
@@ -1579,6 +1897,10 @@ export default function create(): UniverseModule {
     // the render frame and the world's own (the longitude beneath the Sun from it: atan2(-z, x), the
     // mesh frame's), at true scale (the walk's far plane puts the world in scaled space, which the
     // ground does not use).
+    if (descent?.active) {
+      unit(scratch, sys.bodies[descent.world].position, sys.bodies.sun.position);
+      descent.place({ basis: sys.bodies[descent.world].basis, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, light: lightAt(descent.world), far: lens.far });
+    }
     if (walk?.active) {
       const m = sys.bodies[walkWorld].basis;
       unit(scratch, sys.bodies[walkWorld].position, sys.bodies.sun.position);
@@ -1650,7 +1972,7 @@ export default function create(): UniverseModule {
         const brightness = 0.22 + 2.1 * style.albedo * phase;
         dot.color = [style.tint[0] * brightness, style.tint[1] * brightness, style.tint[2] * brightness];
       }
-      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx) * (id === 'sun' ? (walking && walk?.skySeen === false ? 0 : 1) : starlight);
+      dot.opacity = hiddenBodies.has(id) ? 0 : smoothstep(2.8, 1.2, p.radiusPx) * (id === 'sun' ? (walking && walk?.skySeen === false ? 0 : 1) * (descending ? (descent?.sunSeen() ?? 1) : 1) : starlight);
       dot.sizePx = style.sizePx;
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
@@ -2245,23 +2567,43 @@ export default function create(): UniverseModule {
       input = createInput(c.renderer.domElement, {
         // On foot, the same input walks: a drag looks round, W A S D walk (Shift runs), R jumps, the arrows turn and tip the look; Esc or O ends the walk.
         drag: (dx, dy) => {
+          if (hoodShown) {
+            hood?.drag(dx, dy);
+            return;
+          }
           if (walk?.active) {
             walk.look(dx, dy);
+            return;
+          }
+          if (descent?.active) {
+            descent.look(dx, dy);
             return;
           }
           stretch.steered = true;
           nav.drag(w, dx, dy);
         },
         pan: (dx, dy) => {
+          if (hoodShown) {
+            hood?.drag(dx, dy);
+            return;
+          }
           if (walk?.active) {
             walk.look(dx, dy);
+            return;
+          }
+          if (descent?.active) {
+            descent.look(dx, dy);
             return;
           }
           stretch.steered = true;
           nav.pan(w, dx, dy);
         },
         zoom: (dLn) => {
-          if (walk?.active) return;
+          if (hoodShown) {
+            hood?.zoom(dLn);
+            return;
+          }
+          if (walk?.active || descent?.active) return;
           stretch.steered = true;
           nav.zoom(w, dLn);
         },
@@ -2269,7 +2611,7 @@ export default function create(): UniverseModule {
           // The left arrow turns the walker left (its azimuth is +1, for the orbit's own sense).
           walkInput.turn = -azimuth;
           walkInput.tip = elevation;
-          if (walk?.active) return;
+          if (walk?.active || descent?.active) return;
           if (azimuth !== 0 || elevation !== 0 || zoom !== 0) stretch.steered = true;
           nav.setOrbitKeys(azimuth, elevation, zoom);
         },
@@ -2278,13 +2620,22 @@ export default function create(): UniverseModule {
           walkInput.right = move.x;
           walkInput.jump = move.y > 0;
           walkInput.run = boost;
-          if (walk?.active) return;
+          if (walk?.active || descent?.active) return;
           if (move.x !== 0 || move.y !== 0 || move.z !== 0 || roll !== 0) stretch.steered = true;
           nav.setFlightKeys(w, move, roll, boost);
         },
         stop: () => {
+          if (hoodShown) {
+            if (hood?.travelling) hood.stop();
+            else endStars();
+            return true;
+          }
           if (walk?.active) {
             endWalk();
+            return true;
+          }
+          if (descent?.active) {
+            endDescent();
             return true;
           }
           // Esc while placing a body leaves placing.
@@ -2297,6 +2648,10 @@ export default function create(): UniverseModule {
         orbit: () => {
           if (walk?.active) {
             endWalk();
+            return;
+          }
+          if (descent?.active) {
+            endDescent();
             return;
           }
           steer('orbit');
@@ -2339,6 +2694,9 @@ export default function create(): UniverseModule {
       ctx = c;
       if (!system || !world) return;
       c.scene.add(root);
+      c.scene.add(starsRoot);
+      starsRoot.visible = false;
+      root.visible = true;
       entered = true;
       ambient = 0;
       setDate(pinnedUtc);
@@ -2448,9 +2806,43 @@ export default function create(): UniverseModule {
       switch (command.kind) {
         case 'walk': {
           const at = command.lat !== undefined && command.lon !== undefined ? { world: command.world ?? 'earth', lat: command.lat, lon: command.lon } : (walkHere ?? (belowEarth ? { world: 'earth' as const, ...belowEarth } : null));
-          if (at) startWalk(at.world, at.lat, at.lon);
+          if (at) startWalk(at.world, at.lat, at.lon, command.headingDeg ?? 0, command.pitchDeg ?? 0);
           return;
         }
+        case 'view':
+          goToView(command.body, command.lat, command.lon, command.altitudeKm);
+          return;
+        case 'descent':
+          startDescent(command.world);
+          return;
+        case 'descentEnd':
+          endDescent();
+          return;
+        case 'descentPad':
+          descentPad.climb = Math.max(-1, Math.min(1, command.climb));
+          if (command.held !== undefined) descent?.setHeld(command.held);
+          return;
+        case 'descentTo':
+          if (Number.isFinite(command.pressureBar) && command.pressureBar > 0) descent?.goTo(command.pressureBar);
+          return;
+        case 'stars':
+          startStars();
+          return;
+        case 'starsEnd':
+          endStars();
+          return;
+        case 'starsGoTo': {
+          if (!hood) return;
+          const star = command.hip === null ? hood.data.sun : hood.data.stars.find((s) => s.hip === command.hip);
+          if (star) hood.goTo(star);
+          return;
+        }
+        case 'starsStop':
+          hood?.stop();
+          return;
+        case 'starsSearch':
+          hood?.search(command.text);
+          return;
         case 'walkEnd':
           endWalk();
           return;
@@ -2597,9 +2989,13 @@ export default function create(): UniverseModule {
     },
 
     exit() {
-      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back).
+      // Leaving the explorer ends an experiment (its worker stops; the explorer's own state comes back) and a walk.
       wantLab = false;
       applyLab();
+      endWalk(true);
+      endDescent(true);
+      endStars(true);
+      starsRoot.removeFromParent();
       root.removeFromParent();
       input?.detach();
       // Only the Low maps stay while the film plays; the focus's are fetched again on the next visit.
@@ -2635,6 +3031,19 @@ export default function create(): UniverseModule {
       bodies = null;
       stars = null;
       lab?.dispose();
+      for (const id of WALK_IDS) {
+        walks[id]?.dispose();
+        walks[id] = undefined;
+      }
+      for (const id of DESCENT_IDS) {
+        descents[id]?.dispose();
+        descents[id] = undefined;
+      }
+      descent = null;
+      hood?.dispose();
+      hood = null;
+      starsRoot.removeFromParent();
+      walk = null;
       islamic?.dispose();
       islamic = null;
       lab = null;

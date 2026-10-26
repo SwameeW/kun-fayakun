@@ -1890,6 +1890,32 @@
         "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html",
         "accessed": "2026-10-26"
       }
+    },
+    {
+      "id": "sun.absoluteMagnitudeV",
+      "description": "The Sun's absolute magnitude in the V band (Vega system): how bright it would look from 10 parsecs",
+      "value": 4.81,
+      "uncertainty": null,
+      "unit": "mag",
+      "qualifier": "as the paper's table gives it",
+      "citation": {
+        "text": "C. N. A. Willmer (2018), The Absolute Magnitude of the Sun in Several Filters, ApJS 236, 47: M_V = 4.81 (Vega)",
+        "url": "https://doi.org/10.3847/1538-4365/aabfdf",
+        "accessed": "2026-10-26"
+      }
+    },
+    {
+      "id": "sun.colourBV",
+      "description": "The Sun's B-V colour index",
+      "value": 0.653,
+      "uncertainty": 0.003,
+      "unit": "mag",
+      "qualifier": "from solar twins",
+      "citation": {
+        "text": "I. Ramirez et al. (2012), The UBV(RI)C Colors of the Sun, ApJ 752, 5: (B-V) = 0.653 +/- 0.003",
+        "url": "https://doi.org/10.1088/0004-637X/752/1/5",
+        "accessed": "2026-10-26"
+      }
     }
   ]
 }

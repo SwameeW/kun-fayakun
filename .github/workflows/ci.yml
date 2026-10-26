@@ -50,14 +50,15 @@ jobs:
         run: npx playwright test --project=unit
 
   # The browser tests, split across runners: CI has no GPU, so every frame is drawn in software
-  # (SwiftShader) and one runner would take well over an hour for the film and the explorer.
+  # (SwiftShader) and the film and the explorer take about ten hours of runner time in all: twenty
+  # runners keep each near half an hour.
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - uses: actions/checkout@v5
 
@@ -94,8 +95,8 @@ jobs:
       - name: Build
         run: npx vite build
 
-      - name: Playwright tests (WebGPU, forced WebGL2 and the emulated phone), shard ${{ matrix.shard }} of 12
-        run: npx playwright test --project=webgpu --project=webgl2 --project=mobile --shard=${{ matrix.shard }}/12
+      - name: Playwright tests (WebGPU, forced WebGL2 and the emulated phone), shard ${{ matrix.shard }} of 20
+        run: npx playwright test --project=webgpu --project=webgl2 --project=mobile --shard=${{ matrix.shard }}/20
         env:
           KF_SKIP_BUILD: '1'
 

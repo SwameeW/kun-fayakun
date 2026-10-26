@@ -494,6 +494,16 @@ export interface UniverseView {
    * the laboratory).
    */
   walkHere: { world: WalkableWorld; lat: number; lon: number } | null;
+  /** Down through Venus's or Jupiter's atmosphere where a probe went, while one is under way; else null. */
+  descent: UniverseDescent | null;
+  /** Among the stars around the Sun, while there; else null. */
+  neighbourhood: UniverseNeighbourhood | null;
+  /**
+   * The place beneath the camera on the body in view (degrees, its own planetocentric frame) and the
+   * camera's height above its surface (km), for saving the view (ledger GR-4); null in the laboratory
+   * and during a trip.
+   */
+  place: { body: BodyId; lat: number; lon: number; altitudeKm: number } | null;
   /**
    * What the view draws now that is illustrative rather than measured, for the readout to name
    * (optional: an explorer that leaves it out shows no such note).
@@ -713,8 +723,37 @@ export type UniverseTimeCommand =
 export type SkyLayerName = 'constellations' | 'boundaries' | 'grid' | 'names';
 export type UniverseSkyCommand = { kind: 'layer'; layer: SkyLayerName; on: boolean };
 
-/** A zone of Yallop's test for the new crescent: A easily seen by eye ... F below the Danjon limit. */
+/** A zone of Yallop's test for the new crescent: A easily seen by eye ... F below the Danjon limit (Odeh's test uses A to D). */
 export type CrescentZoneName = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+/** The test the crescent's map is drawn by: Yallop's (NAO Technical Note 69, 1997) or Odeh's (Experimental Astronomy 18, 2004). */
+export type CrescentCriterion = 'yallop' | 'odeh';
+/**
+ * A published convention for the times of prayer (src/explore/islamic/astronomy.ts): the Muslim World
+ * League; the Islamic Society of North America; the Egyptian General Authority of Survey; Umm al-Qura
+ * University, Makkah; the University of Islamic Sciences, Karachi; the Institute of Geophysics,
+ * University of Tehran; the Leva Institute, Qum; the Muslims of France; the Spiritual Administration of
+ * Muslims of Russia; the Islamic Religious Council of Singapore.
+ */
+export type PrayerConventionId = 'mwl' | 'isna' | 'egypt' | 'makkah' | 'karachi' | 'tehran' | 'qum' | 'france' | 'russia' | 'singapore';
+
+/** The Sun and the times of prayer for a place on its local day (src/explore/islamic), as the view reports them. */
+export interface UniversePrayer {
+  convention: PrayerConventionId;
+  /** Asr's shadow: its object's length (1) or twice it (2) beyond its noon shadow. */
+  asrFactor: 1 | 2;
+  /** The convention's depressions of the Sun (degrees) for Fajr, Isha (null: a time after Maghrib, `ishaMinutes`) and Maghrib (null: sunset). */
+  fajrDeg: number;
+  ishaDeg: number | null;
+  ishaMinutes: number | null;
+  maghribDeg: number | null;
+  /** The day is in Ramadan by the Umm al-Qura calendar (for a convention whose Isha differs then). */
+  ramadan: boolean;
+  /** The times (ms, UTC); null where the Sun does not come so far below the horizon, or so high, that day. */
+  times: { fajr: number | null; sunrise: number | null; dhuhr: number; asr: number | null; sunset: number | null; maghrib: number | null; isha: number | null };
+  /** The Sun's altitude at its transit and when Asr begins (degrees). */
+  noonAltitudeDeg: number;
+  asrAltitudeDeg: number | null;
+}
 
 /** The new crescent's map for an evening after a new moon (src/explore/islamic). */
 export interface UniverseCrescent {
@@ -724,12 +763,13 @@ export interface UniverseCrescent {
   dateMs: number;
   /** Share of the map computed (it fills over a few frames). */
   progress: number;
-  /** Places of the map (every 2 degrees between 60 S and 60 N) in each zone; `none` where the Moon sets first or the evening is before the new moon. */
+  /** Places of the map (every 2 degrees between 60 S and 60 N) in each zone of the test chosen; `none` where the Moon sets first or the evening is before the new moon. */
   counts: Record<CrescentZoneName | 'none', number>;
-  /** The place the qibla is reckoned from, that evening: its zone (or why none), q, sunset, best time and moonset (ms), and the Moon's age at sunset (hours). */
+  /** The place the qibla is reckoned from, that evening: its zone by the test chosen (or why none), Yallop's q and Odeh's V, sunset, best time and moonset (ms), and the Moon's age at sunset (hours). */
   here: {
     zone: CrescentZoneName | 'moon-sets-first' | 'before-new-moon' | 'no-sunset' | 'high-latitude';
     q: number | null;
+    v: number | null;
     sunsetMs: number | null;
     bestMs: number | null;
     moonsetMs: number | null;
@@ -751,10 +791,96 @@ export interface UniverseIslamic {
   kaabaSun: ReadonlyArray<{ kind: 'over' | 'opposite'; unixMs: number; lat: number; lon: number; zenithDeg: number }>;
   /** The new moon chosen (the latest, or the next once the latest is three days old, unless the visitor stepped), its neighbours, and the Moon's age at the date shown (hours since the latest new moon). */
   newMoon: { unixMs: number; previousMs: number | null; nextMs: number | null; ageHours: number | null } | null;
+  /** The test the crescent's map is drawn by (kept while no map is shown). */
+  criterion: CrescentCriterion;
+  /** The times of prayer for the place the qibla is reckoned from, on its local day of the date shown; null with no place. */
+  prayer: UniversePrayer | null;
   /** The new crescent's map while one is shown. */
   crescent: UniverseCrescent | null;
   /** Marks drawn on the globe: the qibla's path, the two latitudes, the map's places. */
   marks: { path: number; lines: number; map: number };
+}
+
+/** Down through an atmosphere where a probe went (src/explore/descent; docs/ATMOSPHERES.md), as the view reports it. */
+export interface UniverseDescent {
+  world: 'venus' | 'jupiter';
+  probe: string;
+  /** The day the probe went down (ISO), and where (degrees); and where the descent is (beneath the camera when it began). */
+  date: string;
+  latDeg: number;
+  lonDeg: number;
+  hereLatDeg: number;
+  hereLonDeg: number;
+  /** km above Venus's 6,052.0 km radius at the probe's site, or Jupiter's 1-bar level (negative below it). */
+  altitudeKm: number;
+  reference: 'radius' | 'one-bar';
+  /** What the probe measured at this height. */
+  pressureBar: number;
+  temperatureK: number;
+  densityKgM3: number;
+  /** The clouds here, 0 (clear) to 1 (the thickest the nephelometer saw); the wind (m/s from the west, Jupiter's) or null. */
+  cloud: number;
+  windMs: number | null;
+  /** Between two probes' readings (interpolated). */
+  between: boolean;
+  /** The fall held, and at the bottom of the probe's column. */
+  held: boolean;
+  atBottom: boolean;
+  /** The light here as a share of the light above the atmosphere by day (illustrative). */
+  light: number;
+  /** The probe's column: the pressures at its top and its bottom (bar). */
+  topBar: number;
+  bottomBar: number;
+}
+
+/** A known planet about a star nearby (the NASA Exoplanet Archive's composite parameters), each value it calculated rather than measured flagged. */
+export interface NeighbourPlanet {
+  name: string;
+  aAu: number | null;
+  aCalculated: boolean;
+  periodDays: number | null;
+  eccentricity: number | null;
+  inclinationDeg: number | null;
+  radiusEarth: number | null;
+  radiusCalculated: boolean;
+  massEarth: number | null;
+  massCalculated: boolean;
+  massKind: string | null;
+  eqTempK: number | null;
+  method: string | null;
+  year: number | null;
+}
+
+/** The stars around the Sun (src/explore/neighbourhood; docs/NEIGHBOURHOOD.md), as the view reports them. */
+export interface UniverseNeighbourhood {
+  /** The star in view: its names, distance from the Sun (pc and light years, with the parallax's relative error), magnitudes, temperature, type and planets. */
+  focus: {
+    name: string | null;
+    hip: number | null;
+    hr: number | null;
+    distPc: number | null;
+    distLy: number | null;
+    relativeError: number;
+    vmag: number | null;
+    absoluteV: number | null;
+    temperatureK: number | null;
+    spType: string | null;
+    planets: NeighbourPlanet[];
+    host: string | null;
+    starsInSystem: number;
+  };
+  /** The camera's distance from the star in view (pc, km) and from the Sun (pc, light years). */
+  cameraPc: number;
+  cameraKm: number;
+  fromSunPc: number;
+  fromSunLy: number;
+  travelling: boolean;
+  /** The star's planets drawn round it (the camera near enough, no trip under way). */
+  systemShown: boolean;
+  /** The stars nearest the one in view (their distance from it, pc; how many planets they have). */
+  nearest: Array<{ name: string; hip: number | null; distPc: number; planets: number }>;
+  /** The last search's matches (their distance from the Sun, pc, null where not placed). */
+  results: Array<{ name: string; hip: number | null; distPc: number | null; planets: number }>;
 }
 
 /** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
@@ -803,7 +929,9 @@ export type UniverseIslamicCommand =
   | { kind: 'qiblaLine'; on: boolean }
   | { kind: 'golden'; on: boolean }
   | { kind: 'newMoon'; step: -1 | 1 }
-  | { kind: 'evening'; evening: 0 | 1 | 2 | null };
+  | { kind: 'evening'; evening: 0 | 1 | 2 | null }
+  | { kind: 'criterion'; criterion: CrescentCriterion }
+  | { kind: 'prayer'; convention: PrayerConventionId; asrFactor: 1 | 2 };
 
 /** One body of an experiment as the view reports it (masses in kg by one G: the Earth's GM over its mass). */
 export interface UniverseLabBody {
@@ -1016,7 +1144,22 @@ export type EarthCommand =
   /** Names on the ground for a set of the field notes' places (src/explore/field-notes), or none. */
   | { kind: 'markers'; set: 'atlas' | 'prophets' | null }
   /** On foot: a walk at a place (degrees) on a world (the Earth when not said), or at the point beneath the camera (UniverseView.walkHere); and back to the view from above. */
-  | { kind: 'walk'; world?: WalkableWorld; lat?: number; lon?: number }
+  | { kind: 'walk'; world?: WalkableWorld; lat?: number; lon?: number; headingDeg?: number; pitchDeg?: number }
+  /** A saved view (ledger GR-4): over a place on a body (degrees) at a height (km): a glide there on the body in view, a trip there first from elsewhere. */
+  | { kind: 'view'; body: BodyId; lat: number; lon: number; altitudeKm: number }
+  /** Down through an atmosphere where a probe went (ledger GR-6); back to orbit; the on-screen pad (-1 hurry down, 1 climb, 0 fall) and holding the fall. */
+  | { kind: 'descent'; world: 'venus' | 'jupiter' }
+  | { kind: 'descentEnd' }
+  | { kind: 'descentPad'; climb: number; held?: boolean }
+  /** Straight to the height in the probe's column where the pressure is `pressureBar`. */
+  | { kind: 'descentTo'; pressureBar: number }
+  /** Out among the stars (ledger IS-3); back to the solar system; to a star by its Hipparcos number (null: the Sun); a trip among them stopped. */
+  | { kind: 'stars' }
+  | { kind: 'starsEnd' }
+  | { kind: 'starsGoTo'; hip: number | null }
+  | { kind: 'starsStop' }
+  /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
+  | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }
   /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
   | { kind: 'walkPad'; forward: number; jump: boolean };

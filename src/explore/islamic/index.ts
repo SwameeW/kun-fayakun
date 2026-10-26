@@ -1,5 +1,5 @@
 import { Vector3, type Object3D } from 'three/webgpu';
-import type { CrescentZoneName, SceneLabel, UniverseCrescent, UniverseIslamic, UniverseIslamicCommand } from '../../core/types';
+import type { CrescentCriterion, CrescentZoneName, PrayerConventionId, SceneLabel, UniverseCrescent, UniverseIslamic, UniverseIslamicCommand, UniversePrayer } from '../../core/types';
 import { bodyFrame } from '../living/quakes';
 import {
   compassPoint,
@@ -12,6 +12,8 @@ import {
   meridianArcKm,
   meridianRatio,
   newMoons,
+  PRAYER_CONVENTIONS,
+  prayerTimes,
   qiblaBearing,
   qiblaDistanceKm,
   qiblaPath,
@@ -19,16 +21,20 @@ import {
   YALLOP_MAX_LAT,
   type CrescentAt,
   type KaabaSun,
+  type OdehZone,
   type SkyFrame,
   type SkyTrack,
 } from './astronomy';
+import { hijriDate } from './hijri';
 import { createIslamicLayer, type MarkSet } from './layer';
 
 /**
  * The qibla and the new moon in the explorer (its own chunk, loaded when their section first opens):
  * the qibla from the point beneath the camera or a chosen place, drawn as a great circle on the
  * globe; the golden latitude beside the Kaaba's; the next times the Sun stands over the Kaaba or the
- * point opposite it; the new moons; and the new crescent's map for the evenings after one. All of it
+ * point opposite it; the times of prayer at the place, by a published convention; the new moons; and
+ * the new crescent's map for the evenings after one, by Yallop's
+ * test or Odeh's (both are worked out for every place; choosing between them recolours the map). All of it
  * comes from ./astronomy and the explorer's ephemeris; the map is computed a few milliseconds a frame,
  * so the view never stalls. Nothing here shows the Kaaba itself: it is a point the lines end at.
  */
@@ -75,6 +81,8 @@ const ZONE_RGB: Readonly<Record<CrescentZoneName, readonly [number, number, numb
   E: [0.93, 0.34, 0.32],
   F: [0.56, 0.57, 0.63],
 };
+/** Odeh's zones in the colours of Yallop's nearest in meaning: A and B as Yallop's; C (optical aid only) as D; D (not even with it) as E. */
+const ODEH_RGB: Readonly<Record<OdehZone, readonly [number, number, number]>> = { A: ZONE_RGB.A, B: ZONE_RGB.B, C: ZONE_RGB.D, D: ZONE_RGB.E };
 const QIBLA_RGB = [0.98, 0.82, 0.48] as const;
 const GOLDEN_RGB = [1, 0.78, 0.22] as const;
 const KAABA_LAT_RGB = [0.78, 0.9, 1] as const;
@@ -130,11 +138,56 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
   let evening: 0 | 1 | 2 | null = null;
   let track: SkyTrack | null = null;
   let mapFor = '';
-  let job: { row: number; col: number; points: number[]; colors: number[]; counts: ReturnType<typeof zero> } | null = null;
+  let criterion: CrescentCriterion = 'yallop';
+  /** The places with a crescent (lat, lon pairs) and their zones by each test; the counts by each. */
+  interface MapResult {
+    points: number[];
+    yallop: CrescentZoneName[];
+    odeh: OdehZone[];
+    counts: Record<CrescentCriterion, ReturnType<typeof zero>>;
+  }
+  let job: (MapResult & { row: number; col: number }) | null = null;
+  // The finished map, kept so a change of test only recolours it.
+  let result: MapResult | null = null;
   let crescent: UniverseCrescent | null = null;
   let hereFor = '';
 
   const place = (): { lat: number; lon: number; name: string | null } | null => chosen ?? (below ? { ...below, name: null } : null);
+
+  // The times of prayer at the place, on its local day of the date shown, refound when any of those changes.
+  let prayerConvention: PrayerConventionId = 'mwl';
+  let asrFactor: 1 | 2 = 1;
+  let prayer: UniversePrayer | null = null;
+  let prayerFor = '';
+  const refreshPrayer = (): void => {
+    const p = place();
+    const c = PRAYER_CONVENTIONS.find((x) => x.id === prayerConvention);
+    if (!p || !c) {
+      prayer = null;
+      prayerFor = '';
+      return;
+    }
+    // The place's day by local mean time, and whether Umm al-Qura's calendar has it in Ramadan.
+    const day = Math.floor(jdNow + p.lon / 360 - 0.5);
+    const key = `${p.lat.toFixed(3)}:${p.lon.toFixed(3)}:${day}:${prayerConvention}:${asrFactor}`;
+    if (key === prayerFor) return;
+    prayerFor = key;
+    const ramadan = hijriDate(msOf(day + 1 - p.lon / 360))?.month === 9;
+    const t = prayerTimes(sky, p.lat, p.lon, jdNow, c, asrFactor, ramadan);
+    const ms = (jd: number | null): number | null => (jd === null ? null : msOf(jd));
+    prayer = {
+      convention: c.id,
+      asrFactor,
+      fajrDeg: c.fajrDeg,
+      ishaDeg: c.ishaDeg,
+      ishaMinutes: c.ishaDeg === null ? (ramadan && c.ishaRamadanMinutes !== null ? c.ishaRamadanMinutes : c.ishaMinutes) : null,
+      maghribDeg: c.maghribDeg,
+      ramadan,
+      times: { fajr: ms(t.fajr), sunrise: ms(t.sunrise), dhuhr: msOf(t.dhuhr), asr: ms(t.asr), sunset: ms(t.sunset), maghrib: ms(t.maghrib), isha: ms(t.isha) },
+      noonAltitudeDeg: t.noonAltitudeDeg,
+      asrAltitudeDeg: t.asrAltitudeDeg,
+    };
+  };
 
   const refreshQibla = (): void => {
     const p = place();
@@ -190,6 +243,7 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
     const conj = moons[moonIndex];
     if (d0 === null || conj === undefined) {
       job = null;
+      result = null;
       crescent = null;
       mapFor = '';
       layer.set('map', null);
@@ -201,9 +255,21 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
     hereFor = '';
     const [from, to] = eveningSpan(d0);
     track = skyTrack(sky, from, to);
-    job = { row: 0, col: 0, points: [], colors: [], counts: zero() };
+    job = { row: 0, col: 0, points: [], yallop: [], odeh: [], counts: { yallop: zero(), odeh: zero() } };
     crescent = { evening: evening ?? 0, dateMs: msOf(d0), progress: 0, counts: zero(), here: null };
+    result = null;
     layer.set('map', null);
+  };
+
+  const showMap = (): void => {
+    if (!result || !crescent) return;
+    const colors: number[] = [];
+    if (criterion === 'odeh') for (const zone of result.odeh) colors.push(...ODEH_RGB[zone]);
+    else for (const zone of result.yallop) colors.push(...ZONE_RGB[zone]);
+    crescent.counts = { ...result.counts[criterion] };
+    // Small enough that the land shows between them.
+    const marks: MarkSet = { points: result.points, colors, sizePx: MAP_DOT_PX };
+    layer.set('map', marks);
   };
 
   const rows = Math.floor((2 * 60) / MAP_STEP_DEG) + 1;
@@ -218,11 +284,16 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
       const lat = -60 + job.row * MAP_STEP_DEG;
       const lon = -180 + job.col * MAP_STEP_DEG;
       const r = crescentAt(track, lat, lon, d0, conj);
-      if (r.zone === 'A' || r.zone === 'B' || r.zone === 'C' || r.zone === 'D' || r.zone === 'E' || r.zone === 'F') {
-        job.counts[r.zone] += 1;
+      if ((r.zone === 'A' || r.zone === 'B' || r.zone === 'C' || r.zone === 'D' || r.zone === 'E' || r.zone === 'F') && r.odeh !== null) {
+        job.counts.yallop[r.zone] += 1;
+        job.counts.odeh[r.odeh] += 1;
         job.points.push(lat, lon);
-        job.colors.push(...ZONE_RGB[r.zone]);
-      } else job.counts.none += 1;
+        job.yallop.push(r.zone);
+        job.odeh.push(r.odeh);
+      } else {
+        job.counts.yallop.none += 1;
+        job.counts.odeh.none += 1;
+      }
       job.col += 1;
       if (job.col >= cols) {
         job.col = 0;
@@ -231,11 +302,9 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
     }
     crescent.progress = Math.min(1, (job.row * cols + job.col) / (rows * cols));
     if (job.row >= rows) {
-      crescent.counts = job.counts;
-      // Small enough that the land shows between them.
-      const marks: MarkSet = { points: job.points, colors: job.colors, sizePx: MAP_DOT_PX };
-      layer.set('map', marks);
+      result = { points: job.points, yallop: job.yallop, odeh: job.odeh, counts: job.counts };
       job = null;
+      showMap();
     }
   };
 
@@ -247,13 +316,14 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
       if (crescent) crescent.here = null;
       return;
     }
-    const key = `${mapFor}:${p.lat.toFixed(2)}:${p.lon.toFixed(2)}`;
+    const key = `${mapFor}:${criterion}:${p.lat.toFixed(2)}:${p.lon.toFixed(2)}`;
     if (key === hereFor) return;
     hereFor = key;
     const r: CrescentAt = crescentAt(track, p.lat, p.lon, d0, conj);
     crescent.here = {
-      zone: r.zone,
+      zone: criterion === 'odeh' && r.odeh !== null ? r.odeh : r.zone,
       q: r.q,
+      v: r.v,
       sunsetMs: r.sunsetJd === null ? null : msOf(r.sunsetJd),
       bestMs: r.bestJd === null ? null : msOf(r.bestJd),
       moonsetMs: r.moonsetJd === null ? null : msOf(r.moonsetJd),
@@ -323,6 +393,14 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
           evening = c.evening;
           startMap();
           break;
+        case 'criterion':
+          criterion = c.criterion === 'odeh' ? 'odeh' : 'yallop';
+          showMap();
+          break;
+        case 'prayer':
+          if (PRAYER_CONVENTIONS.some((x) => x.id === c.convention)) prayerConvention = c.convention;
+          asrFactor = c.asrFactor === 2 ? 2 : 1;
+          break;
       }
       refreshQibla();
     },
@@ -331,6 +409,7 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
       jdNow = frame.jdUtc;
       below = frame.below;
       refreshQibla();
+      refreshPrayer();
       refreshSuns();
       refreshMoons();
       work();
@@ -356,6 +435,8 @@ export function createIslamic(sky: SkyFrame, meanRadiusKm: number): Islamic {
                 nextMs: moons[moonIndex + 1] === undefined ? null : msOf(moons[moonIndex + 1] ?? 0),
                 ageHours: latest === undefined ? null : (jdNow - latest) * 24,
               },
+        criterion,
+        prayer: prayer ? { ...prayer, times: { ...prayer.times } } : null,
         crescent: crescent ? { ...crescent, counts: { ...crescent.counts } } : null,
         marks: layer.counts(),
       };

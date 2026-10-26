@@ -90,6 +90,50 @@ test('the qibla from the point below and from a place, its path on the globe, an
   expect(pageErrors).toEqual([]);
 });
 
+test('the times of prayer at a place, by each convention and either shadow for Asr', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openSection(page);
+  await page.getByTestId('islamic-find').fill('London');
+  await page.getByTestId('islamic-find-results').getByRole('button').first().click();
+  await expect.poll(async () => (await islamic(page))?.prayer?.times.fajr ?? null, LIVE).not.toBeNull();
+  // The Muslim World League's by default: every time that day, in order, each row in words.
+  const mwl = (await islamic(page))?.prayer;
+  expect(mwl?.convention).toBe('mwl');
+  const t = mwl?.times;
+  const order = [t?.fajr, t?.sunrise, t?.dhuhr, t?.asr, t?.maghrib, t?.isha];
+  for (let k = 1; k < order.length; k += 1) expect(order[k] ?? 0).toBeGreaterThan(order[k - 1] ?? Infinity);
+  await expect(page.getByTestId('islamic-prayer-for')).toContainText('At London, on October 23, 2026');
+  await expect(page.getByTestId('islamic-prayer')).toContainText('Fajr: the Sun 18° below the horizon');
+  await expect(page.getByTestId('islamic-prayer-isha')).toContainText('UTC');
+
+  // Umm al-Qura's: Isha an hour and a half after Maghrib (the date shown is not in Ramadan).
+  await page.getByTestId('islamic-convention').selectOption('makkah');
+  await expect.poll(async () => (await islamic(page))?.prayer?.convention, LIVE).toBe('makkah');
+  const uq = (await islamic(page))?.prayer;
+  expect(uq?.ramadan).toBe(false);
+  expect(((uq?.times.isha ?? 0) - (uq?.times.maghrib ?? 0)) / 60_000).toBeCloseTo(90, 6);
+  await expect(page.getByTestId('islamic-prayer')).toContainText('Isha: 90 minutes after Maghrib');
+
+  // Tehran's: Maghrib once the Sun is 4.5 degrees below the horizon, after sunset.
+  await page.getByTestId('islamic-convention').selectOption('tehran');
+  await expect.poll(async () => (await islamic(page))?.prayer?.convention, LIVE).toBe('tehran');
+  const tehran = (await islamic(page))?.prayer;
+  expect(tehran?.times.maghrib ?? 0).toBeGreaterThan(tehran?.times.sunset ?? Infinity);
+  await expect(page.getByTestId('islamic-prayer')).toContainText('Maghrib: the Sun 4.5° below the horizon');
+
+  // Asr by two shadow-lengths: later the same afternoon.
+  await page.getByTestId('islamic-asr-2').click();
+  await expect.poll(async () => (await islamic(page))?.prayer?.asrFactor, LIVE).toBe(2);
+  await expect(page.getByTestId('islamic-asr-2')).toHaveAttribute('aria-pressed', 'true');
+  expect((await islamic(page))?.prayer?.times.asr ?? 0).toBeGreaterThan(tehran?.times.asr ?? Infinity);
+
+  const results = await new AxeBuilder({ page }).include('[data-testid="universe-islamic"]').withTags(WCAG_TAGS).analyze();
+  expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test('the new moon and the crescent’s map for the evenings after it, read out for the place in view', async ({ page, kf, pageErrors }) => {
   test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
@@ -116,6 +160,26 @@ test('the new moon and the crescent’s map for the evenings after it, read out 
   await expect(page.getByTestId('islamic-legend')).toBeVisible();
   await expect(page.getByTestId('islamic-map-state')).toContainText('Nov 10');
   await expect(page.getByTestId('islamic-here')).toContainText('At the point below you');
+
+  // Odeh's test: the same places recoloured at once (both tests are worked out for each), four zones.
+  await page.getByTestId('islamic-criterion-odeh').click();
+  await expect.poll(async () => (await islamic(page))?.criterion, LIVE).toBe('odeh');
+  await expect(page.getByTestId('islamic-criterion-odeh')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('islamic-criterion-yallop')).toHaveAttribute('aria-pressed', 'false');
+  const odeh = (await islamic(page))?.crescent;
+  expect(odeh?.progress).toBe(1);
+  expect(odeh?.counts.none).toBe(map1?.counts.none);
+  expect((odeh?.counts.E ?? 0) + (odeh?.counts.F ?? 0)).toBe(0);
+  expect(Object.values(odeh?.counts ?? {}).reduce((a, n) => a + n, 0)).toBe(total);
+  expect((await islamic(page))?.marks.map).toBe(total - (map1?.counts.none ?? 0));
+  await expect(page.getByTestId('islamic-legend').locator('li')).toHaveCount(4);
+  await expect(page.getByTestId('islamic-legend')).toContainText('Only with optical aid (C)');
+  await expect(page.getByTestId('islamic-map-note')).toContainText('Odeh’s test');
+  await expect(page.getByTestId('islamic-here')).toContainText('At the point below you');
+  await page.getByTestId('islamic-criterion-yallop').click();
+  await expect.poll(async () => (await islamic(page))?.criterion, LIVE).toBe('yallop');
+  await expect(page.getByTestId('islamic-legend').locator('li')).toHaveCount(6);
+  expect((await islamic(page))?.crescent?.counts).toEqual(map1?.counts);
 
   // The new moon's own evening: a younger Moon, fewer places that see it easily.
   await page.getByTestId('islamic-evening-0').click();

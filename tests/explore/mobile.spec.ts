@@ -381,8 +381,8 @@ test('the qibla and the new moon on a phone: opened from the sheet, every contro
 });
 
 test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
-  // In software rendering (CI) on a phone's screen every frame of the walk is slow: about eight minutes in all.
-  test.setTimeout(300_000 * SLOW);
+  // In software rendering (CI) on a phone's screen every frame of the walk is slow: about fifteen minutes in all.
+  test.setTimeout(450_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await page.evaluate(() => {

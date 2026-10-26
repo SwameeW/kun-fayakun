@@ -348,6 +348,77 @@ function checkWalkHeights(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: the heights of ${WALK_WORLDS.join(', ')}, ${files} PNGs at the sizes listed, credited to data/sources.json`);
 }
 
+const DESCENT_OWNER = 'descent builder, python -I scripts/descent/profiles.py';
+
+/** The atmospheres descended through: each probe's profile present, in order (highest first), physical, and credited. */
+function checkDescents(ctx: ValidationContext, log: RuleLog): void {
+  const problems: string[] = [];
+  let rows = 0;
+  for (const world of ['venus', 'jupiter'] as const) {
+    const loaded = loadJson<unknown>(rootPath('public', 'assets', 'descent', `${world}.json`));
+    const path = relPath(loaded.path);
+    if (loaded.status !== 'ok') {
+      problems.push(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`}`);
+      continue;
+    }
+    const file = loaded.value;
+    problems.push(...checkFields(file, { world: 'nonempty', probe: 'nonempty', date: 'nonempty', 'site.latDeg': 'number', 'site.lonDeg': 'number', layers: 'array', 'clouds.rows': 'array', sourceIds: 'array' }, path));
+    if (!isRecord(file)) continue;
+    const layers: unknown[] = Array.isArray(file.layers) ? file.layers : [];
+    let previous = Number.POSITIVE_INFINITY;
+    let previousP = 0;
+    layers.forEach((row, i) => {
+      const ok = Array.isArray(row) && row.length === 4 && row.every(isFiniteNumber);
+      if (!ok) {
+        problems.push(`${path}: layers[${i}] must be [altitude km, pressure bar, temperature K, density kg/m^3]`);
+        return;
+      }
+      const [z, p, t, rho] = row;
+      if ((z ?? 0) >= previous) problems.push(`${path}: layers[${i}] is not below the row before it`);
+      if ((p ?? 0) <= previousP) problems.push(`${path}: layers[${i}]'s pressure does not rise downward`);
+      if ((p ?? 0) <= 0 || (t ?? 0) <= 0 || (rho ?? 0) <= 0) problems.push(`${path}: layers[${i}] has a pressure, temperature or density that is not positive`);
+      previous = z ?? 0;
+      previousP = p ?? 0;
+    });
+    rows += layers.length;
+    const ids = Array.isArray(file.sourceIds) ? file.sourceIds : [];
+    for (const id of ids) if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((s) => s.id === id)) problems.push(`data/sources.json: no "${String(id)}" entry for ${path}`);
+  }
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${DESCENT_OWNER})`);
+  else log.pass(`public/assets/descent: Venus's and Jupiter's probe profiles, ${rows} levels in order, physical, credited`);
+}
+
+const STARS_OWNER = 'neighbourhood builder, python -I scripts/stars/neighbourhood.py';
+
+/** The stars nearby: every row well formed (a parallax and its error positive), the systems' planets listed, every source credited. */
+function checkNeighbourhood(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'stars', 'neighbourhood.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${STARS_OWNER})`);
+    return;
+  }
+  const file = loaded.value;
+  const problems = checkFields(file, { fields: 'array', stars: 'array', systems: 'array', sources: 'object' }, path);
+  const stars: unknown[] = isRecord(file) && Array.isArray(file.stars) ? file.stars : [];
+  stars.forEach((row, i) => {
+    const ok = Array.isArray(row) && row.length === 10 && Number.isInteger(row[0]) && isFiniteNumber(row[3]) && isFiniteNumber(row[4]) && isFiniteNumber(row[5]) && isFiniteNumber(row[6]) && row[6] > 0 && isFiniteNumber(row[7]);
+    if (!ok) problems.push(`${path}: stars[${i}] must be [hip, hr, name, ra, dec, parallax, its error (> 0), V, B-V, type]`);
+  });
+  const systems: unknown[] = isRecord(file) && Array.isArray(file.systems) ? file.systems : [];
+  systems.forEach((s, i) => {
+    if (!isRecord(s) || typeof s.host !== 'string' || !Array.isArray(s.planets) || s.planets.length === 0) problems.push(`${path}: systems[${i}] must name its host and list its planets`);
+  });
+  const sources = isRecord(file) && isRecord(file.sources) ? Object.values(file.sources) : [];
+  for (const source of sources) {
+    const ids: unknown = isRecord(source) ? source.ids : undefined;
+    for (const id of Array.isArray(ids) ? ids : []) if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((x) => x.id === id)) problems.push(`data/sources.json: no "${String(id)}" entry for ${path}`);
+  }
+  if (stars.length < 9000) problems.push(`${path}: ${stars.length} stars, expected the bright stars and those within 25 parsecs`);
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${STARS_OWNER})`);
+  else log.pass(`${path}: ${stars.length} stars and ${systems.length} planetary systems, every source credited`);
+}
+
 const SKY_OWNER = 'sky builder, python3 -I scripts/sky/build.py';
 
 /** The explorer's sky: the Bright Star Catalogue's stars (brightest first), IAU names for them, the 88 constellations; every source credited. */
@@ -603,6 +674,8 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkPlanets(ctx, log);
   checkPlaces(ctx, log);
   checkWalkHeights(ctx, log);
+  checkDescents(ctx, log);
+  checkNeighbourhood(ctx, log);
   checkSky(ctx, log);
   checkAnalyses(ctx, log);
 }

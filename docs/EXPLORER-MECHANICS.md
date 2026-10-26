@@ -68,6 +68,11 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   suit reads out the ground's height, gravity, the air's pressure at the feet and the Sun's height.
   Makkah's 25 km rule holds on foot.
 
+- **Saved views** (ledger GR-4): the navigator keeps views under a name in this browser: the world,
+  the place beneath the camera, the height and the date, or on foot the walk (its place, heading and
+  look). Going back to one sets its date, travels to its world if the camera is elsewhere, glides
+  over its place, and on foot begins the walk again (`src/ui/explore/saved-views.ts`).
+
 ## Planned, in this order (each from cited data)
 
 1. **More worlds.** The major moons (JPL's satellite mean elements; NASA and USGS maps), Pluto and

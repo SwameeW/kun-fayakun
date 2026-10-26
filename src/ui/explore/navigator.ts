@@ -6,9 +6,11 @@ import { createBodyIcon, type BodyIcon } from './body-icon';
 import type { Formatters } from './format';
 import type { IslamicPanel } from './islamic-panel';
 import type { LabPanel } from './lab-panel';
+import type { NeighbourhoodPanel } from './neighbourhood-panel';
 import { createLivingEarth } from './living-earth';
 import { createOrrery } from './orrery';
 import { createQualityMenu } from './quality-menu';
+import { createSavedViews } from './saved-views';
 import { createSkyPanel } from './sky-panel';
 
 /**
@@ -111,6 +113,32 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     if (layout === 'sheet') setExpanded(false);
   });
   const walkEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-walk-entry', hidden: true }, walkGo, walkHint);
+  // Down through the clouds of Venus or Jupiter, where a probe went (ledger GR-6): shown with that world in view.
+  const descentGo = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'world-descent' }, i18n.t('ui.universe.descent.here'));
+  const descentHint = h('p', { class: 'kf-living-hint' });
+  let descentWorld: 'venus' | 'jupiter' | null = null;
+  descentGo.addEventListener('click', () => {
+    if (!descentWorld) return;
+    app.earthCommand({ kind: 'descent', world: descentWorld });
+    if (layout === 'sheet') setExpanded(false);
+  });
+  const descentEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'world-descent-entry', hidden: true }, descentGo, descentHint);
+
+  // Among the stars (ledger IS-3): a way out past the planets; its panel (its own chunk) heads the body while there.
+  const starsOpen = h('button', { type: 'button', class: 'kf-btn kf-living-tour-start', 'data-testid': 'stars-open' }, i18n.t('ui.universe.stars.open'));
+  starsOpen.addEventListener('click', () => {
+    app.earthCommand({ kind: 'stars' });
+    if (layout === 'sheet') setExpanded(false);
+  });
+  const starsEntry = h('div', { class: 'kf-nav-lab-entry', 'data-testid': 'stars-entry' }, starsOpen, h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.openHint')));
+  const starsSlot = h('div', { class: 'kf-nav-lab-slot' });
+  let starsPanel: NeighbourhoodPanel | null = null;
+  let starsLoading = false;
+
+  // Saved views (place, height, date; on foot the walk): going back to one folds the sheet on a phone.
+  const saved = createSavedViews(app, f, () => {
+    if (layout === 'sheet') setExpanded(false);
+  });
 
   // On a phone a flight from the Living Earth folds the sheet, as choosing a world does.
   const living = createLivingEarth(app, f, () => {
@@ -147,7 +175,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, map, list, about.element, walkEntry, sky.element, labEntry, living.element, islamic, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living.element, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -165,8 +193,11 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
     // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [time, map, about.element, sky.element, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
-    if (!expanded) walkEntry.hidden = true;
+    for (const el of [time, map, about.element, sky.element, saved.element, starsEntry, labEntry, living.element, islamic, seen, foot]) el.hidden = !expanded;
+    if (!expanded) {
+      walkEntry.hidden = true;
+      descentEntry.hidden = true;
+    }
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
     notify();
@@ -241,23 +272,46 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
           });
         }
         lab?.update(view, true);
+        // Among the stars: their panel (loaded the first time) heads the body, and the solar system's sections step aside.
+        const inStars = view.neighbourhood !== null;
+        if (inStars && !starsPanel && !starsLoading) {
+          starsLoading = true;
+          void import('./neighbourhood-panel').then(({ createNeighbourhoodPanel }) => {
+            starsPanel = createNeighbourhoodPanel(app, f);
+            starsSlot.replaceChildren(starsPanel.element);
+          });
+        }
+        starsPanel?.update(view);
+        starsSlot.hidden = !inStars;
         // In an experiment the real world's facts and live observations step aside (the lab panel has its own).
         const inLab = view.lab !== null;
-        about.element.hidden = inLab;
-        living.element.hidden = inLab;
-        islamic.hidden = inLab;
-        labEntry.hidden = inLab;
+        const aside = inLab || inStars;
+        about.element.hidden = aside;
+        saved.element.hidden = aside;
+        living.element.hidden = aside;
+        islamic.hidden = aside;
+        labEntry.hidden = aside;
+        starsEntry.hidden = aside;
+        map.hidden = inStars;
+        sky.element.hidden = inStars;
         // A walk on the world in view (not the Earth, whose walk is in its Living Earth), once it is drawn at its true size (walkHere says so).
         const walkWorld = view.focus === 'moon' || view.focus === 'mars' || view.focus === 'mercury' || view.focus === 'venus' ? view.focus : null;
-        walkEntry.hidden = inLab || walkWorld === null || view.walk !== null;
+        walkEntry.hidden = aside || walkWorld === null || view.walk !== null || view.descent !== null;
         if (walkWorld) {
           walkGo.disabled = view.walkHere?.world !== walkWorld;
           const hint = i18n.t(WALK_HINTS[walkWorld]);
           if (walkHint.textContent !== hint) walkHint.textContent = hint;
         }
-        for (const [id, r] of rows) r.row.hidden = inLab && !view.lab?.bodies.some((b) => b.id === id);
+        descentWorld = view.focus === 'venus' || view.focus === 'jupiter' ? view.focus : null;
+        descentEntry.hidden = aside || descentWorld === null || view.walk !== null || view.descent !== null;
+        if (descentWorld) {
+          const hint = i18n.t(descentWorld === 'venus' ? 'ui.universe.descent.hereVenus' : 'ui.universe.descent.hereJupiter');
+          if (descentHint.textContent !== hint) descentHint.textContent = hint;
+        }
+        for (const [id, r] of rows) r.row.hidden = inStars || (inLab && !view.lab?.bodies.some((b) => b.id === id));
         about.update(view, slow);
         sky.update(view, slow);
+        saved.update(view);
         living.update(view, slow);
         if (islamic.open) islamicPanel?.update(view, slow);
       }

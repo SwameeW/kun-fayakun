@@ -14,11 +14,18 @@ stand on; their atmospheres are GR-6.
     view.
   - On the Moon, Mars, Mercury and Venus, "Walk here" in the navigator does the same, once the world
     in view is drawn at its true size (`UniverseView.walkHere` says where).
-  - `app.earthCommand({ kind: 'walk', world?, lat?, lon? })` does the same, or walks at a given place
-    on a given world (the Earth when not said).
-- **Landing.** The walk waits in orbit ("Landing: the ground here is loading…") until the heights
-  under the feet have loaded finely enough: zoom 9 on the Earth, the finest the world's grid holds
-  on the Moon and Mars. The eye never starts inside a mountain.
+  - `app.earthCommand({ kind: 'walk', world?, lat?, lon?, headingDeg?, pitchDeg? })` does the same,
+    or walks at a given place on a given world (the Earth when not said), facing a given way.
+- **The descent (ledger GR-3).** With the world in view, the camera glides down over the place to the
+  lowest orbit the explorer allows (150 km over the Earth, 2% of the radius elsewhere: 35 km over
+  the Moon) while the ground loads; with reduced motion it is there at once.
+- **Landing.** The walk waits ("Landing: the ground here is loading…") until the heights under the
+  feet have loaded finely enough (zoom 9 on the Earth, the finest the world's grid holds elsewhere)
+  and the glide has ended. Then the picture dips: it darkens over a quarter of a second, the camera
+  moves to the walker's eye while it is dark (the exposure jumping to the ground's light), and it
+  comes back over four tenths, as a reduced-motion cut does. The eye never starts inside a mountain.
+- **Back to orbit** dips the same way, then climbs back to the orbit the descent left (at once with
+  reduced motion), unless a trip has taken the camera elsewhere.
 - **Moving.**
   - Keys:
     - W A S D walk (1.4 m/s);

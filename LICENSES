@@ -710,6 +710,39 @@ Changes:  re-referenced to Venus's mean radius (6,051.8 km); averaged to 8 and
           to half a metre (public/assets/walk/venus, scripts/walk/heights.py).
 Credit:   NASA/JPL/USGS, Magellan
 
+The stars nearby (ESA Hipparcos via CDS VizieR; the IAU's names; the NASA Exoplanet Archive)
+          Hipparcos new reduction (van Leeuwen 2007, CDS I/311) and main
+          catalogue (ESA 1997, CDS I/239), matched to the Bright Star
+          Catalogue; the IAU's Catalog of Star Names; the NASA Exoplanet
+          Archive's Planetary Systems Composite Parameters (doi:10.26133/NEA13).
+Terms:    Hipparcos: free use with acknowledgement of ESA and CDS VizieR
+          (https://cds.unistra.fr/vizier-org/licences_vizier.html). The IAU's
+          names: CC BY 4.0. The NASA Exoplanet Archive: public, with the
+          acknowledgement it asks for
+          (https://exoplanetarchive.ipac.caltech.edu/docs/acknowledge.html).
+Changes:  selected (within 25 parsecs, and the bright stars), matched and
+          written as one file (public/assets/stars/neighbourhood.json,
+          scripts/stars/neighbourhood.py); the archive's calculated values
+          marked.
+Credit:   ESA Hipparcos; F. van Leeuwen (2007); VizieR, CDS, Strasbourg | IAU
+          WGSN | This research has made use of the NASA Exoplanet Archive,
+          which is operated by the California Institute of Technology, under
+          contract with the National Aeronautics and Space Administration
+          under the Exoplanet Exploration Program.
+
+Atmospheres descended through (NASA Planetary Data System)
+          Pioneer Venus Special Events Data bundle (doi:10.17189/m5zf-6f12):
+          the Large and Day Probes' atmosphere structure and the Large Probe's
+          nephelometer; the Galileo probe's Atmospheric Structure Instrument,
+          Nephelometer and Doppler Wind Experiment volumes (GP-J-ASI, GP-J-NEP,
+          GP-J-DWE-3-ENTRY-V1.0).
+Terms:    Public domain: NASA Planetary Data System archive data.
+Changes:  rows thinned to about one per 0.25 to 1 km of altitude; the
+          nephelometers' readings and the winds placed at altitudes from the
+          probes' own clocks and profiles (public/assets/descent,
+          scripts/descent/profiles.py).
+Credit:   NASA, Pioneer Venus Multiprobe and Galileo Probe missions
+
 Mars walking heights (NASA Planetary Data System)
           MGS MOLA Mission Experiment Gridded Data Record, MGS-M-MOLA-5-MEGDR-
           L3-V1.0, meg016/megt90n000eb.img (16 pixels a degree), PDS
@@ -778,6 +811,20 @@ Changes:  public/assets/places/places.json keeps each place's name,
           coordinates and population (scripts/places/build.py, sha256-pinned);
           no country is kept.
 Credit:   Made with Natural Earth
+
+PrayTimes.org (the conventions for the times of prayer)
+Terms:    Facts only: each convention's published depressions of the Sun and
+          intervals, as PrayTimes.org lists them (H. Zarrabi-Zadeh). No code
+          or text of PrayTimes.org is used.
+Credit:   Conventions as PrayTimes.org lists them (H. Zarrabi-Zadeh)
+
+SIMBAD (the Andromeda Galaxy's place on the sky)
+Terms:    Free use with acknowledgement: "This research has made use of the
+          SIMBAD database, operated at CDS, Strasbourg, France" (Wenger et
+          al. 2000, A&AS 143, 9).
+Changes:  Only M 31's ICRS position is used (src/explore/sky.ts), retrieved
+          2026-10-26; the position is 2MASS's (Skrutskie et al. 2006).
+Credit:   SIMBAD, CDS, Strasbourg
 
 Wikidata (coordinates of the field notes' places)
 Licence:  CC0 1.0 Universal: https://creativecommons.org/publicdomain/zero/1.0/
