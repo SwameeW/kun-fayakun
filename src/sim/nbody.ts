@@ -1,3 +1,4 @@
+import { contactCrater } from './craters';
 import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts';
 
 /**
@@ -74,6 +75,10 @@ export interface ContactEvent {
   unresolved: number;
   /** The impact's heat: the pair's relative kinetic energy at contact for a merger, the energy given up for a breakup (G units). */
   heat: number;
+  /** The impact's energy: the pair's kinetic energy at contact in their centre of mass frame, 0.5 mu v^2 (G units), the fall included. */
+  energy: number;
+  /** The crater a merger or a breakup leaves on a solid target (./craters): its final diameter (km) and whether it is complex; null for a graze, a giant's or a star's surface, or a giant impact. */
+  crater: { diameterKm: number; complex: boolean } | null;
 }
 /** The engine's and the interface's earlier name for it. */
 export type MergeEvent = ContactEvent;
@@ -404,17 +409,20 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
     const bImpact = speed > 0 ? Math.min(1, h / (Math.max(reach, 1e-9) * speed)) : 0;
     // Test particles have no mass to break: they merge.
     const outcome = (s.gm[t] ?? 0) > 0 && (s.gm[p] ?? 0) > 0 ? impactOutcome({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact) : null;
-    const base = { step: s.step, t: s.t, survivor: ids.survivor, absorbed: ids.absorbed, speedKmS: speed, b: bImpact };
+    const mu = gmPair > 0 ? ((s.gm[t] ?? 0) * (s.gm[p] ?? 0)) / gmPair : 0;
+    const base = { step: s.step, t: s.t, survivor: ids.survivor, absorbed: ids.absorbed, speedKmS: speed, b: bImpact, energy: 0.5 * mu * speed * speed };
+    // The crater it leaves, where the target keeps its surface (none for a graze, a giant or a giant impact).
+    const crater = outcome?.regime === 'hit-and-run' ? null : contactCrater({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact);
     if (!outcome || outcome.regime === 'merge') {
       const heat = merge(s, t, p);
-      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat });
+      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat, crater });
     } else if (outcome.regime === 'hit-and-run') {
       s.passing.push(pairKey(ids.survivor, ids.absorbed));
-      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0 });
+      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0, crater: null });
       continue;
     } else {
       const made = fragment(s, t, p, outcome);
-      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat });
+      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat, crater });
     }
     changed = true;
     acc = null;

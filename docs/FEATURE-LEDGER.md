@@ -84,8 +84,8 @@ platform.
 | ID | Feature | Model / approximation | Depends on | Status |
 |---|---|---|---|---|
 | IM-1 | Outcome by regime (merge, partial accretion, hit-and-run, erosion, super-catastrophic) | Leinhardt and Stewart (2012) scaling laws (`src/sim/impacts.ts`, `docs/IMPACTS.md`), used by the engine at every contact | SB-10 | implemented |
-| IM-2 | Impact heating and a persistent surface mark | Heat already accounted (SB-10); per-surface mark | IM-1, WR-1 | planned |
-| IM-3 | Crater geometry | Documented crater scaling law on a height field | GR-1 | planned |
+| IM-2 | Impact heating and a persistent surface mark | Heat already accounted (SB-10); the impact's energy (½ μ v² at contact) reported in megatons of TNT; per-surface mark | IM-1, WR-1 | partial (energy reported, 2026-10-26; the mark and local heating next) |
+| IM-3 | Crater geometry | Collins, Melosh and Marcus (2005) crater scaling (`src/sim/craters.ts`, `docs/IMPACTS.md`): the final diameter, simple or complex, for every cratering impact on a solid world; next, on a height field | GR-1 | partial (diameter and kind reported, 2026-10-26; depth and the mark on the ground next) |
 | IM-4 | Bounded physical ejecta, separate decorative dust | Fragments as bodies (the second remnant and up to six debris), the rest returned to the remnant; the paper's speed distribution next | IM-1 | partial (bodies and accounting done; launch speeds a placeholder; no dust) |
 | IM-5 | Reaccretion | Fragments under gravity merge back | IM-4 | planned |
 | IM-6 | Rings and belts: decorative, test particles, gravitating | Three explicit classes | SB-4 | planned |
@@ -169,7 +169,7 @@ research needed, each with its own model, fixtures and measured feasibility firs
 |---|---|---|
 | Change the Sun's mass | Yes | (SB-6) |
 | A second Moon | Yes: add, watch, go back to a checkpoint, try again | (SB-7, SB-11) |
-| A rogue world striking a planet | Aim, prediction, the breakup and its debris yes; craters and heating no | IM-2, IM-3 |
+| A rogue world striking a planet | Aim, prediction, the breakup and its debris yes; a smaller body's crater size and the impact's energy yes; craters drawn on the surface and heating no | IM-2, IM-3 |
 | An Earth-like world farther out | No | WR-2 to WR-4 |
 | A ring under tidal stress | No | IM-6, SB-32 |
 | Binary sunset | No | ST-3 |

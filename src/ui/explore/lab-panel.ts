@@ -28,6 +28,8 @@ const HORIZONS: ReadonlyArray<readonly [number, string]> = [
   [10 * 365.25 * 86_400, 'years10'],
 ];
 const SUPERSCRIPT = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+/** A megaton of TNT, in joules (the convention: 4.184 x 10^15 J). */
+const MEGATON_J = 4.184e15;
 
 export function createLabPanel(app: App, f: Formatters): LabPanel {
   const { i18n } = app;
@@ -41,6 +43,11 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     const b = h('button', { type: 'button', class: cls, 'data-testid': testId }, text);
     b.addEventListener('click', onClick);
     return b;
+  };
+  /** An energy as megatons of TNT (4.184 x 10^15 J each), in plain figures up to a thousand. */
+  const megatons = (joulesValue: number): string => {
+    const mt = joulesValue / MEGATON_J;
+    return mt < 1000 ? f.number(mt, mt < 10 ? 2 : 0) : scientific(mt);
   };
   const scientific = (value: number): string => {
     if (value === 0) return '0';
@@ -352,11 +359,14 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
             h(
               'li',
               { class: 'kf-living-hint' },
-              e.kind === 'merge'
+              (e.kind === 'merge'
                 ? i18n.t('ui.universe.lab.merged', { absorbed: name(e.absorbed), survivor: name(e.survivor), when: days(e.t) })
                 : e.kind === 'graze'
                   ? i18n.t('ui.universe.lab.grazed', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), when: days(e.t) })
-                  : i18n.t('ui.universe.lab.impact', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[e.regime]}`), count: e.created, when: days(e.t) }),
+                  : i18n.t('ui.universe.lab.impact', { absorbed: name(e.absorbed), survivor: name(e.survivor), speed: f.number(e.speedKmS, 1), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[e.regime]}`), count: e.created, when: days(e.t) })) +
+                (e.craterKm === null
+                  ? ''
+                  : `; ${i18n.t('ui.universe.lab.crater', { diameter: f.distance(e.craterKm), kind: i18n.t(e.craterComplex ? 'ui.universe.lab.crater.complex' : 'ui.universe.lab.crater.simple'), energy: megatons(e.energyJ) })}`),
             ),
           ),
           ...(l.discarded > 0 ? [h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.discarded', { count: l.discarded }))] : []),
