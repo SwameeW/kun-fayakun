@@ -58,13 +58,26 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
       held[which] = on;
       send();
     };
+    // Held while pressed: the pointer captured so a finger sliding off still lets go here. The press
+    // counts first: capture can be refused (a pointer the browser does not count as active), and then
+    // leaving the button lets go instead.
+    let captured = false;
     b.addEventListener('pointerdown', (e) => {
-      b.setPointerCapture(e.pointerId);
       press(true);
+      try {
+        b.setPointerCapture(e.pointerId);
+        captured = true;
+      } catch {
+        captured = false;
+      }
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) b.addEventListener(type, () => {
+        captured = false;
         press(false);
       });
+    b.addEventListener('pointerleave', () => {
+      if (!captured) press(false);
+    });
     b.addEventListener('contextmenu', (e) => {
       e.preventDefault();
     });
@@ -89,7 +102,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement):
     app.earthCommand({ kind: 'walkEnd' });
   });
   const controls = h('div', { class: 'kf-walk-controls' }, pad, back);
-  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit' });
+  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit', 'data-photo-credit': '' });
   // The suit's figures fold under the title; on a small screen they start folded, leaving the view and the pad.
   const suit = h('details', { class: 'kf-walk-suit' }, title, place, ground, gravity, air, sun, credit);
   suit.open = !window.matchMedia(NARROW).matches;

@@ -210,7 +210,7 @@
       "license": "SDSS data are public; use requires the SDSS acknowledgements below",
       "licenseUrl": "https://www.sdss.org/collaboration/citing-sdss/",
       "credit": "Funding for the SDSS and SDSS-II has been provided by the Alfred P. Sloan Foundation, the Participating Institutions, the National Science Foundation, the U.S. Department of Energy, the National Aeronautics and Space Administration, the Japanese Monbukagakusho, the Max Planck Society, and the Higher Education Funding Council for England. The SDSS Web Site is http://www.sdss.org/ . Funding for SDSS-III has been provided by the Alfred P. Sloan Foundation, the Participating Institutions, the National Science Foundation, and the U.S. Department of Energy Office of Science. The SDSS-III web site is http://www.sdss3.org/. Funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions. SDSS-IV acknowledges support and resources from the Center for High Performance Computing at the University of Utah. The SDSS website is www.sdss4.org. SDSS-IV is managed by the Astrophysical Research Consortium for the Participating Institutions of the SDSS Collaboration including the Brazilian Participation Group, the Carnegie Institution for Science, Carnegie Mellon University, Center for Astrophysics | Harvard \\& Smithsonian, the Chilean Participation Group, the French Participation Group, Instituto de Astrof\\'isica de Canarias, The Johns Hopkins University, Kavli Institute for the Physics and Mathematics of the Universe (IPMU) / University of Tokyo, the Korean Participation Group, Lawrence Berkeley National Laboratory, Leibniz Institut f\\\"ur Astrophysik Potsdam (AIP), Max-Planck-Institut f\\\"ur Astronomie (MPIA Heidelberg), Max-Planck-Institut f\\\"ur Astrophysik (MPA Garching), Max-Planck-Institut f\\\"ur Extraterrestrische Physik (MPE), National Astronomical Observatories of China, New Mexico State University, New York University, University of Notre Dame, Observat\\'ario Nacional / MCTI, The Ohio State University, Pennsylvania State University, Shanghai Astronomical Observatory, United Kingdom Participation Group, Universidad Nacional Aut\\'onoma de M\\'exico, University of Arizona, University of Colorado Boulder, University of Oxford, University of Portsmouth, University of Utah, University of Virginia, University of Washington, University of Wisconsin, Vanderbilt University, and Yale University. Funding for the Sloan Digital Sky Survey V has been provided by the Alfred P. Sloan Foundation, the Heising-Simons Foundation, the National Science Foundation, and the Participating Institutions. SDSS acknowledges support and resources from the Center for High-Performance Computing at the University of Utah. SDSS telescopes are located at Apache Point Observatory, funded by the Astrophysical Research Consortium and operated by New Mexico State University, and at Las Campanas Observatory, operated by the Carnegie Institution for Science. The SDSS web site is \\url{www.sdss.org}. SDSS is managed by the Astrophysical Research Consortium for the Participating Institutions of the SDSS Collaboration, including the Carnegie Institution for Science, Chilean National Time Allocation Committee (CNTAC) ratified researchers, Caltech, the Gotham Participation Group, Harvard University, Heidelberg University, The Flatiron Institute, The Johns Hopkins University, L'Ecole polytechnique f\\'{e}d\\'{e}rale de Lausanne (EPFL), Leibniz-Institut f\\\"{u}r Astrophysik Potsdam (AIP), Max-Planck-Institut f\\\"{u}r Astronomie (MPIA Heidelberg), Max-Planck-Institut f\\\"{u}r Extraterrestrische Physik (MPE), Nanjing University, National Astronomical Observatories of China (NAOC), New Mexico State University, The Ohio State University, Pennsylvania State University, Smithsonian Astrophysical Observatory, Space Telescope Science Institute (STScI), the Stellar Astrophysics Participation Group, Universidad Nacional Aut\\'{o}noma de M\\'{e}xico, University of Arizona, University of Colorado Boulder, University of Illinois at Urbana-Champaign, University of Toronto, University of Utah, University of Virginia, Yale University, and Yunnan University.",
-      "notes": "The sample spans SDSS-I/II, SDSS-III (BOSS) and SDSS-IV (eBOSS) spectra as distributed in DR20, so all four acknowledgements apply; each is copied verbatim by scripts/sdss/build.py from its official page (https://www.sdss.org/collaboration/citing-sdss/, https://www.sdss4.org/collaboration/citing-sdss/, https://www.sdss3.org/collaboration/boiler-plate.php, https://classic.sdss.org/collaboration/credits.html). Cite: Kollmeier et al. 2026, AJ 171, 52 (SDSS-V overview; arXiv:2507.06989). Queries: SELECT specObjID, ra, dec, z FROM SpecObj WHERE class='GALAXY' AND zWarning=0 AND z>0.01 AND z<0.1; SELECT specObjID, ra, dec, z FROM SpecObj WHERE class='GALAXY' AND zWarning=0 AND z>0.01 AND z<0.8 AND (fiberID % 9)=0",
+      "notes": "The sample spans SDSS-I/II, SDSS-III (BOSS) and SDSS-IV (eBOSS) spectra as distributed in DR20, so all four acknowledgements apply; each is copied verbatim by scripts/sdss/build.py from its official page (https://www.sdss.org/collaboration/citing-sdss/, https://www.sdss4.org/collaboration/citing-sdss/, https://www.sdss3.org/collaboration/boiler-plate.php, https://classic.sdss.org/collaboration/credits.html). Cite: Kollmeier et al. 2026, AJ 171, 52 (SDSS-V overview; arXiv:2507.06989). Queries: SELECT specObjID, ra, dec, z FROM SpecObj WHERE class='GALAXY' AND zWarning=0 AND z>0.01 AND z<0.1; SELECT specObjID, ra, dec, z FROM SpecObj WHERE class='GALAXY' AND zWarning=0 AND z>0.01 AND z<0.8 AND (fiberID % 9)=0. The explorer's view beyond the stars (src/explore/neighbourhood/beyond.ts) draws the same sample, fetched when the camera goes that far.",
       "review": {
         "reviewer": null,
         "role": null,
@@ -1110,6 +1110,91 @@
       "licenseUrl": null,
       "credit": "SIMBAD, CDS, Strasbourg",
       "notes": "Where the explorer's sky names the Andromeda Galaxy, the \"little cloud\" Abd al-Rahman al-Sufi described in his Book of Fixed Stars (964). Only its position is used; its light is not drawn (the sky's stars are the Bright Star Catalogue's).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "mcconnachie-2012",
+      "kind": "dataset",
+      "title": "The observed properties of dwarf galaxies in and around the Local Group (CDS J/AJ/144/4/catalog)",
+      "author": "A. W. McConnachie (2012), AJ 144, 4",
+      "url": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/AJ/144/4",
+      "version": "VizieR TAP, retrieved 2026-10-26 (the query and its result's sha256 in public/assets/stars/localgroup.json)",
+      "license": "Free use with acknowledgement (CDS VizieR)",
+      "licenseUrl": "https://cds.unistra.fr/vizier-org/licences_vizier.html",
+      "credit": "McConnachie (2012); VizieR, CDS, Strasbourg",
+      "notes": "The galaxies of the Local Group beyond the stars in the explorer (src/explore/neighbourhood/beyond.ts): each galaxy's place, distance from the Sun, half-light radius, absolute magnitude and stellar mass, as the catalogue gives them (the Milky Way itself is drawn as a model instead).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "simbad-local-group",
+      "kind": "dataset",
+      "title": "SIMBAD: the isophotal diameters and position angles of M 31, M 33 and the Magellanic Clouds, and M 31's V magnitude",
+      "author": "Centre de Données astronomiques de Strasbourg (CDS); Wenger et al. (2000), A&AS 143, 9; the diameters from HyperLEDA (Paturel et al. 2003, A&A 412, 45) and Crosby et al. (2014, MNRAS 445, 881)",
+      "url": "https://simbad.cds.unistra.fr/simbad/",
+      "version": "SIMBAD TAP, retrieved 2026-10-26 (the query and its result's sha256 in public/assets/stars/localgroup.json)",
+      "license": "Free use with acknowledgement: \"This research has made use of the SIMBAD database, operated at CDS, Strasbourg, France\"",
+      "licenseUrl": null,
+      "credit": "SIMBAD, CDS, Strasbourg",
+      "notes": "The four galaxies McConnachie's catalogue gives no half-light radius: drawn as discs of points at these sizes and orientations (the inclination from the axis ratio; which side is nearer is not known from it). Andromeda's absolute magnitude is derived from this V magnitude and the catalogue's distance, with no correction for extinction, and marked as derived.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "reid-2019-spiral-arms",
+      "kind": "paper",
+      "title": "Trigonometric Parallaxes of High-mass Star-forming Regions: Our View of the Milky Way (table 2, the spiral arms' log-periodic fits)",
+      "author": "M. J. Reid et al. (2019), ApJ 885, 131",
+      "url": "https://doi.org/10.3847/1538-4357/ab4a11",
+      "version": "arXiv:1910.03357, read 2026-10-26",
+      "license": "Facts only: the arms' fitted parameters, credited",
+      "licenseUrl": null,
+      "credit": "Reid et al. (2019)",
+      "notes": "The Milky Way's arms in the explorer's model of it (src/explore/neighbourhood/galaxy.ts): each arm's azimuths, kink, radius and pitch angles as fitted, with R0 = 8.15 kpc. The arms are continued beyond the azimuths the parallaxes trace, more faintly, as an extrapolation; the model says so.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "bland-hawthorn-gerhard-2016",
+      "kind": "paper",
+      "title": "The Galaxy in Context: Structural, Kinematic, and Integrated Properties",
+      "author": "J. Bland-Hawthorn and O. Gerhard (2016), ARA&A 54, 529",
+      "url": "https://doi.org/10.1146/annurev-astro-081915-023441",
+      "version": "arXiv:1602.07702, read 2026-10-26",
+      "license": "Facts only: the disc's and the long bar's measured sizes, credited",
+      "licenseUrl": null,
+      "credit": "Bland-Hawthorn and Gerhard (2016)",
+      "notes": "The Milky Way model's thin disc (scale length 2.6 kpc, scale height 0.3 kpc) and long bar (half-length 5.0 kpc, 28 to 33 degrees from the line from the Sun to the centre, drawn at 30) in src/explore/neighbourhood/galaxy.ts. The bar's thickness and the bulge's size are illustrative.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "maurice-2022-mars-sound",
+      "kind": "paper",
+      "title": "In situ recording of Mars soundscape",
+      "author": "S. Maurice et al. (2022), Nature 605, 653-658",
+      "url": "https://doi.org/10.1038/s41586-022-04679-0",
+      "version": "read 2026-10-26",
+      "license": "Facts only, credited",
+      "licenseUrl": null,
+      "credit": "Maurice et al. (2022)",
+      "notes": "Why the explorer's wind on Mars is quieter and duller than on the Earth (src/explore/sound.ts): Perseverance's microphones found sound there weaker, and its high pitches taken by the thin carbon dioxide within metres. The sound itself is a display of the conditions, not a recording.",
       "review": {
         "reviewer": null,
         "role": null,

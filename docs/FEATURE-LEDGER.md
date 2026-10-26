@@ -117,22 +117,22 @@ platform.
 
 | ID | Feature | Model / data | Depends on | Status |
 |---|---|---|---|---|
-| IS-1 | Hierarchical coordinates (galaxy, system, body, surface) | Sector plus local Float64 frames, small camera-relative values for the GPU | none | partial (2026-10-26, [NEIGHBOURHOOD.md](NEIGHBOURHOOD.md)): the stars nearby in double-precision parsecs drawn camera-relative, beside the solar system's floating origin in km and the walks' anchored ground; sectors for the galaxy and beyond with IS-6 |
+| IS-1 | Hierarchical coordinates (galaxy, system, body, surface) | Sector plus local Float64 frames, small camera-relative values for the GPU | none | implemented (2026-10-26, [NEIGHBOURHOOD.md](NEIGHBOURHOOD.md)): one double-precision frame from a hundredth of an au to ten billion parsecs, each layer drawn camera-relative (the stars' points each frame, the galaxy's and the survey's by moving their layer), beside the solar system's floating origin in km and the walks' anchored ground |
 | IS-2 | Distances for the stars | Parallaxes (Hipparcos or Gaia, licence to check). The sky now has directions only | IS-1 | implemented (2026-10-26): the Hipparcos new reduction's parallaxes for every Hipparcos star within 25 pc and the Bright Star Catalogue's stars (10,193), each placed only where its parallax is known to a fifth; ESA's and CDS's terms (acknowledgement) recorded |
 | IS-3 | Nearby stars as places to fly to, without double drawing the sky's stars | One identity per star | IS-2 | implemented (2026-10-26): "Among the stars", its own scene (the solar system's sky not drawn there), every star one point as bright as it looks from the camera, flights between them; `tests/explore/stars.spec.ts` |
 | IS-4 | Known exoplanet systems | NASA Exoplanet Archive; unknown values never shown as measured | IS-3 | implemented within 20 pc (2026-10-26): the archive's composite parameters for 183 systems, every calculated value marked and M sin i masses as lower limits; orbits drawn face-on to the Sun (tilted where the inclination is measured), places on them illustrative |
-| IS-5 | Generated systems where nothing is catalogued | Deterministic hierarchical seeds, versioned rules, always marked "generated" | IS-1 | planned (only labelled, only beyond the catalogues) |
-| IS-6 | Clusters, nebulae, the Milky Way, the Local Group, the cosmic web | The film's SDSS and Planck data where they apply | IS-1 | planned |
+| IS-5 | Generated systems where nothing is catalogued | Deterministic hierarchical seeds, versioned rules, always marked "generated" | IS-1 | awaiting the owner: generated planets round real stars would relax the rule that everything shown comes from cited data (labelled or not), so they wait for the owner's confirmation; nothing generated is shown |
+| IS-6 | Clusters, nebulae, the Milky Way, the Local Group, the cosmic web | The film's SDSS and Planck data where they apply | IS-1 | implemented but clusters and nebulae (2026-10-26, [NEIGHBOURHOOD.md](NEIGHBOURHOOD.md)): the Milky Way as a model from Reid et al. 2019's arms (continued to the published tangents within 0.3 degrees) and Bland-Hawthorn and Gerhard 2016's disc and bar, labelled a model; McConnachie 2012's 101 galaxies of the Local Group, the four largest at SIMBAD's sizes; the film's 420,000 SDSS galaxies; places to go and galaxies by name; `tests/unit/beyond.spec.ts`, `tests/explore/stars.spec.ts` |
 | IS-7 | Navigator hierarchy, search, bookmarks, history | | IS-3 | partial (2026-10-26): the stars' search (IAU names, hosts, HIP and HR numbers), the nearest stars as links, saved views (GR-4) for the solar system; not yet a history of places visited |
 
 ## Phase 6: stars and extremes (US)
 
 | ID | Feature | Model | Depends on | Status |
 |---|---|---|---|---|
-| ST-1 | Star parameters (mass, radius, luminosity, temperature) | Cited relations, valid ranges stated | none | planned |
-| ST-2 | Several light sources; a star that does not shine | Light from the model, not a fixed Sun | ST-1 | planned |
-| ST-3 | Binaries, double sunsets, circumbinary worlds | | ST-2 | planned |
-| ST-4 | Evolution tracks and an HR diagram | Cited tracks or labelled interpolation | ST-1 | research needed |
+| ST-1 | Star parameters (mass, radius, luminosity, temperature) | Cited relations, valid ranges stated | none | partial (2026-10-26): every placed star's temperature (Ballesteros 2012 from B-V) and light in V against the Sun's; a planet host's radius, mass and luminosity as the Exoplanet Archive gives them (`tests/explore/stars.spec.ts`); masses from relations (Eker et al. 2018) wait for a bolometric correction to cite |
+| ST-2 | Several light sources; a star that does not shine | Light from the model, not a fixed Sun | ST-1 | partial: in the laboratory's climates (CLIMATE.md) every star's light is summed, each at its luminosity (the main-sequence relation where none is given), and a body under 0.075 solar masses gives none; the worlds are still drawn lit by the Sun |
+| ST-3 | Binaries, double sunsets, circumbinary worlds | | ST-2 | partial: binaries and circumbinary worlds as the laboratory's dynamics and climates (a star added about a star, a world about both); double sunsets are not drawn |
+| ST-4 | Evolution tracks and an HR diagram | Cited tracks or labelled interpolation | ST-1 | partial (2026-10-26): the Hertzsprung-Russell diagram of the 9,140 stars Hipparcos places with a colour, the Sun and the star in view marked (`tests/explore/stars.spec.ts`); evolution tracks need cited tracks (MIST or PARSEC, licence to check) |
 | ST-5 | Remnants: white dwarfs, neutron stars, supernovae | Flash-safe | ST-4 | deferred |
 | ST-6 | Black holes: horizon scale, labelled lensing | Newtonian orbits, separate light model | ST-2 | research needed |
 
@@ -140,22 +140,22 @@ platform.
 
 | ID | Feature | Model | Depends on | Status |
 |---|---|---|---|---|
-| SC-1 | A ship with mass, thrust, fuel and attitude | Entity in the integration | SB-4 | planned |
-| SC-2 | Orbital HUD (prograde, normal, radial; elements) | | SB-22 | planned |
-| SC-3 | Manoeuvre planning with delta-v | Predictions (SB-8) with thrust | SC-1 | planned |
-| SC-4 | Autopilots that apply forces and can fail | No teleporting | SC-3 | planned |
+| SC-1 | A ship with mass, thrust, fuel and attitude | Entity in the integration | SB-4 | implemented (2026-10-26, [LAB.md](LAB.md)): a test particle with dry mass, propellant, thrust and specific impulse; burns along prograde, normal or radial about a chosen body, thrust in the leapfrog's kicks, propellant by the rocket equation (`tests/unit/ships.spec.ts`, `tests/explore/ships.spec.ts`) |
+| SC-2 | Orbital HUD (prograde, normal, radial; elements) | | SB-22 | implemented (2026-10-26): a chosen ship's prograde, normal and radial-out directions about its primary drawn as named markers an arrow's length from it, beside the inspector's elements, apsides and period (SB-22) (`tests/explore/ships.spec.ts`) |
+| SC-3 | Manoeuvre planning with delta-v | Predictions (SB-8) with thrust | SC-1 | implemented (2026-10-26): burns planned by their change of speed at a time, the path ahead integrated through them; a Hohmann transfer to geostationary radius checked |
+| SC-4 | Autopilots that apply forces and can fail | No teleporting | SC-3 | partial (2026-10-26): one autopilot, rounding the orbit at its far side with a finite burn, refused without the propellant for it |
 | SC-5 | Entry and landing | | WR-5, GR-3 | deferred |
 
 ## Phase 8: creative platform
 
 | ID | Feature | Status |
 |---|---|---|
-| CR-1 | Image export from photo mode, with credits | planned |
-| CR-2 | Field of view, exposure, target tracking | planned |
-| CR-3 | Camera keyframes, saved shots, video export (feature-detected) | planned |
-| CR-4 | Short lessons on resettable scenarios | planned |
+| CR-1 | Image export from photo mode, with credits | implemented (2026-10-26): the frame as drawn, a band of credits below it (place and date, what is illustrative, the imagery and data credits on screen, the app and its Sources page), named for the place and the date (`tests/explore/photo.spec.ts`) |
+| CR-2 | Field of view, exposure, target tracking | partial (2026-10-26): photo mode's lens, 90 to 5 degrees of view in place of the explorer's framing (`tests/explore/photo.spec.ts`); exposure and target tracking not yet |
+| CR-3 | Camera keyframes, saved shots, video export (feature-detected) | partial (2026-10-26): video recording from photo mode with its credits below (MediaRecorder, feature-detected; `tests/explore/photo.spec.ts`); saved shots are the saved views (GR-4); keyframed camera moves not yet |
+| CR-4 | Short lessons on resettable scenarios | implemented (2026-10-26, [LAB.md](LAB.md)): Kepler's third law, escape speed, a Hohmann transfer and the Roche limit, each set up again from the start, each step an edit with the expected number beside the experiment's (`tests/explore/lessons.spec.ts`) |
 | CR-5 | Declarative, versioned addons (no imported code) | deferred |
-| CR-6 | Audio, within the owner's decisions | deferred |
+| CR-6 | Audio, within the owner's decisions | implemented (2026-10-26; the owner allowed sound): sound only where there is air (the wind by the air's dynamic pressure on foot and on the way down; the suit's fans on airless worlds), no music or voice, silenced under a recitation, off at the navigator's foot and kept (`tests/explore/sound.spec.ts`) |
 | CR-7 | WebXR | deferred |
 
 ## Research extensions

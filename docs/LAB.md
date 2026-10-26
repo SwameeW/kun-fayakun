@@ -92,6 +92,66 @@ scripture: destructive experiments stay clear of the film's verses.
 - **Leave.** "Back to the real explorer" returns to the real explorer exactly as it was (date, rate,
   positions), and from there to the film where it was.
 
+## Ships (ledger SC-1 to SC-4)
+
+`src/sim/ships.ts`, with the engine's `burn` and `cancelBurns` edits, the laboratory's `addShip`,
+`burn`, `cancelBurns` and `circularise` commands, and the panel's "Add a ship" and "Its rocket".
+
+- **A ship** is a body of the experiment that weighs nothing to the others (a test particle in the
+  integration, 10 m across for contacts) and carries its own mass: dry, and propellant (kg); its
+  engine's thrust (N) and specific impulse (s). The numbers offered are illustrative (a storable
+  propellant engine's specific impulse); every one can be set.
+- **A burn** pushes it along a direction set by its motion about a body chosen for it: prograde or
+  retrograde (along or against its velocity relative to that body), normal or anti-normal (square to
+  that orbit's plane), radial out or in (in the plane, square to the motion). The push is the thrust
+  over the ship's mass at that moment (the propellant going as thrust over (specific impulse times
+  standard gravity, 9.80665 m/s^2)), applied with gravity in both of the leapfrog's half kicks (at the
+  start with the mass then, after the drift with the step's propellant spent), until its time is up
+  or the propellant runs out. Nothing is instantaneous: the change of speed a burn gives is the
+  rocket equation's, Isp g0 ln(m0 / m1).
+- **On time.** Steps never cross a burn's start or end, and stay at most ten seconds (and a fortieth
+  of the burn) while one runs. A burn planned to start inside another begins when that one ends.
+- **Planning** (SC-3) is by the change of speed: the panel asks for it (with a direction, the body to
+  reckon against, a start and a throttle) and the burn's length is found from the propellant left
+  after the burns already planned. The path drawn ahead (SB-8) is integrated through every planned
+  burn as the experiment would be: plan, look, then let the time run. Burns are edits like any other:
+  logged, undone, replayed, saved and shared.
+- **An autopilot** (SC-4): "Make the orbit round at its far side" plans a prograde burn centred on
+  the apoapsis (its time from the mean anomaly), of sqrt(mu / r_a) - sqrt(mu (2 / r_a - 1 / a)): a real
+  burn, not a teleport, so it leaves the orbit nearly but not exactly round; refused, and said to be,
+  when the propellant left cannot give it.
+- **The orbit's figures** (SC-2) are the inspector's own (SB-22: the osculating elements, apsides and
+  period about the primary). A chosen ship's prograde, normal and radial-out directions about its
+  primary are drawn as markers, each an arrow's length from it, named as the burns name them.
+- **Conservation** is off while a ship burns, and the panel says so: the rocket adds energy and
+  momentum, and the propellant it throws out, which carries the balance, is not followed.
+
+Checked in `tests/unit/ships.spec.ts`: a 1,500 m/s burn in empty space gives 1,500 m/s to 0.05 m/s
+and spends exactly the rocket equation's propellant; a burn begins at its time and the directions
+are what they say; a Hohmann transfer from 7,000 km to geostationary radius planned with two finite
+burns (Vallado's algorithm 36) reaches the second orbit to 1.5 per cent with an eccentricity under
+0.02, spending the rocket equation's propellant for the two; undo takes a burn back bit for bit,
+and the validator takes a scenario with a ship and a burn. In the browser, `tests/explore/ships.spec.ts`.
+
+## Lessons (ledger CR-4)
+
+`src/ui/explore/lab-lessons.ts`: short lessons, each on its own experiment set up from the start
+(the seed loaded, the body in question chosen, the clock paused), then a few steps, each an edit
+made with a button (the panel's own edits), with what to look for and the number the physics
+expects worked out beforehand from the experiment as it stands, beside the experiment's own figure:
+
+- **Kepler's third law** (a star and a planet): the planet moved out to twice its distance; its
+  year 2^1.5 = 2.828 times as long; then running, its speed one over the square root of two.
+- **Escape speed**: a push a little past the square root of two times the circular speed opens the
+  orbit (eccentricity over 1).
+- **A Hohmann transfer** (a ship 7,000 km from the Earth's centre, to 42,164 km): the two burns
+  worked out (Vallado's algorithm 36), the first planned and run, the far side checked against the
+  target, the second planned by the autopilot.
+- **The Roche limit**: the Moon moved inside the Earth's fluid limit for it, and torn apart.
+
+"Start the lesson again" sets the experiment up from the start once more. Tested in
+`tests/explore/lessons.spec.ts`.
+
 ## State ownership
 
 | State | Owner | Notes |

@@ -818,12 +818,29 @@ Terms:    Facts only: each convention's published depressions of the Sun and
           or text of PrayTimes.org is used.
 Credit:   Conventions as PrayTimes.org lists them (H. Zarrabi-Zadeh)
 
-SIMBAD (the Andromeda Galaxy's place on the sky)
+The Local Group (McConnachie 2012, via CDS VizieR)
+Terms:    Free use with acknowledgement of CDS VizieR
+          (https://cds.unistra.fr/vizier-org/licences_vizier.html).
+Changes:  public/assets/stars/localgroup.json keeps each galaxy's name,
+          place, distance, half-light radius, position angle, ellipticity,
+          absolute magnitude and stellar mass (scripts/stars/beyond.py, its
+          queries' results sha256-recorded); the Milky Way's own row is left
+          out.
+Credit:   McConnachie (2012); VizieR, CDS, Strasbourg
+
+The Milky Way's model (Reid et al. 2019; Bland-Hawthorn and Gerhard 2016)
+Terms:    Facts only: the spiral arms' fitted parameters and the disc's and
+          bar's measured sizes, credited. No text or figure is used.
+Credit:   Reid et al. (2019); Bland-Hawthorn and Gerhard (2016)
+
+SIMBAD (the Andromeda Galaxy's place on the sky; the sizes of four galaxies)
 Terms:    Free use with acknowledgement: "This research has made use of the
           SIMBAD database, operated at CDS, Strasbourg, France" (Wenger et
           al. 2000, A&AS 143, 9).
-Changes:  Only M 31's ICRS position is used (src/explore/sky.ts), retrieved
-          2026-10-26; the position is 2MASS's (Skrutskie et al. 2006).
+Changes:  M 31's ICRS position (src/explore/sky.ts; 2MASS's, Skrutskie et al.
+          2006), and the isophotal diameters and position angles of M 31,
+          M 33 and the Magellanic Clouds with M 31's V magnitude
+          (public/assets/stars/localgroup.json), retrieved 2026-10-26.
 Credit:   SIMBAD, CDS, Strasbourg
 
 Wikidata (coordinates of the field notes' places)

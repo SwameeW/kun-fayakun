@@ -419,6 +419,51 @@ function checkNeighbourhood(ctx: ValidationContext, log: RuleLog): void {
   else log.pass(`${path}: ${stars.length} stars and ${systems.length} planetary systems, every source credited`);
 }
 
+const LOCAL_GROUP_OWNER = 'stars builder, python3 -I scripts/stars/beyond.py';
+
+/** The Local Group's galaxies (beyond the stars): every row well formed, the four largest with their sizes, every source credited. */
+function checkLocalGroup(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'stars', 'localgroup.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${LOCAL_GROUP_OWNER})`);
+    return;
+  }
+  const file = loaded.value;
+  const problems = checkFields(file, { fields: 'array', galaxies: 'array', sources: 'object' }, path);
+  const galaxies: unknown[] = isRecord(file) && Array.isArray(file.galaxies) ? file.galaxies : [];
+  const numberOrNull = (x: unknown): boolean => x === null || isFiniteNumber(x);
+  galaxies.forEach((row, i) => {
+    const ok =
+      Array.isArray(row) &&
+      row.length === 15 &&
+      typeof row[0] === 'string' &&
+      isFiniteNumber(row[3]) &&
+      row[3] >= 0 &&
+      row[3] < 360 &&
+      isFiniteNumber(row[4]) &&
+      Math.abs(row[4]) <= 90 &&
+      isFiniteNumber(row[5]) &&
+      row[5] > 0 &&
+      [6, 7, 8, 9, 11, 12, 13, 14].every((k) => numberOrNull(row[k])) &&
+      typeof row[10] === 'boolean';
+    if (!ok) problems.push(`${path}: galaxies[${i}] must be [name, group, type, ra, dec, distance (kpc, > 0), and numbers or null for the rest, the derived flag a boolean]`);
+  });
+  for (const name of ['Andromeda', 'Triangulum', 'LMC', 'SMC']) {
+    const row = galaxies.find((g): g is unknown[] => Array.isArray(g) && g[0] === name);
+    if (!row || !isFiniteNumber(row[12]) || !isFiniteNumber(row[13]) || !isFiniteNumber(row[14])) problems.push(`${path}: ${name} needs its isophotal diameters and position angle`);
+  }
+  const sources = isRecord(file) && isRecord(file.sources) ? Object.values(file.sources) : [];
+  for (const source of sources) {
+    const ids: unknown = isRecord(source) ? source.ids : undefined;
+    if (!isRecord(source) || typeof source.sha256 !== 'string' || !SHA256.test(source.sha256) || !Array.isArray(ids) || ids.length === 0) problems.push(`${path}: every source needs its ids and its result's sha256`);
+    for (const id of Array.isArray(ids) ? ids : []) if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((x) => x.id === id)) problems.push(`data/sources.json: no "${String(id)}" entry for ${path}`);
+  }
+  if (galaxies.length < 90) problems.push(`${path}: ${galaxies.length} galaxies, expected McConnachie's catalogue but the Milky Way`);
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${LOCAL_GROUP_OWNER})`);
+  else log.pass(`${path}: ${galaxies.length} galaxies of the Local Group, the four largest with their sizes, every source credited`);
+}
+
 const SKY_OWNER = 'sky builder, python3 -I scripts/sky/build.py';
 
 /** The explorer's sky: the Bright Star Catalogue's stars (brightest first), IAU names for them, the 88 constellations; every source credited. */
@@ -676,6 +721,7 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkWalkHeights(ctx, log);
   checkDescents(ctx, log);
   checkNeighbourhood(ctx, log);
+  checkLocalGroup(ctx, log);
   checkSky(ctx, log);
   checkAnalyses(ctx, log);
 }

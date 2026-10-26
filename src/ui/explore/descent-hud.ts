@@ -104,7 +104,7 @@ export function createDescentHud(app: App, f: Formatters, host: () => HTMLElemen
     const t = Number(depth.value) / 1000;
     app.earthCommand({ kind: 'descentTo', pressureBar: Math.exp(Math.log(span.top) + (Math.log(span.bottom) - Math.log(span.top)) * t) });
   });
-  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'descent-credit' });
+  const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'descent-credit', 'data-photo-credit': '' });
   const readout = h('details', { class: 'kf-walk-suit' }, title, place, height, state, cloud, wind, probe, h('div', { class: 'kf-living-group' }, depthLabel, depth), credit);
   readout.open = !window.matchMedia(NARROW).matches;
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.descent.label'), 'data-testid': 'descent-hud', hidden: true }, readout, notice, keys, touch, h('div', { class: 'kf-walk-controls' }, pad, back));

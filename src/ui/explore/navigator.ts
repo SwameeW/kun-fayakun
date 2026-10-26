@@ -1,6 +1,7 @@
 import { BODY_IDS, type App, type BodyId, type UniverseView } from '../../core/types';
 import { h, uniqueId } from '../dom';
 import { icon } from '../icons';
+import { readPreference, writePreference } from '../preferences';
 import { createAbout } from './about';
 import { createBodyIcon, type BodyIcon } from './body-icon';
 import type { Formatters } from './format';
@@ -167,6 +168,22 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   });
 
   const quality = createQualityMenu(app, onApplied);
+  // Sound where there is air (ledger CR-6): on unless the visitor turned it off, kept for the next visit.
+  let soundOn = readPreference('sound') ?? true;
+  const soundValue = h('span', { class: 'kf-nav-detail-value' });
+  const soundButton = h('button', { type: 'button', class: 'kf-btn kf-nav-detail-button', 'aria-pressed': String(soundOn), title: i18n.t('ui.universe.sound.hint'), 'data-testid': 'universe-sound' }, h('span', { class: 'kf-nav-detail-label' }, i18n.t('ui.universe.sound.label')), soundValue);
+  const showSound = (): void => {
+    soundButton.setAttribute('aria-pressed', String(soundOn));
+    soundValue.textContent = i18n.t(soundOn ? 'ui.universe.sound.on' : 'ui.universe.sound.off');
+  };
+  showSound();
+  soundButton.addEventListener('click', () => {
+    soundOn = !soundOn;
+    writePreference('sound', soundOn);
+    showSound();
+    app.earthCommand({ kind: 'sound', on: soundOn });
+  });
+  const sound = h('div', { class: 'kf-nav-sound' }, soundButton);
   const keys = h(
     'details',
     { class: 'kf-nav-keys' },
@@ -174,7 +191,8 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     h('p', {}, i18n.t(coarse.matches ? 'ui.universe.touchList' : 'ui.universe.keysList')),
   );
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
-  const foot = h('div', { class: 'kf-nav-foot' }, keys, quality.element);
+  // Detail and Sound share a row, so the foot keeps its height and the list its room on a phone.
+  const foot = h('div', { class: 'kf-nav-foot' }, keys, h('div', { class: 'kf-nav-foot-row' }, quality.element, sound));
   const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living.element, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
@@ -246,6 +264,8 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
       return expanded;
     },
     update(view, slow) {
+      // The explorer starts with sound on: told the visitor's choice once it is there to hear it.
+      if (view.sound.on !== soundOn) app.earthCommand({ kind: 'sound', on: soundOn });
       for (const b of view.bodies) {
         const row = rows.get(b.id);
         if (!row) continue;

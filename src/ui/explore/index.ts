@@ -86,6 +86,8 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const setPhoto = (on: boolean): void => {
     if (document.documentElement.classList.contains('kf-photo') === on) return;
     document.documentElement.classList.toggle('kf-photo', on);
+    // Out of photo mode the explorer frames the view itself again.
+    if (!on && app.universe()?.lensFov !== null) app.earthCommand({ kind: 'lens', fovDeg: null });
     (on ? photoExit : photo).focus({ preventScroll: true });
     requestAnimationFrame(reportInsets);
   };
@@ -95,6 +97,100 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   photoExit.addEventListener('click', () => {
     setPhoto(false);
   });
+  // Saving the picture (ledger CR-1): the view as drawn, with its credits set below it: where and
+  // when, what in it is illustrative, whose imagery and data it shows (the lines the readouts carry).
+  const photoSave = h('button', { type: 'button', class: 'kf-btn kf-universe-photo-save', 'data-testid': 'universe-photo-save' }, i18n.t('ui.universe.photoSave'));
+  const photoBar = h('div', { class: 'kf-universe-photo-bar' }, photoSave, photoExit);
+  const pictureDate = new Intl.DateTimeFormat(i18n.locale, { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' });
+  const visibleText = (selector: string): string => {
+    for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+      const text = el.textContent.trim();
+      if (text !== '' && el.closest('[hidden]') === null) return text;
+    }
+    return '';
+  };
+  /** Where and when the view is, its credits (the lines the readouts carry), and the app's: a picture's or a video's band. */
+  const pictureCredits = (): { where: string; lines: string[]; unixMs: number; focus: string } | null => {
+    const view = app.universe();
+    if (!view) return null;
+    const where = visibleText('[data-testid="walk-title"]') || visibleText('[data-testid="descent-title"]') || (view.neighbourhood ? visibleText('[data-testid="stars-focus-name"]') : '') || visibleText('.kf-universe-title');
+    const lines = [
+      i18n.t('ui.universe.photoWhere', { where, date: pictureDate.format(new Date(view.unixMs)) }),
+      ...[...document.querySelectorAll<HTMLElement>('[data-photo-credit]')].filter((el) => el.closest('[hidden]') === null).map((el) => el.textContent.trim()).filter((t) => t !== ''),
+      i18n.t('ui.universe.photoCredit'),
+    ];
+    return { where, lines, unixMs: view.unixMs, focus: view.focus };
+  };
+  const fileName = (c: { where: string; unixMs: number; focus: string }, ext: string): string =>
+    `kun-fayakun-${(c.where || c.focus).toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '')}-${new Date(c.unixMs).toISOString().slice(0, 10)}.${ext}`;
+  const download = (blob: Blob, name: string): void => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60_000);
+  };
+  photoSave.addEventListener('click', () => {
+    const c = pictureCredits();
+    if (!c) return;
+    photoSave.disabled = true;
+    void app.capturePicture(c.lines).then((blob) => {
+      photoSave.disabled = false;
+      if (!blob) {
+        announce(i18n.t('ui.universe.photoSaveFailed'));
+        return;
+      }
+      download(blob, fileName(c, 'png'));
+      announce(i18n.t('ui.universe.photoSaved'));
+    });
+  });
+  // Recording a video (ledger CR-3), where the browser can: the view as it moves, with its credits below.
+  const photoRecord = h('button', { type: 'button', class: 'kf-btn kf-universe-photo-record', 'aria-pressed': 'false', 'data-testid': 'universe-photo-record' }, i18n.t('ui.universe.photoRecord'));
+  photoRecord.hidden = typeof MediaRecorder === 'undefined';
+  let recordingFrom: { where: string; unixMs: number; focus: string } | null = null;
+  photoRecord.addEventListener('click', () => {
+    if (recordingFrom) {
+      const from = recordingFrom;
+      recordingFrom = null;
+      photoRecord.setAttribute('aria-pressed', 'false');
+      photoRecord.textContent = i18n.t('ui.universe.photoRecord');
+      void app.stopRecording().then((blob) => {
+        if (!blob) {
+          announce(i18n.t('ui.universe.photoRecordFailed'));
+          return;
+        }
+        download(blob, fileName(from, blob.type.includes('mp4') ? 'mp4' : 'webm'));
+        announce(i18n.t('ui.universe.photoRecorded'));
+      });
+      return;
+    }
+    const c = pictureCredits();
+    if (!c || !app.startRecording(() => pictureCredits()?.lines ?? c.lines)) {
+      announce(i18n.t('ui.universe.photoRecordFailed'));
+      return;
+    }
+    recordingFrom = c;
+    photoRecord.setAttribute('aria-pressed', 'true');
+    photoRecord.textContent = i18n.t('ui.universe.photoRecordStop');
+    announce(i18n.t('ui.universe.photoRecording'));
+  });
+  photoBar.prepend(photoRecord);
+  // The lens (ledger CR-2): the explorer's own framing, or a field of view chosen for the picture.
+  const LENSES = [null, 90, 50, 20, 5] as const;
+  const lensId = 'kf-universe-lens';
+  const lens = h(
+    'select',
+    { id: lensId, class: 'kf-btn kf-universe-photo-lens', 'aria-label': i18n.t('ui.universe.photoLens'), 'data-testid': 'universe-photo-lens' },
+    ...LENSES.map((deg) => h('option', { value: deg === null ? '' : String(deg) }, deg === null ? i18n.t('ui.universe.photoLensOwn') : i18n.t('ui.universe.photoLensDeg', { deg }))),
+  );
+  lens.addEventListener('change', () => {
+    const deg = Number(lens.value);
+    app.earthCommand({ kind: 'lens', fovDeg: lens.value === '' || !Number.isFinite(deg) ? null : deg });
+  });
+  photoBar.prepend(lens);
   const notes = createNotes(app, f, announce, () => navigator.layout === 'sheet');
   const navigator = createNavigator(
     app,
@@ -112,7 +208,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     'section',
     { class: 'kf-universe', 'aria-label': i18n.t('ui.universe.label'), 'data-testid': 'universe', tabindex: '-1', hidden: true },
     back,
-    photoExit,
+    photoBar,
     hint,
     loading,
     hud.trip,

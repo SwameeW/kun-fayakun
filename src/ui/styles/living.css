@@ -819,6 +819,16 @@
   border-block-end: 1px solid var(--kf-line);
 }
 
+.kf-stars-hr {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 600 / 440;
+  margin-block: var(--kf-space-2);
+  border-radius: var(--kf-radius-small);
+  background: rgb(255 255 255 / 0.03);
+}
+
 .kf-stars-credit {
   font-size: 0.6875rem;
 }

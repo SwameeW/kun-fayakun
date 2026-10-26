@@ -37,7 +37,15 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   Moon's phase, each world's turn, day and night, eclipses, the day's imagery of the Earth. It
   stops at the ends of the Moon's table (2026 to 2035) and runs at real time during a trip.
   Satellites show up to 600 times real time, and earthquakes only near the present.
-- **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back.
+- **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back. "Save
+  the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date, with
+  its credits set in a band below it, never over it: where and when, what in it is illustrative, whose
+  imagery and data it shows (the lines the readouts carry: the planet maps', the streamed imagery's
+  with EOX's link, a walk's or a descent's, the stars'), and the app with its Sources page. "Record a
+  video" (CR-3; where the browser can record a canvas) records the view as it moves, each frame copied
+  as it is drawn, with the same credits below it (their place kept right as a flight moves on), saved
+  as WebM (or MP4). The lens (CR-2) sets the field of view for the picture, from 90 to 5 degrees, in
+  place of the explorer's own framing; leaving photo mode gives the framing back.
 - **Object information** (SpaceEngine's wiki). "About" the world in view, in the navigator: radius,
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'
@@ -72,6 +80,19 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   the place beneath the camera, the height and the date, or on foot the walk (its place, heading and
   look). Going back to one sets its date, travels to its world if the camera is elsewhere, glides
   over its place, and on foot begins the walk again (`src/ui/explore/saved-views.ts`).
+
+- **Sound where there is air** (ledger CR-6; `src/explore/sound.ts`). Space is silent, and so is the
+  explorer there. On foot on a world with air, and on the way down through Venus's or Jupiter's, the
+  wind: noise as loud as the air's dynamic pressure (half its density times the wind's speed squared;
+  the density at the feet from the pressure there, the world's mean temperature and its air's molar
+  mass, by the ideal gas law, from `data/constants.json`; on the way down, the probe's own density and
+  wind), and as bright as the air lets high pitches carry (Mars's thin carbon dioxide takes them first,
+  as Perseverance's microphones found: Maurice et al. 2022). The walks' breeze is illustrative (5 m/s
+  on the Earth and Mars, 1 m/s on Venus): they know no wind. On the Moon and Mercury, only the suit's
+  own fans, as the Apollo crews heard theirs. No music, no voice; it plays through the app's ambient
+  bus, so a recitation silences it, and begins only after the visitor first touches the page (as
+  browsers require). "Sound" at the navigator's foot turns it off, and the choice is kept in this
+  browser.
 
 ## Planned, in this order (each from cited data)
 

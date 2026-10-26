@@ -213,7 +213,7 @@ test('the golden latitude: where the meridian divides in the golden ratio, besid
 });
 
 test('the heritage places: Wikidata items on the Earth, each with its name and note', () => {
-  const messages = readJson('src/i18n/en.explore.json') as Record<string, string>;
+  const messages = readJson('src/i18n/en.islamic.json') as Record<string, string>;
   expect(new Set(HERITAGE.map((p) => p.id)).size).toBe(HERITAGE.length);
   for (const p of HERITAGE) {
     expect(p.qid).toMatch(/^Q\d+$/);

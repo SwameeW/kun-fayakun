@@ -1,5 +1,6 @@
 import type { App, CrescentCriterion, CrescentZoneName, PrayerConventionId, UniverseIslamic, UniversePrayer, UniverseView } from '../../core/types';
 import { loadPlaces, searchPlaces, type Place } from '../../explore/field-notes/places';
+import islamicMessages from '../../i18n/en.islamic.json';
 import { HERITAGE } from '../../explore/islamic/heritage';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
@@ -35,6 +36,8 @@ const GOLDEN_VIEW_KM = 60;
 
 export function createIslamicPanel(app: App, f: Formatters, onGo: () => void): IslamicPanel {
   const { i18n } = app;
+  // This section's messages come with its chunk.
+  i18n.extend('en.islamic.json', islamicMessages);
   const write = (el: HTMLElement, text: string): void => {
     if (el.textContent !== text) el.textContent = text;
   };

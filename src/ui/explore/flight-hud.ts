@@ -54,15 +54,15 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   const sunlight = h('p', { class: 'kf-universe-line kf-universe-extra' });
   const filter = h('p', { class: 'kf-universe-line kf-universe-extra kf-universe-filter', hidden: true }, i18n.t('ui.universe.filter'));
   const date = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-extra' });
-  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative kf-universe-part', 'data-testid': 'universe-illustrative', hidden: true });
+  const illustrative = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-illustrative kf-universe-part', 'data-testid': 'universe-illustrative', 'data-photo-credit': '', hidden: true });
   // Whose imagery the surface is: one short line, and the full lines (with the Earth's epochs) in a panel that opens over the view (the Sources page has them too).
-  const imageryText = h('span', { class: 'kf-universe-imagery-text' });
+  const imageryText = h('span', { class: 'kf-universe-imagery-text', 'data-photo-credit': '' });
   const creditsPanel = h('div', { class: 'kf-universe-credits-panel', id: 'kf-universe-credits', role: 'region', 'aria-label': i18n.t('ui.universe.creditsLabel') });
   const creditsToggle = h('summary', { class: 'kf-universe-credits-toggle' }, i18n.t('ui.universe.credits'));
   const creditsBox = h('details', { class: 'kf-universe-credits', 'data-testid': 'universe-credits' }, creditsToggle, creditsPanel);
   const imagery = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-imagery', 'data-testid': 'universe-imagery', hidden: true }, imageryText, creditsBox);
   const lens = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-lens', 'data-testid': 'universe-lens', hidden: true });
-  const tiles = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-tiles', 'data-testid': 'universe-tiles', hidden: true });
+  const tiles = h('p', { class: 'kf-universe-line kf-universe-faint kf-universe-tiles', 'data-testid': 'universe-tiles', 'data-photo-credit': '', hidden: true });
   const readout = h('div', { class: 'kf-universe-readout', 'data-testid': 'universe-readout' }, title, altitude, mode, scale, illustrative, sunlight, filter, date, imagery, lens, tiles);
 
   /**

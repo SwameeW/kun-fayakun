@@ -6,6 +6,7 @@ import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Comma
 import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
 import { circularOrbit, consumes, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
+import { burnDuration, deltaVLeft, G0 } from '../sim/ships';
 import { SWARM_LIMITS } from '../sim/swarms';
 import { airlessRock, climateSummary, noonK, worldClimates } from '../sim/climate';
 import { presets as presetList, type Preset } from '../sim/presets';
@@ -145,6 +146,8 @@ const DUST = { perImpact: 240, plumes: 3, seconds: 4, cone: (40 * Math.PI) / 180
 const GASES = ['n2', 'o2', 'co2', 'ar', 'co'] as const;
 /** A body more massive than this (GM, km^3 s^-2: about 80 Jupiters, the least a star can be) is a star: its belts are drawn as rock. */
 const STAR_GM = 1e10;
+/** A ship's size in the integration (km): ten metres, for contacts; it weighs nothing there. */
+const SHIP_RADIUS_KM = 0.01;
 /** A gravitating ring's bodies (ids `moonlets-<n>-<k>`): named on screen only when chosen, so twenty-four labels do not crowd the view. */
 const RING_MEMBER = /^moonlets-\d+-\d+$/u;
 const DEFAULT_HORIZON_S = 60 * 86_400;
@@ -180,6 +183,8 @@ const TRAIL = [0.16, 0.2, 0.3] as const;
 const TRAIL_CHOSEN = [0.55, 0.45, 0.26] as const;
 const PREDICTION = [0.35, 0.62, 0.72] as const;
 const VELOCITY = [0.75, 0.62, 0.3] as const;
+/** A ship's burn directions as markers (ledger SC-2): prograde, normal, radial out. */
+const SHIP_DIRECTIONS = { prograde: [0.62, 0.86, 0.4], normal: [0.78, 0.5, 0.92], radialOut: [0.4, 0.82, 0.92] } as const;
 
 /** Ecliptic (the scenario's frame) to the render frame: (x, z, -y). */
 const toRender = (x: number, y: number, z: number, out: Km): Km => {
@@ -340,7 +345,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const dots: Impostors = createImpostors(DOT_SLOTS);
   dots.object.visible = false;
   /** Markers: the five Lagrange points, the prediction's encounters, the placing preview and the velocity arrow's handle. */
-  const MARKER_SLOTS = 10;
+  // The five Lagrange points, encounters, the placing preview, the velocity handle and a ship's three directions.
+  const MARKER_SLOTS = 16;
   const markers: Impostors = createImpostors(MARKER_SLOTS);
   markers.object.visible = false;
   const markerList: ImpostorDot[] = Array.from({ length: MARKER_SLOTS }, () => ({ position: km(), color: [1, 1, 1] as const, opacity: 0, sizePx: 0, marker: 0 }));
@@ -573,6 +579,53 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     return Math.hypot(...n) > 0 ? n : [0, 0, 1];
   };
 
+  /**
+   * The autopilot's burn to make a ship's orbit round at its far side: the time to the apoapsis (from
+   * the mean anomaly), the change of speed there, sqrt(mu / r_a) - sqrt(mu (2 / r_a - 1 / a)), and the
+   * burn's length at full thrust from the propellant left after the burns already planned.
+   */
+  const circularisation = (s: LabSnapshot, id: string): { inS: number; deltaVMs: number; durationS: number; ref: string } | null => {
+    const i = s.ids.indexOf(id);
+    const x = s.ships.find((y) => y.id === id);
+    const rel = i >= 0 ? relativeTo(s, i) : null;
+    if (!x || !rel) return null;
+    const el = elementsFromState(rel.r, rel.v, rel.mu);
+    if (!el.bound || el.e < 1e-3 || !(el.a > 0)) return null;
+    const e = el.e;
+    const E = 2 * Math.atan(Math.sqrt((1 - e) / (1 + e)) * Math.tan(el.trueAnomaly / 2));
+    const M = E - e * Math.sin(E);
+    const n = Math.sqrt(rel.mu / el.a ** 3);
+    const inS = ((((Math.PI - M) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / n;
+    const ra = el.a * (1 + e);
+    const deltaVMs = (Math.sqrt(rel.mu / ra) - Math.sqrt(rel.mu * (2 / ra - 1 / el.a))) * 1000;
+    const left = { ...x, fuelKg: x.burns.reduce((f, b) => f - ((b.throttle * x.thrustN) / (x.ispS * G0)) * b.durationS, x.fuelKg) };
+    return { inS, deltaVMs, durationS: burnDuration(left, deltaVMs), ref: s.ids[rel.p] ?? '' };
+  };
+
+  /** A ship's rocket as the view gives it (src/sim/ships): its burns to come, each one's change of speed by the rocket equation. */
+  const shipOf = (s: LabSnapshot, id: string): UniverseLabBody['ship'] => {
+    const x = s.ships.find((y) => y.id === id);
+    if (!x) return null;
+    const round = circularisation(s, id);
+    let fuel = x.fuelKg;
+    const burns = x.burns.map((b) => {
+      const spent = Math.min(fuel, ((b.throttle * x.thrustN) / (x.ispS * G0)) * Math.max(0, b.durationS - Math.max(0, s.t - b.startT)));
+      const before = x.dryKg + fuel;
+      fuel -= spent;
+      return { inS: b.startT - s.t, durationS: b.durationS, direction: b.direction, ref: b.ref, throttle: b.throttle, deltaVMs: x.ispS * G0 * Math.log(before / (x.dryKg + fuel)) };
+    });
+    return {
+      dryKg: x.dryKg,
+      fuelKg: x.fuelKg,
+      thrustN: x.thrustN,
+      ispS: x.ispS,
+      deltaVLeftMs: deltaVLeft(x),
+      burning: x.burns.some((b) => b.startT <= s.t + 1e-9) && x.fuelKg > 0,
+      burns,
+      circularise: round ? { inS: round.inS, deltaVMs: round.deltaVMs, possible: Number.isFinite(round.durationS) } : null,
+    };
+  };
+
   /** The snapshot as a small state for nbody's placement helpers (the primary at index 0). */
   const stateOf = (s: LabSnapshot, i: number): SimState => ({
     ids: [s.ids[i] ?? ''],
@@ -594,6 +647,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     climate: {},
     climateAt: 0,
     rubble: [],
+    ships: {},
   });
 
   /** Body i relative to its primary (scenario frame): the primary's index, position and velocity, and the pair's GM; null without one. */
@@ -1099,6 +1153,24 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         if (p >= 0) mark(add3(posNow(s, p, ahead), hoverOffset), PLACING, 10, 1, null);
       }
       if (arrowNow && !placing) mark(arrowNow.tip, VELOCITY, dragging ? 12 : 9, 1, null);
+      // A chosen ship's burn directions about its primary, each the arrow's length from it, named as the burns are.
+      const shipRel = arrowNow && !placing && s.ships.some((x) => x.id === selected) ? relativeTo(s, i) : null;
+      if (shipRel && arrowNow) {
+        const base = posNow(s, i, ahead);
+        const length = norm3(sub3(arrowNow.tip, base));
+        const f = orbitalFrame(shipRel.r, shipRel.v);
+        for (const [key, dir] of [
+          ['prograde', f.prograde],
+          ['normal', f.normal],
+          ['radialOut', f.radial],
+        ] as const) {
+          const before = m;
+          mark(add3(base, scale3(dir, length)), SHIP_DIRECTIONS[key], 7, 1, null);
+          // Named where its marker was placed (in the scaled space the markers are drawn in).
+          const dot = m > before ? markerList[m - 1] : undefined;
+          if (dot) labelList.push({ id: `lab-direction-${key}`, textKey: `ui.universe.lab.ship.dirShort.${key}`, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.85, offset: [8, -8] });
+        }
+      }
       // Where the handle is on the canvas (client px), for the view.
       handleAt = null;
       if (arrowNow && !placing && pointerView) {
@@ -1402,6 +1474,58 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           edit({ kind: 'setVelocity', id: c.id, vel: [(base[0] ?? 0) + c.relativeKmS[0], (base[1] ?? 0) + c.relativeKmS[1], (base[2] ?? 0) + c.relativeKmS[2]] });
           return;
         }
+        case 'addShip': {
+          if (!s) return;
+          const p = s.ids.indexOf(c.primary);
+          const ok = [c.dryKg, c.fuelKg, c.thrustN, c.ispS].every((x) => Number.isFinite(x) && x >= 0) && c.dryKg >= 1 && c.thrustN > 0 && c.ispS >= 1;
+          if (p < 0 || !(c.distanceKm > (s.radius[p] ?? 0)) || !ok) return;
+          // A test particle with a rocket, on a circular orbit in the plane of the body's own orbit.
+          const pole = poleOf(s, p);
+          const pp = primaryOf(s.gm, s.pos, p);
+          const along = pp >= 0 ? [0, 1, 2].map((k) => (s.pos[p * 3 + k] ?? 0) - (s.pos[pp * 3 + k] ?? 0)) : [1, 0, 0];
+          const placed = circularOrbit(stateOf(s, p), 0, c.distanceKm, 0, pole, along);
+          const id = freshId('ship');
+          const body: BodySpec = {
+            id,
+            name: c.name.slice(0, 60) || id,
+            gm: 0,
+            radiusKm: SHIP_RADIUS_KM,
+            pos: placed.pos as [number, number, number],
+            vel: placed.vel as [number, number, number],
+            origin: 'user-edited',
+            sourceIds: [],
+            ship: { dryKg: c.dryKg, fuelKg: c.fuelKg, thrustN: c.thrustN, ispS: c.ispS },
+          };
+          edit({ kind: 'add', body });
+          selected = id;
+          requestPrediction();
+          return;
+        }
+        case 'burn': {
+          const ship = s?.ships.find((x) => x.id === c.id);
+          if (!s || !ship || !(c.deltaVMs > 0) || !(c.inS >= 0) || !(c.throttle > 0 && c.throttle <= 1) || !s.ids.includes(c.ref)) return;
+          // From the propellant left after the burns already planned: the time this burn takes at its throttle.
+          const left = { ...ship, fuelKg: ship.burns.reduce((f, b) => f - ((b.throttle * ship.thrustN) / (ship.ispS * G0)) * b.durationS, ship.fuelKg) };
+          const durationS = burnDuration(left, c.deltaVMs, c.throttle);
+          if (!Number.isFinite(durationS) || durationS <= 0) return;
+          edit({ kind: 'burn', id: c.id, burn: { startT: s.t + c.inS, durationS, direction: c.direction, ref: c.ref, throttle: c.throttle } });
+          requestPrediction();
+          return;
+        }
+        case 'circularise': {
+          const round = s ? circularisation(s, c.id) : null;
+          // Refused without the propellant for it: the autopilot can fail, and says so in the panel beforehand.
+          if (!s || !round || !Number.isFinite(round.durationS) || round.durationS <= 0) return;
+          // Centred on the far side: half the burn before it, half after.
+          edit({ kind: 'burn', id: c.id, burn: { startT: s.t + Math.max(0, round.inS - round.durationS / 2), durationS: round.durationS, direction: 'prograde', ref: round.ref, throttle: 1 } });
+          requestPrediction();
+          return;
+        }
+        case 'cancelBurns':
+          if (!s?.ships.some((x) => x.id === c.id)) return;
+          edit({ kind: 'cancelBurns', id: c.id });
+          requestPrediction();
+          return;
         case 'addOrbit': {
           if (!s) return;
           const p = s.ids.indexOf(c.primary);
@@ -1619,6 +1743,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
             escapeKmS: Math.sqrt((2 * gm) / Math.max(s.radius[i] ?? 1, 1e-9)),
             edited: edited.has(id),
             persistent: seedScenario.persistentIds?.includes(id) ?? false,
+            ship: shipOf(s, id),
           });
         }
       }
@@ -1659,6 +1784,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         undoable: s?.undoable ?? 0,
         redoable: s?.redoable ?? 0,
         constrained: (s?.fixed.length ?? 0) > 0,
+        thrusting: s ? s.ships.some((x) => x.burns.some((b) => b.startT <= s.t + 1e-9) && x.fuelKg > 0) : false,
         view: viewMode,
         corotatingPair: (() => {
           const pair = s && viewMode === 'corotating' ? corotatingPair(s) : null;
