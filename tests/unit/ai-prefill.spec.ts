@@ -1,19 +1,20 @@
 /**
  * How a loaded model reads its prompt (src/ai/engine/prefill.ts, docs/AI-INTELLIGENCE.md §6), without
  * a GPU: the chunk set on a pipeline shaped as WebLLM 0.2.86's, every way its internals could differ
- * (nothing changes, nothing throws, the report says which), a model switched to, the page's engine
- * carrying the setting and the report through loads and generations (a second one, one aborted while
- * it reads its prompt, the crash marker of the first), a long prompt cut by WebLLM's own chunking, and
- * WebLLM's file checked for the fields the setting reaches, so an upgrade that moves them is noticed.
+ * (nothing changes, nothing throws, the report says which), each tier's own setting, a model switched
+ * to, the page's engine carrying the setting and the report through loads and generations (a second
+ * one, one aborted while it reads its prompt, the crash marker of the first), a long prompt cut by
+ * WebLLM's own chunking, and WebLLM's file checked for the fields the setting reaches, so an upgrade
+ * that moves them is noticed.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { VISITOR_MODELS } from '../../src/ai/engine/catalogue';
+import { EVAL_CANDIDATES, MODEL_TIERS, VISITOR_MODELS } from '../../src/ai/engine/catalogue';
 import type { Pacer } from '../../src/ai/engine/pacing';
 import { applyPrefill, chunkOf, MIN_CHUNK_TOKENS, NO_PREFILL_SETTING, pipelineOf, prefillFor, type PrefillSetting } from '../../src/ai/engine/prefill';
 import type { ModelPiece } from '../../src/ai/engine/protocol';
 import { loadWebLLM, type ModelWorker } from '../../src/ai/engine/webllm';
-import type { PrefillReport } from '../../src/ai/types';
+import type { ModelTier, PrefillReport } from '../../src/ai/types';
 
 const ROOT = new URL('../../', import.meta.url);
 const WEBLLM = readFileSync(new URL('node_modules/@mlc-ai/web-llm/lib/index.js', ROOT), 'utf8');
@@ -371,6 +372,27 @@ test('each load carries the model’s own setting (or the one given), and each g
   expect(restarted.loads).toEqual([at(128, true)]);
   expect(again.prefill.chunkTokens).toBe(128);
   await again.unload();
+});
+
+test('each tier’s own setting: 256 tokens with the wait for pocket and compact, 128 with the wait for standard and large', async () => {
+  const own: Record<ModelTier, PrefillSetting> = { pocket: at(256, true), compact: at(256, true), standard: at(128, true), large: at(128, true) };
+  expect([...MODEL_TIERS].sort()).toEqual(Object.keys(own).sort());
+  for (const tier of MODEL_TIERS) expect(prefillFor({ tier }), tier).toEqual(own[tier]);
+  // Every build takes its tier's: the q4f32 fallbacks and the evaluation's candidates too.
+  for (const m of [...VISITOR_MODELS, ...EVAL_CANDIDATES]) expect(prefillFor(m), m.id).toEqual(own[m.tier]);
+  // On a library compiled at 1,024 each is set (not kept, not off), with the wait.
+  for (const tier of MODEL_TIERS) {
+    const engine = new FakeEngine();
+    engine.reload(ID);
+    expect(applyPrefill(engine, ID, prefillFor({ tier })), tier).toEqual({ outcome: 'set', compiled: 1024, chunkTokens: own[tier].chunkTokens, yieldBetween: true });
+  }
+  // And a visitor's load of each tier's model carries it to the worker, with nothing given in its place.
+  for (const m of VISITOR_MODELS) {
+    const worker = fakeWorker(SET);
+    const engine = await loadWebLLM(m, () => undefined, new AbortController().signal, pacer(), () => worker);
+    expect(worker.loads, m.id).toEqual([own[m.tier]]);
+    await engine.unload();
+  }
 });
 
 test('a WebLLM that moved the field still loads and answers: the report says so, and the prompt is read as compiled', async () => {

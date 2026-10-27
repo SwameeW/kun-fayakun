@@ -39,22 +39,29 @@ export const MIN_CHUNK_TOKENS = 16;
 export const NO_PREFILL_SETTING: PrefillSetting = { chunkTokens: null, yieldBetween: false };
 
 /**
- * The prompt's chunk, tokens: measured on this Mac at 1,024 (as compiled), 512, 256 and 128, with and
- * without the wait, for Qwen3 0.6B and 1.7B and Qwen3.5 4B and 9B (docs/AI-EVALUATION.md, "Reading
- * the prompt in smaller pieces"). At 128 with the wait the explorer's longest frame while the
- * standard tier (Qwen3.5 4B) wrote fell from 1.0–1.6 s (as compiled) to 133–167 ms, for 8–12% longer
- * to the first token; without the wait 128 left it at 183–233 ms, and 256 at 300–417 ms either way.
- * At 128 the small models' plans tipped the other way on a few prompts, each time from a passed case
- * to a failed one (Qwen3 1.7B: film-moment-redshift, lab-state; Qwen3 0.6B, which plans only in the
- * evaluation: isl-iron), where 256 with the wait changed none; which of the two the pocket and
- * compact tiers take is the owner's call (the same document, "The setting").
+ * The prompt's chunk for the standard and large tiers, tokens: measured on this Mac at 1,024 (as
+ * compiled), 512, 256 and 128, with and without the wait, for Qwen3 0.6B and 1.7B and Qwen3.5 4B
+ * and 9B (docs/AI-EVALUATION.md, "Reading the prompt in smaller pieces"). At 128 with the wait the
+ * explorer's longest frame while the standard tier (Qwen3.5 4B) wrote fell from 1.0–1.6 s (as
+ * compiled) to 133–167 ms, for 8–12% longer to the first token; without the wait 128 left it at
+ * 183–233 ms, and 256 at 300–417 ms either way. The 4B gave the same result in all 144 cases, twice.
  */
 export const PREFILL_CHUNK_TOKENS = 128;
 
-/** Each tier's own setting: the same for all, as measured for the tier's model (q4f16 builds). */
+/**
+ * The prompt's chunk for the pocket and compact tiers, tokens. At 128 the small models' plans tipped
+ * the other way on a few prompts, each time from a passed case to a failed one (Qwen3 1.7B:
+ * film-moment-redshift, lab-state; Qwen3 0.6B, which plans only in the evaluation: isl-iron); at 256
+ * with the wait no result changed. There the longest frame while Qwen3 0.6B wrote was 17 ms, as at
+ * 128, with no cost to the first token; for Qwen3 1.7B it was 67 ms (50–83), against 17 ms at 128
+ * and 350–367 ms as compiled (the same document, "The setting").
+ */
+export const SMALL_TIER_CHUNK_TOKENS = 256;
+
+/** Each tier's own setting, as measured for the tier's model (q4f16 builds): every tier waits between chunks. */
 const BY_TIER: Readonly<Record<ModelTier, PrefillSetting>> = {
-  pocket: { chunkTokens: PREFILL_CHUNK_TOKENS, yieldBetween: true },
-  compact: { chunkTokens: PREFILL_CHUNK_TOKENS, yieldBetween: true },
+  pocket: { chunkTokens: SMALL_TIER_CHUNK_TOKENS, yieldBetween: true },
+  compact: { chunkTokens: SMALL_TIER_CHUNK_TOKENS, yieldBetween: true },
   standard: { chunkTokens: PREFILL_CHUNK_TOKENS, yieldBetween: true },
   large: { chunkTokens: PREFILL_CHUNK_TOKENS, yieldBetween: true },
 };
