@@ -192,8 +192,8 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
       const footTop = t.held === 'foot' && size >= FOOT_MAX_RATE;
       blocked.faster = footTop ? i18n.t('ui.universe.time.footMost', { rate: words(sign * FOOT_MAX_RATE) }) : size >= MAX_RATE ? i18n.t('ui.universe.time.fastest') : undefined;
       blocked.slower = size <= 1 ? i18n.t('ui.universe.time.slowest') : undefined;
-      // At an end pointing into it, faster and slower turn the clock round: they act.
-      if (t.edge && (t.edge === 'start') === t.rate < 0) {
+      // Paused, they set the clock running (at the rung there is); at an end pointing into it, they turn it round: they act.
+      if (t.paused || (t.edge && (t.edge === 'start') === t.rate < 0)) {
         blocked.faster = undefined;
         blocked.slower = undefined;
       }

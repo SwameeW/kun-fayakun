@@ -804,6 +804,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const selectedBody = (): UniverseLabBody | undefined => lab?.bodies.find((b) => b.id === selectedId);
   /** The inspector's fields hold what the visitor types: refilled only when another body is chosen. */
   let filledFor: string | null = null;
+  /** The hold as last reported for the body shown: the box follows the experiment only when that changes (a tick the worker has not yet had is not undone). */
+  let fixedShown = '';
   /**
    * A choice made here and not yet in the experiment's view: until it is, the inspector stays hidden,
    * so nothing typed in that moment (a long one on a slow device) goes to the body chosen before.
@@ -1061,7 +1063,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         write(warning, warn);
         remove.hidden = b.persistent;
         follow.hidden = !b.builtIn;
-        fixedBox.checked = b.fixed;
+        if (`${b.id}:${String(b.fixed)}` !== fixedShown) {
+          fixedShown = `${b.id}:${String(b.fixed)}`;
+          fixedBox.checked = b.fixed;
+        }
         if (filledFor !== b.id) {
           filledFor = b.id;
           rename.input.value = nameOf(b);

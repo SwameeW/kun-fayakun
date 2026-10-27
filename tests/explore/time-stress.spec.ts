@@ -88,6 +88,12 @@ test.describe('the time machine at 1280x800', () => {
     await faster.click({ force: true });
     await expect(note).toHaveText('Already the fastest');
     expect((await state(page)).time.rate).toBe(MAX);
+    // Paused at the top, Faster can act (it sets the clock running): enabled again.
+    await page.keyboard.press('Space');
+    expect((await state(page)).time.paused).toBe(true);
+    await expect(faster).toHaveAttribute('aria-disabled', 'false');
+    await faster.click();
+    expect((await state(page)).time).toMatchObject({ rate: MAX, paused: false });
     for (let i = 0; i < 12; i += 1) await page.keyboard.press('[');
     await expect(page.getByTestId('universe-time-slower')).toHaveAttribute('aria-disabled', 'true');
     await expect(faster).toHaveAttribute('aria-disabled', 'false');

@@ -40,7 +40,8 @@ import { makeSwarm, particleCount, rehomeSwarms, ringPlaces, SWARM_LIMITS, swarm
  * Time only runs forward. Going back restores a checkpoint (taken before every edit, and every
  * `checkpointSteps` steps) and replays the log from there; an edit made after going back starts a new
  * branch, discarding the later part of the old log (the count is reported). Replay from the start
- * reruns the whole log.
+ * reruns the whole log. Playing the history backwards (./rewind) replays it the same way, with a
+ * replica made from a checkpoint (the constructor's `from`), and puts the run back with restoreFrom.
  *
  * Edits are interventions, not drift: each records the diagnostics before and after, and the drift
  * the engine reports is measured from the last intervention.

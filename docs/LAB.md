@@ -38,9 +38,23 @@ its own and has no real baseline.
   imagery, discoveries) are off, because they are measurements of the real Earth, not of an
   altered one.
 - **Time.** The explorer's own time machine drives it: Space pauses the physics (not just the
-  drawing), [ and ] step through the same rates (a second to thirty days a second). Going backwards
-  and "now" are disabled: the past is reached through checkpoints, not by running the clock in
-  reverse. The panel shows the requested and the achieved rate and the current step.
+  drawing), [ and ] step through the same rates (a second to thirty days a second). Backwards (\)
+  plays the experiment's history backwards, exactly as it ran (see "Going backwards" below), and
+  stops at the fork; play, faster or slower there run it forwards again. Now goes to today's date in
+  the experiment and runs at real time; a date goes to that moment (from the fork to a century
+  after it; before the fork, it stops at the fork). Reset, in the time row, goes back to the fork,
+  paused, at a day a second; going back to a checkpoint and replaying leave it paused too. The panel
+  shows the rate and the current step, and the achieved rate only when the worker cannot keep up.
+- **The drawn clock** (`src/explore/lab-clock.ts`). The worker moves in whole steps (from seconds to
+  a day) and sends a snapshot about 30 times a second. What is drawn follows a clock of its own: it
+  runs at the rate asked for (so a rate change shows at once), steered gently toward the moment the
+  worker has been asked for, a few hundredths of a second behind it, and never moves against its
+  direction (it holds instead); only a seek, replay, reset, undo, redo or a goto back sets it
+  elsewhere. Each body is drawn between the two snapshots around that moment (cubic Hermite in
+  position and velocity), or within a step of the nearest (velocity and acceleration). So the Earth
+  turns smoothly at every rate, slow rates (ten seconds a second, with steps of 14 hours) move, and
+  nothing judders back and forth. Paused, it runs on to the worker's last state and stops, so an
+  edit changes exactly what is drawn.
 - **Inspect.** Choose a body. The panel shows:
   - its mass, radius, density, speed, escape speed, and its speed and distance relative to the body
     it moves about (its primary);
@@ -244,8 +258,8 @@ the same G.
   Roche limit on an orbit that does not strike it, is torn into eight pieces and a cloud of dust that
   spread into a ring ([CLIMATE.md](CLIMATE.md#tidal-disruption-sb-33)).
 - **Seed.** The solar-system fork takes positions from the explorer's ephemeris (JPL's
-  approximate planetary elements, Standish and Williams, and the Horizons Moon table) at the
-  explorer's date, clamped inside the Moon table's span; velocities by central differences over
+  approximate planetary elements, Standish and Williams, and the Horizons Moon table, or beyond its
+  span Meeus's lunar theory) at the explorer's date; velocities by central differences over
   ±1 hour; GM from the DE440 header; radii from NAIF. Each body records where its values came from
   (`origin`, `sourceIds`), and the scenario says this in words (`seedNote`).
 
@@ -272,7 +286,18 @@ plus its log.
   edit has been made since (`Engine.applyAt`). A body placed beside another is placed where that one
   was seen; the clock steps back by those few frames.
 - **Checkpoints.** A checkpoint (a copy of the state) is taken before every edit and every 200 to
-  2,000 steps, keeping at most 48 (the first, and then the most recent).
+  2,000 steps, kept in order of step, at most 48: past that, the one whose loss leaves the shortest
+  gap goes, so they stay spread over the whole run (the first and the latest always stay).
+- **Going backwards** (`src/sim/rewind.ts`). The run is deterministic, so its past is replayed: a
+  replica of the engine (never the run itself) restores the latest checkpoint before the moment shown
+  and steps forward over a segment of at most 256 steps, keeping every step's state (the bodies,
+  spins, climates and ships; the rings' particles every few steps, within about 0.4 MB), which is then
+  shown in reverse, a whole step at a time. While one segment is shown the one before it is replayed
+  within the worker's 8 ms step budget; across a long gap between checkpoints the replica keeps full
+  states every 256 steps on its way, so each segment further back replays only its own steps. The
+  history, the interventions and the collisions shown are those before the moment shown (craters and
+  dust come again as the run passes them forwards). Running forwards, an edit, a seek or undo first
+  puts the run exactly at the moment shown; an edit there branches as any edit does.
 - **Going back.** This restores the nearest checkpoint at or before the step and replays to it. An
   edit made there is a new branch: it discards the later log and drops every checkpoint later than
   its step (those of the run as it was), so none can be gone back to. Redo likewise drops the

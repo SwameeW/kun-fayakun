@@ -35,7 +35,12 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
 - **Time machine.** Pause (Space), slower and faster ([ and ], real time to thirty days a second),
   backwards (\\), a date to go to, and back to now. Everything follows the clock: orbits, the
   Moon's phase, each world's turn, day and night, eclipses, the day's imagery of the Earth. It
-  stops at the ends of the Moon's table (2026 to 2035) and runs at real time during a trip.
+  reaches from 1600 to 2399: JPL's tables where they are (the Moon's 2026 to 2035, the planets'
+  1800 to 2050), and beyond them Meeus's lunar theory and JPL's long-span planetary elements, the
+  note under the row naming the model and its accuracy. It stops at either end (play, faster or
+  slower there turn it round), runs at real time during a trip and at most an hour a second on foot
+  (day and night never flicker). Past about 30 degrees a frame a world's turn is drawn at one hour of
+  its day rather than strobing. A control that cannot act is dimmed and says why.
   Satellites show up to 600 times real time, and earthquakes only near the present.
 - **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back. "Save
   the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date,

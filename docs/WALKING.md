@@ -26,6 +26,11 @@ stand on; their atmospheres are GR-6.
   comes back over four tenths, as a reduced-motion cut does. The eye never starts inside a mountain.
 - **Back to orbit** dips the same way, then climbs back to the orbit the descent left (at once with
   reduced motion), unless a trip has taken the camera elsewhere.
+- **Time on foot.** From the descent to back in orbit (and on the way down through an atmosphere)
+  the time machine runs at most an hour a second (`FOOT_MAX_RATE`): a day passes in 24 seconds, so
+  the sky and the ground brighten and darken once in that time, never several times a second (at a
+  week a second the Sun would cross the horizon 14 times a second: a strobe). Faster stops there and
+  says why; the rate chosen before comes back in orbit.
 - **Moving.**
   - Keys:
     - W A S D walk (1.4 m/s);
