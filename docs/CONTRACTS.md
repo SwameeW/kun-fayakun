@@ -598,7 +598,9 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   (`src/explore/bodies/marks.ts`) on the Earth, the Moon, Mercury and Mars; `Lab.marks(body)` gives
   them, placed in each world's own frame at the moment of impact (`SolarSystem.basisAt`). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
   `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
-  `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`. Following a
+  `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`, `copy` (the
+  scenario as a share link's data in `UniverseLab.copy`, for the assistant's background comparisons:
+  never shown, the status line unchanged). Following a
   world is the explorer's own focus. The time machine's commands drive the experiment's clock
   (`toggle`, `faster`, `slower`, `rate`); `reverse`, `now` and `date` are disabled in it.
 - **Persistence.** IndexedDB database `kf-lab`, store `scenarios`, key `current`; export as
@@ -691,13 +693,15 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   - Smaller: a bottom sheet on a modal `<dialog class="kf-dialog">` (`kf-ai-sheet-open`), between
     the chrome at the top and at the bottom; with less than 320 px there it comes up over the
     bottom chrome (the laboratory's navigator on a phone). It minimises to a non-modal bar
-    (`is-minimised`) while a view or an experiment runs.
+    (`is-minimised`) when a view or an experiment starts running (`Turn.running`; an experiment
+    once it is confirmed, so its card waits in the open sheet), once for each call.
   - Both carry `data-kf-keys="own"`: keys pressed inside are the panel's; Esc closes it and focus
     returns to Ask. Hidden in photo mode.
   - Test ids: `ai-panel`, `ai-engine` (what is answering), `ai-minimise`, `ai-close`, `ai-log`
     (its `li` per turn, `data-state` its TaskState), `ai-input`, `ai-send`, `ai-stop`,
     `ai-suggestions`/`ai-suggestion`, `ai-author`, `ai-flags`, `ai-facts`, `ai-comparison`,
     `ai-action` (`data-status`), `ai-action-status`, `ai-confirm`, `ai-cancel`, `ai-undo`,
+    `ai-undo-refused` (why an Undo was refused),
     `ai-turn-state`; the model section `ai-model`, `ai-found`, `ai-suggested`, `ai-model-select`,
     `ai-model-size`, `ai-model-licence`, `ai-model-source`, `ai-larger`, `ai-download`,
     `ai-metered` (`ai-metered-confirm`, `ai-metered-cancel`), `ai-progress`, `ai-load-status`,
@@ -706,8 +710,12 @@ visitor's browser only: no API key, account, subscription or hosted inference.
     `ai-in-use`; the settings `ai-settings`, `ai-level` (`ai-level-plain|standard|deeper`),
     `ai-memory`, `ai-clear`.
   - The orchestrator's additions for it (`AiOrchestrator`): `level()`/`setLevel()` (the explanation
-    level, one line of the answer prompt: `LEVEL_LINES` in `src/ai/prompts.ts`), `kindOf(tool)`.
-    A text block a model wrote has `by: 'model'`; a refused action card carries `reason`.
+    level, one line of the answer prompt: `LEVEL_LINES` in `src/ai/prompts.ts`), `kindOf(tool)`,
+    `restore()` (with memory on, the kept turns as earlier turns; `boot.ts` calls it once before the
+    panel shows). A text block a model wrote has `by: 'model'` and `writer` (the engine that wrote
+    that block, which its label names); a refused action card carries `reason`, and one whose Undo
+    was refused `undoRefused`. A tool's undo may report an `UndoOutcome` (done, not-confirmed, or
+    refused with why); `Turn.running` names the calls whose tool is running now.
 - **Message files.** `src/i18n/en.ai.engine.json` (engines: devices, models, downloads, errors),
   `src/i18n/en.ai.tools.json` (the tools: previews, outcomes, problems),
   `src/i18n/en.ai.mind.json` (the orchestrator, the guide's templates, the knowledge index's
@@ -719,7 +727,8 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   governors rest, so the model's load on the GPU is not read as the scene's (no tier drops, none is
   locked). The returned function releases it (idempotent); the picture goes back to what the
   governors chose. The assistant's pacer (`src/ai/engine/pacing.ts`) holds one at scale 0.75 for
-  each generation, prefill included.
+  each generation, prefill included, and while a model loads from its weights' upload (or its
+  shaders' compilation) to the end of the load.
 - **`UniverseGraphics.held: () => boolean`.** What the explorer's quality governor reads: true
   while a render budget is held, and then it ignores every frame.
 - **The model worker.** `src/ai/engine/webllm-worker.ts` is the only module that imports

@@ -71,7 +71,7 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 
 **Loading, in order.**
 1. First visit: nothing of the assistant. The shell holds only the Ask button, the / shortcut and a starter for the test hook (dynamic imports of `src/ai/ui` and `src/ai/boot.ts`), and `scripts/check-bundle.ts` keeps every file with `src/ai` code out of the shell.
-2. Start (Ask pressed): the assistant's chunks with its panel (measured on their own: about 94 KB gzip, budget 120 KB).
+2. Start (Ask pressed): the assistant's chunks with its panel (measured on their own by `scripts/check-bundle.ts`: about 94 KB gzip, budget 120 KB), and what it reads at once: data/quran.json and data/hadith.json for the scripture catalogue, and the plain words. In all about 113 KB as served (measured on the page by `tests/ai-panel.spec.ts`, which fails above 130 KB). The Arabic typeface (about 63 KB) is fetched only when the first verse is shown.
 3. First question: the knowledge index, `assets/ai/index.json` (about 120 KB gzip, budget 150 KB).
 4. A comparison or a search: the batch worker (about 31 KB gzip, budget 50 KB).
 5. Only when a visitor chooses a model: the model worker with WebLLM's runtime (about 2.16 MB gzip, budget 2.4 MB), then the model's files from Hugging Face. The worker is the only built file that holds WebLLM's runtime; the bundle check fails otherwise.
@@ -109,7 +109,9 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 Every tool has a name, a kind, a one-line summary, an argument schema, a state check, a preview sentence and a `run` that reads the app's state back.
 - **read, calc and cite** tools run at once.
 - **view** tools run at once and can be undone.
-- **experiment** tools show a card ("Double the Sun's mass, then integrate 10 years: Confirm / Cancel") and run only after the visitor confirms.
+- **experiment** tools show a card ("Multiply the Sun's mass by 2: Confirm / Cancel") and run only after the visitor confirms. The card promises only the edit: applying it integrates nothing ahead (a comparison does that, in the background).
+- **Stopping.** Stop before a tool starts (Confirm then Stop at once, say) and nothing is sent; the card says it was cancelled. Once a tool has started, what it did is kept even if the turn is stopped: its card says "sent, but not seen" until its own outcome arrives, then shows that outcome and its Undo, and the turn ends as stopped. An experiment checks for Stop before each command it sends.
+- **Undo** of an experiment undoes that experiment's own edits, never simply the newest: it is refused, with the reason on its card, while a later edit sits on top in the laboratory (or once the laboratory no longer shows the experiment). "Put back as it was" is said only when the laboratory reads back as it was; otherwise the notice says the undo was sent but not seen.
 
 The tools and their arguments (`src/ai/tools`; the registry's validator checks the schema, then where the tool can work, then its own checks against the app's state). An argument in brackets is optional. A `body` is one of the ten worlds (`sun`, `mercury`, `venus`, `earth`, `moon`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune`). A `place` is the id of a place of the field notes (`everest`, `mecca`, `uyuni`…), and is given instead of `lat` and `lon` (degrees), never with them. A `date` is UTC, `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`. A laboratory body (`lab body`) is a body's id or name in the laboratory.
 
@@ -148,7 +150,7 @@ The tools and their arguments (`src/ai/tools`; the registry's validator checks t
 | Tool | Arguments |
 |---|---|
 | `islamic.qibla` | `{ place }` or `{ lat, lon }` |
-| `islamic.prayer_times` | `{ place }` or `{ lat, lon }`, `convention: "mwl" \| "isna" \| "egypt" \| "makkah" \| "karachi" \| "tehran" \| "qum" \| "france" \| "russia" \| "singapore"` (required: the visitor names it), `[date]`, `[asrShadow]: 1 \| 2` |
+| `islamic.prayer_times` | `{ place }` or `{ lat, lon }`, `convention: "mwl" \| "isna" \| "egypt" \| "makkah" \| "karachi" \| "tehran" \| "qum" \| "france" \| "russia" \| "singapore"` (required: the visitor names it; a model's plan that fills in one the question does not name becomes the app's own question back, asking which), `[date]`, `[asrShadow]: 1 \| 2` |
 | `islamic.crescent` | `{ place }` or `{ lat, lon }`, `[date]` |
 | `islamic.hijri` | `{ [date] }` (else the date shown, or now) |
 
@@ -161,7 +163,7 @@ The tools and their arguments (`src/ai/tools`; the registry's validator checks t
 | `lab.experiment` | experiment | `{ experiment, …its parameters }` (below), flat, `[horizonDays]` | the laboratory |
 | `lab.undo` | view | `{}` | the laboratory |
 | `lab.measure` | view | `{ from: lab body, to: lab body, [via]: lab body }` | the laboratory |
-| `lab.compare` | read | as `lab.experiment`; integrated ahead in the background worker, nothing on screen changes | anywhere (outside the laboratory, against the solar system seeded now) |
+| `lab.compare` | read | as `lab.experiment`; integrated ahead in the background worker, nothing on screen changes (in the laboratory its scenario is read by a silent `copy` command: no share link, no status line) | anywhere (outside the laboratory, against the solar system seeded now) |
 | `lab.optimise` | read | `{ goal: "escape", [body], [days] }` or `{ goal: "year", [body], targetDays }` | anywhere |
 
 The experiments' parameters (every one required, with its range):
@@ -204,27 +206,28 @@ The experiments' parameters (every one required, with its range):
 
 **The guide's router** (`src/ai/router.ts`) makes exactly these shapes, checked by `tests/unit/ai-router.spec.ts` through the real registry in a realistic context for each place the visitor can be. Named places come from the knowledge index (`placeFrom` in `src/ai/index.ts`): the field notes' own places by their id, then the most populous town of that name by its degrees. Prayer times are planned only when the visitor names a convention. "Throw a rock at the Earth" becomes an `impact` with illustrative numbers shown on the card (a size by the word used, a speed above the world's escape speed, 45 degrees).
 
-For a small model, the registry offers only a shortlist: the core tools plus the best matches for the question and where the visitor is. The plan schema's `tool` field is an enum of that shortlist.
+For a small model, the registry offers only a shortlist: the core tools plus the best matches for the question and where the visitor is. The plan schema's `tool` field is an enum of that shortlist. Because constrained decoding has open bugs, the reply is checked again in JS: a call to a tool not offered is refused ("not offered", in the repair prompt), and the reply as a whole must fit the plan's schema. If the plan still cannot be used, the guide answers that turn from the app's content (the plan's `source` is `fallback`, as it is when no rule matched and there is no model).
 
 ## 5. Integrity
 
 - **Scripture is never generated.** The model refers to verses and hadith by id. The interface renders them with `verseArticle`/`hadithArticle` from data, which withholds any verse whose checksum fails.
 - **Output guards:**
   - Arabic script in model output is removed.
-  - Quoted text that resembles a translation is removed (`scripture-quote`).
-  - A citation id not in the data is dropped (`unknown-citation`).
-  - Banned phrasing ("predicted", "foretold", "proves", "scientific miracle", "proof that", "confirms the Quran") is rewritten or flagged.
+  - Words presented as scripture are removed whatever their length or wording (`scripture-quote`): text a lead-in introduces ("The Prophet said:", "Allah says in the Quran, '…'", "… says:" then a blockquote, "narrated:") goes with its sentence, up to the quotation's closing mark, the sentence's end or the paragraph's; so does any quotation (“…”, «…», „…“, "…", ‘…’, '…', or lines starting with ">") such words come just before. Quoted or unquoted text that resembles a translation is removed too. Where the verse can be told, its marker takes the place of what was removed.
+  - While an answer streams, nothing is shown from a quotation mark not yet closed, a presenting sentence not yet ended, a blockquote being written, or an unfinished sentence that already reads like a verse.
+  - A citation id not in the data is dropped, and a sentence naming a verse key the data does not hold, or a narration data/hadith.json excludes (by collection and number, key or sunnah.com address, read from the file), is removed (`unknown-citation`).
+  - Banned phrasing ("predicted", "foretold", "proves", "scientific miracle", "proof that", "confirms the Quran", in all their forms: "predicts", "foretells", "proven", "a miracle of science", the Qur'an with any apostrophe) is rewritten or removed; "prediction" and "proof of" go where a sentence speaks of scripture (`banned-phrase`).
   - A number with two or more significant digits, or with a unit, that is not among the turn's facts or passages is marked "not checked" (`unchecked-number`).
   - A claim to have done something that no tool outcome reports is removed (`action-claim`).
-- **Labels:** every block is labelled with its kind: observed, model, simulation, scripture, or explanation. Model prose is always labelled "Explanation by <model> on this device".
+- **Labels:** every block is labelled with its kind: observed, model, simulation, scripture, or explanation. Model prose is always labelled "Explanation by <model> on this device", naming the engine that wrote that block (a model loaded while a card waits writes, and is named on, the answer after Confirm); the scripted engine's reads "Test engine".
 - **The laboratory says "integrated ahead", never "predicted".** A simulation never speaks for what Allah would decree.
-- **Prompt injection:** text that comes from data or tool results goes to the model as quoted data, never as instructions. The model cannot run code; it can only name tools from the registry, with validated arguments.
+- **Prompt injection:** text that comes from data or tool results goes to the model as quoted data, never as instructions. The chat template's control tokens ("<|im_start|>", "<|im_end|>") are defused in data and in the visitor's question, so a laboratory body named after one (from a shared link) cannot end a turn or open another. The model cannot run code; it can only name tools it was offered, with validated arguments.
 
 ## 6. GPU sharing
 
 The three.js renderer and WebLLM each have their own `GPUDevice` on one GPU.
 
-**Render budget.** `app.requestRenderBudget(reason, { maxScale })` caps the render scale and holds the film's and the explorer's quality governors for the whole time the assistant holds it, so inference load is not read as scene load and tiers are not locked for the visit.
+**Render budget.** `app.requestRenderBudget(reason, { maxScale })` caps the render scale and holds the film's and the explorer's quality governors for the whole time the assistant holds it, so inference load is not read as scene load and tiers are not locked for the visit. It is held for each generation, and while a model loads from its weights' upload (a device sync for every tensor) and its shaders' compilation to the end of the load.
 
 **Prefill:**
 - Prompts are kept short.
@@ -265,7 +268,7 @@ Nothing here downloads anything.
 | B. Agent | Model plans under a schema with a shortlist, validation and repair, verification by readback, grounded answers with citations, contextual suggestions |
 | C. Experiments | Deterministic experiment planner, confirmation and undo, the background comparison worker, an optimiser (bisection over a launch speed, a mass…), the experiment notebook |
 | D. Tutor and tours | Levels (plain / standard / deeper), tours built from Explore points and the atlas, told from retrieved passages |
-| E. Memory and evaluation | Opt-in memory (IndexedDB, off by default, clearable), the real-model evaluation harness and report, the adversarial suite, measured GPU impact |
+| E. Memory and evaluation | Opt-in memory (IndexedDB, off by default, clearable; with it on, the kept turns come back as earlier turns when the assistant starts, and a model reads the last few as the conversation so far), the real-model evaluation harness and report, the adversarial suite, measured GPU impact |
 
 ## 9. Testing
 
