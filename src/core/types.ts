@@ -1171,6 +1171,8 @@ export interface UniverseLab {
   library: readonly string[];
   /** A link to this scenario, or why there is none (too large). */
   share: { url: string } | { tooLarge: true; chars: number } | null;
+  /** The last copy asked for with { kind: 'copy' }: the scenario encoded as a share link's data (any size), or why it could not be made. A new object each time. Never shown. */
+  copy: { data: string } | { error: string } | null;
   /** Placing a body with the pointer: about which body, and where it would go now (km from it, or null off the plane). */
   placing: { primary: string; name: string; offsetKm: number | null } | null;
   /** The chosen body's velocity arrow's tip on the canvas (client px; drag it to change the velocity), or null. */
@@ -1207,6 +1209,8 @@ export type LabCommand =
   | { kind: 'loadSaved'; name: string }
   | { kind: 'deleteSaved'; name: string }
   | { kind: 'share' }
+  /** A copy of the scenario as it stands, for the assistant's background comparisons (UniverseLab.copy): never shown, and no status changes. */
+  | { kind: 'copy' }
   | { kind: 'importShared'; data: string }
   | { kind: 'removeMany'; ids: string[] }
   | { kind: 'duplicateMany'; ids: string[] }
