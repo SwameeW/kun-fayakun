@@ -4,12 +4,12 @@
  * disc's size; a star's temperature from its light and radius; Planck's law weighed by the eye (the
  * table against a direct integral, the reviewed values, the colour against the blackbody fit); a melt's
  * crust; a splat's light the same at every size; a ring's coverage; the flash guard's pairs; the
- * fireball's merging, its rise per frame and its ceiling.
+ * fireball's merging, its rise and fade per frame at every impact speed, and its ceiling.
  */
 import { expect, test } from '@playwright/test';
 import { blackbodyRgb } from '../../src/chapters/shared/blackbody';
 import { radialProfile, ringCoverage, RING_FORMED } from '../../src/explore/lab-fx/annulus';
-import { FIREBALL, fireballRadiusKm, Fireballs, type FireballEvent } from '../../src/explore/lab-fx/fireball';
+import { FIREBALL, fireballK, fireballRadiusKm, Fireballs, type FireballEvent } from '../../src/explore/lab-fx/fireball';
 import { FLASH, FlashGuard } from '../../src/explore/lab-fx/flash-guard';
 import { crustK, giantMeltK, MELT } from '../../src/explore/lab-fx/heat';
 import { incandescence, incandescenceTable, INCANDESCENCE, SUNLIT_WHITE_CD_M2, tristimulus } from '../../src/explore/lab-fx/incandescence';
@@ -320,6 +320,47 @@ test('fireballs: two impacts 0.2 s apart make one (the larger kept); never more 
   expect(fireballRadiusKm(1e21, 0.5, 6371)).toBeCloseTo((0.002 * Math.cbrt(1e21)) / 1000, 9);
   expect(fireballRadiusKm(1e40, 0.5, 6371)).toBe(6371 / 2);
   expect(fireballRadiusKm(1, 0.5, 6371)).toBe(0.5);
+});
+
+test('a fireball’s light at every impact speed, coming and going: never more than a thirtieth of its peak a frame at 60 frames a second, with motion or reduced, at even or uneven frame times; a slow impact’s cooling eased, a fast one’s as before, the colour cooling either way', () => {
+  // A slow impact's (debris falling back on the Moon at 1.5 to 2.4 km/s: 1,800 to 2,400 K) drops below the
+  // ceiling as it cools, and Planck's law alone then dimmed it 1.7 times faster than this a frame.
+  const uneven = [1 / 60, 1 / 30, 1 / 144, 1 / 60, 0.05];
+  for (const speedKmS of [1, 1.5, 2, 2.4, 2.6, 3, 4, 20, 40])
+    for (const reduced of [false, true])
+      for (const times of [[1 / 60], uneven]) {
+        const f = new Fireballs();
+        f.add({ key: 'k', body: 'moon', site: [1, 0, 0], energyJ: 1e20, speedKmS, impactorKm: 5, targetKm: 1737 }, 0);
+        const startK = fireballK(speedKmS);
+        // Hot enough to stay at the ceiling however it cools (about 3,700 K and more): its light its strength, the ease changing nothing.
+        const atCeiling = incandescence(FIREBALL.coolTo * startK).luminance >= FIREBALL.ceiling;
+        let now = 0;
+        let last = 0;
+        let lastK = startK;
+        const light: Array<[number, number]> = [];
+        for (let k = 0; f.live.length > 0 && k < 2000; k += 1) {
+          const dt = times[k % times.length] ?? 1 / 60;
+          now += dt;
+          f.update(now, dt, reduced);
+          const b = f.live[0];
+          light.push([dt, b?.luminance ?? 0]);
+          if (b) {
+            lastK = b.kelvin;
+            if (atCeiling) expect(b.luminance).toBeCloseTo(b.strength * FIREBALL.ceiling, 12);
+          }
+        }
+        expect(f.live.length).toBe(0);
+        const peak = Math.max(...light.map((x) => x[1]));
+        expect(peak).toBeCloseTo(FIREBALL.ceiling, 6);
+        for (const [dt, lum] of light) {
+          expect(Math.abs(lum - last), `${speedKmS} km/s${reduced ? ', reduced' : ''}`).toBeLessThanOrEqual(2 * dt * peak + 1e-12);
+          last = lum;
+        }
+        // Gone dark, and cooled to under half its first heat by the end of its fade.
+        expect(light.at(-1)?.[1] ?? 1).toBeLessThan(1e-3);
+        expect(lastK).toBeLessThan(FIREBALL.coolTo * startK * 1.02);
+        if (speedKmS >= 4) expect(atCeiling).toBe(true);
+      }
 });
 
 test('a rock lit by up to four stars, the strongest first, each nought in the shadow of a body between', () => {

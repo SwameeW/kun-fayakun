@@ -11,7 +11,11 @@ import { incandescence } from './incandescence';
  * - Heat: it starts at the temperature the impact's energy per kilogram could raise rock to, v^2 / 2c
  *   (c = 1,200 J/kg/K), at most 4,000 K (silicate vapour) and at least 1,800 K, and cools as it fades.
  * - Brightness: Planck's law's, held to a ceiling: no brighter than sunlit white ground (a real one is
- *   hundreds of times brighter, for a moment).
+ *   hundreds of times brighter, for a moment). Below the ceiling Planck's law dims it steeply as it cools
+ *   (a slow impact's, starting near 1,800 K, falls below it at about 1,670 K, its light then halving for
+ *   every few per cent it cools), so its brightness a unit of strength is eased: never more than its fade's
+ *   steepest a frame (of the ceiling), and its light so never more than a thirtieth of its peak a frame at
+ *   60 frames a second going as coming. Its colour cools as Planck's law has it.
  * - Time: slowed for safety, the same at every rate. A real crater-scale flash lasts a fraction of a
  *   second; this rises over 0.8 s (never more than a thirtieth of its peak a frame at 60 frames a
  *   second), holds, and fades over 2.5 s. Impacts within a third of a second of the last make no new
@@ -42,7 +46,7 @@ export interface Fireball extends FireballEvent {
   toK: number;
   /** As drawn now: its strength (0 to 1 of its peak), temperature (K), luminance (a share of sunlit white ground, under the ceiling), colour (linear, largest channel 1) and how much of its radius shows. */
   strength: number;
-  /** This frame's plan (plan): the strength it would have next (eased), and its luminance a unit of strength. */
+  /** This frame's plan (plan): the strength it would have next (eased), and its luminance a unit of strength (eased as it cools: see Brightness). */
   next: number;
   unit: number;
   /** How much of it shows past its body's limb as drawn (eased: see seenToward; below 0 before its first frame). */
@@ -114,7 +118,8 @@ export class Fireballs {
     }
     this.rises.push(nowS);
     const k = fireballK(e.speedKmS);
-    this.live.push({ ...e, site: [e.site[0], e.site[1], e.site[2]], born: nowS, radiusKm, startK: k, toRadiusKm: radiusKm, toK: k, strength: 0, next: 0, unit: 0, seen: -1, kelvin: 0, luminance: 0, rgb: [1, 0.5, 0.2], grown: 0 });
+    const unit = Math.min(FIREBALL.ceiling, incandescence(k).luminance);
+    this.live.push({ ...e, site: [e.site[0], e.site[1], e.site[2]], born: nowS, radiusKm, startK: k, toRadiusKm: radiusKm, toK: k, strength: 0, next: 0, unit, seen: -1, kelvin: k, luminance: 0, rgb: [1, 0.5, 0.2], grown: 0 });
   }
 
   /** Each fireball as it is at `nowS`, its strength rising no faster than `dtS` times the most a rise allows (all of each rise let through). */
@@ -129,6 +134,10 @@ export class Fireballs {
     const fade = reduced ? FIREBALL.reducedFadeS : FIREBALL.fadeS;
     // A smoothstep's steepest is 1.5 over its span: the most a frame may add.
     const most = (1.5 / rise) * Math.max(0, dtS);
+    // Its brightness a unit of strength: no faster than its fade's steepest (of the ceiling), either way. With its
+    // strength fading at most as fast, its light falls by at most twice that (a fiftieth of its peak a frame at
+    // 60 frames a second), under a thirtieth.
+    const unitMost = (1.5 / fade) * FIREBALL.ceiling * Math.max(0, dtS);
     // A joined impact's size and heat: a share of what is left a frame, half a second's time constant (a thirtieth at 60 frames a second).
     const toward = Math.min(1, Math.max(0, dtS) / 0.5);
     for (let k = this.live.length - 1; k >= 0; k -= 1) {
@@ -145,7 +154,8 @@ export class Fireballs {
       const cooled = smoothstep((age - rise) / (FIREBALL.holdS + fade));
       f.kelvin = f.startK * (1 - (1 - FIREBALL.coolTo) * cooled);
       const glow = incandescence(f.kelvin, { luminance: 0, rgb: f.rgb });
-      f.unit = Math.min(FIREBALL.ceiling, glow.luminance);
+      const unit = Math.min(FIREBALL.ceiling, glow.luminance);
+      f.unit = Math.min(f.unit + unitMost, Math.max(f.unit - unitMost, unit));
       if (age > rise + FIREBALL.holdS + fade) this.live.splice(k, 1);
     }
   }
