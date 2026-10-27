@@ -1236,6 +1236,57 @@
       }
     },
     {
+      "id": "wyman-2013-cie-fits",
+      "kind": "paper",
+      "title": "Simple Analytic Approximations to the CIE XYZ Color Matching Functions",
+      "author": "C. Wyman, P.-P. Sloan and P. Shirley (2013), Journal of Computer Graphics Techniques 2(2), 1-11",
+      "url": "https://jcgt.org/published/0002/02/01/",
+      "version": "read 2026-10-27",
+      "license": "The paper is CC BY-ND 3.0; only its fitted formula's coefficients (facts) are used, credited",
+      "licenseUrl": "https://creativecommons.org/licenses/by-nd/3.0/",
+      "credit": "Wyman, Sloan and Shirley (2013)",
+      "notes": "The eye's response (the CIE 1931 standard observer's colour matching functions, y-bar being the photopic V(lambda)) as the multi-lobe fit gives it, for the brightness and colour of hot rock by Planck's law in the laboratory (src/explore/lab-fx/incandescence.ts): a fireball, a crater's melt, debris cooling. No CIE table is copied.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "collins-2005-impact-effects",
+      "kind": "paper",
+      "title": "Earth Impact Effects Program: a web-based computer program for calculating the regional environmental consequences of a meteoroid impact on Earth",
+      "author": "G. S. Collins, H. J. Melosh and R. A. Marcus (2005), Meteoritics & Planetary Science 40, 817-840",
+      "url": "https://doi.org/10.1111/j.1945-5100.2005.tb00157.x",
+      "version": "read 2026-10-27",
+      "license": "Facts only, credited",
+      "licenseUrl": null,
+      "credit": "Collins, Melosh and Marcus (2005)",
+      "notes": "The size of an impact's fireball in the laboratory (src/explore/lab-fx/fireball.ts): its radius as the cube root of the impact's energy, 0.002 E^(1/3) m (E in joules), held between the impactor's radius and half the target's. The crater scaling the laboratory already used comes from the same paper (src/sim/craters.ts, docs/IMPACTS.md).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "turcotte-schubert-2014",
+      "kind": "paper",
+      "title": "Geodynamics, third edition (chapter 4, heat transfer: the cooling of a lava lake's surface)",
+      "author": "D. L. Turcotte and G. Schubert (2014), Cambridge University Press",
+      "url": "https://doi.org/10.1017/CBO9780511843877",
+      "version": "read 2026-10-27",
+      "license": "Facts only, credited",
+      "licenseUrl": null,
+      "credit": "Turcotte and Schubert (2014)",
+      "notes": "How long an impact's melt glows in the laboratory (src/explore/lab-fx/heat.ts): the surface of molten rock radiating what conducts up through the crust forming over it, emissivity sigma T^4 = k (T_m - T) / sqrt(pi kappa t), with rock's conductivity (2 W/m/K) and diffusivity (1e-6 m^2/s).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "hipparcos-van-leeuwen-2007",
       "kind": "dataset",
       "title": "Hipparcos, the New Reduction of the Raw Data (CDS I/311/hip2)",

@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
+import { planThrow } from './aim';
+import { nextApproach } from './approach';
 import { luminosities } from './climate';
 import { commandId, Engine, Prediction, type Checkpoint } from './engine';
+import { lookOf } from './looks';
 import { accelerations, diagnostics, drift, type Diagnostics } from './nbody';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
 import { REWIND_SEGMENT, Rewind, swarmPlaces } from './rewind';
@@ -39,6 +42,10 @@ const RECENT_MARKS = 16;
 /** Going back is shown at most this share of the pace its history is replayed at. */
 const REWIND_MARGIN = 0.85;
 const PREDICTION_SAMPLES = 360;
+/** The fastest the clock runs either way (simulated seconds a second: thirty days, the time machine's top rung); a rate asked for beyond it is held to it, one not finite refused. */
+const MAX_RATE = 2_592_000;
+/** What is coming is looked for this many real seconds ahead at the rate asked for (./approach). */
+const LOOKAHEAD_S = 4;
 /** The most steps one prediction may take (a long horizon is sampled more coarsely, not without end). */
 const PREDICTION_STEPS = 400_000;
 
@@ -136,6 +143,8 @@ function snapshot(): void {
   accelerations(s, accScratch);
   const acc = Float64Array.from(accScratch.slice(0, s.ids.length * 3));
   const swarms = rewind ? rewind.swarms.map((w) => ({ ...w, rel: w.rel.slice() })) : swarmPlaces(s);
+  // What is coming within a few real seconds at the rate asked for (forwards only: going back, it has happened).
+  const coming = !paused && rate > 0 && !shown ? nextApproach(s, rate * LOOKAHEAD_S, engine.keep) : null;
   const reference = engine.interventions[logIndex - 1]?.after ?? (startDiagnostics ??= diagnostics(engine.checkpoints[0]?.state ?? s));
   const reply: LabSnapshot = {
     type: 'snapshot',
@@ -174,6 +183,10 @@ function snapshot(): void {
     events: (shown ? engine.events.filter((e) => e.step < s.step) : engine.events).slice(-40),
     checkpoints: engine.checkpoints.map((c) => ({ step: c.step, t: c.t })),
     swarms,
+    looks: s.ids.map((_, i) => lookOf(s, i)),
+    origin: s.ids.map((id) => s.origins[id] ?? null),
+    rubble: [...s.rubble],
+    upcoming: coming ? { ...coming, t: s.t + coming.inS } : null,
     climate: Object.entries(s.climate).map(([id, c]) => ({ id, t: [...c.t], spec: { ...c.spec } })),
     light: luminosities(s),
     logLength: engine.scenario.log.length,
@@ -189,9 +202,10 @@ function tick(): void {
   lastTick = now;
   let moved = 0;
   if (engine && seekTo !== null) {
-    // Going to a moment: whole steps toward it within the budget, whatever the rate.
-    while (engine.state.t + engine.dt <= seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) stepOn(engine);
-    if (engine.failure || engine.state.t + engine.dt > seekTo) {
+    // Going to a moment: whole steps toward it within the budget, whatever the rate, to the first at or past
+    // it (with long steps, the last one short of it could be most of a day before: another date).
+    while (engine.state.t < seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) stepOn(engine);
+    if (engine.failure || engine.state.t >= seekTo) {
       seekTo = null;
       owed = 0;
       recent = [];
@@ -286,6 +300,9 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       landTo = null;
       marks = [];
       startDiagnostics = null;
+      // Held at its start until the page says how to run it (its 'run' follows): a tick between the two
+      // would otherwise step the new scenario at the old one's pace, a Reset landing a step past the fork.
+      paused = true;
       snapshot();
       startPrediction();
       return;
@@ -301,10 +318,14 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
           owed = 0;
           recent = [];
         }
-        // Achieved is measured from a change of rate; time owed one way is not owed the other.
-        if (msg.rate !== rate) recent = [];
-        if (Math.sign(msg.rate) !== Math.sign(rate)) owed = 0;
-        rate = msg.rate;
+        // Achieved is measured from a change of rate; time owed one way is not owed the other. A rate not
+        // finite (or none) is refused (the last one kept); one beyond the fastest is held to it.
+        if (Number.isFinite(msg.rate) && msg.rate !== 0) {
+          const next = Math.sign(msg.rate) * Math.min(MAX_RATE, Math.abs(msg.rate));
+          if (next !== rate) recent = [];
+          if (Math.sign(next) !== Math.sign(rate)) owed = 0;
+          rate = next;
+        }
         paused = msg.paused;
         landTo = msg.paused && typeof msg.landAt === 'number' && Number.isFinite(msg.landAt) ? msg.landAt : null;
         // Forwards again: the run goes on from the moment shown, exactly.
@@ -342,12 +363,21 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         seekTo = null;
         landTo = null;
         const before = engine.state.step;
-        engine.applyAt(msg.command, msg.atStep ?? engine.state.step);
+        const had = new Set(engine.state.ids);
+        const refused = engine.applyAt(msg.command, Number.isFinite(msg.atStep) ? (msg.atStep ?? engine.state.step) : engine.state.step);
         // Made on a view the run had passed: it went back there first.
         if (engine.state.step < before) timeline += 1;
+        post({ type: 'ack', generation, editSeq: msg.editSeq ?? applied, ok: refused === null, reason: refused, created: engine.state.ids.filter((id) => !had.has(id)) });
         trimMarks(engine);
         startPrediction();
         snapshot();
+        break;
+      }
+      case 'aim': {
+        // From the moment shown (going backwards, the run is first put there exactly).
+        settleRewind();
+        const plan = planThrow(engine.state, engine.dt, engine.scenario.integrator, engine.keep, msg.request);
+        post({ type: 'aimed', generation, requestId: msg.requestId, plan });
         break;
       }
       case 'predict':

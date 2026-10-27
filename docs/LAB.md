@@ -131,6 +131,38 @@ its own and has no real baseline.
   - Export a file, or import one.
   - Reset to the fork, go back to a checkpoint (a new edit there starts a new branch), or replay the
     whole experiment from its start.
+- **Throw a rock** (`src/sim/aim.ts`; the panel's "Throw a rock"). Choose what to aim at, what to
+  throw (a stone a kilometre across, a ten-kilometre asteroid, Ceres, or a body with the mass and size
+  of Mars), its speed far from the target, the angle it strikes at from the ground (45 degrees is the
+  likeliest for rocks from every direction, Shoemaker 1962) and how soon (an hour to thirty days).
+  "Work it out" finds where it must start: it is put at the contact, at the speed Öpik's
+  v² = v∞² + v_esc² gives, in the system as it will stand then, and the whole system is run backwards
+  to now; that start is run forwards with the experiment's own rules, and corrected up to five times
+  until the contact is within 2 per cent of the speed and 2 degrees of the angle asked for (or it is
+  refused, with the reason). What it will do is shown first ("integrated ahead with the same rules": when
+  it strikes, how fast, at what angle, the regime, the crater, the energy); "Throw" adds it at the step it
+  was worked out at, so the run has exactly that outcome. After the contact the card shows what was asked
+  beside what happened. Anything else in the way is struck first, and the preview says so.
+- **Slow down for events** (on unless turned off; the choice is kept in this browser). The worker looks
+  four real seconds ahead at the rate set for the next impact or the next body crossing a heavier one's
+  fluid Roche limit (`src/sim/approach.ts`: each pair's own two-body orbit, by Kepler's equation,
+  refreshed with every snapshot). The clock then eases down, in log rate over about two seconds, so the
+  event comes a second and a half after it reaches the rate that shows it (an eighth of the time the
+  impactor takes to cross the target's radius, about 36 simulated seconds a second for a Mars on the
+  Earth; a twentieth of an orbit for a moon being torn), holds there two seconds after it, and eases back
+  over two. An event not seen coming slows the clock at once after it. Only the rate shown changes: the
+  physics and the log are the same at any rate. The panel says what it is slowing for and how far off it
+  is; Esc, "Full speed" or any time button calls it off for that event. The worker eases by how far its
+  own moment is from the contact; the drawn clock, a few frames behind it, by how far the drawn moment is,
+  so it runs a little faster and closes on the worker as both slow. (Eased at the worker's pace, the gap
+  it was drawn behind at the faster rates was worth more and more real seconds as the rate fell, more than
+  its steering could make up, and it jumped forward, near the contact on a slow machine.)
+- **The event card.** The latest impact or tidal disruption: what struck what, the speed and angle at
+  contact and Leinhardt and Stewart's regime, its energy (and in megatons), the target's radius before and
+  after, the bodies made, the crater; its own pieces falling back later are counted on it, not given
+  cards of their own. It can be closed until the next.
+- **Pick any body.** A tap on one of the experiment's own bodies (its disc, or within a finger's reach of
+  a small one) chooses it.
 - **Laboratories.** Besides the solar system: a star and a planet, and a star with two planets
   (Sun-, Earth- and Jupiter-like, on circular orbits).
 - **Leave.** "Back to the real explorer" returns to the real explorer exactly as it was (date, rate,
@@ -221,8 +253,14 @@ button and the step's words under it. Tested in `tests/explore/lessons.spec.ts`.
 | Positions, velocities, masses, radii, spins | The engine, in a worker (`src/sim/worker.ts`) | The page only receives snapshots |
 | The scenario (start, settings, edit log) | The engine | Saved and exported as the scenario file |
 | Built-in worlds' places during an experiment | Snapshots, through `Lab.applyBuiltIns` | Their rotation still follows the IAU models at the simulated date (modelled, not integrated) |
-| New bodies' drawing, trails, prediction lines | `src/explore/lab.ts` | Points of light with names; the explorer's orbit renderer |
+| New bodies' drawing, trails, prediction lines | `src/explore/lab.ts`, `src/explore/lab-fx` | Lit rocks and shining stars at the engine's radii, soft dust and rings, fireballs (below); the explorer's orbit renderer |
+| The built-in worlds' drawn size | `Lab.scale` (eased to the snapshot's radius) | Multiplied into the explorer's drawn size, its collision sphere and the camera's least distance |
 | The real explorer's clock, imagery, markers | `src/explore/index.ts` | Set aside on entry, given back on exit |
+
+Snapshots also carry each body's look and, for bodies a collision or the tides made, where it came from
+(`src/sim/looks.ts`: the parent, the event, its kind; carried by the state's copies and replayed with the
+log, never saved in a file), the torn bodies' pieces, each ring's kind, source, look and mean pole, and
+what is coming (`upcoming`).
 
 Snapshots arrive about 30 times a second; between them positions are carried along each body's
 velocity for at most 0.1 s of real time.
@@ -295,6 +333,20 @@ drawn as an orbit about its planet, not smeared along the planet's path. It is r
 edit and every eighth of its horizon. Trails are drawn the same way, each about its body's primary.
 
 ## Interventions, checkpoints and replay
+
+**One check for every edit, with an answer** (W1.1). Every edit, from the panel, a lesson, a file, a link
+or a tool, passes the same check (`src/sim/engine.ts` `checkCommand`): its shape, the import limits (an
+edit that would make a scenario its own save could not restore is refused: doubling the Sun ten times
+passes GM 10¹⁴ km³ s⁻² and is refused), and the ids it names (in a file, a body or a ring the run makes on
+its own, a breakup's remnant and debris, a torn body's pieces and its dust, may be named before it exists;
+live, every id must exist now, and an id this experiment has used before is not used again). Live, the
+engine also refuses edits that would do nothing (a held body's velocity, removing the scene's light). A
+refused edit logs nothing and takes no checkpoint. The worker answers each edit (`ack`: applied, with the
+bodies it made, or refused with the reason); `Lab.command` returns that answer as a promise (also
+`window.__kf.universe.lab(command)`, for tools), the panel shows a refusal's reason, and Double is
+disabled, with why, where it would pass the limit. Commands sent before the run's first snapshot wait for
+it (and the explorer keeps those sent before the laboratory's code has come). A rate that is not a number
+is refused; one beyond thirty days a second is held to it.
 
 Every edit (mass, radius, velocity, state, rotation, hold, name, add, remove) is a command logged
 at the step it was applied and applied again at that step on replay, so an experiment is its start
@@ -414,7 +466,10 @@ These are deliberate simplifications; the interface does not claim otherwise.
   ([IMPACTS.md](IMPACTS.md#craters-and-energy)); the heat is otherwise a number, not a temperature.
 - **No climate or materials.** Changing a world's mass or orbit does not change its temperature,
   atmosphere or appearance; the Earth is shown with its static imagery, not the day's.
-- **Light.** The Sun lights the scene wherever it is; a body added as a star does not shine.
+- **Light.** The explorer's Sun lights its ten worlds wherever it is (in a laboratory of its own it
+  stands at the laboratory's star). The experiment's own bodies are lit by every star in it (the two
+  brightest at each body), and a body added as a star shines (its disc, by its luminosity and radius);
+  it does not light the explorer's ten worlds.
 - **Removal is not physics.** Removing a body takes its mass out of the model at once (an
   intervention, logged as such).
 
@@ -446,14 +501,92 @@ no external integrator's fixture (REBOUND) is pinned yet.
 ## Performance and budgets
 
 - **Bundle.** The laboratory is a lazy chunk (`src/explore/lab.ts`, `src/ui/explore/lab-panel.ts`
-  and the worker), loaded only on entering it: 16,441 bytes gzipped against a budget of 250,000
-  (`scripts/check-bundle.ts`). The explorer's own budget (150,000) is unaffected.
+  and the worker), loaded only on entering it, and its effects another (`src/explore/lab-fx`, loaded
+  with the first experiment): on 2026-10-27, 84,188 and 9,507 bytes gzipped, 93,695 together against a
+  budget of 250,000 (the effects' own 40,000; `scripts/check-bundle.ts`). The batch added 50 bytes to the
+  explorer (the worlds drawn at the experiment's radius, the camera's distance from a grown world, Esc,
+  and commands kept until the laboratory's code has come) and none to the first visit (the rocks' spheres
+  are built in the chunk: three.js's own icosahedron would have joined the shell's three.js file).
 - **Worker.** A 16 ms tick, of which at most 8 ms of steps and 3 ms of prediction; time owed by a
   slow tick is carried (up to a quarter of a second's worth), not dropped; snapshots every 33 ms. At thirty days a second the solar fork
   needs about 700 steps a second, a small share of what the worker manages.
-- **GPU.** One line mesh (24 trails, the chosen trail, prediction, velocity) and 32 point sprites,
-  made once and kept; three round trips from a chapter through an experiment and back leave the
-  GPU's geometry and texture counts level (`tests/explore/lab.spec.ts`).
+- **GPU.** One line mesh (24 trails, the chosen trail, prediction, velocity) and point sprites, made
+  once and kept; with the effects, three rock meshes (one draw call each, only those with rocks in them
+  drawn), the dust's and the fireballs' splats, the points and up to four bands: at most 10 draw calls.
+  WebGPU allows eight vertex buffers a draw: the rocks' per-instance numbers and their geometry are each
+  one interleaved buffer. Three round trips from a chapter through an experiment and back, and three out
+  of an experiment and in again, leave the GPU's geometry and texture counts level
+  (`tests/explore/lab.spec.ts`, `tests/explore/lab-perf.spec.ts`).
+- **Frames** (measured 2026-10-27 on the development Mac, M-series, Chromium's WebGPU, 1440 x 900 at a
+  device pixel ratio of 2, `tests/explore/lab-perf.spec.ts`): an experiment with a ring of 2,000 particles
+  about the Earth and a belt of 2,000 about the Sun while a Mars breaks up on the Earth (the slowing, the
+  fireball, seven debris bodies glowing, the plume, the ring lit and shadowed): 59.9 frames a second
+  (vsync-capped) with the 99th percentile frame 16.8 ms at High, and the same at Low (2,000 particles
+  drawn there), as a quiet experiment's. (The GPU's timestamp queries on this Mac read tens of
+  milliseconds while frames hold 16.8 ms, as the roadmap's section 5.3 notes: not used.)
+
+## How experiments are drawn
+
+`src/explore/lab-fx` (its own chunk, loaded with the first experiment), from the snapshot and the drawn
+clock, read back through `window.__kf.universe.labDraw()`:
+
+- **Rocks** (`rocks.ts`). Every body that is not one of the ten worlds is a mesh at exactly the engine's
+  radius, from the size gravity rounds a body up: below the "potato radius" (Lineweaver and Norman 2010:
+  about 200 km for rock, 300 km for ice) it is lumpy, more so the smaller, with a fragment's 2 : √2 : 1
+  axes (Fujiwara et al. 1978); the lumps are illustrative and the mass and radius are the engine's. Lit
+  by Lommel-Seeliger's law with a tenth of Lambert's (Hapke 2012), normalised as the Moon's map is (so the
+  albedo shows as measured), from the two brightest stars at it, each nought behind any of the eight
+  largest bodies (an eclipse), with a faint night-side floor (a visual aid, 4 per cent). It turns by the
+  model's spin; with none, a lumpy body tumbles slowly (once every 4 to 20 hours, seeded: illustrative),
+  held still when that would pass 30 degrees a frame. Under a disc of 2.8 px radius it crosses to a point
+  of light (lit by phase and albedo, as the worlds' points are), the weights always adding to 1. Three
+  meshes by disc size (icospheres of 1, 3 and 5 subdivisions at High), interleaved buffers.
+- **Looks** (`src/sim/looks.ts`). The material from the bulk density (Carry 2012: ice below 2,000 kg/m³,
+  metal above 5,000; a world with a climate is rock), the albedo a world's own where its surface is what
+  reflects (airless worlds, Mars), rock's (0.12) under thick air; a torn body's pieces and dust take its
+  look, a breakup's pieces the two bodies' looks blended by mass. Tints illustrative.
+- **Stars**. A star body is a disc at its effective temperature, T = (L / 4πR²σ)^¼, in its blackbody
+  colour, darkened toward its limb, as bright as the explorer's Sun is drawn (white when small, through
+  its filter when large), with a glare.
+- **Dust and rings** (`splats.ts`, `annulus.ts`). Each particle a soft splat (exp(−3g²), no core), as
+  wide as the particles' spacing on screen (2.5 to 36 px), lit by the star at its body by the phase, and
+  nought in its body's cylindrical shadow; carried round its orbit between snapshots (circular Kepler
+  motion about the ring's mean pole). Its light is its share of a layer of dust of optical depth 0.6 over
+  the area the ring spans (illustrative: the dust's mass is not modelled), the same at every size, under a
+  fifth of sunlit ground. Once spread round its body (72 five-degree stretches each holding a quarter of
+  their share, 330 degrees or more), a ring of dust or a ring made about a planet fades in as a band:
+  its radial profile a histogram of the particles' distances, single scattering (Chandrasekhar's law as
+  Saturn's rings use, normalised as the rocks' is), its body's shadow across it, an optical depth of at
+  most 0.8 (illustrative). A belt about a star is not drawn as a band.
+- **Fireballs** (`fireball.ts`, `incandescence.ts`). On every merger or breakup, at the contact, turning
+  with a world that turns: its radius 0.002 E^(1/3) m (Collins, Melosh and Marcus 2005), between the
+  impactor's radius and half the target's; its first temperature v² / 2c (c = 1,200 J/kg/K) between 1,800 and
+  4,000 K; its brightness and colour by Planck's law weighed by the eye (Wyman, Sloan and Shirley's fits to
+  the CIE 1931 observer), held no brighter than sunlit white ground. Slowed for safety: it rises over
+  0.8 s (never more than a thirtieth of its peak a frame), holds, fades over 2.5 s, cooling; impacts within
+  a third of a second join one, never more than three rise a second. With reduced motion it does not grow
+  and fades in and out more slowly.
+- **Heat** (`heat.ts`). Melt glows at its surface's temperature as a crust forms over it:
+  εσT⁴ = k(T_m − T) / √(πκt) (Turcotte and Schubert 2014; k = 2 W/m/K, κ = 10⁻⁶ m²/s, ε = 0.9), its
+  brightness by Planck's law. A crater's melt (2,000 K, illustrative) glows for a minute or two of the
+  experiment's time; a giant impact's bodies (its energy per kilogram over rock's heat capacity, 1,500 to
+  3,000 K) for a few minutes, and on the Earth, the Moon, Mercury and Mars the face it struck glows the
+  same way. At a day a second that is gone within a frame; slowed for the event, it is seen.
+- **Plumes**. Decorative dust (ledger IM-4) in the same soft splats, lit as the ground, at least 6 px
+  tall; impacts on one body within a second make one plume, and past six the oldest fades away.
+- **Names** (W1.10). The laboratory's bodies' names go through the explorer's layout (ranks, corners, the
+  worlds' names giving way); a body behind a nearer one of the laboratory's is not named; three or more
+  bodies one event made are one name at the largest ("Moon: 8 pieces", "Earth: 7 fragments"), the chosen
+  one named as well; an encounter marker is named as an encounter ("Closest to Moon, in 3.2 h").
+- **Fades and the flash guard** (`flash-guard.ts`). Bodies and rings fade in and out over half a second (a
+  body gone lingers where it was as it fades), a world the experiment ends shrinks away over 0.6 s, a
+  world's drawn size eases to the experiment's radius (half-second time constant, and never more than a
+  thirtieth of what is left in a frame, so a long frame is no jump), a crater past the
+  twelfth fades before its place is given to the newest. Each fireball reports the light it sends into
+  its screen tile (341 x 256 CSS px at 1,024 wide, scaled); a change that would make a third flash pair
+  in a second there (10 per cent or more, the darker under 0.8, or saturated red) is held back.
+- **The effects by tier** (`ladder.ts`): plume points 720, 480, 320, 160; rock subdivisions; 4,000 splats
+  (2,000 at Low); the glare off at Low. An unknown tier is Medium.
 
 ## Tests
 
@@ -479,6 +612,11 @@ no external integrator's fixture (REBOUND) is pinned yet.
 | Leaving gives the real explorer and then the film back; no GPU growth over round trips | the same |
 | Late messages from a reset or left experiment ignored | by design (every message carries a generation), exercised by reset and load in the browser |
 | Phone layout and touch targets | `tests/explore/mobile.spec.ts` |
+| The drawing's pure parts: the potato rule and the crossover; a disc's size; a star's temperature; Planck's law weighed by the eye (against a direct integral and the reviewed values); a melt's crust; a splat's light the same at every size; a ring's coverage; the flash guard's pairs (a 3.5 Hz flicker over 30 per cent of a tile held to two, over 10 per cent let through, saturated red counted); fireballs merging, rising a thirtieth a frame, under the ceiling | `tests/unit/lab-look.spec.ts` |
+| Seeing it coming (contact times against an independent RK4 run; an asteroid flagged days ahead; a moon about to cross the Roche limit); throwing (20 seeded throws at the Earth, the Moon and Mars within 2 per cent and 2 degrees; the outcome worked out ahead equal, bit for bit, to the run's); provenance through save and load; one check for every edit; a fuzz of 10,000 edits on three laboratories after which every save restores and replays to the same state, bit for bit | `tests/unit/lab-throw.spec.ts` |
+| Drawn as what it holds: a torn Moon's pieces as lit rocks at their size, dark in the shadow; grey dust spreading into a band; one name for the pieces and none meeting at six window sizes; a world drawn at the experiment's radius, eased, back on undo; a thrown Mars slowing the clock and back to full speed, the fireball eased under its ceiling, the debris glowing and cooling, the same events with the slowing off; ten stones on the Moon at once never flashing more than three times a second | `tests/explore/lab-effects.spec.ts` |
+| The throw, the slowing (on by default, kept off, Esc and Full speed), every edit answered (the tenth doubling of the Sun refused), a command sent with the opening honoured, a rate held to the fastest, bursts on the new controls and the panel at five window sizes | `tests/explore/lab-throw.spec.ts` |
+| The frame budget with 4,000 particles and a breakup, at High and Low; GPU resources level over round trips | `tests/explore/lab-perf.spec.ts` (`@perf`) |
 | WebGPU, forced WebGL2, Brave | every browser spec runs on `webgpu` and `webgl2`; `lab.spec.ts` also on `brave` where installed |
 
 ## Against an external reference

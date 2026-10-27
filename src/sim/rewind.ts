@@ -1,5 +1,7 @@
+import { STAR_MIN_GM } from './climate';
 import { cloneState } from './nbody';
 import { Engine, type Checkpoint } from './engine';
+import type { Look } from './looks';
 
 /**
  * Playing an experiment's history backwards (the time machine's Reverse in the laboratory), exactly.
@@ -35,8 +37,35 @@ const READY_AHEAD = 2;
 /** Particles' places a segment keeps, at most (single-precision triples: about 0.4 MB): every step for a few hundred particles, every 32nd for the most a scenario may have. */
 const SWARM_BUDGET = 32_000;
 
-/** The rings' particles as the worker sends them: each ring's id, name, primary, particles lost, and places relative to its primary (km). */
-export type SwarmPlaces = Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array }>;
+/**
+ * The rings' particles as the worker sends them: each ring's id, name, primary, particles lost, and
+ * places relative to its primary (km); what it is (a torn body's dust, a belt about a star, a ring), the
+ * body it came from and its look (./looks), and the pole of its particles' mean orbit (drawing only).
+ */
+export type SwarmPlaces = Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array; kind: 'dust' | 'belt' | 'ring'; source: string | null; look: Look; normal: [number, number, number] }>;
+
+/** A belt about a star warm grey rock, a ring icy (illustrative, as ./looks). */
+const BELT_LOOK: Look = { albedo: 0.12, tint: [1, 0.9, 0.78], material: 'rock' };
+const RING_LOOK: Look = { albedo: 0.5, tint: [0.9, 0.96, 1], material: 'ice' };
+
+/** A swarm's places for the page (see SwarmPlaces). */
+function placesOf(state: Checkpoint['state'], w: Checkpoint['state']['swarms'][number]): SwarmPlaces[number] {
+  const p = state.ids.indexOf(w.primary);
+  const kind = w.torn ? 'dust' : p >= 0 && (state.gm[p] ?? 0) >= STAR_MIN_GM ? 'belt' : 'ring';
+  // The particles' mean angular momentum's direction (their orbits' mean pole).
+  let hx = 0;
+  let hy = 0;
+  let hz = 0;
+  for (let k = 0; k + 2 < w.pos.length; k += 3) {
+    const [x, y, z] = [w.pos[k] ?? 0, w.pos[k + 1] ?? 0, w.pos[k + 2] ?? 0];
+    const [u, v, q] = [w.vel[k] ?? 0, w.vel[k + 1] ?? 0, w.vel[k + 2] ?? 0];
+    hx += y * q - z * v;
+    hy += z * u - x * q;
+    hz += x * v - y * u;
+  }
+  const l = Math.hypot(hx, hy, hz);
+  return { id: w.id, name: w.name, primary: w.primary, lost: w.lost, rel: Float32Array.from(w.pos), kind, source: w.source ?? null, look: w.look ?? (kind === 'belt' ? BELT_LOOK : RING_LOOK), normal: l > 0 ? [hx / l, hy / l, hz / l] : [0, 0, 1] };
+}
 
 /** A moment of the history: a checkpoint without the rings' particles, and their places where this sample keeps them. */
 export interface Sample extends Checkpoint {
@@ -62,7 +91,7 @@ interface Job {
   stride: number;
 }
 
-export const swarmPlaces = (state: Checkpoint['state']): SwarmPlaces => state.swarms.map((w) => ({ id: w.id, name: w.name, primary: w.primary, lost: w.lost, rel: Float32Array.from(w.pos) }));
+export const swarmPlaces = (state: Checkpoint['state']): SwarmPlaces => state.swarms.map((w) => placesOf(state, w));
 
 function sampleOf(engine: Engine, keepSwarms: boolean): Sample {
   const s = engine.state;

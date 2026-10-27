@@ -1,6 +1,6 @@
 import { julianDateUtc } from '../../astro/time';
 import labMessages from '../../i18n/en.lab.json';
-import type { App, LabCommand, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
+import type { App, LabCommand, LabImpactor, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
 import { BURN_DIRECTIONS, hohmann, ROUND_E } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
@@ -22,9 +22,11 @@ styles(css);
  * adding a body (from a palette of real ones, on a circular orbit, at a position and velocity, or placed
  * with the pointer), how paths are drawn, measurements, a quantity followed over time, the conservation
  * checks since the last edit, the edits and collisions so far, and the scenario's tools (save in this
- * browser and in a library by name, a link, load, export, import, checkpoints, replay, reset). Names
+ * browser and in a library by name, a link, load, export, import, checkpoints, replay, reset). Also:
+ * "Slow down for events" (on by default) with what it is slowing for and a way back to full speed; the
+ * latest event's card; an edit refused, with why; throwing a rock, worked out before it is thrown. Names
  * from the scenario are text, never markup. Numbers are rewritten only when they change; nothing here
- * is a live region (the clock runs every frame).
+ * is a live region (the clock runs every frame) but the event card, which changes once an event.
  */
 
 export interface LabPanel {
@@ -69,6 +71,17 @@ const BELTS = { asteroid: [2.06, 3.27, 0.2, 15], kuiper: [39.4, 48, 0.1, 10] } a
 const RING = { inner: 1.5, outer: 2.5 } as const;
 /** A gravitating ring: its bodies, where (the chosen body's radii: outside a rocky body's Roche limit, about 2.5) and its mass (a share of the chosen body's). */
 const MOONLETS = { count: 12, inner: 2.8, outer: 3.2, massShare: 1e-4 } as const;
+/** The most GM an experiment may hold for a body (src/sim/engine IMPORT_LIMITS: a save past it could not be restored), km^3 s^-2. */
+const GM_LIMIT = 1e14;
+/** What can be thrown, and how soon it strikes (s). */
+const IMPACTOR_CHOICES: readonly LabImpactor[] = ['stone', 'asteroid', 'ceres', 'mars'];
+const LEADS: ReadonlyArray<readonly [number, string]> = [
+  [3600, 'hour1'],
+  [6 * 3600, 'hours6'],
+  [86_400, 'day1'],
+  [10 * 86_400, 'days10'],
+  [30 * 86_400, 'days30'],
+];
 
 export function createLabPanel(app: App, f: Formatters): LabPanel {
   const { i18n } = app;
@@ -178,6 +191,31 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     app.closeLab();
   }, 'kf-btn kf-living-tour-start');
   const failure = h('p', { class: 'kf-lab-warning', 'data-testid': 'lab-failure', role: 'alert', hidden: true });
+  // Slowing down for events (on unless turned off): its setting, and what it is doing while it acts, with a way back to full speed.
+  const slowId = uniqueId('lab-slow');
+  const slowBox = h('input', { id: slowId, type: 'checkbox', class: 'kf-lab-check', 'data-testid': 'lab-slow-toggle', checked: true });
+  slowBox.addEventListener('change', () => {
+    send({ kind: 'slow', on: slowBox.checked });
+  });
+  const slowText = h('p', { class: 'kf-living-hint kf-lab-slow', 'data-testid': 'lab-slow', hidden: true });
+  const slowCancel = button(i18n.t('ui.universe.lab.slow.cancel'), 'lab-slow-cancel', () => {
+    send({ kind: 'slow', cancel: true });
+  });
+  slowCancel.hidden = true;
+  const slowRow = h('div', { class: 'kf-lab-row' }, slowBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: slowId }, i18n.t('ui.universe.lab.slow.toggle')), helpButton(app, 'labSlow', i18n.t('ui.universe.lab.slow.toggle')));
+  // Esc calls the slowing off (the explorer hands it on: ./lab escape()), as any time button does.
+  // An edit the run refused, and why (a press past a limit, a body gone).
+  const refused = h('p', { class: 'kf-lab-warning', 'data-testid': 'lab-refused', hidden: true });
+  // The latest event: what happened, with its numbers; closed until the next.
+  const cardTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'lab-event-title' });
+  const cardFacts = h('ul', { class: 'kf-living-list kf-lab-card-facts', 'data-testid': 'lab-event-facts' });
+  const cardClose = button(i18n.t('ui.universe.lab.card.close'), 'lab-event-close', () => {
+    cardClosed = cardKey.split(':').slice(0, 3).join(':');
+    card.hidden = true;
+  });
+  const card = h('section', { class: 'kf-living-notes-part kf-lab-card', 'data-testid': 'lab-event-card', 'aria-live': 'polite', hidden: true }, cardTitle, cardFacts, h('p', { class: 'kf-living-hint', 'data-testid': 'lab-event-note' }, i18n.t('ui.universe.lab.card.note')), cardClose);
+  let cardKey = '';
+  let cardClosed = '';
 
   // Undo and redo (also Ctrl or Cmd + Z, and with Shift, or Ctrl + Y).
   const undo = button(i18n.t('ui.universe.lab.undo'), 'lab-undo', () => {
@@ -237,8 +275,9 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   });
   const double = button(i18n.t('ui.universe.lab.double'), 'lab-mass-double', () => {
     const b = selectedBody();
-    if (b) send({ kind: 'mass', id: b.id, massKg: b.massKg * 2, keep: hold.select.value === 'density' ? 'density' : 'radius' });
+    if (b && 2 * b.gm <= GM_LIMIT) send({ kind: 'mass', id: b.id, massKg: b.massKg * 2, keep: hold.select.value === 'density' ? 'density' : 'radius' });
   });
+  const massLimit = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-mass-limit', hidden: true }, i18n.t('ui.universe.lab.massLimit'));
   const halve = button(i18n.t('ui.universe.lab.halve'), 'lab-mass-halve', () => {
     const b = selectedBody();
     if (b) send({ kind: 'mass', id: b.id, massKg: b.massKg / 2, keep: hold.select.value === 'density' ? 'density' : 'radius' });
@@ -449,6 +488,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('label', { class: 'kf-living-label', for: massId }, i18n.t('ui.universe.lab.massLabel')),
     h('div', { class: 'kf-lab-row' }, massInput, massApply),
     h('div', { class: 'kf-lab-row' }, double, halve),
+    massLimit,
     radius.label,
     h('div', { class: 'kf-lab-row' }, radius.input, radiusApply),
     density.label,
@@ -719,6 +759,48 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     })),
   );
 
+  // Throwing a rock (W1.12): at what, what, how fast, at what angle, how soon; worked out first, then let go.
+  const throwTarget = select('ui.universe.lab.throw.target', 'lab-throw-target', []);
+  let throwTargetsKey = '';
+  const throwWhat = select('ui.universe.lab.throw.impactor', 'lab-throw-impactor', IMPACTOR_CHOICES.map((k) => [k, i18n.t(`ui.universe.lab.throw.impactor.${k}`)] as const));
+  const throwSpeed = field('ui.universe.lab.throw.speed', 'lab-throw-speed', '20');
+  const throwAngle = field('ui.universe.lab.throw.angle', 'lab-throw-angle', '45');
+  const throwLead = select('ui.universe.lab.throw.lead', 'lab-throw-lead', LEADS.map(([seconds, key]) => [String(seconds), i18n.t(`ui.universe.lab.throw.lead.${key}`)] as const));
+  throwLead.select.value = String(86_400);
+  const throwResult = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-aim-result' });
+  const aimButton = button(i18n.t('ui.universe.lab.throw.aim'), 'lab-aim', () => {
+    send({ kind: 'aim', target: throwTarget.select.value, impactor: (IMPACTOR_CHOICES.find((k) => k === throwWhat.select.value) ?? 'stone'), vInfKmS: num(throwSpeed.input), angleDeg: num(throwAngle.input), leadS: Number(throwLead.select.value) });
+  });
+  const throwGo = button(i18n.t('ui.universe.lab.throw.go'), 'lab-throw-go', () => {
+    send({ kind: 'throw' });
+  });
+  throwGo.disabled = true;
+  // A change to what is asked puts the worked-out throw away (it was for the old one).
+  for (const el of [throwTarget.select, throwWhat.select, throwSpeed.input, throwAngle.input, throwLead.select]) {
+    el.addEventListener('change', () => {
+      if (lab?.aim && lab.aim.status !== 'thrown') send({ kind: 'aimClear' });
+    });
+  }
+  const throwBox = helpDetails(
+    'ui.universe.lab.throw.title',
+    'lab-throw',
+    'labThrow',
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.throw.intro')),
+    throwTarget.label,
+    throwTarget.select,
+    throwWhat.label,
+    throwWhat.select,
+    throwSpeed.label,
+    throwSpeed.input,
+    throwAngle.label,
+    throwAngle.input,
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.throw.angleHint')),
+    throwLead.label,
+    throwLead.select,
+    h('div', { class: 'kf-lab-row' }, aimButton, throwGo),
+    throwResult,
+  );
+
   // Rings and belts (ledger IM-6): test particles, or a gravitating ring of a few bodies; Saturn's drawn rings are the third kind, decorative.
   const ringCount = select('ui.universe.lab.rings.count', 'lab-ring-count', RING_COUNTS.map((n) => [String(n), f.number(n, 0)] as const));
   ringCount.select.value = '1000';
@@ -772,14 +854,20 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     lessons.element,
     withHelp(app, clock, 'labClock', i18n.t('ui.help.label.labClock')),
     rates,
+    slowRow,
+    slowText,
+    slowCancel,
     failure,
+    card,
     back,
     history,
+    refused,
     h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.bodies'), helpButton(app, 'labBodies', i18n.t('ui.universe.lab.bodies'))),
     list,
     many,
     inspector,
     add,
+    throwBox,
     addShip,
     rings,
     viewBox,
@@ -895,6 +983,63 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       const back = l.requestedRate < 0;
       const ratesKey = l.paused ? 'paused' : l.budgetBound ? (back ? 'ratesBackSlow' : 'ratesSlow') : back ? 'ratesBack' : 'rates';
       write(rates, i18n.t(`ui.universe.lab.${ratesKey}`, { requested: perSecond(l.requestedRate), achieved: perSecond(l.achievedRate), step: f.number(l.dtS / 60, 1) }));
+      // Slowing for an event: what for, the rate it shows, and the contact still to come (simulated, and real at this rate).
+      if (slowBox.checked !== l.slow.on) slowBox.checked = l.slow.on;
+      const sl = l.slow.active;
+      slowText.hidden = !sl;
+      slowCancel.hidden = !sl;
+      if (sl) {
+        const event = i18n.t(`ui.universe.lab.slow.${sl.kind}`);
+        write(slowText, sl.inS !== null ? i18n.t('ui.universe.lab.slow.coming', { event, rate: perSecond(sl.rate), in: duration(sl.inS), wall: f.keep(i18n.t('ui.universe.lab.seconds', { value: f.number(sl.inS / Math.max(sl.rate, 1e-9), 1) })) }) : i18n.t('ui.universe.lab.slow.after', { event, rate: perSecond(sl.rate) }));
+      }
+      // An edit refused, and why (it stays until the next status).
+      refused.hidden = l.status?.kind !== 'refused';
+      if (l.status?.kind === 'refused') write(refused, i18n.t('ui.universe.lab.status.refused', { detail: l.status.detail.join('; ') }));
+      // The latest event's card, until closed (a new event opens it again).
+      const ev = l.latest;
+      const eventKey = ev ? `${ev.t}:${ev.absorbed}:${ev.kind}:${ev.later}` : '';
+      const cardOf = ev ? `${ev.t}:${ev.absorbed}:${ev.kind}` : '';
+      if (ev && eventKey !== cardKey) {
+        cardKey = eventKey;
+        const nameIn = (id: string): string => {
+          const b = l.bodies.find((x) => x.id === id);
+          return b ? nameOf(b) : (l.names[id] ?? id);
+        };
+        const survivor = nameIn(ev.survivor);
+        write(cardTitle, i18n.t(`ui.universe.lab.card.title.${ev.kind}`, { survivor, absorbed: nameIn(ev.absorbed) }));
+        const facts: string[] = [];
+        if (ev.kind !== 'disrupt') facts.push(i18n.t('ui.universe.lab.card.speed', { speed: speed(ev.speedKmS), angle: degrees(ev.angleDeg), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[ev.regime as keyof typeof REGIME_KEYS]}`) }));
+        if (ev.energyJ > 0) facts.push(i18n.t('ui.universe.lab.card.energy', { energy: scientific(ev.energyJ), mt: megatons(ev.energyJ) }));
+        if (ev.radiusBeforeKm !== null && ev.radiusAfterKm !== null && Math.abs(ev.radiusAfterKm - ev.radiusBeforeKm) > 1e-6 * ev.radiusBeforeKm) facts.push(i18n.t('ui.universe.lab.card.radius', { name: survivor, before: f.keep(i18n.t('ui.universe.lab.km', { value: f.number(ev.radiusBeforeKm, 0) })), after: f.keep(i18n.t('ui.universe.lab.km', { value: f.number(ev.radiusAfterKm, 0) })) }));
+        if (ev.created > 0) facts.push(i18n.t('ui.universe.lab.card.pieces', { count: ev.created }));
+        if (ev.craterKm !== null) facts.push(i18n.t('ui.universe.lab.card.crater', { km: f.number(ev.craterKm, ev.craterKm < 10 ? 1 : 0) }));
+        if (ev.later > 0) facts.push(i18n.t('ui.universe.lab.card.later', { count: ev.later, name: survivor }));
+        // A thrown rock: what was asked beside what it did.
+        const a = l.aim;
+        if (a?.id && (a.id === ev.absorbed || a.id === ev.survivor)) facts.push(i18n.t('ui.universe.lab.throw.asked', { speed: speed(a.vInfKmS), angle: degrees(a.angleDeg) }));
+        cardFacts.replaceChildren(...facts.map((t) => h('li', {}, t)));
+      }
+      // Closed, it stays closed while only its own pieces fall back; a new event opens it again.
+      card.hidden = !ev || cardClosed === cardOf;
+      // The throw: its targets (every body), and what the worked-out throw comes to.
+      const targetsKey = l.bodies.map((b) => `${b.id}:${nameOf(b)}`).join('|');
+      if (targetsKey !== throwTargetsKey) {
+        throwTargetsKey = targetsKey;
+        const was = throwTarget.select.value;
+        throwTarget.select.replaceChildren(...l.bodies.filter((b) => b.gm > 0).map((b) => h('option', { value: b.id }, nameOf(b))));
+        throwTarget.select.value = l.bodies.some((b) => b.id === was) ? was : l.bodies.some((b) => b.id === 'earth') ? 'earth' : (l.bodies.find((b) => !b.persistent && b.gm > 0)?.id ?? l.bodies[0]?.id ?? '');
+      }
+      const am = l.aim;
+      throwGo.disabled = am?.status !== 'ready';
+      if (!am) write(throwResult, '');
+      else if (am.status === 'working') write(throwResult, i18n.t('ui.universe.lab.throw.working'));
+      else if (am.status === 'refused' || !am.contact) write(throwResult, i18n.t('ui.universe.lab.throw.refused', { reason: am.reason ?? '' }));
+      else if (am.status === 'thrown') write(throwResult, i18n.t('ui.universe.lab.throw.thrown'));
+      else {
+        const c = am.contact;
+        const crater = c.craterKm !== null ? i18n.t('ui.universe.lab.throw.crater', { km: f.number(c.craterKm, c.craterKm < 10 ? 1 : 0) }) : '';
+        write(throwResult, i18n.t('ui.universe.lab.throw.ready', { with: l.names[c.with] ?? c.with, in: duration(c.inS), speed: speed(c.speedKmS), angle: degrees(c.angleDeg), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[c.regime as keyof typeof REGIME_KEYS]}`), crater, energy: scientific(c.energyJ) }));
+      }
       failure.hidden = l.failure === null;
       if (l.failure) write(failure, i18n.t('ui.universe.lab.failure'));
       undo.disabled = l.undoable === 0;
@@ -985,6 +1130,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       inspector.hidden = !b || choosing !== null;
       if (b) {
         write(inspectorTitle, nameOf(b));
+        // Doubling past the most mass an experiment holds would make a save that cannot be restored: refused here, with why.
+        const full = 2 * b.gm > GM_LIMIT;
+        if (double.disabled !== full) double.disabled = full;
+        massLimit.hidden = !full;
         // A ship's rocket: its propellant and change of speed left, and the burns to come.
         const ship = b.ship;
         shipBox.hidden = ship === null;

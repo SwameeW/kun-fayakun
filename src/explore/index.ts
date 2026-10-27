@@ -38,6 +38,7 @@ import { createExposureControl, type EngineExposure } from '../core/post';
 import {
   BODY_IDS,
   type BodyId,
+  type LabCommand,
   type SceneLabel,
   type UniverseBodyView,
   type UniverseContext,
@@ -425,6 +426,8 @@ export default function create(): UniverseModule {
   let wantLab = false;
   /** A share link's scenario (src/sim/share), waiting for the laboratory to open. */
   let pendingShare: string | null = null;
+  /** Commands for the laboratory sent before its chunk came (the same tick as opening it): done once it has. */
+  const labQueue: LabCommand[] = [];
   const hiddenBodies = new Set<BodyId>();
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
@@ -1231,9 +1234,10 @@ export default function create(): UniverseModule {
       lab.start('solar', jdTdb);
       lab.setRun(86_400, false);
       if (pendingShare) {
-        lab.command({ kind: 'importShared', data: pendingShare });
+        void lab.command({ kind: 'importShared', data: pendingShare });
         pendingShare = null;
       }
+      for (const c of labQueue.splice(0)) void lab.command(c);
     } else if (!wantLab && lab.active) {
       lab.stop();
       hiddenBodies.clear();
@@ -1685,6 +1689,8 @@ export default function create(): UniverseModule {
     spinHold?.update(sys, days, dt, clockRate !== 0 && (lab?.active === true || !nav.travelling), c.reducedMotion);
     advanceStretch(dt);
     warpSystem(sys);
+    // In the laboratory each world is drawn at the experiment's radius (eased; shrinking away when it ends).
+    if (lab?.active) for (const id of BODY_IDS) grow[id] *= lab.scale(id);
     for (const path of orbitPaths) path.setDate(jdTdb);
 
     // The view the bodies are framed in: the camera's resting lens and what the interface covers.
@@ -2926,7 +2932,10 @@ export default function create(): UniverseModule {
       const pole = km(b[3] ?? 0, b[4] ?? 1, b[5] ?? 0);
       return {
         id,
-        radiusKm: spec.radiusKm,
+        // The camera keeps outside a world the experiment has grown.
+        get radiusKm() {
+          return spec.radiusKm * (lab?.active ? lab.scale(id) : 1);
+        },
         boundKm: spec.boundKm,
         minAltitudeKm: spec.minAltitudeKm,
         fill: spec.fill,
@@ -3233,11 +3242,8 @@ export default function create(): UniverseModule {
             endDescent();
             return true;
           }
-          // Esc while placing a body leaves placing.
-          if (lab?.active && lab.placing) {
-            lab.command({ kind: 'place', on: false });
-            return true;
-          }
+          // Esc while placing a body leaves placing; while the laboratory slows for an event, calls that off.
+          if (lab?.active && lab.escape()) return true;
           if (steer('stop')) return true;
           // Held: and pressed again within the second, held a second longer (only a pause lets Esc go on).
           if (performance.now() < escapeHeld) {
@@ -3538,7 +3544,9 @@ export default function create(): UniverseModule {
     },
 
     lab(command) {
-      lab?.command(command);
+      // Asked before the laboratory's chunk has come: done once it has.
+      if (lab) void lab.command(command);
+      else labQueue.push(command);
     },
 
     time(asked) {

@@ -4,13 +4,19 @@
  * test hooks (docs/CONTRACTS.md, "Test hooks" and "UI test ids").
  */
 import { test as base, expect, type Page } from '@playwright/test';
-import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
+import type { App, ChapterContent, ChapterId, LabCommand, LabEditResult, UniversePose, UniverseView } from '../../src/core/types';
 import { env, SLOW } from './env';
 import { mockLiveHosts } from './live';
 
 export interface KfOptions {
   /** Add ?forceWebGL=1 to every navigation (the "webgl2" project). */
   forceWebGL: boolean;
+  /**
+   * The laboratory's "Slow down for events" (on for visitors unless they turn it off, src/explore/lab
+   * SLOW): off in the tests unless a spec turns it on with test.use({ labSlow: true }), so a spec's timing
+   * around an impact is its own (docs/SANDBOX-ROADMAP.md W1.13).
+   */
+  labSlow: boolean;
 }
 
 export interface FrameStats {
@@ -35,7 +41,7 @@ export interface KfHook {
     resetFrameStats(): void;
     step(frames?: number, dt?: number): void;
     camera(): { position: [number, number, number]; fov: number };
-    universe: { state(): UniverseView | null; place(pose: UniversePose): void };
+    universe: { state(): UniverseView | null; place(pose: UniversePose): void; lab?(command: LabCommand): Promise<LabEditResult>; labDraw?(): unknown };
     /** The film's sound (src/ui/film-sound.ts): what plays now, and an offline render of a chapter's stretch. */
     filmSound?: {
       state(): FilmSoundState | null;
@@ -135,9 +141,19 @@ interface Fixtures {
 
 export const test = base.extend<Fixtures & KfOptions>({
   forceWebGL: [false, { option: true }],
+  labSlow: [false, { option: true }],
 
-  page: async ({ page, forceWebGL }, use) => {
+  page: async ({ page, forceWebGL, labSlow }, use) => {
     if (forceWebGL) await page.addInitScript(ensureForceWebGL);
+    if (!labSlow) {
+      await page.addInitScript(() => {
+        try {
+          localStorage.setItem('kf-lab-slow', '0');
+        } catch {
+          // No storage here: the laboratory slows as a visitor's would.
+        }
+      });
+    }
     // No test reaches the Living Earth's live services (tests/support/live).
     await mockLiveHosts(page);
     // KF_THROTTLE=4 slows the CPU four times (Chromium only): a local stand-in for CI's slow runners, to check a test's timing holds there.

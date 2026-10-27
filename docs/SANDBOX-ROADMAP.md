@@ -1,6 +1,6 @@
 # Sandbox roadmap: the orbital laboratory
 
-**Status:** plan dated 2026-10-26, branch `worlds`. Nothing in this document had been built when it was written; the time and rewind work of M1 started the same day (batch 1).
+**Status:** plan dated 2026-10-26, branch `worlds`. Nothing in this document had been built when it was written; the time and rewind work of M1 started the same day (batch 1). M1's other packages were built on 2026-10-27 (batch 2): each package below has a status line saying what was built and what was not.
 
 **Covers:** `#/universe/lab`. That means `src/sim/**` running in the worker, plus `src/explore/lab.ts`, `src/ui/explore/lab-panel.ts` and `src/ui/explore/lab-lessons.ts`.
 
@@ -199,6 +199,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
 **Data and licences:** none new. Only existing constants and the fact-sheet albedos already in `data/constants.json`.
 
 ### W1.0 Effects ladder and performance harness (Vis-F3)
+**Status (2026-10-27): built in part.** `src/explore/lab-fx/ladder.ts` (keyed by the explorer's detail tier, read from `data-detail`; an unknown tier is Medium), the `__kf.universe.labDraw()` hook, the `lab-fx` rows in `scripts/check-bundle.ts`, and `tests/explore/lab-perf.spec.ts` (`@perf`: 4,000 particles and a Mars breaking up on the Earth at High and Low, and GPU counts level over three round trips; measured: 59.9 fps, p99 16.8 ms at High at 1440 x 900, DPR 2, and the same at Low). Not built: trails on Float64 ring buffers, the A/B effect toggles and the heap check after a forced GC.
+
 - **Change.**
   - Add `src/explore/lab-fx/ladder.ts`, keyed by the explorer's `ExploreTier`. The explorer's governor still decides the tier. An unknown GPU (Brave Shields can hide it) maps to Medium.
   - Ejecta particles per plume: Low 1k, Medium 3k, High 8k, Ultra 16k.
@@ -215,6 +217,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - the retained heap after a forced GC (`--enable-precise-memory-info`) is level over three round trips.
 
 ### W1.1 One validator for every edit, with an answer (Phys-F1, Exp-F3, AI audit)
+**Status (2026-10-27): built.** `checkCommand` (used by `validateScenario` and `Engine.refusal`), the `setAtmosphere` branch, run-made ids (`-piece-N`, torn dust `dust-*`), ids never reused, refused edits log nothing; the worker's `ack`; `Lab.command` returns `Promise<LabEditResult>` (also `__kf.universe.lab`); commands queued until the first snapshot (and in the explorer until the laboratory's chunk has come); rates not finite refused, held to 2,592,000 s/s; Double disabled with the reason. Tests: `tests/unit/lab-throw.spec.ts` (the fuzz of 10,000 edits on three laboratories), `tests/explore/lab-throw.spec.ts`.
+
 - **Change in `src/sim/engine.ts`.**
   - Extract `checkCommand(c, known, limits = IMPORT_LIMITS): string | null` from the per-edit block of `validateScenario` (`engine.ts:842-895`). Use it in `validateScenario`, `Engine.apply`, the worker and `lab.ts edit()`.
   - Add the missing `setAtmosphere` branch.
@@ -242,6 +246,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
     - `start 'two'` sent in the same tick as `openLab()` is honoured.
 
 ### W1.2 Exact positions inside a step, and a display clock that never runs backwards (Phys-F3, Vis-F2, Exp-F2; time diagnosis items 2, 3 and 13)
+**Status:** built in batch 1 (`src/explore/lab-clock.ts`; docs/LAB.md, "The drawn clock").
+
 
 **Worker (`src/sim/worker.ts`, `engine.ts`).**
 - While owed time is less than dt (the slow regime), the worker computes the next step for the bodies alone on a scratch copy, with the same functions. Swarms exert no force on bodies, so the scratch result equals the step it later commits, bit for bit, unless an event happens inside the step.
@@ -271,6 +277,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - After pressing Faster 3 times within 50 ms, the per-frame step reaches at least 0.8 times rate/60 within 200 ms.
 
 ### W1.3 Edits land at the time the visitor saw (from the review of Phys-F3)
+**Status:** built in batch 1 as `Engine.applyAt` (an edit carries the step of the view it was made on).
+
 - **Change.**
   - Log entries gain an optional `atT`, accepted by `validateScenario`.
   - `Engine.applyAt` takes a logged partial step from `state.t` to `atT`, applies the edit, and then re-times.
@@ -282,6 +290,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - The 20 recorded version-1 scenarios replay to their stored hashes.
 
 ### W1.4 Time that runs both ways, a reset that holds, and the fork date kept (time diagnosis items 1, 10, 11 and 12; Phys-F5; Exp-F2)
+**Status:** built in batch 1 (`src/sim/rewind.ts`). Batch 2: a goto now lands at the first whole step at or past its moment (with 14-hour steps the last one short of it was another date).
+
 
 **Handler.** The laboratory branch of `time()` moves out of `explore/index.ts` into `lab.time(command)`, which returns availability: `{faster, slower, reverse, play, now, date}` with reasons. Disabled buttons get `aria-disabled` plus a visible style.
 
@@ -311,6 +321,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - The solar preset started after the Kepler lesson forks within 1 hour of the explorer's date.
 
 ### W1.5 Provenance and looks in the snapshot (Vis-F1, Phys-F8 in part; visual diagnosis item 7)
+**Status (2026-10-27): built** as `SimState.origins` and `src/sim/looks.ts` (carried by the state's copies, replayed with the log, never saved), the snapshot's `looks`, `origin`, `rubble`, and each ring's kind, source, look and mean pole. Not added: Float32 accelerations and particle velocities (the page carries particles round by circular Kepler motion instead).
+
 - **Change.**
   - `LabSnapshot` gains:
     - `rubble`;
@@ -327,6 +339,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - `torn`, `source` and `kind` survive into the snapshot.
 
 ### W1.6 Bodies drawn as what they are: lit rocks, and lab stars that shine (Vis-F5, Exp-F8, the minimum of Vis-F19; visual diagnosis item 1)
+**Status (2026-10-27): built** (`src/explore/lab-fx/rocks.ts`; stars in the same meshes, with a glare). Two lights a body, not four. Tests: `tests/unit/lab-look.spec.ts`, `tests/explore/lab-effects.spec.ts` (at 1440 x 900; the other two window sizes are covered for the names only).
+
 
 **Rocks.** New `src/explore/lab-fx/rocks.ts`:
 - `InstancedMesh` in three LOD buckets (icosphere detail 1, 3 and 5, chosen by disc size in px), for up to 64 bodies.
@@ -359,6 +373,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - the star's disc has the right angular size within 2%.
 
 ### W1.7 Built-in worlds take the experiment's radius and leave by shrinking (Vis-F6, Vis-F4a; visual diagnosis items 5 and 6)
+**Status (2026-10-27): built** (`Lab.scale`, multiplied into the explorer's `grow` after `warpSystem`, and the navigation's body radius). Test: a Moon radius edit eased (at most a thirtieth of the change a frame), within 0.5 per cent, undone.
+
 - **Change.**
   - Add `Lab.radiusOf(id)`, eased with a 0.5 s time constant. It is multiplied into the existing `grow` record after `warpSystem()` (`index.ts:~972`), which already feeds the collision sphere (1672), mesh scale (1737), dot (2036) and label anchor (2333). `minAltitudeKm` in `navBodies` (about line 2450) is scaled the same way.
   - A built-in that leaves the snapshot shrinks out over 0.6 s before it is hidden. A shrinking disc only ever darkens.
@@ -370,6 +386,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - The camera's altitude stays above 0.
 
 ### W1.8 Dust and rings that read as matter (Vis-F11; visual diagnosis item 3)
+**Status (2026-10-27): built** with one change: the particles are placed on the CPU (4,000 a frame, within the frame budget measured), carried round by circular Kepler motion about the ring's pole between snapshots, not on their conics in the vertex stage. The band's profile is a uniform array (both backends).
+
 
 **Splats.** New `src/explore/lab-fx/splats.ts`:
 - Soft profile `exp(−3g²)` with no bright core.
@@ -401,6 +419,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - a ring the visitor adds about Saturn stays icy, and a belt about the Sun is warm grey.
 
 ### W1.9 Pick, follow and frame any lab body (Vis-F13, Exp-F4; time diagnosis item 13; AI audit)
+**Status (2026-10-27): built in part.** A tap or click chooses any of the laboratory's own bodies. Not built: following and framing them with the camera, and the two-body laboratory starting on its planet: `NavBody.id` widened to lab bodies costs 0.8 to 1.2 KB of explorer glue, more than this branch's 1.5 KB share left after W1.7 and the queue (decision D1).
+
 - **Change in `src/explore/navigation.ts`:** `NavBody.id` becomes `BodyId | string`.
 - **Change in `src/explore/index.ts`.**
   - `navBodies()` appends lab proxies (position, radius, bound, minimum altitude).
@@ -419,6 +439,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - The handle's hit area is at least 44 px on the mobile project.
 
 ### W1.10 Labels that never pile up (Vis-F24; visual diagnosis item 2; navigator diagnosis label items)
+**Status (2026-10-27): built** on the layout branch's rank-based give-way (`declutterLab` in the explorer), not as a separate `label-layout.ts`: families of three or more as one name, no name for a body behind a nearer lab body, encounter markers named as encounters, names fading with their bodies. Test: no names meeting at six window sizes after the Roche lesson. Not built: the unit test of a pure layout module (there is none to test).
+
 - **Change.**
   - The label logic moves into a pure `src/explore/label-layout.ts`, used for both built-in and lab labels: occlusion by any nearer body, shared collision boxes, clear-view insets, hysteresis, and eased opacity (in 0.35 s; out at least 0.5 s, or 0.1 s when giving way).
   - The insets gain exclusion rectangles for the Back button and the desktop readout card.
@@ -434,6 +456,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - Browser, after the Roche lesson and six zoom-outs at 2000 × 1300, 1440 × 900, 1280 × 800, 390 × 844 and 844 × 390: zero overlapping pairs, and no tags under the panels or over the Earth for hidden pieces.
 
 ### W1.11 Fades and a flash guard (Vis-F4; visual diagnosis item 6)
+**Status (2026-10-27): built** (`src/explore/lab-fx/flash-guard.ts`, the fades in `src/explore/lab.ts`). The guard watches the fireballs (the laboratory's only fast light); the canvas test reads tiles back through ten stones striking the Moon at once.
+
 - **Change.**
   - New `src/explore/lab-fx/fades.ts`: a fade map per id, easing at least 0.5 s each way, for bodies, swarms, labels, plumes and craters.
     - No live plume is ever shifted out: the oldest fades.
@@ -459,6 +483,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - With reduced motion, the camera moves at most 0.5° per frame.
 
 ### W1.12 Throw and aim, with the outcome worked out before you let go (Exp-F6, Exp-F7)
+**Status (2026-10-27): built** as "Throw a rock" (`src/sim/aim.ts`: the rock put at the contact and the system run backwards, then shooting), with the 20 seeded throws in a unit test (bit for bit with the run). Not built: dragging from a body to fling it.
+
 
 **Throw.**
 - Drag from a body to fling it, or use "Throw a rock at…": choose a target, an impactor preset, v∞, angle and lead time.
@@ -484,6 +510,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - the regime shown before contact equals the one after.
 
 ### W1.13 Seeing it coming: slowing down for events (Vis-F12, Exp-F9)
+**Status (2026-10-27): built** (`src/sim/approach.ts`; the governor in `src/explore/lab.ts`; on by default, D8). The hold after an event is two seconds of real time (not 2 tau of simulated time, which at tau/8 would be sixteen seconds), so the rate is back within four seconds. The tests' fixture keeps it off unless a spec turns it on (`labSlow`).
+
 
 **Scan (worker, within the 3 ms prediction share).**
 - Candidate pairs are those whose time to closest approach, r / v_closing, is under the requested rate times 4 s. This replaces a radius multiple, which at 1 day a second gave under 0.1 s of warning.
@@ -510,6 +538,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
 - Other specs keep slow motion off unless they turn it on.
 
 ### W1.14 Impact fireball coloured by Planck's law (Vis-F7; visual diagnosis item 4)
+**Status (2026-10-27): built** with V(lambda) from Wyman, Sloan and Shirley's analytic fit (no CIE table copied; `data/sources.json` `wyman-2013-cie-fits`), and the crater glow and a giant impact's heat by the conductive crust of W2.3 (`src/explore/lab-fx/heat.ts`), ahead of M2.
+
 
 **Table.** New `src/explore/lab-fx/incandescence.ts`:
 - 64 entries from 700 to 12,000 K: L_v(T) = 683 ∫ V(λ) B_λ(T) dλ.
@@ -540,6 +570,8 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - the W1.11 flash count passes.
 
 ### W1.15 Panel, navigator and lesson fixes (navigator diagnosis items 1 to 11; time diagnosis item 14)
+**Status:** built on the layout branch (navigator and lesson fixes, lazy laboratory styles).
+
 
 **`src/ui/explore/navigator.ts`:**
 - `apply()` hides `labSlot` and `starsSlot` when folded.
