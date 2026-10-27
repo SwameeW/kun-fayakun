@@ -43,7 +43,13 @@ its own and has no real baseline.
   stops at the fork; play, faster or slower there run it forwards again. Now goes to today's date in
   the experiment and runs at real time; a date goes to that moment (from the fork to a century
   after it: before the fork it stops at the fork, after the century at its end, and the note under
-  the row says "This experiment runs from … to …", Now too). While it is on its way the row
+  the row says "This experiment runs from … to …", Now too). The run moves only by whole steps, so a
+  goto ends on the first step at or past the moment, but a date's is kept to its day (UTC, as the
+  date field shows it; `src/sim/goto.ts`): the field keeps the clock's time of day, and late in the
+  day the first step past it can be the next day's (with 14-hour steps, any moment after the day's
+  last step; with hour-long ones, a minute to midnight), so the goto ends on the day's last step
+  instead. Every step of a day or less leaves one inside each day; a longer one (a file's own
+  integrator) can pass over a day, and then the goto ends on the nearer of the two steps about it. While it is on its way the row
   says "Going to …"; Pause stops it where it is, and Reverse, Faster, Slower or a rate run on from
   there at that rate. Reset, in the time row, goes back to the fork, paused, at a day a second (the
   worker holds a scenario it loads at its start until the page's run request that follows, so a tick

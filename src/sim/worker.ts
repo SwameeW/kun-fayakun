@@ -3,6 +3,7 @@ import { planner, type ThrowPlan, type ThrowRequest } from './aim';
 import { nextApproach } from './approach';
 import { luminosities } from './climate';
 import { commandId, Engine, Prediction, type Checkpoint } from './engine';
+import { seekOn, validWithin, type Within } from './goto';
 import { lookOf } from './looks';
 import { accelerations, diagnostics, drift, type Diagnostics } from './nbody';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
@@ -20,7 +21,8 @@ import { REWIND_SEGMENT, Rewind, swarmPlaces } from './rewind';
  * back evenly; going forwards it keeps a full state every REWIND_SEGMENT steps (the latest
  * RECENT_MARKS), so going back starts from near the moment shown. Paused, it steps on (or back) to
  * the moment the page draws, so an edit is made on what is drawn. Going to a moment (`goto`) steps
- * toward it within the budget, and stops where it is at any run request (a pause, a rate).
+ * toward it within the budget, to the first step at or past it but never out of a date's day
+ * (./goto), and stops where it is at any run request (a pause, a rate).
  * Predictions (engine Prediction) run after the live steps, PREDICT_BUDGET_MS a tick, and a newer
  * request or any edit replaces the one under way. Snapshots go out about 30 times a second, with
  * what the page needs to draw between them smoothly (accelerations, the time owed) and a timeline
@@ -75,8 +77,9 @@ let control = 0;
 let timeline = 0;
 let rewind: Rewind | null = null;
 let atStart = false;
-/** A goto under way: the simulated time it is going to. */
+/** A goto under way: the simulated time it is going to, and the span it must end in (a date's day: ./goto), or null. */
 let seekTo: number | null = null;
+let seekWithin: Within | null = null;
 /** Paused: the moment the page draws, which the run steps on to (back to, going backwards) and stops at; or null. */
 let landTo: number | null = null;
 /** The run's recent full states, oldest first (./rewind replays from them). */
@@ -227,10 +230,10 @@ function tick(): void {
   let moved = 0;
   if (engine && seekTo !== null) {
     // Going to a moment: whole steps toward it within the budget, whatever the rate, to the first at or past
-    // it (with long steps, the last one short of it could be most of a day before: another date).
-    while (engine.state.t < seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) stepOn(engine);
-    if (engine.failure || engine.state.t >= seekTo) {
+    // it, kept to its span (a date's day: ./goto).
+    if (seekOn(engine, seekTo, seekWithin, stepOn, () => performance.now() - now < STEP_BUDGET_MS)) {
       seekTo = null;
+      seekWithin = null;
       owed = 0;
       recent = [];
     }
@@ -381,6 +384,7 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
           trimMarks(engine);
         }
         seekTo = target;
+        seekWithin = validWithin(msg.within, target);
         owed = 0;
         recent = [];
         startPrediction();

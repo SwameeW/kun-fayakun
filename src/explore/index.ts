@@ -3597,7 +3597,8 @@ export default function create(): UniverseModule {
       if (!command) return;
       // In the laboratory the commands drive the experiment's clock (./lab: backwards by replaying its history).
       if (lab?.active) {
-        lab.time(command);
+        // A date as the clock shows it: TDB minus UTC as drawn (carried from the explorer's date).
+        lab.time(command, jdTdb - jdUtc);
         return;
       }
       // The pure reducer (./time): a change of rate or direction sets the clock running, a new date keeps it as it

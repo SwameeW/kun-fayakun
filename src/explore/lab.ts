@@ -7,6 +7,7 @@ import { BODY_IDS, type BodyId, type LabAim, type LabCommand, type LabEditResult
 import labMessages from '../i18n/en.lab.json';
 import type { ThrowPlan } from '../sim/aim';
 import { commandId, RING_MAX_BODIES, STALE, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
+import { dayWithin, type Within } from '../sim/goto';
 import type { Look } from '../sim/looks';
 import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
@@ -58,8 +59,9 @@ import { applyTimeCommand, LAB_DATE_SPAN_S } from './time';
  *
  * Time: the time machine's commands drive the experiment's clock through the explorer's reducer
  * (./time): backwards plays its history exactly (src/sim/rewind) and stops at the fork; Now and a date
- * go to that moment of the experiment (from the fork to LAB_DATE_SPAN_S after it); seek, replay and
- * reset leave it paused there.
+ * go to that moment of the experiment (from the fork to LAB_DATE_SPAN_S after it), a date ending on
+ * the day asked whatever its time of day and the step (src/sim/goto); seek, replay and reset leave it
+ * paused there.
  *
  * Masses: the engine works in GM. Kilograms for the interface use one constant, the Earth's GM (DE440)
  * over its mass (JPL's physical parameters), so every body is converted by the same G.
@@ -116,8 +118,12 @@ export interface Lab {
   readonly paused: boolean;
   /** Back at the experiment's start, going backwards (stopped there), or null. */
   readonly edge: 'start' | null;
-  /** A time machine command (already checked: src/explore/time validTimeCommand) on the experiment's clock. */
-  time(command: UniverseTimeCommand): void;
+  /**
+   * A time machine command (already checked: src/explore/time validTimeCommand) on the experiment's clock.
+   * `tdbMinusUtcDays`: TDB minus UTC as the explorer draws the clock's date (days), so a date is the moment
+   * and the day as shown; without it, UTC is turned into TDB with the leap seconds of the date asked.
+   */
+  time(command: UniverseTimeCommand, tdbMinusUtcDays?: number): void;
   /** A command; its answer once the run has it (an edit applied, with the bodies it made, or refused with the reason). */
   command(c: LabCommand): Promise<LabEditResult>;
   view(): UniverseLab | null;
@@ -689,12 +695,16 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     slow = null;
     shownRate = rate;
   };
-  /** Goes to simulated time `t` (s since the epoch), kept from the fork to LAB_DATE_SPAN_S after it. */
-  const goTo = (t: number): void => {
+  /**
+   * Goes to simulated time `t` (s since the epoch), kept from the fork to LAB_DATE_SPAN_S after it: to the
+   * first whole step at or past it, never out of `within` (a date's day: src/sim/goto) when that holds it.
+   */
+  const goTo = (t: number, within: Within | null = null): void => {
     control += 1;
     seekingS = Math.min(LAB_DATE_SPAN_S, Math.max(0, t));
     edge = null;
-    send({ type: 'goto', generation, control, t: seekingS });
+    const kept = within !== null && within[0] <= seekingS && seekingS < within[1];
+    send({ type: 'goto', generation, control, t: seekingS, ...(kept ? { within } : {}) });
   };
 
   const load = (scenario: Scenario): void => {
@@ -2862,7 +2872,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     get edge() {
       return edge;
     },
-    time(command) {
+    time(command, tdbMinusUtcDays) {
       // The explorer's reducer (./time): at the start going backwards, play, faster and slower turn round. A goto
       // under way counts as running: Pause stops it where it is, a rate or Reverse runs on from there (a new date
       // keeps the pause as it was set).
@@ -2871,21 +2881,18 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         // Now and a date: that moment of the experiment (its clock is TDB), from the fork on. Now runs on at real
         // time; a date before the fork stops there (the experiment has no history before it), as at the explorer's ends.
         const epoch = seedScenario?.epochJdTdb ?? 0;
-        let utc = command.kind === 'now' ? Date.now() / 86_400_000 + 2_440_587.5 : command.jdUtc;
-        // A date lands on that day (UTC, as the field shows it). The worker stops on the last whole step at or
-        // before the moment asked, up to a step earlier: one asked for within a step (and a half, for a step that
-        // grows) of the day's start is aimed that far into the day, so it never lands on the day before.
-        const reach = (1.5 * (snap?.dt ?? 0)) / 86_400;
-        if (command.kind === 'date' && reach > 0 && reach < 1) {
-          const dayStart = Math.floor(utc - 0.5) + 0.5;
-          utc = Math.max(utc, dayStart + reach);
-        }
-        const t = (utcToTdb(utc, physical.time) - epoch) * 86_400;
+        const utc = command.kind === 'now' ? Date.now() / 86_400_000 + 2_440_587.5 : command.jdUtc;
+        // In the TDB of the clock as drawn (the explorer's date), else with the leap seconds of the moment asked.
+        const tdbOf = (jdUtc: number): number => (tdbMinusUtcDays !== undefined && Number.isFinite(tdbMinusUtcDays) ? jdUtc + tdbMinusUtcDays : utcToTdb(jdUtc, physical.time));
+        const t = (tdbOf(utc) - epoch) * 86_400;
         rate = next.rate;
         paused = next.paused || t < 0;
         ownRate();
         sendRun();
-        goTo(t);
+        // A date lands on that day (UTC, as the field shows it), whatever its time of day and the step: the run
+        // ends on the first whole step at or past the moment, or on the day's last step when that one is the
+        // next day's (src/sim/goto).
+        goTo(t, command.kind === 'date' ? dayWithin(utc, epoch, tdbOf) : null);
         if (t < 0) edge = 'start';
         return;
       }

@@ -290,7 +290,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - The 20 recorded version-1 scenarios replay to their stored hashes.
 
 ### W1.4 Time that runs both ways, a reset that holds, and the fork date kept (time diagnosis items 1, 10, 11 and 12; Phys-F5; Exp-F2)
-**Status:** built in batch 1 (`src/sim/rewind.ts`). Batch 2: a goto now lands at the first whole step at or past its moment (with 14-hour steps the last one short of it was another date).
+**Status:** built in batch 1 (`src/sim/rewind.ts`). Batch 2: a goto now lands at the first whole step at or past its moment (with 14-hour steps the last one short of it was another date), and a date's goto is kept to its day (`src/sim/goto.ts`: late in the day, the first step past the moment can be the next day's; batch 1 had aimed early moments later into the day for the old stop short of the moment, and with the two together a date asked for on 2010-06-15 landed on the 16th).
 
 
 **Handler.** The laboratory branch of `time()` moves out of `explore/index.ts` into `lab.time(command)`, which returns availability: `{faster, slower, reverse, play, now, date}` with reasons. Disabled buttons get `aria-disabled` plus a visible style.
