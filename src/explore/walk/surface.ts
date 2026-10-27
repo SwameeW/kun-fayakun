@@ -3,9 +3,12 @@
  * tens of metres apart on the Earth and kilometres apart on the Moon and Mars. None of it is measured
  * ground, and the suit's readout says so.
  *
- * - **Grain**, everywhere: octaves of gradient noise (MaterialX's Perlin, smooth to any magnification),
- *   each turned by the golden angle against the one before so no direction lines up, in brightness and
- *   in relief.
+ * - **Grain**, everywhere: octaves of gradient noise (MaterialX's Perlin, smooth to any magnification)
+ *   from 6 cm (soil's grit) to 51 m, each turned by the golden angle against the one before so no
+ *   direction lines up, in brightness and in relief.
+ * - **The Earth's ground** (earthGround), by its slope and the imagery's own colour: rock on the steep,
+ *   paler, banded by height as cliffs of layered rock are; plants in tufts where the imagery is green;
+ *   soil and gravel on the rest.
  * - **Craters** on the Moon and Mars: one at most to a cell, in octaves of cells four times larger each
  *   time, so there are sixteen times fewer craters four times wider (the -2 power law of an old surface
  *   battered to equilibrium: Gault 1970). Each is a parabolic bowl a third of its radius deep inside a
@@ -22,7 +25,7 @@
  * alone.
  */
 
-import { abs, dot, float, floor, Fn, fract, If, length, max, min, mx_noise_float, pow, select, smoothstep, sqrt, vec2, vec3, vec4 } from 'three/tsl';
+import { abs, dot, float, floor, Fn, fract, If, length, max, min, mix, mx_noise_float, pow, select, smoothstep, sqrt, vec2, vec3, vec4 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 
 type FloatNode = Node<'float'>;
@@ -32,26 +35,29 @@ type Vec3Node = Node<'vec3'>;
 export interface SurfaceStyle {
   /** Craters: the octaves' cell sizes (m), the chance a cell holds one, and how much brighter a fresh one is (0: no brighter). */
   craters: { cellsM: readonly number[]; chance: number; freshBright: number } | null;
-  /** Stones: the octaves' cell sizes (m), the chance a cell holds one, their brightness against the ground, and their height (their radii). */
-  rocks: { cellsM: readonly number[]; chance: number; brightness: number; height: number } | null;
+  /** Stones: the octaves' cell sizes (m), the chance a cell holds one, their brightness against the ground (and how far it varies, stone to stone), and their height (their radii). */
+  rocks: { cellsM: readonly number[]; chance: number; brightness: number; spread: number; height: number } | null;
 }
 
-/** The Earth's ground: grain alone (its rocks and plants are not drawn). */
-export const EARTH_SURFACE: SurfaceStyle = { craters: null, rocks: null };
+/** The Earth's ground: grain, and gravel and stones (fewer among plants: ./ground earthGround), from a few centimetres to 40 cm across. */
+export const EARTH_SURFACE: SurfaceStyle = { craters: null, rocks: { cellsM: [0.1, 0.4, 1.2], chance: 0.28, brightness: 1.04, spread: 0.6, height: 0.45 } };
 /** The Moon's: craters from half a metre to about 160 m across, about half the cells holding one, fresh ones a third brighter; a scattering of grey stones. */
-export const MOON_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.35 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, height: 0.7 } };
+export const MOON_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.35 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, spread: 0.3, height: 0.7 } };
 /** Mercury's: battered as the Moon is, its fresh craters a little less bright against its darker ground. */
-export const MERCURY_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.3 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, height: 0.7 } };
+export const MERCURY_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.3 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, spread: 0.3, height: 0.7 } };
 /** Mars's: fewer craters, none under about 10 m across (its air and dust wear the small ones away, and fill them), and stones on its dust. */
-export const MARS_SURFACE: SurfaceStyle = { craters: { cellsM: [96, 384], chance: 0.3, freshBright: 0 }, rocks: { cellsM: [0.8, 3.2], chance: 0.4, brightness: 0.85, height: 0.7 } };
+export const MARS_SURFACE: SurfaceStyle = { craters: { cellsM: [96, 384], chance: 0.3, freshBright: 0 }, rocks: { cellsM: [0.8, 3.2], chance: 0.4, brightness: 0.85, spread: 0.3, height: 0.7 } };
 /**
  * Venus's: no small craters at all (its thick air breaks up anything that would make one smaller than
  * a few kilometres), and flat slabs of rock, as the Venera landers' pictures show.
  */
-export const VENUS_SURFACE: SurfaceStyle = { craters: null, rocks: { cellsM: [0.6, 2.4], chance: 0.45, brightness: 0.85, height: 0.25 } };
+export const VENUS_SURFACE: SurfaceStyle = { craters: null, rocks: { cellsM: [0.6, 2.4], chance: 0.45, brightness: 0.85, spread: 0.2, height: 0.25 } };
 
-/** The grain's octaves: their sizes (m), weights in brightness, and relief (metres of height per metre of octave). */
-export const GRAIN = { tilesM: [0.8, 3.2, 12.8, 51.2], weights: [0.45, 0.6, 0.75, 0.7], relief: 0.03 } as const;
+/**
+ * The grain's octaves: their sizes (m), weights in brightness, and relief (metres of height per metre of
+ * octave); each kept while it spans at least `keepPx` pixels, gone by half that.
+ */
+export const GRAIN = { tilesM: [0.06, 0.24, 0.8, 3.2, 12.8, 51.2], weights: [0.3, 0.38, 0.42, 0.55, 0.7, 0.65], relief: 0.04, keepPx: 12 } as const;
 /** The golden angle (radians): each octave turned by it against the one before. */
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 /** A crater's shape, in its radii: the rim's height, the floor's depth below the surroundings, the ejecta's reach, and how far the crest is rounded. */
@@ -96,7 +102,7 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
     const rise = sun.z.div(max(level, 1e-4));
     const up = sun.z.greaterThan(0.002);
     GRAIN.tilesM.forEach((tileM, i) => {
-      const kept = float(1).sub(smoothstep(0.22, 0.55, span.mul(16 / tileM)));
+      const kept = float(1).sub(smoothstep(0.5, 1, span.mul(GRAIN.keepPx / tileM)));
       If(kept.greaterThan(0), () => {
         const c = Math.cos(GOLDEN_ANGLE * i);
         const s = Math.sin(GOLDEN_ANGLE * i);
@@ -143,8 +149,11 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
             const along = dot(x, toward);
             const toRim = along.negate().add(sqrt(max(along.mul(along).sub(d.mul(d)).add(1), 0)));
             const below = float(CRATER.rim).sub(inside).mul(wear);
-            const dark = smoothstep(-0.015, 0.015, below.sub(rise.mul(toRim)));
-            sunlit.mulAssign(float(1).sub(dark.mul(weight)));
+            const dark = smoothstep(-0.03, 0.03, below.sub(rise.mul(toRim)));
+            // The floor's shadow, lit a little by the sunlit wall across it (illustrative), and only where
+            // the crater spans enough pixels to show its rim (seen along the ground, a sliver of shadow
+            // with no rim to cast it reads as an ink stroke).
+            sunlit.mulAssign(float(1).sub(dark.mul(weight).mul(fade(cellM / 3, span)).mul(0.88)));
           });
         });
       });
@@ -169,7 +178,9 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
           const weight = own.there.mul(kept);
           relief.addAssign(dome.mul(rocks.height).mul(own.r).mul(cellM).mul(weight));
           const on = float(1).sub(smoothstep(0.85, 1, d)).mul(weight);
-          shade.mulAssign(float(1).add(on.mul(rocks.brightness - 1)));
+          // Each stone its own shade about the style's (paler and darker ones among the rest), by a third either way.
+          const tone = hash22(home.add(vec2(37.7, 19.3 * (k + 1)))).x.sub(0.5).mul(rocks.spread);
+          shade.mulAssign(float(1).add(on.mul(tone.add(rocks.brightness - 1))));
           // Shadows: a stone's, swept away from the Sun as far as its height throws it (narrowing to its
           // tip), at most a cell: from this cell or the three beside it toward the Sun.
           If(up, () => {
@@ -197,6 +208,34 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
     return vec4(grain, shade, relief, sunlit);
   })();
   return { grain: out.x, shade: out.y, relief: out.z, sunlit: out.w };
+}
+
+/**
+ * The Earth's ground up close (illustrative: between the imagery's 10 m pixels and the terrain's 30 m
+ * heights): `base` the imagery's colour, `steep` 0 on the level to 1 on a cliff, `heightM` the ground's
+ * height above sea level, `metres` its place east and north of the walk's anchor, `span` the ground's
+ * metres per pixel. Rock on the steep, a little paler and greyer than the imagery, banded by height
+ * (layers a few metres and a few tens of metres thick, wavering along the cliff, as the Grand Canyon's
+ * walls are); plants in tufts where the imagery is green (an excess of green over red and blue); soil
+ * elsewhere. Returns the colour, and how stony the ground is (no gravel among the plants).
+ */
+export function earthGround(base: Vec3Node, steep: FloatNode, heightM: FloatNode, metres: Vec2Node, span: FloatNode): { colour: Vec3Node; stony: FloatNode } {
+  const grey = dot(base, vec3(0.2126, 0.7152, 0.0722));
+  const green = base.y.sub(base.x.add(base.z).mul(0.5)).div(max(grey, 0.02));
+  const plants = smoothstep(0.02, 0.35, green).mul(float(1).sub(steep));
+  // Strata: thin layers seen up close, thick ones from afar, each faded as it nears a pixel.
+  const waver = mx_noise_float(metres.div(220)).mul(9);
+  const thin = mx_noise_float(vec2(heightM.add(waver).div(4.5), 0.37)).mul(float(1).sub(smoothstep(0.6, 2.5, span)));
+  const thick = mx_noise_float(vec2(heightM.add(waver.mul(3)).div(38), 5.1)).mul(float(1).sub(smoothstep(8, 30, span)));
+  const rock = mix(base, vec3(grey, grey, grey), 0.2).mul(thin.mul(0.3).add(thick.mul(0.55)).add(1.1));
+  // Tufts: darker and greener clumps a third of a metre across, only where they span a few pixels.
+  const tuft = smoothstep(-0.05, 0.3, mx_noise_float(metres.div(0.33))).mul(float(1).sub(smoothstep(0.03, 0.12, span)));
+  const leafy = mix(vec3(1, 1, 1), vec3(0.72, 0.86, 0.64), tuft.mul(0.8).add(0.2));
+  // The soil's own patches, warmer and cooler, a couple of metres across.
+  const patch = mx_noise_float(metres.div(1.7)).mul(float(1).sub(smoothstep(0.15, 0.6, span)));
+  const soil = base.mul(mix(vec3(0.93, 0.97, 1.03), vec3(1.07, 1.01, 0.94), patch.mul(0.5).add(0.5)));
+  const colour = mix(mix(soil, soil.mul(leafy), plants), rock, steep);
+  return { colour, stony: float(1).sub(plants) };
 }
 
 /** The Sun's direction in a local frame (its east, north and up: unit vectors in the same frame as `sun`). */

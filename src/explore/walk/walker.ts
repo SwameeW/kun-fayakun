@@ -68,11 +68,11 @@ export function createWalker(lat: number, lon: number, groundM: number, heading 
 const DEG = Math.PI / 180;
 const wrapLon = (lon: number): number => ((((lon + 180) % 360) + 360) % 360) - 180;
 
-/** A drag turns the walker and tips the look. */
+/** A drag (or a locked mouse's move) turns the walker and tips the look, as a first-person camera does: right turns right, up looks up. */
 export function look(s: WalkerState, dxPx: number, dyPx: number): void {
-  // The scene moves with the drag (as in a street-level photo viewer): dragged right, the view turns left.
-  s.heading = (((s.heading - dxPx * WALK.lookPerPx) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  s.pitch = Math.max(-WALK.maxPitch, Math.min(WALK.maxPitch, s.pitch + dyPx * WALK.lookPerPx));
+  if (!Number.isFinite(dxPx) || !Number.isFinite(dyPx)) return;
+  s.heading = (((s.heading + dxPx * WALK.lookPerPx) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  s.pitch = Math.max(-WALK.maxPitch, Math.min(WALK.maxPitch, s.pitch - dyPx * WALK.lookPerPx));
 }
 
 /** One step of `dt` seconds: across the ground (unless refused), then up or down under gravity. */
@@ -148,6 +148,14 @@ export function sunElevationDeg(latDeg: number, lonDeg: number, sun: readonly [n
   const { up } = localFrame(latDeg, lonDeg);
   const l = Math.hypot(sun[0], sun[1], sun[2]) || 1;
   return Math.asin(Math.max(-1, Math.min(1, (up[0] * sun[0] + up[1] * sun[1] + up[2] * sun[2]) / l))) / DEG;
+}
+
+/** The Sun's azimuth (degrees clockwise from north, 0 to 360) at a place, from its direction in the world's frame. */
+export function sunAzimuthDeg(latDeg: number, lonDeg: number, sun: readonly [number, number, number]): number {
+  const { east, north } = localFrame(latDeg, lonDeg);
+  const e = east[0] * sun[0] + east[1] * sun[1] + east[2] * sun[2];
+  const n = north[0] * sun[0] + north[1] * sun[1] + north[2] * sun[2];
+  return ((Math.atan2(e, n) / DEG) % 360 + 360) % 360;
 }
 
 /** Local apparent solar time (hours, 0 to 24) at a longitude, from the longitude where the Sun is overhead. */

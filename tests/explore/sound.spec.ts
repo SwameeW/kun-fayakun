@@ -34,7 +34,8 @@ test('sound only where there is air: none in space, Mars’s wind, the suit’s 
   await walkOn(page, 'mars', 18.4, 77.5);
   await expect.poll(async () => (await view(page))?.walk?.state, LIVE).toBe('walking');
   await expect.poll(async () => (await sound(page))?.playing, LIVE).toBe('wind');
-  // Turned off: nothing plays.
+  // Turned off (in the navigator, which landing folds): nothing plays.
+  await page.getByTestId('universe-nav-toggle').click();
   await page.getByTestId('universe-sound').click();
   await expect(page.getByTestId('universe-sound')).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(async () => (await sound(page))?.playing, LIVE).toBeNull();
@@ -44,7 +45,9 @@ test('sound only where there is air: none in space, Mars’s wind, the suit’s 
   await expect.poll(async () => (await view(page))?.walk?.world, LIVE).toBe('moon');
   await expect.poll(async () => (await view(page))?.walk?.state, LIVE).toBe('walking');
   await expect.poll(async () => (await sound(page))?.playing, LIVE).toBe('suit');
-  // Off, and kept off across a reload.
+  // Off (the navigator folded again by the new landing), and kept off across a reload.
+  await expect(page.getByTestId('universe-nav-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await page.getByTestId('universe-nav-toggle').click();
   await page.getByTestId('universe-sound').click();
   await page.reload();
   await waitForUniverse(page);

@@ -978,8 +978,14 @@ export type WalkableWorld = 'earth' | 'moon' | 'mars' | 'mercury' | 'venus';
 
 /** On foot (src/explore/walk) as the view reports it. */
 export interface UniverseWalk {
-  /** 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking'. */
-  state: 'landing' | 'walking';
+  /**
+   * 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking';
+   * 'unavailable' when no heights for the place have loaded after a while (still asked for, with a
+   * back-off: the walk lands as soon as some arrive).
+   */
+  state: 'landing' | 'walking' | 'unavailable';
+  /** Landed on coarser heights than the walk asks for (the finer ones did not load in time; they still may). */
+  coarse: boolean;
   world: WalkableWorld;
   lat: number;
   lon: number;
@@ -1001,8 +1007,9 @@ export interface UniverseWalk {
   pressureKpa: number | null;
   meanTempC: number | null;
   dayRangeC: { min: number; max: number } | null;
-  /** The Sun's elevation (degrees), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
+  /** The Sun's elevation and azimuth (degrees; azimuth clockwise from north), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
   sunElevationDeg: number;
+  sunAzimuthDeg: number;
   sunSeen: boolean;
   solarTimeH: number;
   /** On the Earth, the qibla's great-circle bearing from where the walker stands (degrees from true north); null elsewhere. */
@@ -1301,8 +1308,10 @@ export type EarthCommand =
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }
-  /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
-  | { kind: 'walkPad'; forward: number; jump: boolean };
+  /** On-screen walking (the pad): Forward or Back held (1, -1, or 0), a step left or right held (-1, 1, or 0), running, Jump held. */
+  | { kind: 'walkPad'; forward: number; right?: number; run?: boolean; jump: boolean }
+  /** Asks again at once for the ground's heights that could not be loaded (a walk waiting on them). */
+  | { kind: 'walkRetry' };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';

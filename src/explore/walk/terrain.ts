@@ -11,6 +11,8 @@
  * (coarse) and sharpens as finer tiles arrive. Pure apart from the loader it is given.
  */
 
+import { decodePng } from './png';
+
 export const TERRAIN = {
   tilePx: 256,
   maxZoom: 15,
@@ -20,6 +22,8 @@ export const TERRAIN = {
   cacheTiles: 192,
   /** Requests in flight at once. */
   concurrent: 8,
+  /** A tile that failed is asked for again (while still wanted) after these waits (seconds), the last one over and over: a host that is down is not hammered, and one that comes back is found. */
+  retryS: [1, 2, 4, 8, 30],
 } as const;
 
 /** Web Mercator's latitude limit (degrees): tiles stop here, and so do walks (./walker). */
@@ -27,10 +31,34 @@ export const MERCATOR_LAT = 85.05112878;
 /** The radius Web Mercator's metres are measured on (WGS 84's equatorial, km). */
 const MERCATOR_RADIUS_KM = 6378.137;
 
-/** Decodes terrarium pixels (RGBA, 4 bytes each) into heights in metres. */
-export function decodeTerrarium(rgba: ArrayLike<number>, out: Float32Array = new Float32Array(Math.floor(rgba.length / 4))): Float32Array {
-  for (let i = 0; i < out.length; i += 1) out[i] = (rgba[i * 4] ?? 0) * 256 + (rgba[i * 4 + 1] ?? 0) + (rgba[i * 4 + 2] ?? 0) / 256 - 32768;
+/** Decodes terrarium pixels (`channels` bytes each, RGB first: 4 for RGBA) into heights in metres. */
+export function decodeTerrarium(rgba: ArrayLike<number>, out: Float32Array = new Float32Array(Math.floor(rgba.length / 4)), channels = 4): Float32Array {
+  for (let i = 0; i < out.length; i += 1) out[i] = (rgba[i * channels] ?? 0) * 256 + (rgba[i * channels + 1] ?? 0) + (rgba[i * channels + 2] ?? 0) / 256 - 32768;
   return out;
+}
+
+/**
+ * Undoes a canvas read-back's tampering (a fingerprinting guard's: Brave's flips the lowest bit of
+ * scattered bytes, and in a terrarium tile's red byte that is exactly 256 m): a pixel standing more
+ * than half that above or below every one of its eight neighbours, which 256 m the other way brings
+ * back among them, gets those 256 m back. Only for tiles decoded through a canvas (./png reads the
+ * file's own bytes, which no guard alters). In place; returns the heights.
+ */
+export function despike(heights: Float32Array, size: number = TERRAIN.tilePx): Float32Array {
+  const STEP = 256;
+  const around: number[] = [];
+  for (let y = 1; y < size - 1; y += 1)
+    for (let x = 1; x < size - 1; x += 1) {
+      const i = y * size + x;
+      const h = heights[i] ?? 0;
+      around.length = 0;
+      for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) around.push(heights[i + dy * size + dx] ?? 0);
+      const low = Math.min(...around);
+      const high = Math.max(...around);
+      const back = h > high + STEP / 2 ? h - STEP : h < low - STEP / 2 ? h + STEP : h;
+      if (back !== h && back >= low - STEP / 4 && back <= high + STEP / 4) heights[i] = back;
+    }
+  return heights;
 }
 
 /** Where a place falls at a zoom: global pixel coordinates (x east, y south; pixel centres at half-integers). */
@@ -64,10 +92,14 @@ export interface Heights {
    * it is missing.
    */
   at(latDeg: number, lonDeg: number, zoom: number): { metres: number; zoom: number } | null;
+  /** As `at`, without asking for anything (for many reads over ground whose tiles were asked for once). */
+  read(latDeg: number, lonDeg: number, zoom: number): { metres: number; zoom: number } | null;
   /** Asks for the tiles covering a place at a zoom (and its parent, so a coarse fallback comes first). */
   want(latDeg: number, lonDeg: number, zoom: number): void;
-  /** Counts: tiles decoded, in flight, failed. */
+  /** Counts: tiles decoded, in flight, failed (waiting to be asked again). */
   stats(): { ready: number; loading: number; failed: number };
+  /** Asks again at once for every tile that failed (each gets its tries afresh). */
+  retry(): void;
   /**
    * How many tiles at this zoom or coarser have come back (loaded or failed) so far, which is all a
    * height read at that zoom can depend on: ground drawn from them is stale once it grows.
@@ -79,10 +111,17 @@ export interface Heights {
 interface Entry {
   state: 'loading' | 'ready' | 'failed';
   heights: Float32Array | null;
+  /** Failures so far, and when (now(), ms) a failed tile may be asked for again. */
+  tries: number;
+  retryAt: number;
 }
 
-/** Heights from a loader whose tiles hold nothing finer past `maxZoom` (asked for finer, it reads that zoom's). */
-export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoom): Heights {
+/**
+ * Heights from a loader whose tiles hold nothing finer past `maxZoom` (asked for finer, it reads that
+ * zoom's). A tile that fails is asked for again while it is still wanted, after TERRAIN.retryS's
+ * growing waits (on the clock `now`, ms); retry() asks again at once.
+ */
+export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoom, now: () => number = () => performance.now()): Heights {
   const tiles = new Map<string, Entry>();
   const queue: Array<[number, number, number]> = [];
   let inFlight = 0;
@@ -97,14 +136,21 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
       const entry = tiles.get(key(z, x, y));
       if (!entry || entry.state !== 'loading') continue;
       inFlight += 1;
+      const failed = (): void => {
+        entry.state = 'failed';
+        entry.retryAt = now() + (TERRAIN.retryS[Math.min(entry.tries, TERRAIN.retryS.length - 1)] ?? 30) * 1000;
+        entry.tries += 1;
+      };
       load(z, x, y)
         .then((heights) => {
-          entry.state = heights ? 'ready' : 'failed';
+          if (!heights) {
+            failed();
+            return;
+          }
+          entry.state = 'ready';
           entry.heights = heights;
         })
-        .catch(() => {
-          entry.state = 'failed';
-        })
+        .catch(failed)
         .finally(() => {
           inFlight -= 1;
           arrivedAt[z] = (arrivedAt[z] ?? 0) + 1;
@@ -123,9 +169,14 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
       // Most recently used last, so the oldest are the first to go.
       tiles.delete(k);
       tiles.set(k, had);
+      // A failed tile still wanted is asked for again once its wait is over.
+      if (had.state !== 'failed' || now() < had.retryAt) return;
+      had.state = 'loading';
+      queue.push([z, xx, y]);
+      pump();
       return;
     }
-    tiles.set(k, { state: 'loading', heights: null });
+    tiles.set(k, { state: 'loading', heights: null, tries: 0, retryAt: 0 });
     // The newest request first: the ground under the walker before the ground behind.
     queue.push([z, xx, y]);
     while (tiles.size > TERRAIN.cacheTiles) {
@@ -137,6 +188,8 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
   };
 
   /** A pixel's height at global pixel (px, py) of a zoom, from whichever loaded tile holds it. */
+  // The tile read last (a ring's neighbouring points nearly always share one): no key built for it.
+  let last: { z: number; tx: number; ty: number; heights: Float32Array } | null = null;
   const pixel = (z: number, px: number, py: number): number | null => {
     const n = 2 ** z;
     const size = n * TERRAIN.tilePx;
@@ -144,9 +197,14 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
     const gy = Math.max(0, Math.min(size - 1, Math.floor(py)));
     const tx = Math.floor(gx / TERRAIN.tilePx);
     const ty = Math.floor(gy / TERRAIN.tilePx);
-    const entry = tiles.get(key(z, tx, ty));
-    if (!entry || entry.state !== 'ready' || !entry.heights) return null;
-    return entry.heights[(gy - ty * TERRAIN.tilePx) * TERRAIN.tilePx + (gx - tx * TERRAIN.tilePx)] ?? null;
+    let heights = last && last.z === z && last.tx === tx && last.ty === ty ? last.heights : null;
+    if (!heights) {
+      const entry = tiles.get(key(z, tx, ty));
+      if (!entry || entry.state !== 'ready' || !entry.heights) return null;
+      heights = entry.heights;
+      last = { z, tx, ty, heights };
+    }
+    return heights[(gy - ty * TERRAIN.tilePx) * TERRAIN.tilePx + (gx - tx * TERRAIN.tilePx)] ?? null;
   };
 
   /** Bilinear between the four pixel centres around a point, at one zoom; null if its own pixel is not loaded. */
@@ -192,8 +250,11 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
 
   return {
     at(latDeg, lonDeg, zoom) {
+      want(latDeg, lonDeg, zoom);
+      return this.read(latDeg, lonDeg, zoom);
+    },
+    read(latDeg, lonDeg, zoom) {
       const z = Math.max(0, Math.min(maxZoom, Math.round(zoom)));
-      want(latDeg, lonDeg, z);
       for (let zz = z; zz >= 0; zz -= 1) {
         const h = sample(zz, latDeg, lonDeg);
         if (h !== null) return { metres: h, zoom: zz };
@@ -212,6 +273,13 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
       }
       return { ready, loading, failed };
     },
+    retry() {
+      for (const e of tiles.values()) {
+        if (e.state !== 'failed') continue;
+        e.tries = 0;
+        e.retryAt = 0;
+      }
+    },
     revision(zoom) {
       let n = 0;
       for (let z = 0; z <= Math.min(maxZoom, Math.round(zoom)); z += 1) n += arrivedAt[z] ?? 0;
@@ -220,21 +288,30 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
     clear() {
       tiles.clear();
       queue.length = 0;
+      last = null;
     },
   };
 }
 
-/** A terrarium-encoded PNG fetched, decoded without colour conversion, read back and decoded to heights (row-major from the top left), or null. */
+/**
+ * A terrarium-encoded PNG fetched and decoded to heights (row-major from the top left), or null: its
+ * own bytes decoded in script (./png), or where that cannot be (no DecompressionStream, a kind of PNG
+ * it does not read) drawn without colour conversion, read back and mended (despike).
+ */
 export async function terrariumImage(url: string): Promise<{ width: number; height: number; heights: Float32Array } | null> {
   const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
   if (!response.ok) return null;
-  const bitmap = await createImageBitmap(await response.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+  const blob = await response.blob();
+  const png = typeof DecompressionStream === 'function' ? await decodePng(new Uint8Array(await blob.arrayBuffer())) : null;
+  if (png && png.channels >= 3) return { width: png.width, height: png.height, heights: decodeTerrarium(png.data, new Float32Array(png.width * png.height), png.channels) };
+  const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) return null;
   context.drawImage(bitmap, 0, 0);
   bitmap.close();
-  return { width: canvas.width, height: canvas.height, heights: decodeTerrarium(context.getImageData(0, 0, canvas.width, canvas.height).data) };
+  const heights = decodeTerrarium(context.getImageData(0, 0, canvas.width, canvas.height).data);
+  return { width: canvas.width, height: canvas.height, heights: canvas.width === canvas.height ? despike(heights, canvas.width) : heights };
 }
 
 /** The browser's loader for the Earth's tiles: each tile's PNG decoded to heights. */

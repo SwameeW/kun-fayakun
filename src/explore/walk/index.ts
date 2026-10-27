@@ -1,13 +1,15 @@
-import type { Node, Object3D } from 'three/webgpu';
+import type { Node, Object3D, WebGPURenderer } from 'three/webgpu';
 import type { UniverseWalk, WalkableWorld } from '../../core/types';
 import { vec3 } from 'three/tsl';
 import { qiblaBearing } from '../islamic/kaaba';
-import { AIRLESS_AIR, createGround, EARTH_AIR, MARS_AIR, VENUS_AIR, type GroundAir } from './ground';
+import { createTransmittanceTable, type AirModel } from '../render/air';
+import { createGround, MARS_HAZE, VENUS_HAZE } from './ground';
 import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFACE, type SurfaceStyle } from './surface';
 import { starlight } from './daylight';
-import { createWalkSky, MARS_SUN_TINT, type SkyKind } from './sky';
+import { clearDayAir, groundIlluminance, luminance, marsSunlight, sunThroughAir, walkExposure, type LightKind } from './light';
+import { createWalkSky, type SkyKind } from './sky';
 import { createHeights, TERRAIN, zoomFor, type TileLoader } from './terrain';
-import { createWalker, look, pressureKpa, solarTimeHours, stepWalker, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkerState } from './walker';
+import { createWalker, look, pressureKpa, solarTimeHours, stepWalker, sunAzimuthDeg, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkerState } from './walker';
 
 /**
  * On foot (its own chunk, loaded the first time a walk starts), on the Earth, the Moon, Mars, Mercury
@@ -21,7 +23,6 @@ import { createWalker, look, pressureKpa, solarTimeHours, stepWalker, sunElevati
  */
 
 type Vec3Node = Node<'vec3'>;
-type FloatNode = Node<'float'>;
 type V3 = { x: number; y: number; z: number };
 
 export interface WalkWorldFigures {
@@ -40,8 +41,14 @@ export interface WalkWorldFigures {
 export interface WalkSetup {
   /** The ground's colour at a direction from the world's centre (its globe's own); none: the world's illustrative colour (Venus's, whose surface no camera has mapped in colour). */
   groundColour?(direction: Vec3Node): Vec3Node;
-  /** Sunlight's colour after the air, for the cosine of the Sun's height (the Earth's globe's model; elsewhere the world's own tint: ./sky). */
-  sunlight?(mu: FloatNode): Vec3Node;
+  /** The Earth's air (../render/air, the globe's model): the walk's sky, sunlight and aerial perspective come from it, on a clear day (./light clearDayAir). */
+  air?: AirModel;
+  /**
+   * The world's colour map's mean luminance and its measured Bond albedo (NASA's fact sheets): the map,
+   * a picture made for the eye, is scaled so its mean is the world's albedo (the Moon is as dark as
+   * worn asphalt, Mars twice as bright), and the eye meters for it (./light walkExposure).
+   */
+  albedo?: { map: number; bond: number };
   /** Decoded terrain tiles (./terrain terrariumLoader for the Earth, ./equirect equirectLoader for the Moon and Mars), and the finest zoom they hold (the Earth's tiles' when not said). */
   terrain: TileLoader;
   maxZoom?: number;
@@ -70,52 +77,78 @@ export interface Walk {
    * the world's own frame), the sunlight's strength (1 at 1 au), the longitude beneath the Sun, and the
    * depth range.
    */
-  place(frame: { centre: V3; basis: readonly number[]; sun: V3; sunWorld: readonly [number, number, number]; light: number; subSolarLon: number; near: number; far: number }): void;
+  place(frame: { centre: V3; basis: readonly number[]; sun: V3; sunWorld: readonly [number, number, number]; light: number; subSolarLon: number; near: number; far: number; exposure: number; renderer: WebGPURenderer }): void;
   view(): UniverseWalk | null;
+  /** The exposure the walker's eye adapts to (./light walkExposure), from the light on level ground where it stands; null until landed. */
+  exposure(): number | null;
+  /**
+   * The Sun's colour as the walker sees it (into `out`): its light through the air on the way (the
+   * Earth's slant path from the eye's height, Mars's dust), as a colour scaled to its brightest channel
+   * and dimmed with its luminance (softly, floored: the disc still the brightest thing in view); white
+   * where there is no air.
+   */
+  sunColour(out: [number, number, number]): void;
   /** The explorer's detail: all of the ground's illustrative detail, or all but its stones (./surface). */
   setDetail(fine: boolean): void;
+  /** Asks again at once for heights that could not be loaded (and waits afresh for them, if not landed). */
+  retry(): void;
   dispose(): void;
 }
 
 /**
- * Each world on foot: its sky (./sky), its air as the ground sees it (./ground), its illustrative
- * ground between the measured heights (./surface), its sunlight's tint where the setup gives none
- * (white: unfiltered, as on an airless world), and whether ground below sea level is walked at sea
- * level (the Earth's: its sea is not drawn; elsewhere the heights are the ground's own).
+ * Each world on foot: its sky (./sky), its light (./light, as the ground and the eye see it), its
+ * illustrative ground between the measured heights (./surface), the haze its distance fades into
+ * (Mars's and Venus's; the Earth's comes from its air), and whether ground below sea level is walked
+ * at sea level (the Earth's: its sea is not drawn; elsewhere the heights are the ground's own).
  */
-const LOOKS: Record<WalkableWorld, { sky: SkyKind; air: GroundAir; surface: SurfaceStyle; sunTint: readonly [number, number, number]; seaLevel: boolean; ground?: readonly [number, number, number] }> = {
-  earth: { sky: 'earth', air: EARTH_AIR, surface: EARTH_SURFACE, sunTint: [1, 1, 1], seaLevel: true },
-  moon: { sky: 'airless', air: AIRLESS_AIR, surface: MOON_SURFACE, sunTint: [1, 1, 1], seaLevel: false },
-  mars: { sky: 'mars', air: MARS_AIR, surface: MARS_SURFACE, sunTint: MARS_SUN_TINT, seaLevel: false },
-  mercury: { sky: 'airless', air: AIRLESS_AIR, surface: MERCURY_SURFACE, sunTint: [1, 1, 1], seaLevel: false },
+const LOOKS: Record<WalkableWorld, { sky: SkyKind; light: LightKind; surface: SurfaceStyle; haze?: { colour: readonly [number, number, number]; km: number }; seaLevel: boolean; ground?: readonly [number, number, number] }> = {
+  earth: { sky: 'earth', light: 'earth', surface: EARTH_SURFACE, seaLevel: true },
+  moon: { sky: 'airless', light: 'airless', surface: MOON_SURFACE, seaLevel: false },
+  mars: { sky: 'mars', light: 'mars', surface: MARS_SURFACE, haze: MARS_HAZE, seaLevel: false },
+  mercury: { sky: 'airless', light: 'airless', surface: MERCURY_SURFACE, seaLevel: false },
   // Venus: no sunlight reaches the ground as a beam (all of it is the overcast's), and its ground is dark basalt (illustrative).
-  venus: { sky: 'venus', air: VENUS_AIR, surface: VENUS_SURFACE, sunTint: [0, 0, 0], seaLevel: false, ground: [0.1, 0.09, 0.08] },
+  venus: { sky: 'venus', light: 'venus', surface: VENUS_SURFACE, haze: VENUS_HAZE, seaLevel: false, ground: [0.1, 0.09, 0.08] },
 };
+/** The Sun's disc dims with its light's luminance to this power, never below this share (illustrative: still the brightest thing in view). */
+const SUN_DIM = { power: 0.35, floor: 0.05 } as const;
 
 /** On an airless world by day, how much of the stars' light shows past the sunlit ground's glare (illustrative). */
 const AIRLESS_DAY_STARS = 0.35;
 /** The zoom the walker's own footing is read at, and the coarsest that counts as having landed. */
 const FOOT_ZOOM_M = 5;
 const LANDED_ZOOM = 9;
+/**
+ * Landing waits this long (seconds) for heights that fine, then lands on whatever coarser ones have
+ * come (asked for from the start at `fallbackZoom`), saying so; with none at all after `unavailableS`
+ * it says the heights could not be loaded (they are still asked for: it lands as soon as some come).
+ */
+const LANDING = { coarseS: 8, unavailableS: 15, fallbackZoom: 6 } as const;
 
 export function createWalk(setup: WalkSetup): Walk {
   const maxZoom = setup.maxZoom ?? TERRAIN.maxZoom;
   const heights = createHeights(setup.terrain, maxZoom);
   const looks = LOOKS[setup.world.name];
   const seaLevel = looks.seaLevel;
-  const ground = createGround(
-    (d) => (setup.groundColour ? setup.groundColour(d) : vec3(...(looks.ground ?? [0.2, 0.2, 0.2]))),
-    (mu) => (setup.sunlight ? setup.sunlight(mu) : vec3(...looks.sunTint)),
-    { air: looks.air, seaLevel, surface: looks.surface },
-  );
+  // The Earth's air on a clear day, with its own transmittance table (baked on the first frame placed).
+  const air = setup.air ? clearDayAir(setup.air) : null;
+  const table = air ? createTransmittanceTable(air) : null;
+  const airTable = air && table ? { model: air, table: table.texture } : null;
+  const calibrate = setup.albedo && setup.albedo.map > 0 ? setup.albedo.bond / setup.albedo.map : 1;
+  const ground = createGround((d) => (setup.groundColour ? setup.groundColour(d).mul(calibrate) : vec3(...(looks.ground ?? [0.2, 0.2, 0.2]))), { light: { kind: looks.light, air: airTable, haze: looks.haze ?? null }, seaLevel, surface: looks.surface });
   const skyKind = looks.sky;
-  const sky = createWalkSky(skyKind);
+  const sky = createWalkSky(skyKind, airTable);
   const world = setup.world;
   // Landed once the ground under the feet is this fine (or as fine as the world's heights go).
   const landedZoom = Math.min(LANDED_ZOOM, maxZoom);
   let walker: WalkerState | null = null;
   let landed = false;
-  let lastSun = { elevation: 0, solar: 12 };
+  /** Seconds waited for the ground so far, and whether the walk landed on coarser heights than it asks for. */
+  let waited = 0;
+  let coarse = false;
+  let lastSun = { elevation: 0, azimuth: 0, solar: 12 };
+  /** The exposure the eye adapts to, and the Sun's colour, from the last frame placed. */
+  let metered: number | null = null;
+  const sunTint: [number, number, number] = [1, 1, 1];
 
   const footing = (lat: number, lon: number): { metres: number; zoom: number } | null => heights.at(lat, lon, zoomFor(FOOT_ZOOM_M, lat, world.radiusKm));
   const walkWorld = {
@@ -140,12 +173,15 @@ export function createWalk(setup: WalkSetup): Walk {
       walker = createWalker(lat, lon, 0, heading);
       walker.pitch = Math.max(-WALK.maxPitch, Math.min(WALK.maxPitch, pitch));
       landed = false;
+      waited = 0;
+      coarse = false;
       ground.reset(walker.lat, walker.lon);
       return 'started';
     },
     stop() {
       walker = null;
       landed = false;
+      metered = null;
       ground.object.visible = false;
       sky.mesh.visible = false;
     },
@@ -166,14 +202,20 @@ export function createWalk(setup: WalkSetup): Walk {
     step(dt, input) {
       const s = walker;
       if (!s) return null;
-      // Landing waits for the ground under the feet (coarse is enough; it sharpens as finer tiles come).
+      // Landing waits for the ground under the feet (coarse is enough; it sharpens as finer tiles come),
+      // or after a while for any that has come.
       const under = footing(s.lat, s.lon);
       if (!landed) {
-        if (!under || under.zoom < landedZoom) return null;
+        waited += Math.min(Math.max(dt, 0), 0.25);
+        heights.want(s.lat, s.lon, Math.min(LANDING.fallbackZoom, maxZoom));
+        const fine = under !== null && under.zoom >= landedZoom;
+        if (!under || (!fine && waited < LANDING.coarseS)) return null;
         landed = true;
+        coarse = !fine;
         s.groundM = seaLevel ? Math.max(0, under.metres) : under.metres;
         s.feetM = s.groundM;
       }
+      if (coarse && under && under.zoom >= landedZoom) coarse = false;
       // At most a fifth of a second a frame: a stalled frame does not fling the walker.
       stepWalker(s, input, Math.min(dt, 0.2), walkWorld);
       return walkerPose(s, world.radiusKm);
@@ -184,14 +226,23 @@ export function createWalk(setup: WalkSetup): Walk {
       ground.object.visible = show;
       sky.mesh.visible = show;
       if (!s || !show) return;
+      if (table && !table.baked) table.bake(frame.renderer);
       ground.update(s, heights, { centre: frame.centre, basis: frame.basis, radiusKm: world.radiusKm, sun: frame.sun, light: frame.light, near: frame.near, far: frame.far });
       // The local vertical in the render frame, for the sky.
       const p = walkerPose(s, world.radiusKm).position;
       const m = frame.basis;
       const l = Math.hypot(p[0], p[1], p[2]) || 1;
       const up = { x: (p[0] * (m[0] ?? 1) + p[1] * (m[3] ?? 0) + p[2] * (m[6] ?? 0)) / l, y: (p[0] * (m[1] ?? 0) + p[1] * (m[4] ?? 1) + p[2] * (m[7] ?? 0)) / l, z: (p[0] * (m[2] ?? 0) + p[1] * (m[5] ?? 0) + p[2] * (m[8] ?? 1)) / l };
-      sky.update(up, frame.sun, frame.far * 0.9, frame.light);
-      lastSun = { elevation: sunElevationDeg(s.lat, s.lon, frame.sunWorld), solar: solarTimeHours(s.lon, frame.subSolarLon) };
+      const eyeRadii = l / world.radiusKm;
+      sky.update({ up, sun: frame.sun, radiusKm: frame.far * 0.9, light: frame.light, exposure: frame.exposure, eyeRadii });
+      lastSun = { elevation: sunElevationDeg(s.lat, s.lon, frame.sunWorld), azimuth: sunAzimuthDeg(s.lat, s.lon, frame.sunWorld), solar: solarTimeHours(s.lon, frame.subSolarLon) };
+      // What the eye adapts to, and the Sun's colour through the air on the way.
+      metered = walkExposure(groundIlluminance(looks.light, lastSun.elevation, frame.light, air, eyeRadii - 1), setup.albedo?.bond ?? null);
+      const sin = Math.sin((lastSun.elevation * Math.PI) / 180);
+      const through: [number, number, number] = looks.light === 'earth' && air ? sunThroughAir(air, eyeRadii - 1, sin, 32) : looks.light === 'mars' ? marsSunlight(sin) : [1, 1, 1];
+      const peak = Math.max(...through, 1e-6);
+      const dim = Math.max(luminance(through), SUN_DIM.floor) ** SUN_DIM.power;
+      for (let k = 0; k < 3; k += 1) sunTint[k] = ((through[k] ?? 0) / peak) * dim;
     },
     view() {
       const s = walker;
@@ -199,7 +250,8 @@ export function createWalk(setup: WalkSetup): Walk {
       const t = heights.stats();
       const under = footing(s.lat, s.lon);
       return {
-        state: landed ? 'walking' : 'landing',
+        state: landed ? 'walking' : waited >= LANDING.unavailableS && !under ? 'unavailable' : 'landing',
+        coarse,
         world: world.name,
         lat: s.lat,
         lon: s.lon,
@@ -215,6 +267,7 @@ export function createWalk(setup: WalkSetup): Walk {
         meanTempC: world.meanTempC,
         dayRangeC: world.dayRangeC ?? null,
         sunElevationDeg: lastSun.elevation,
+        sunAzimuthDeg: lastSun.azimuth,
         sunSeen: skyKind !== 'venus',
         solarTimeH: lastSun.solar,
         qiblaDeg: world.name === 'earth' ? qiblaBearing(s.lat, s.lon) : null,
@@ -223,12 +276,25 @@ export function createWalk(setup: WalkSetup): Walk {
         rings: ground.stats.filled,
       };
     },
+    exposure() {
+      return metered;
+    },
+    sunColour(out) {
+      out[0] = sunTint[0];
+      out[1] = sunTint[1];
+      out[2] = sunTint[2];
+    },
     setDetail(fine) {
       ground.setFine(fine);
+    },
+    retry() {
+      heights.retry();
+      if (!landed) waited = 0;
     },
     dispose() {
       ground.dispose();
       sky.dispose();
+      table?.dispose();
       heights.clear();
     },
   };

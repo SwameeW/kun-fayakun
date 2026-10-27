@@ -16,3 +16,8 @@ declare module 'node:crypto' {
   /** A hash of bytes (the REBOUND fixture's input is pinned by its SHA-256). */
   export function createHash(algorithm: 'sha256'): { update(data: Uint8Array | string): { digest(encoding: 'hex'): string } };
 }
+
+declare module 'node:zlib' {
+  /** A zlib stream of bytes (the walk's PNG decoder is checked on files made with it). */
+  export function deflateSync(data: Uint8Array): Uint8Array;
+}
