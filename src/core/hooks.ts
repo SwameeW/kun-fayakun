@@ -57,6 +57,8 @@ export interface KfTestHandle {
      */
     lab?(command: LabCommand): Promise<LabEditResult>;
     labDraw?(): unknown;
+    /** The laboratory's effects switched on or off for an A/B measurement (src/explore/lab-fx FxParts); null before they have loaded. */
+    labEffects?(parts: Partial<Record<'rocks' | 'dust' | 'fire' | 'bands', boolean>>): Record<'rocks' | 'dust' | 'fire' | 'bands', boolean> | null;
   };
 }
 

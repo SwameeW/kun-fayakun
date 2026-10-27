@@ -106,8 +106,8 @@ disruption criterion; and every outcome sums to the total mass.
     there); the colours, the ejecta's hummocky texture and the rays' pattern are illustrative;
   - the floor glows while its melt is hot (about 2,000 K, illustrative), as bright as Planck's law makes
     its surface's temperature while a crust forms over it (εσT⁴ = k(T_m − T) / √(πκt), Turcotte and
-    Schubert 2014; `src/explore/lab-fx/heat.ts`), held to the glow's drawn strength: gone from sight within a
-    minute or two of simulated time, so seen when the clock slows for the impact (docs/LAB.md, "Slow
+    Schubert 2014; `src/explore/lab-fx/heat.ts`), held to the glow's drawn strength: below the visible glow
+    (about 1,100 K) within about three minutes of simulated time (fourteen for melt at 3,000 K), so seen when the clock slows for the impact (docs/LAB.md, "Slow
     down for events"); a giant impact (no crater) leaves the face it struck glowing the same way, its melt
     hotter (its energy per kilogram over rock's heat capacity, 1,500 to 3,000 K), and its bodies glowing;
   - every merger or breakup has a fireball at the contact, its size from the impact's energy (Collins,

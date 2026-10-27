@@ -115,6 +115,9 @@ export interface ContactEvent {
   crater: { diameterKm: number; complex: boolean; depthKm: number; rimKm: number } | null;
   /** Where the projectile touched: a unit vector from the target's centre, in the scenario's frame, at the moment of contact. */
   site: [number, number, number];
+  /** The survivor's radius (km) and GM just after it: what this event made of it, before any of its pieces fall back. */
+  radiusKm: number;
+  gm: number;
 }
 /** The engine's and the interface's earlier name for it. */
 export type MergeEvent = ContactEvent;
@@ -643,7 +646,7 @@ export function tidalDisruptions(s: SimState, events: ContactEvent[], keep: (id:
       }
       s.swarms.push(dust);
     }
-    events.push({ kind: 'disrupt', step: s.step, t: s.t, survivor, absorbed: id, regime: 'tidal', speedKmS: Math.hypot(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0), b: 0, created, unresolved: 0, heat, energy: 0, crater: null, site: [(radial[0] ?? 0), (radial[1] ?? 0), (radial[2] ?? 0)] });
+    events.push({ kind: 'disrupt', step: s.step, t: s.t, survivor, absorbed: id, regime: 'tidal', speedKmS: Math.hypot(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0), b: 0, created, unresolved: 0, heat, energy: 0, crater: null, site: [(radial[0] ?? 0), (radial[1] ?? 0), (radial[2] ?? 0)], radiusKm: s.radius[s.ids.indexOf(survivor)] ?? 0, gm: s.gm[s.ids.indexOf(survivor)] ?? 0 });
     changed = true;
     i = -1;
   }
@@ -726,14 +729,14 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
     const crater = outcome?.regime === 'hit-and-run' ? null : contactCrater({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact);
     if (!outcome || outcome.regime === 'merge') {
       const heat = merge(s, t, p);
-      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat, crater });
+      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat, crater, radiusKm: s.radius[s.ids.indexOf(ids.survivor)] ?? 0, gm: s.gm[s.ids.indexOf(ids.survivor)] ?? 0 });
     } else if (outcome.regime === 'hit-and-run') {
       s.passing.push(pairKey(ids.survivor, ids.absorbed));
-      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0, crater: null });
+      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0, crater: null, radiusKm: s.radius[t] ?? 0, gm: s.gm[t] ?? 0 });
       continue;
     } else {
       const made = fragment(s, t, p, outcome);
-      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat, crater });
+      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat, crater, radiusKm: s.radius[s.ids.indexOf(ids.survivor)] ?? 0, gm: s.gm[s.ids.indexOf(ids.survivor)] ?? 0 });
     }
     changed = true;
     acc = null;

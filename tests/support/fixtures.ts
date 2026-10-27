@@ -41,7 +41,7 @@ export interface KfHook {
     resetFrameStats(): void;
     step(frames?: number, dt?: number): void;
     camera(): { position: [number, number, number]; fov: number };
-    universe: { state(): UniverseView | null; place(pose: UniversePose): void; lab?(command: LabCommand): Promise<LabEditResult>; labDraw?(): unknown };
+    universe: { state(): UniverseView | null; place(pose: UniversePose): void; lab?(command: LabCommand): Promise<LabEditResult>; labDraw?(): unknown; labEffects?(parts: Partial<Record<'rocks' | 'dust' | 'fire' | 'bands', boolean>>): Record<'rocks' | 'dust' | 'fire' | 'bands', boolean> | null };
     /** The film's sound (src/ui/film-sound.ts): what plays now, and an offline render of a chapter's stretch. */
     filmSound?: {
       state(): FilmSoundState | null;

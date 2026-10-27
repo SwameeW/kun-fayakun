@@ -14,7 +14,7 @@ import { FLASH, FlashGuard } from '../../src/explore/lab-fx/flash-guard';
 import { crustK, giantMeltK, MELT } from '../../src/explore/lab-fx/heat';
 import { incandescence, incandescenceTable, INCANDESCENCE, SUNLIT_WHITE_CD_M2, tristimulus } from '../../src/explore/lab-fx/incandescence';
 import { LAB_EFFECTS, effectsFor } from '../../src/explore/lab-fx/ladder';
-import { axesFor, crossover, discPx, effectiveTemperature, irregularity } from '../../src/explore/lab-fx/look';
+import { axesFor, crossover, discPx, effectiveTemperature, irregularity, starLights } from '../../src/explore/lab-fx/look';
 import { SPLAT_SIZE, splatGain, splatProfile } from '../../src/explore/lab-fx/splats';
 
 test('the potato rule: round at 300 km and above, lumpy at 50 km and below; a fragment’s axes 2 : sqrt 2 : 1 with its volume kept', () => {
@@ -138,11 +138,16 @@ test('the flash guard: a 3.5 Hz flicker over 30 per cent of a tile held to two p
   const run = (area: number, low: number, high: number, red = false): { flashes: number; shown: number[] } => {
     const guard = new FlashGuard();
     const shown: number[] = [];
-    // Four seconds at 60 frames a second of a square wave at 3.5 Hz.
+    // Four seconds at 60 frames a second of a square wave at 3.5 Hz (each rise asked at once: the guard lets through a share of it).
+    let was = 0;
     for (let f = 0; f < 240; f += 1) {
       const t = f / 60;
       const want = Math.floor(t * 3.5 * 2) % 2 === 0 ? low : high;
-      shown.push(guard.limit(1, want, area, t, red));
+      guard.begin(t);
+      guard.add(1, Math.min(was, want), want, area, red);
+      const k = guard.kappa(1);
+      was = want > was ? was + (want - was) * k : want;
+      shown.push(was);
     }
     // Opposing changes of 10 per cent or more from the last turn (two make a pair), in every second's window.
     let worst = 0;
@@ -178,14 +183,122 @@ test('the flash guard: a 3.5 Hz flicker over 30 per cent of a tile held to two p
   expect(FlashGuard.tileAt(10, 10, 1024)).not.toBe(FlashGuard.tileAt(400, 10, 1024));
 });
 
+test('the flash guard sees a tile’s effects together: fireballs in one tile, each eased, never step a frame, held back or let go', () => {
+  // Fireballs as the effects plan and settle them (each rise of 0.8 s), two in one tile 0.4 s apart and four
+  // more pairs: enough rises for the guard to hold some back.
+  const f = new Fireballs();
+  const event = (key: string): FireballEvent => ({ key, body: 'moon', site: [1, 0, 0], energyJ: 1e24, speedKmS: 20, impactorKm: 50, targetKm: 1737 });
+  const guard = new FlashGuard();
+  const peak = new Map<string, number>();
+  const shown = new Map<string, number[]>();
+  for (let n = 0; n < 6 * 60; n += 1) {
+    const t = n / 60;
+    for (let k = 0; k < 5; k += 1) {
+      if (n === Math.round(k * 0.9 * 60)) f.add(event(`a${k}`), t);
+      if (n === Math.round((k * 0.9 + 0.4) * 60)) f.add(event(`b${k}`), t);
+    }
+    f.plan(t, 1 / 60, false);
+    guard.begin(t);
+    for (const b of f.live) guard.add(7, b.unit * Math.min(b.strength, b.next), b.unit * b.next, 0.3);
+    const kappa = guard.kappa(7);
+    expect(kappa).toBeGreaterThanOrEqual(0);
+    expect(kappa).toBeLessThanOrEqual(1);
+    for (const b of f.live) {
+      f.settle(b, kappa);
+      shown.set(b.key, [...(shown.get(b.key) ?? []), b.luminance]);
+      peak.set(b.key, Math.max(peak.get(b.key) ?? 0, b.unit));
+    }
+  }
+  // Never more than a thirtieth of its peak a frame (its own eased rise at most; the guard only slows it).
+  for (const [key, values] of shown) {
+    const p = peak.get(key) ?? 1;
+    let before = 0;
+    for (const v of values) {
+      expect(Math.abs(v - before)).toBeLessThanOrEqual(p / 30 + 1e-9);
+      before = v;
+    }
+  }
+  expect(guard.changes(7, 6)).toBeLessThanOrEqual(2 * FLASH.pairsPerS);
+});
+
+test('the flash guard: a tile’s light as two effects ask it at once is held to two pairs a second; a rise held back goes on at its own pace when let go', () => {
+  const guard = new FlashGuard();
+  const shown: number[] = [];
+  // Two effects together, each a 3.5 Hz square wave over 15 per cent of the tile (30 per cent between them).
+  let was = 0;
+  for (let n = 0; n < 240; n += 1) {
+    const t = n / 60;
+    const want = Math.floor(t * 3.5 * 2) % 2 === 0 ? 0.1 : 0.6;
+    guard.begin(t);
+    guard.add(3, Math.min(was, want), want, 0.15);
+    guard.add(3, Math.min(was, want), want, 0.15);
+    const k = guard.kappa(3);
+    was = want > was ? was + (want - was) * k : want;
+    shown.push(was);
+  }
+  // Changes of 10 per cent or more, each way from the last turn, counted in every one-second window.
+  let worst = 0;
+  for (let s = 0; s + 60 <= shown.length; s += 1) {
+    let ref = shown[s] ?? 0;
+    let dir = 0;
+    let changes = 0;
+    for (let k = s + 1; k < s + 60; k += 1) {
+      const v = shown[k] ?? 0;
+      if (dir > 0 && v > ref) ref = v;
+      else if (dir < 0 && v < ref) ref = v;
+      else if (dir >= 0 && ref - v >= FLASH.change) {
+        changes += 1;
+        dir = -1;
+        ref = v;
+      } else if (dir <= 0 && v - ref >= FLASH.change) {
+        changes += 1;
+        dir = 1;
+        ref = v;
+      }
+    }
+    worst = Math.max(worst, Math.floor(changes / 2));
+  }
+  expect(worst).toBeLessThanOrEqual(FLASH.pairsPerS);
+  // An eased rise held back, then let go: it never steps (no more than its own pace a frame).
+  const g = new FlashGuard();
+  let level = 0;
+  let steepest = 0;
+  for (let n = 0; n < 180; n += 1) {
+    const t = n / 60;
+    // Four quick changes (two pairs) asked at once, then a slow rise (a thirtieth a frame) the guard holds back until the second has passed.
+    const want = t < 0.3 ? (Math.floor(t * 13.4) % 2 === 0 ? 0.1 : 0.5) : Math.min(0.9, level + 0.9 / 30);
+    g.begin(t);
+    g.add(1, Math.min(level, want), want, 0.5);
+    const k = g.kappa(1);
+    const next = want > level ? level + (want - level) * k : want;
+    if (t > 0.35) steepest = Math.max(steepest, Math.abs(next - level));
+    level = next;
+  }
+  expect(steepest).toBeLessThanOrEqual(0.9 / 30 + 1e-9);
+  expect(level).toBeCloseTo(0.9, 6);
+});
+
 test('fireballs: two impacts 0.2 s apart make one (the larger kept); never more than three rise in a second; a rise never more than a thirtieth of the peak a frame, never above the ceiling', () => {
   const event = (key: string, energyJ: number): FireballEvent => ({ key, body: 'earth', site: [1, 0, 0], energyJ, speedKmS: 20, impactorKm: 1, targetKm: 6371 });
   const f = new Fireballs();
   f.add(event('a', 1e20), 0);
+  f.update(0.2, 0.2, false);
+  const before = f.live[0]?.radiusKm ?? 0;
   f.add(event('b', 5e20), 0.2);
   expect(f.live.length).toBe(1);
   expect(f.live[0]?.energyJ).toBe(5e20);
-  expect(f.live[0]?.radiusKm).toBeCloseTo(fireballRadiusKm(5e20, 1, 6371), 9);
+  // The larger's size, eased to: never more than a thirtieth of the change a frame, there within a few seconds.
+  const grown = fireballRadiusKm(5e20, 1, 6371);
+  expect(f.live[0]?.toRadiusKm).toBeCloseTo(grown, 9);
+  expect(f.live[0]?.radiusKm).toBe(before);
+  let r = before;
+  for (let k = 1; k <= 180; k += 1) {
+    f.update(0.2 + k / 60, 1 / 60, false);
+    const now = f.live[0]?.radiusKm ?? 0;
+    expect(now - r).toBeLessThanOrEqual((grown - before) / 30 + 1e-9);
+    r = now;
+  }
+  expect(Math.abs(r - grown)).toBeLessThan(0.01 * (grown - before));
   // Ten in two seconds: at most three a second rise.
   const g = new Fireballs();
   for (let k = 0; k < 10; k += 1) g.add(event(`k${k}`, 1e20), k * 0.2);
@@ -207,6 +320,28 @@ test('fireballs: two impacts 0.2 s apart make one (the larger kept); never more 
   expect(fireballRadiusKm(1e21, 0.5, 6371)).toBeCloseTo((0.002 * Math.cbrt(1e21)) / 1000, 9);
   expect(fireballRadiusKm(1e40, 0.5, 6371)).toBe(6371 / 2);
   expect(fireballRadiusKm(1, 0.5, 6371)).toBe(0.5);
+});
+
+test('a rock lit by up to four stars, the strongest first, each nought in the shadow of a body between', () => {
+  const AU = 1.495978707e8;
+  // Five stars about a rock at the origin, of different light; a planet between the rock and the brightest.
+  const lights = [
+    { id: 'a', pos: [AU, 0, 0], watts: 3.828e26 },
+    { id: 'b', pos: [0, 2 * AU, 0], watts: 3.828e26 },
+    { id: 'c', pos: [0, 0, 3 * AU], watts: 3.828e26 },
+    { id: 'd', pos: [-4 * AU, 0, 0], watts: 3.828e26 },
+    { id: 'e', pos: [0, -5 * AU, 0], watts: 3.828e26 },
+  ];
+  const out = [0, 1, 2, 3].map(() => [0, 0, 0, 0]);
+  starLights(lights, [], [0, 0, 0], 'rock', 1, out);
+  // The Sun's light at 1 au is 1; the rest by the inverse square, the strongest four in order.
+  expect(out.map((o) => o[3])).toEqual([1, 1 / 4, 1 / 9, 1 / 16].map((x) => expect.closeTo(x, 9) as unknown as number));
+  // Directions in the render frame (x, z, -y): toward a, then b.
+  expect(out[0]?.slice(0, 3)).toEqual([1, 0, -0].map((x) => expect.closeTo(x, 12) as unknown as number));
+  expect(out[1]?.slice(0, 3)).toEqual([0, 0, -1].map((x) => expect.closeTo(x, 12) as unknown as number));
+  // A planet between the rock and a: that light is nought (an eclipse); the next four take its places.
+  starLights(lights, [{ id: 'planet', pos: [AU / 2, 0, 0], radiusKm: 6371 }], [0, 0, 0], 'rock', 1, out);
+  expect(out.map((o) => o[3])).toEqual([1 / 4, 1 / 9, 1 / 16, 1 / 25].map((x) => expect.closeTo(x, 9) as unknown as number));
 });
 
 test('the effects ladder: fewer and coarser at lower tiers, an unknown tier taken as Medium', () => {

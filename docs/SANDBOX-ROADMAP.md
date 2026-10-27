@@ -199,7 +199,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
 **Data and licences:** none new. Only existing constants and the fact-sheet albedos already in `data/constants.json`.
 
 ### W1.0 Effects ladder and performance harness (Vis-F3)
-**Status (2026-10-27): built in part.** `src/explore/lab-fx/ladder.ts` (keyed by the explorer's detail tier, read from `data-detail`; an unknown tier is Medium), the `__kf.universe.labDraw()` hook, the `lab-fx` rows in `scripts/check-bundle.ts`, and `tests/explore/lab-perf.spec.ts` (`@perf`: 4,000 particles and a Mars breaking up on the Earth at High and Low, and GPU counts level over three round trips; measured: 59.9 fps, p99 16.8 ms at High at 1440 x 900, DPR 2, and the same at Low). Not built: trails on Float64 ring buffers, the A/B effect toggles and the heap check after a forced GC.
+**Status (2026-10-27): built in part.** `src/explore/lab-fx/ladder.ts` (keyed by the explorer's detail tier, read from `data-detail`; an unknown tier is Medium), the `__kf.universe.labDraw()` hook, the `lab-fx` rows in `scripts/check-bundle.ts`, and `tests/explore/lab-perf.spec.ts` (`@perf`: 4,000 particles and a Mars breaking up on the Earth at High and Low, and GPU counts level over three round trips; measured: 59.9 fps, p99 16.8 ms at High at 1440 x 900, DPR 2, and the same at Low). Review pass (2026-10-27): trails on Float64 ring buffers (sampled and drawn without allocating; `TrailRing` in `src/explore/lab.ts`), the A/B effect switches (`__kf.universe.labEffects`: rocks, dust, fireballs, bands, their work skipped when off) and the heap after a forced collection level over three round trips (CDP `HeapProfiler.collectGarbage`), both in `lab-perf.spec.ts`.
 
 - **Change.**
   - Add `src/explore/lab-fx/ladder.ts`, keyed by the explorer's `ExploreTier`. The explorer's governor still decides the tier. An unknown GPU (Brave Shields can hide it) maps to Medium.
@@ -339,7 +339,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - `torn`, `source` and `kind` survive into the snapshot.
 
 ### W1.6 Bodies drawn as what they are: lit rocks, and lab stars that shine (Vis-F5, Exp-F8, the minimum of Vis-F19; visual diagnosis item 1)
-**Status (2026-10-27): built** (`src/explore/lab-fx/rocks.ts`; stars in the same meshes, with a glare). Two lights a body, not four. Tests: `tests/unit/lab-look.spec.ts`, `tests/explore/lab-effects.spec.ts` (at 1440 x 900; the other two window sizes are covered for the names only).
+**Status (2026-10-27): built** (`src/explore/lab-fx/rocks.ts`; stars in the same meshes, with a glare). Four lights a body (review pass: up to the four brightest stars, each eclipsed by the eight largest bodies). Tests: `tests/unit/lab-look.spec.ts`, `tests/explore/lab-effects.spec.ts` (review pass: the pieces' meshes and projected size at 2000 x 1300, 1440 x 900 and 1280 x 800; the two-body star's disc within 2 per cent of its radius and distance by the camera's own field of view; its planet's light from the star's side on screen).
 
 
 **Rocks.** New `src/explore/lab-fx/rocks.ts`:
@@ -373,7 +373,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - the star's disc has the right angular size within 2%.
 
 ### W1.7 Built-in worlds take the experiment's radius and leave by shrinking (Vis-F6, Vis-F4a; visual diagnosis items 5 and 6)
-**Status (2026-10-27): built** (`Lab.scale`, multiplied into the explorer's `grow` after `warpSystem`, and the navigation's body radius). Test: a Moon radius edit eased (at most a thirtieth of the change a frame), within 0.5 per cent, undone.
+**Status (2026-10-27): built** (`Lab.scale`, multiplied into the explorer's `grow` after `warpSystem`, and the navigation's body radius). Test: a Moon radius edit eased (at most a thirtieth of the change a frame), within 0.5 per cent, undone; review pass: the Earth after a Mars-mass breakup drawn within 0.5 per cent of the experiment's radius (`tests/explore/lab-flash.spec.ts`).
 
 - **Change.**
   - Add `Lab.radiusOf(id)`, eased with a 0.5 s time constant. It is multiplied into the existing `grow` record after `warpSystem()` (`index.ts:~972`), which already feeds the collision sphere (1672), mesh scale (1737), dot (2036) and label anchor (2333). `minAltitudeKm` in `navBodies` (about line 2450) is scaled the same way.
@@ -419,7 +419,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - a ring the visitor adds about Saturn stays icy, and a belt about the Sun is warm grey.
 
 ### W1.9 Pick, follow and frame any lab body (Vis-F13, Exp-F4; time diagnosis item 13; AI audit)
-**Status (2026-10-27): built in part.** A tap or click chooses any of the laboratory's own bodies. Not built: following and framing them with the camera, and the two-body laboratory starting on its planet: `NavBody.id` widened to lab bodies costs 0.8 to 1.2 KB of explorer glue, more than this branch's 1.5 KB share left after W1.7 and the queue (decision D1).
+**Status (2026-10-27): built in part.** A tap or click chooses any of the laboratory's own bodies; off the view, the chosen one has a pointer at the clear view's edge (its name and an arrow); a laboratory of its own opens on its star at once (the explorer's entry glide gave way only after it ended, leaving the view on the hidden Earth); on a coarse pointer the velocity handle is a 44 px target (`tests/explore/mobile.spec.ts`). Not built: following and framing lab bodies with the camera: `NavBody.id` widened to lab bodies costs 0.8 to 1.2 KB of explorer glue (decision D1).
 
 - **Change in `src/explore/navigation.ts`:** `NavBody.id` becomes `BodyId | string`.
 - **Change in `src/explore/index.ts`.**
@@ -439,7 +439,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - The handle's hit area is at least 44 px on the mobile project.
 
 ### W1.10 Labels that never pile up (Vis-F24; visual diagnosis item 2; navigator diagnosis label items)
-**Status (2026-10-27): built** on the layout branch's rank-based give-way (`declutterLab` in the explorer), not as a separate `label-layout.ts`: families of three or more as one name, no name for a body behind a nearer lab body, encounter markers named as encounters, names fading with their bodies. Test: no names meeting at six window sizes after the Roche lesson. Not built: the unit test of a pure layout module (there is none to test).
+**Status (2026-10-27): built** on the layout branch's rank-based give-way: families of three or more as one name, no name for a body behind a nearer lab body, encounter markers named as encounters (their time counted down from the moment drawn), names fading with their bodies, the chosen body's pointer at the view's edge when it is off the view. Review pass: the placing is a pure module, `src/explore/label-layout.ts` (the explorer's `declutterLab` finds each name's point and whether it can show, then lays them out with it), with hysteresis (a name comes in only with twice the room a showing one keeps, inside the clear view's edge, and never where another shows); `tests/unit/label-layout.spec.ts` (a thousand random scenes of 74 names, none over another; occluded never shown; the chosen body's over a world's; jitter changes nothing). Test in the browser: no names meeting at six window sizes after the Roche lesson.
 
 - **Change.**
   - The label logic moves into a pure `src/explore/label-layout.ts`, used for both built-in and lab labels: occlusion by any nearer body, shared collision boxes, clear-view insets, hysteresis, and eased opacity (in 0.35 s; out at least 0.5 s, or 0.1 s when giving way).
@@ -456,7 +456,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - Browser, after the Roche lesson and six zoom-outs at 2000 × 1300, 1440 × 900, 1280 × 800, 390 × 844 and 844 × 390: zero overlapping pairs, and no tags under the panels or over the Earth for hidden pieces.
 
 ### W1.11 Fades and a flash guard (Vis-F4; visual diagnosis item 6)
-**Status (2026-10-27): built** (`src/explore/lab-fx/flash-guard.ts`, the fades in `src/explore/lab.ts`). The guard watches the fireballs (the laboratory's only fast light); the canvas test reads tiles back through ten stones striking the Moon at once.
+**Status (2026-10-27): built** (`src/explore/lab-fx/flash-guard.ts`, the fades in `src/explore/lab.ts`). The guard watches the fireballs (the laboratory's only fast light). Review pass: it sees each tile's fireballs together (two in one tile overwrote each other's level, and it then stepped them itself) and holds back a rise by slowing it, never by a step; `tests/explore/lab-flash.spec.ts` reads the fireballs' light and the canvas back every frame (downsampled to tiles), motion on, through a Mars on the Earth, two Ceres on one face of the Moon and ten stones, and with reduced motion checks the camera turns at most half a degree a frame.
 
 - **Change.**
   - New `src/explore/lab-fx/fades.ts`: a fade map per id, easing at least 0.5 s each way, for bodies, swarms, labels, plumes and craters.
@@ -483,7 +483,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - With reduced motion, the camera moves at most 0.5° per frame.
 
 ### W1.12 Throw and aim, with the outcome worked out before you let go (Exp-F6, Exp-F7)
-**Status (2026-10-27): built** as "Throw a rock" (`src/sim/aim.ts`: the rock put at the contact and the system run backwards, then shooting), with the 20 seeded throws in a unit test (bit for bit with the run). Not built: dragging from a body to fling it.
+**Status (2026-10-27): built** as "Throw a rock" (`src/sim/aim.ts`: the rock put at the contact and the system run backwards, then shooting), with the 20 seeded throws in a unit test (bit for bit with the run). Review pass: a miss or a contact off what was asked is corrected forwards (Newton's method then Broyden's, on where it starts and how fast), sliced in the worker; 233 of the panel's 240 choices are made (31 were refused); a throw is made at its step or refused (`Engine.applyAt` exact), after an edit at that same step too. Not built: dragging from a body to fling it (the chosen body's velocity arrow already flings it).
 
 
 **Throw.**
@@ -510,7 +510,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
   - the regime shown before contact equals the one after.
 
 ### W1.13 Seeing it coming: slowing down for events (Vis-F12, Exp-F9)
-**Status (2026-10-27): built** (`src/sim/approach.ts`; the governor in `src/explore/lab.ts`; on by default, D8). The hold after an event is two seconds of real time (not 2 tau of simulated time, which at tau/8 would be sixteen seconds), so the rate is back within four seconds. The tests' fixture keeps it off unless a spec turns it on (`labSlow`).
+**Status (2026-10-27): built** (`src/sim/approach.ts`; the governor in `src/explore/lab.ts`; on by default, D8). The hold after an event is two seconds of real time (not 2 tau of simulated time, which at tau/8 would be sixteen seconds), so the rate is back within four seconds. The tests' fixture keeps it off unless a spec turns it on (`labSlow`). Review pass: the time machine's row and the rates line say the rate shown while it slows, with Full speed in the row (a phone's sheet header); tested: a Mars flagged three seconds and more ahead, and the clock no faster than 40 s a second within a second either side of the contact (`tests/explore/lab-flash.spec.ts`).
 
 
 **Scan (worker, within the 3 ms prediction share).**

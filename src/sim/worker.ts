@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { planThrow } from './aim';
+import { planner, type ThrowPlan, type ThrowRequest } from './aim';
 import { nextApproach } from './approach';
 import { luminosities } from './climate';
 import { commandId, Engine, Prediction, type Checkpoint } from './engine';
@@ -30,6 +30,8 @@ import { REWIND_SEGMENT, Rewind, swarmPlaces } from './rewind';
 const TICK_MS = 16;
 const STEP_BUDGET_MS = 8;
 const PREDICT_BUDGET_MS = 3;
+/** A throw being worked out (./aim) is given this much of a tick. */
+const AIM_BUDGET_MS = 4;
 const SNAPSHOT_MS = 33;
 /** A stall longer than this (a hidden tab) is not made up for. */
 const MAX_WALL_S = 0.25;
@@ -65,6 +67,9 @@ let recent: Array<{ wall: number; sim: number }> = [];
 let job: { revision: number; prediction: Prediction } | null = null;
 let revision = 0;
 let pendingPrediction: { id: string | null; horizonS: number; accuracy: number } | null = null;
+/** A throw to work out (./aim), the latest asked for (a burst of requests costs one), and the one being worked out a few milliseconds a tick. */
+let aimWanted: { requestId: number; request: ThrowRequest } | null = null;
+let aimJob: { requestId: number; logLength: number; work: Generator<void, ThrowPlan> } | null = null;
 /** The page's latest run or goto request, echoed; the run's discontinuities; the history being played backwards; a stop at the start. */
 let control = 0;
 let timeline = 0;
@@ -197,6 +202,25 @@ function snapshot(): void {
 }
 
 function tick(): void {
+  // A throw asked for: begun from the moment shown (going backwards, the run is first put there exactly)
+  // before the run steps on, then worked out AIM_BUDGET_MS a tick (it copies the run as it began).
+  if (engine && aimWanted) {
+    settleRewind();
+    aimJob = { requestId: aimWanted.requestId, logLength: engine.scenario.log.length, work: planner(engine.state, engine.dt, engine.scenario.integrator, engine.keep, aimWanted.request) };
+    aimWanted = null;
+  }
+  if (aimJob) {
+    const started = performance.now();
+    for (;;) {
+      const r = aimJob.work.next();
+      if (r.done) {
+        post({ type: 'aimed', generation, requestId: aimJob.requestId, logLength: aimJob.logLength, plan: r.value });
+        aimJob = null;
+        break;
+      }
+      if (performance.now() - started >= AIM_BUDGET_MS) break;
+    }
+  }
   const now = performance.now();
   const wall = Math.min(MAX_WALL_S, (now - lastTick) / 1000);
   lastTick = now;
@@ -272,7 +296,7 @@ function tick(): void {
       const r = job.prediction.result();
       const path = Float64Array.from(r.path);
       const framePath = Float64Array.from(r.framePath);
-      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, path, merged: r.merged, frame: r.frame, framePath, encounters: r.encounters }, [path.buffer, framePath.buffer]);
+      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, fromT: r.fromT, path, merged: r.merged, frame: r.frame, framePath, encounters: r.encounters }, [path.buffer, framePath.buffer]);
       job = null;
     }
   }
@@ -298,6 +322,8 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       atStart = false;
       seekTo = null;
       landTo = null;
+      aimWanted = null;
+      aimJob = null;
       marks = [];
       startDiagnostics = null;
       // Held at its start until the page says how to run it (its 'run' follows): a tick between the two
@@ -364,7 +390,7 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         landTo = null;
         const before = engine.state.step;
         const had = new Set(engine.state.ids);
-        const refused = engine.applyAt(msg.command, Number.isFinite(msg.atStep) ? (msg.atStep ?? engine.state.step) : engine.state.step);
+        const refused = engine.applyAt(msg.command, Number.isFinite(msg.atStep) ? (msg.atStep ?? engine.state.step) : engine.state.step, msg.exact === true);
         // Made on a view the run had passed: it went back there first.
         if (engine.state.step < before) timeline += 1;
         post({ type: 'ack', generation, editSeq: msg.editSeq ?? applied, ok: refused === null, reason: refused, created: engine.state.ids.filter((id) => !had.has(id)) });
@@ -373,13 +399,10 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         snapshot();
         break;
       }
-      case 'aim': {
-        // From the moment shown (going backwards, the run is first put there exactly).
-        settleRewind();
-        const plan = planThrow(engine.state, engine.dt, engine.scenario.integrator, engine.keep, msg.request);
-        post({ type: 'aimed', generation, requestId: msg.requestId, plan });
+      case 'aim':
+        // Worked out at the next tick (tick): only the latest of several asked for at once.
+        aimWanted = { requestId: msg.requestId, request: msg.request };
         break;
-      }
       case 'predict':
         pendingPrediction = { id: msg.id, horizonS: msg.horizonS, accuracy: msg.accuracy };
         startPrediction();

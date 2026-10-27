@@ -1214,8 +1214,8 @@ export interface UniverseLab {
   slow: { on: boolean; active: { kind: 'impact' | 'disrupt'; target: string; body: string; rate: number; inS: number | null } | null };
   /** A throw worked out and not yet made (./lab-throw): its request, the contact it makes (run with the experiment's rules), or why it cannot be made; null for none. */
   aim: LabAim | null;
-  /** The latest impact or tidal disruption, for the event card, with its numbers, and how many of its own pieces have struck since (they fall back: counted, not a new card); null before any. */
-  latest: { t: number; kind: 'merge' | 'fragment' | 'graze' | 'disrupt'; regime: string; survivor: string; absorbed: string; speedKmS: number; angleDeg: number; energyJ: number; created: number; craterKm: number | null; radiusBeforeKm: number | null; radiusAfterKm: number | null; later: number } | null;
+  /** The latest impact or tidal disruption, for the event card, with its numbers (the radius after: the event's own), how many of its own pieces have struck since (they fall back: counted, not a new card) and the survivor's radius once they have (null until one has); null before any. */
+  latest: { t: number; kind: 'merge' | 'fragment' | 'graze' | 'disrupt'; regime: string; survivor: string; absorbed: string; speedKmS: number; angleDeg: number; energyJ: number; created: number; craterKm: number | null; radiusBeforeKm: number | null; radiusAfterKm: number | null; massBeforeKg: number | null; massAfterKg: number | null; later: number; radiusNowKm: number | null } | null;
 }
 
 /** A throw being aimed (W1.12). */
@@ -1228,7 +1228,9 @@ export interface LabAim {
   leadS: number;
   /** The contact it makes, worked out with the experiment's rules: with what, how soon (s), how fast (km/s), at what angle from the horizontal (degrees), its regime, crater (km) and energy (J). */
   contact: { with: string; inS: number; speedKmS: number; angleDeg: number; regime: string; craterKm: number | null; energyJ: number } | null;
+  /** Why it cannot be thrown (src/sim/aim REFUSED, or the experiment changed since it was worked out: 'stale'), and for a miss how near it came (km between the surfaces). */
   reason: string | null;
+  missKm: number | null;
   /** The rock's id once thrown. */
   id: string | null;
 }

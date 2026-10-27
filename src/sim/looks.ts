@@ -13,7 +13,9 @@ import { bulkDensity, SOLID_MAX_GM } from './craters';
  * 4,000 rock, above 5,000 metal (for small bodies: the large worlds are dense because they are squeezed,
  * so a world with a climate in the model is rock). The albedo is a world's own (the fact sheet's Bond
  * albedo its climate reads) where its surface is what reflects (an airless world's, or Mars's thin
- * air); under a thick atmosphere the surface is rock, and so are its pieces. The rest, and the tints,
+ * air); under a thick atmosphere the surface is rock, and so are its pieces. Only the seeded worlds'
+ * albedos are measurements: a body the visitor adds (a thrown stone, a duplicate) is given a climate
+ * too, with an illustrative albedo, and is drawn by its density class like any other. The rest, and the tints,
  * are illustrative: a grey near the Moon's for rock, a pale one for ice, a darker one for metal (the
  * M-type asteroids reflect 10 to 20 per cent).
  *
@@ -80,9 +82,11 @@ export function lookOf(s: Bodies, i: number): Look {
   if (gm > SOLID_MAX_GM) return MATERIAL_LOOK.gas;
   const tint = WORLD_TINT[id];
   const climate = s.climate[id];
-  if (climate) {
+  // A world's own albedo is the fact sheet's (its climate reads it); a body the visitor adds has an illustrative
+  // climate (src/sim/climate airlessRock) whose albedo is no measurement of anything: it is classed by density.
+  if (climate && tint) {
     const airless = climate.spec.pressurePa < THICK_AIR_PA;
-    return { albedo: airless ? climate.spec.albedo : MATERIAL_LOOK.rock.albedo, tint: tint ?? MATERIAL_LOOK.rock.tint, material: 'rock' };
+    return { albedo: airless ? climate.spec.albedo : MATERIAL_LOOK.rock.albedo, tint, material: 'rock' };
   }
   const density = gm > 0 ? bulkDensity(gm, s.radius[i] ?? 1) : 3000;
   const look = density < ICE_BELOW ? MATERIAL_LOOK.ice : density > METAL_ABOVE ? MATERIAL_LOOK.metal : MATERIAL_LOOK.rock;

@@ -62,3 +62,46 @@ export function seedOf(id: string): number {
   for (let k = 0; k < id.length; k += 1) h = Math.imul(h ^ id.charCodeAt(k), 16777619);
   return h >>> 0;
 }
+
+/** The Sun's light at 1 au (W/m^2) from the IAU's nominal luminosity: lights are given as shares of it. */
+const S_1AU = 3.828e26 / (4 * Math.PI * 1.495978707e11 ** 2);
+
+/**
+ * The light of every star on a point (scenario frame, km), the strongest `out.length` (four, the rocks'),
+ * strongest first, each `out` entry the direction to it (render frame: x, z, -y of the scenario's, a unit
+ * vector) and its strength (1: the Sun's at 1 au), nought behind an occluder: a point in the cylinder its
+ * body casts away from that star, softened over the point's own radius (an eclipse). `self` is the body's
+ * own id (its own light and shadow are not counted).
+ */
+export function starLights(lights: ReadonlyArray<{ id: string; pos: readonly number[]; watts: number }>, occluders: ReadonlyArray<{ id: string; pos: readonly number[]; radiusKm: number }>, at: readonly number[], self: string, radiusKm: number, out: readonly number[][]): void {
+  for (const o of out) o[3] = 0;
+  for (const light of lights) {
+    if (light.id === self) continue;
+    const dx = (light.pos[0] ?? 0) - (at[0] ?? 0);
+    const dy = (light.pos[1] ?? 0) - (at[1] ?? 0);
+    const dz = (light.pos[2] ?? 0) - (at[2] ?? 0);
+    const d = Math.hypot(dx, dy, dz);
+    if (!(d > 0)) continue;
+    let strength = light.watts / (4 * Math.PI * (d * 1000) ** 2) / S_1AU;
+    for (const o of occluders) {
+      if (o.id === self || o.id === light.id || strength <= 0) continue;
+      const sx = (at[0] ?? 0) - (o.pos[0] ?? 0);
+      const sy = (at[1] ?? 0) - (o.pos[1] ?? 0);
+      const sz = (at[2] ?? 0) - (o.pos[2] ?? 0);
+      // Along the light's way (away from the star) past the occluder, and how far off its axis.
+      const along = -(sx * dx + sy * dy + sz * dz) / d;
+      if (along <= 0) continue;
+      const off = Math.sqrt(Math.max(0, sx * sx + sy * sy + sz * sz - along * along));
+      strength *= smoothstep(o.radiusKm - radiusKm, o.radiusKm + radiusKm + 1e-6, off);
+    }
+    // Into its place among the strongest (the weaker moved down, the weakest dropped).
+    const k = out.findIndex((o) => strength > (o[3] ?? 0));
+    if (k < 0) continue;
+    for (let j = out.length - 1; j > k; j -= 1) for (let c = 0; c < 4; c += 1) (out[j] as number[])[c] = out[j - 1]?.[c] ?? 0;
+    const target = out[k] as number[];
+    target[0] = dx / d;
+    target[1] = dz / d;
+    target[2] = -dy / d;
+    target[3] = strength;
+  }
+}

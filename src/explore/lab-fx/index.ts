@@ -6,11 +6,11 @@ import type { ExploreTier } from '../detail';
 import { km, type Km } from '../space/origin';
 import { placeScaled } from '../space/scaled-space';
 import { createAnnulus, PROFILE_BINS, radialProfile, RING_FORMED, ringCoverage, type Annulus } from './annulus';
-import { Fireballs, type FireballEvent } from './fireball';
+import { Fireballs, type Fireball, type FireballEvent } from './fireball';
 import { FlashGuard } from './flash-guard';
 import { incandescence } from './incandescence';
 import { effectsFor, type LabEffects } from './ladder';
-import { axesFor, crossover, discPx, effectiveTemperature, irregularity, seedOf } from './look';
+import { axesFor, crossover, discPx, effectiveTemperature, irregularity, seedOf, starLights } from './look';
 import { createRocks, type RockInstance, type Rocks } from './rocks';
 import { createSplats, SPLAT_SIZE, type Splat, type Splats } from './splats';
 
@@ -98,6 +98,8 @@ export interface FxFrame {
   widthPx: number;
   heightPx: number;
   compensation: number;
+  /** The view's direction (render frame, a unit vector). */
+  forward: Km;
   /** Scenario frame (km) to camera-relative render frame (km); a camera-relative point to the canvas (CSS px), or null behind. */
   toView(pos: readonly number[], out: Km): Km;
   toScreen(rel: Km): { x: number; y: number } | null;
@@ -116,13 +118,28 @@ export interface FxFrame {
 /** What was drawn (window.__kf.universe.labDraw()). */
 export interface FxReport {
   tier: ExploreTier | 'unknown';
-  bodies: Array<{ id: string; discPx: number; mesh: number; point: number; lit: number; drawnRadiusKm: number; screen: { x: number; y: number } | null; irregular: number; star: boolean; glow: number }>;
+  /**
+   * Per body: its disc's radius (CSS px, as on the view's axis) and the radius its mesh is drawn at on screen
+   * across the line from the view's middle (from where it is placed and scaled; off the axis a perspective view
+   * draws it wider there by 1 / cos of its angle off the axis, `axis`); the way its light comes from on screen
+   * (a unit vector, y down; null for none).
+   */
+  bodies: Array<{ id: string; discPx: number; projectedPx: number; axis: number; mesh: number; point: number; lit: number; light: { x: number; y: number } | null; drawnRadiusKm: number; screen: { x: number; y: number } | null; irregular: number; star: boolean; glow: number }>;
   meshes: readonly [number, number, number];
   dust: { drawn: number; particles: number; medianSizePx: number; color: [number, number, number]; shadowed: number; brightest: number };
   annuli: Array<{ id: string; weight: number; coverageDeg: number }>;
-  fireballs: Array<{ key: string; strength: number; luminance: number; kelvin: number; radiusKm: number; radiusPx: number }>;
+  /** Per fireball: as drawn (after the flash guard), where on screen and the share of its flash tile it covers. */
+  fireballs: Array<{ key: string; strength: number; luminance: number; kelvin: number; radiusKm: number; radiusPx: number; screen: { x: number; y: number } | null; share: number }>;
   /** The light the laboratory's own drawing sends this frame (colour times opacity times area, CSS px^2; display terms). */
   light: number;
+}
+
+/** The effects that can be switched off for an A/B measurement: the rocks and points, the dust and plumes, the fireballs and glare, the bands. */
+export interface FxParts {
+  rocks: boolean;
+  dust: boolean;
+  fire: boolean;
+  bands: boolean;
 }
 
 export interface LabFx {
@@ -131,12 +148,12 @@ export interface LabFx {
   readonly fireballs: Fireballs;
   readonly guard: FlashGuard;
   frame(f: FxFrame): FxReport;
+  /** The effects' A/B switches (docs/SANDBOX-ROADMAP.md W1.0, the perf checks): each kind drawn or not, its work skipped when not; returns them as they now are. */
+  toggle(parts: Partial<FxParts>): FxParts;
   clear(): void;
   dispose(): void;
 }
 
-/** The Sun's light at 1 au (W/m^2) from the IAU's nominal luminosity: lights are given as shares of it. */
-const S_1AU = 3.828e26 / (4 * Math.PI * 1.495978707e11 ** 2);
 const MAX_BODIES = 64;
 const MAX_ANNULI = 4;
 /** A star as drawn (the explorer's Sun's display law: white and brilliant when small, through a filter when it fills the view). */
@@ -150,8 +167,9 @@ const POINT = { floor: 0.22, gain: 2.1, sizePx: 5 } as const;
  * the area the swarm spans (illustrative: the dust's mass is not modelled, the tracers are massless), so
  * the light it sends is that share of the area times the layer's brightness (its albedo, the phase, the
  * light there) whatever its size on screen; spread over its splat (whose profile covers pi size^2 / 12),
- * that gives its peak. Held so a dense patch stays under sunlit ground. A plume's points by the same rule
- * at a fixed share (decorative).
+ * that gives its peak, never above the layer's own ground's (albedo times phase times light: dust can
+ * be no brighter than a surface of it). A plume's points by the same rule at a fixed share (decorative),
+ * held under DUST_CAP.
  */
 const DUST_TAU = 0.6;
 const DUST_CAP = 0.2;
@@ -164,6 +182,14 @@ const TUMBLE_H = { min: 4, max: 20 } as const;
 const TOO_FAST = (30 * Math.PI) / 180;
 /** The band eases in and out at this rate (per second: two seconds either way). */
 const BAND_EASE = 0.5;
+/** Fireballs drawn at once (the rest wait, fading in when one has gone). */
+const FIREBALLS = 6;
+/**
+ * Particles over a formed band, as a share of their light: OVER_BAND, and down to SPARSE where their
+ * splats are held at their largest (each then stands for more of the layer than its splat can show, and
+ * would be a blot: the band carries that light).
+ */
+const SPARSE = 0.08;
 
 const smoothstep = (a: number, b: number, x: number): number => {
   const u = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -184,17 +210,27 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
   root.name = 'lab-fx';
   const rocks: Rocks = createRocks(effects);
   const dust: Splats = createSplats(effects.splats + effects.plumePoints * 3, 'soft');
-  const fire: Splats = createSplats(8, 'fire', false);
+  // Fireballs behind a nearer body are hidden by it (depth tested); a star's glare is a halo about it, over everything.
+  const fire: Splats = createSplats(FIREBALLS, 'fire');
+  const glare: Splats = createSplats(1, 'fire', false);
   const points = createImpostors(MAX_BODIES);
   const annuli: Annulus[] = Array.from({ length: MAX_ANNULI }, () => createAnnulus());
-  root.add(...rocks.objects, dust.object, fire.object, points.object, ...annuli.map((a) => a.object));
+  root.add(...rocks.objects, dust.object, fire.object, glare.object, points.object, ...annuli.map((a) => a.object));
   const fireballs = new Fireballs();
   const guard = new FlashGuard();
+  const parts: FxParts = { rocks: true, dust: true, fire: true, bands: true };
 
-  const rockList: RockInstance[] = Array.from({ length: MAX_BODIES }, () => ({ id: '', x: 0, y: 0, z: 0, radius: 0, discPx: 0, q: [0, 0, 0, 1], axes: [1, 1, 1], irregular: 0, color: [0, 0, 0], alpha: 0, light0: [0, 1, 0, 0], light1: [0, 1, 0, 0], glow: [0, 0, 0], star: 0 }));
+  const rockList: RockInstance[] = Array.from({ length: MAX_BODIES }, () => ({ id: '', x: 0, y: 0, z: 0, radius: 0, discPx: 0, q: [0, 0, 0, 1], axes: [1, 1, 1], irregular: 0, color: [0, 0, 0], alpha: 0, light0: [0, 1, 0, 0], light1: [0, 1, 0, 0], light2: [0, 1, 0, 0], light3: [0, 1, 0, 0], glow: [0, 0, 0], star: 0 }));
   const pointList: ImpostorDot[] = Array.from({ length: MAX_BODIES }, () => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: POINT.sizePx, marker: 0 }));
   const dustList: Splat[] = Array.from({ length: effects.splats + effects.plumePoints * 3 }, () => ({ x: 0, y: 0, z: 0, sizePx: SPLAT_SIZE.min, r: 0, g: 0, b: 0 }));
-  const fireList: Splat[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0, z: 0, sizePx: 6, r: 0, g: 0, b: 0 }));
+  const fireList: Splat[] = Array.from({ length: FIREBALLS }, () => ({ x: 0, y: 0, z: 0, sizePx: 6, r: 0, g: 0, b: 0 }));
+  const glareList: Splat[] = [{ x: 0, y: 0, z: 0, sizePx: 6, r: 0, g: 0, b: 0 }];
+  /** Each fireball's body's centre as last drawn (scenario frame): a body gone (merged away) keeps its fireball where it was while it fades. */
+  const lastCentre = new Map<string, number[]>();
+  /** Each fireball drawn this frame: it, its tile (the flash guard sees a tile's together) and how much of it shows (its body's limb). */
+  const fireTiles: number[] = [];
+  const fireAsked: number[] = [];
+  const fireKeys: Fireball[] = [];
   /** Each rock's turn so far (radians) and the simulated time it was last turned to. */
   const turned = new Map<string, { angle: number; at: number }>();
   /** Each swarm's band: its weight, coverage, profile and radii (worked out once a snapshot). */
@@ -208,43 +244,16 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
   const sizes: number[] = [];
   const report: FxReport = { tier: tier ?? 'unknown', bodies: [], meshes: rocks.drawn, dust: { drawn: 0, particles: 0, medianSizePx: 0, color: [0, 0, 0], shadowed: 0, brightest: 0 }, annuli: [], fireballs: [], light: 0 };
 
-  /** The light of every star on a point (scenario frame), the strongest two: direction (render frame) and strength (1: the Sun's at 1 au), nought behind an occluder. */
-  const lightsAt = (f: FxFrame, at: readonly number[], self: string, radiusKm: number, out0: number[], out1: number[]): void => {
-    out0[3] = 0;
-    out1[3] = 0;
-    for (const light of f.lights) {
-      if (light.id === self) continue;
-      const dx = (light.pos[0] ?? 0) - (at[0] ?? 0);
-      const dy = (light.pos[1] ?? 0) - (at[1] ?? 0);
-      const dz = (light.pos[2] ?? 0) - (at[2] ?? 0);
-      const d = Math.hypot(dx, dy, dz);
-      if (!(d > 0)) continue;
-      let strength = light.watts / (4 * Math.PI * (d * 1000) ** 2) / S_1AU;
-      // Eclipses: the point behind an occluder (from this star), within its radius (softened over the body's own).
-      for (const o of f.occluders) {
-        if (o.id === self || o.id === light.id || strength <= 0) continue;
-        const sx = (at[0] ?? 0) - (o.pos[0] ?? 0);
-        const sy = (at[1] ?? 0) - (o.pos[1] ?? 0);
-        const sz = (at[2] ?? 0) - (o.pos[2] ?? 0);
-        // Along the light's way (away from the star) past the occluder, and how far off its axis.
-        const along = -(sx * dx + sy * dy + sz * dz) / d;
-        if (along <= 0) continue;
-        const off = Math.sqrt(Math.max(0, sx * sx + sy * sy + sz * sz - along * along));
-        strength *= smoothstep(o.radiusKm - radiusKm, o.radiusKm + radiusKm + 1e-6, off);
-      }
-      toRenderDir(dx / d, dy / d, dz / d, dir);
-      const target = strength > out0[3] ? out0 : strength > out1[3] ? out1 : null;
-      if (!target) continue;
-      if (target === out0) for (let c = 0; c < 4; c += 1) out1[c] = out0[c] ?? 0;
-      target[0] = dir[0] ?? 0;
-      target[1] = dir[1] ?? 0;
-      target[2] = dir[2] ?? 0;
-      target[3] = strength;
-    }
+  /** The light of every star on a point (scenario frame), the strongest four (./look starLights). */
+  const lightsAt = (f: FxFrame, at: readonly number[], self: string, radiusKm: number, out: readonly number[][]): void => {
+    starLights(f.lights, f.occluders, at, self, radiusKm, out);
   };
 
   const l0 = [0, 1, 0, 0];
   const l1 = [0, 1, 0, 0];
+  const l2 = [0, 1, 0, 0];
+  const l3 = [0, 1, 0, 0];
+  const lights4 = [l0, l1, l2, l3];
   const glow = { luminance: 0, rgb: [0, 0, 0] as [number, number, number] };
 
   const fx: LabFx = {
@@ -260,7 +269,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
       let rocksUsed = 0;
       let pointsUsed = 0;
       for (const b of f.bodies) {
-        if (rocksUsed >= MAX_BODIES) break;
+        if (rocksUsed >= MAX_BODIES || !parts.rocks) break;
         f.toView(b.pos, rel);
         const d = Math.max(Math.hypot(rel.x, rel.y, rel.z), 1e-9);
         const irregular = irregularity(b.radiusKm, b.look.material);
@@ -272,7 +281,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         const px = discPx(b.radiusKm, d, f.pxPerTan);
         const w = crossover(px);
         const star = b.look.material === 'star';
-        lightsAt(f, b.pos, b.id, b.radiusKm, l0, l1);
+        lightsAt(f, b.pos, b.id, b.radiusKm, lights4);
         // Its turn: by the model's spin; with none, a slow illustrative tumble about a seeded axis; held when too fast to show.
         const seed = seedOf(b.id);
         const L = Math.hypot(b.spin[0] ?? 0, b.spin[1] ?? 0, b.spin[2] ?? 0);
@@ -322,6 +331,8 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         for (let c = 0; c < 4; c += 1) {
           r.light0[c] = l0[c] ?? 0;
           r.light1[c] = l1[c] ?? 0;
+          r.light2[c] = l2[c] ?? 0;
+          r.light3[c] = l3[c] ?? 0;
         }
         let glowLum = 0;
         if (star) {
@@ -366,7 +377,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         report.light += r.alpha * (star ? 1 : b.look.albedo * (l0[3] ?? 0)) * area(px);
         // A star's glare (a soft halo about it, not its disc).
         if (star && effects.glare) {
-          const g = fireList[7];
+          const g = glareList[0];
           if (g) {
             g.x = drawn.x;
             g.y = drawn.y;
@@ -380,7 +391,42 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
           }
         }
         const screen = f.toScreen(rel);
-        report.bodies.push({ id: b.id, discPx: px, mesh: w.mesh, point: w.point, lit: l0[3] ?? 0, drawnRadiusKm: b.radiusKm, screen, irregular, star, glow: glowLum });
+        // As drawn: the mesh's edge on screen (a point at its scaled radius square to the line of sight), and the light's way across the screen.
+        let projectedPx = 0;
+        let lightOn: { x: number; y: number } | null = null;
+        const axisCos = (rel.x * f.forward.x + rel.y * f.forward.y + rel.z * f.forward.z) / d;
+        if (screen) {
+          // Across the line from the view's middle: square to the line of sight and to the view's axis (any square to it on the axis).
+          let sx = rel.y * f.forward.z - rel.z * f.forward.y;
+          let sy = rel.z * f.forward.x - rel.x * f.forward.z;
+          let sz = rel.x * f.forward.y - rel.y * f.forward.x;
+          if (Math.hypot(sx, sy, sz) < 1e-6 * d) {
+            sx = -rel.z;
+            sy = 0;
+            sz = rel.x;
+          }
+          const sl = Math.hypot(sx, sy, sz) || 1;
+          // The silhouette's angular radius is asin(R/d): the edge point at that angle from the centre, at the centre's distance.
+          const edge = Math.tan(Math.asin(Math.min(1, b.radiusKm / d))) * Math.hypot(drawn.x, drawn.y, drawn.z);
+          scratch.x = drawn.x + (sx / sl) * edge;
+          scratch.y = drawn.y + (sy / sl) * edge;
+          scratch.z = drawn.z + (sz / sl) * edge;
+          const e = f.toScreen(scratch);
+          const c = f.toScreen(drawn);
+          if (e && c) projectedPx = Math.hypot(e.x - c.x, e.y - c.y);
+          if ((l0[3] ?? 0) > 0 && c) {
+            const reach = Math.hypot(drawn.x, drawn.y, drawn.z) * 0.01;
+            scratch.x = drawn.x + (l0[0] ?? 0) * reach;
+            scratch.y = drawn.y + (l0[1] ?? 0) * reach;
+            scratch.z = drawn.z + (l0[2] ?? 0) * reach;
+            const q = f.toScreen(scratch);
+            const lx = q ? q.x - c.x : 0;
+            const ly = q ? q.y - c.y : 0;
+            const ll = Math.hypot(lx, ly);
+            lightOn = ll > 1e-9 ? { x: lx / ll, y: ly / ll } : null;
+          }
+        }
+        report.bodies.push({ id: b.id, discPx: px, projectedPx, axis: axisCos, mesh: w.mesh, point: w.point, lit: l0[3] ?? 0, light: lightOn, drawnRadiusKm: b.radiusKm, screen, irregular, star, glow: glowLum });
       }
       rocks.update(rockList, rocksUsed);
       for (let k = pointsUsed; k < MAX_BODIES; k += 1) {
@@ -405,8 +451,8 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
       const limit = effects.splats;
       for (const w of f.swarms) {
         const n = Math.floor(w.rel.length / 3);
-        if (n === 0) continue;
-        lightsAt(f, w.primaryPos, '', 0, l0, l1);
+        if (n === 0 || !(parts.dust || parts.bands)) continue;
+        lightsAt(f, w.primaryPos, '', 0, lights4);
         const light = l0[3] ?? 0;
         // Its extent now (once a snapshot) and the spacing of its particles across it: the splats' size.
         let band = bands.get(w.id);
@@ -431,9 +477,12 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         const primaryDistance = Math.max(Math.hypot(scratch.x, scratch.y, scratch.z), 1e-9);
         const spacing = Math.sqrt((Math.PI * Math.max(band.outer * band.outer - band.inner * band.inner, 1)) / n);
         const sizePx = Math.min(SPLAT_SIZE.max, Math.max(SPLAT_SIZE.min, (f.pxPerTan * spacing) / primaryDistance));
-        // Its share of the layer's area on screen (px^2) over its splat's: the peak for a layer of DUST_TAU (the size held to its range keeps the light, not the peak).
+        // Its share of the layer's area on screen (px^2) over its splat's: the peak for a layer of DUST_TAU (the size held to its range keeps the light, not the peak),
+        // never brighter than the layer's own ground would be (albedo, phase and light: a share of 1 of it), however few the particles.
         const sharePx = (f.pxPerTan * spacing) / primaryDistance;
-        const gain = ((DUST_TAU * 12) / Math.PI) * (sharePx * sharePx) / (sizePx * sizePx) * light * w.look.albedo * w.fade * (1 - (1 - OVER_BAND) * band.weight);
+        const cover = Math.min(1, ((DUST_TAU * 12) / Math.PI) * (sharePx * sharePx) / (sizePx * sizePx));
+        const sparse = smoothstep(0.7 * SPLAT_SIZE.max, SPLAT_SIZE.max, sharePx);
+        const gain = cover * light * w.look.albedo * w.fade * (1 - (1 - (OVER_BAND + (SPARSE - OVER_BAND) * sparse)) * band.weight);
         // The light's direction (scenario frame) for the phase and the shadow.
         const lx = l0[0] ?? 0;
         const ly = -(l0[2] ?? 0);
@@ -441,7 +490,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         // Particles carried on round their orbits since the snapshot (circular Kepler motion about the swarm's pole), at most an eighth of a turn.
         const ahead = f.simT - w.snapT;
         const [nx, ny, nz] = [w.normal[0] ?? 0, w.normal[1] ?? 0, w.normal[2] ?? 1];
-        for (let i = 0; i < n && used < limit; i += 1) {
+        for (let i = 0; i < n && used < limit && parts.dust; i += 1) {
           let x = w.rel[i * 3] ?? 0;
           let y = w.rel[i * 3 + 1] ?? 0;
           let z = w.rel[i * 3 + 2] ?? 0;
@@ -473,7 +522,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
           const dd = Math.max(Math.hypot(rel.x, rel.y, rel.z), 1e-9);
           // Phase: between the star and the camera, seen from the particle.
           const cosPhase = -((l0[0] ?? 0) * rel.x + (l0[1] ?? 0) * rel.y + (l0[2] ?? 0) * rel.z) / dd;
-          const bright = Math.min(DUST_CAP, gain * lambertPhase(Math.acos(Math.min(1, Math.max(-1, cosPhase))))) * lit;
+          const bright = gain * lambertPhase(Math.acos(Math.min(1, Math.max(-1, cosPhase)))) * lit;
           const s = dustList[used];
           if (!s) break;
           placeScaled(rel, 1, f.far, drawn);
@@ -494,7 +543,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         }
         // The band itself.
         const a = annuli[bandsUsed];
-        if (a && band.weight > 1e-3 && w.kind !== 'belt') {
+        if (a && band.weight > 1e-3 && w.kind !== 'belt' && parts.bands) {
           const k = placeScaled(scratch, band.outer, f.far, drawn);
           // Two unit vectors in its plane (render frame).
           toRenderDir(nx, ny, nz, axis);
@@ -515,7 +564,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
       for (const id of bands.keys()) if (!f.swarms.some((w) => w.id === id)) bands.delete(id);
       // Plumes (decorative): the same splats, lit as the body's ground.
       for (const p of f.plumes) {
-        for (let i = 0; i < p.count && used < dustList.length; i += 1) {
+        for (let i = 0; i < p.count && used < dustList.length && parts.dust; i += 1) {
           dir[0] = p.points[i * 3] ?? 0;
           dir[1] = p.points[i * 3 + 1] ?? 0;
           dir[2] = p.points[i * 3 + 2] ?? 0;
@@ -544,15 +593,24 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
       report.dust.shadowed = shadowed;
       report.dust.brightest = brightest;
 
-      // Fireballs: new impacts in, eased, guarded, drawn at the contact on the body as it is drawn now.
+      // Fireballs: new impacts in, eased, guarded, drawn at the contact on the body as it is drawn now
+      // (on one gone, where it was), a little toward the camera so its own body's ground never cuts it.
+      // First where each is and the light it would show (held, and risen as its ease allows), each tile's
+      // together through the flash guard; then each rise let through by its tile's share.
       for (const e of f.impacts) fireballs.add(e, f.nowS);
-      fireballs.update(f.nowS, f.dtS, f.reduced);
+      fireballs.plan(f.nowS, f.dtS, f.reduced);
+      guard.begin(f.nowS);
       report.fireballs.length = 0;
       let lit = 0;
       for (const ball of fireballs.live) {
         const s = fireList[lit];
-        const centre = f.bodyAt(ball.body);
-        if (!s || !centre || lit >= 6) continue;
+        let centre = f.bodyAt(ball.body);
+        if (centre) lastCentre.set(ball.key, [centre[0] ?? 0, centre[1] ?? 0, centre[2] ?? 0]);
+        else centre = lastCentre.get(ball.key) ?? null;
+        if (!s || lit >= FIREBALLS || !centre || !parts.fire) {
+          fireballs.settle(ball, 1);
+          continue;
+        }
         const surface = ball.targetKm;
         f.siteAt(ball.key, ball.site, site);
         dir[0] = (centre[0] ?? 0) + (site[0] ?? 0) * surface;
@@ -563,31 +621,45 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         // Behind the body's limb, from here: hidden (softly, as it goes round).
         toRenderDir(site[0] ?? 0, site[1] ?? 0, site[2] ?? 1, axis);
         const facing = -((axis[0] ?? 0) * rel.x + (axis[1] ?? 0) * rel.y + (axis[2] ?? 0) * rel.z) / dd;
-        const seen = smoothstep(-0.08, 0.12, facing);
-        const radiusPx = Math.max(3, (f.pxPerTan * ball.radiusKm * ball.grown) / dd);
-        const screen = f.toScreen(rel);
-        // The flash guard: the light it sends into its tile (display terms), held back if it would flash.
-        let luminance = ball.luminance * seen;
-        if (screen) {
-          const tile = FlashGuard.tileAt(screen.x, screen.y, f.widthPx);
-          const share = Math.min(1, area(radiusPx) / FlashGuard.tileArea(f.widthPx));
-          const asked = luminance / Math.max(f.compensation, 1e-6);
-          const allowed = guard.limit(tile, asked, share, f.nowS);
-          if (asked > 0) luminance *= Math.min(1, allowed / asked);
-        }
-        placeScaled(rel, 1, f.far, drawn);
-        s.x = drawn.x;
-        s.y = drawn.y;
-        s.z = drawn.z;
+        const seen = fireballs.seenToward(ball, smoothstep(-0.08, 0.12, facing), f.dtS);
+        const radiusKm = ball.radiusKm * ball.grown;
+        const radiusPx = Math.max(3, (f.pxPerTan * radiusKm) / dd);
+        // Scaled as its body is (so it sits on the body as drawn), then toward the camera by its radius.
+        f.toView(centre, scratch);
+        const k = placeScaled(scratch, surface, f.far, drawn);
+        const toward = Math.min(radiusKm, 0.5 * dd) / dd;
+        s.x = rel.x * (1 - toward) * k;
+        s.y = rel.y * (1 - toward) * k;
+        s.z = rel.z * (1 - toward) * k;
         s.sizePx = radiusPx * 2;
+        // The light it sends into its tile (display terms), held and as risen.
+        const unit = (ball.unit * seen) / Math.max(f.compensation, 1e-6);
+        const screen = f.toScreen(rel);
+        const tile = screen ? FlashGuard.tileAt(screen.x, screen.y, f.widthPx) : -1;
+        const share = Math.min(1, area(radiusPx) / FlashGuard.tileArea(f.widthPx));
+        if (screen) guard.add(tile, unit * Math.min(ball.strength, ball.next), unit * ball.next, share);
+        fireTiles[lit] = tile;
+        fireAsked[lit] = seen;
+        fireKeys[lit] = ball;
+        report.fireballs.push({ key: ball.key, strength: 0, luminance: 0, kelvin: ball.kelvin, radiusKm, radiusPx, screen, share });
+        lit += 1;
+      }
+      for (let k = 0; k < lit; k += 1) {
+        const s = fireList[k];
+        const r = report.fireballs[k];
+        const ball = fireKeys[k];
+        if (!s || !r || !ball) continue;
+        const tile = fireTiles[k] ?? -1;
+        fireballs.settle(ball, tile === -1 ? 1 : guard.kappa(tile));
+        const luminance = ball.luminance * (fireAsked[k] ?? 0);
         s.r = ball.rgb[0] * luminance;
         s.g = ball.rgb[1] * luminance;
         s.b = ball.rgb[2] * luminance;
-        report.light += (luminance / Math.max(f.compensation, 1e-6)) * area(radiusPx);
-        report.fireballs.push({ key: ball.key, strength: ball.strength, luminance, kelvin: ball.kelvin, radiusKm: ball.radiusKm * ball.grown, radiusPx });
-        lit += 1;
+        r.strength = ball.strength;
+        r.luminance = luminance;
+        report.light += (luminance / Math.max(f.compensation, 1e-6)) * area(r.radiusPx);
       }
-      for (let k = lit; k < 7; k += 1) {
+      for (let k = lit; k < FIREBALLS; k += 1) {
         const s = fireList[k];
         if (s) {
           s.r = 0;
@@ -595,17 +667,23 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
           s.b = 0;
         }
       }
+      for (const key of lastCentre.keys()) if (!fireballs.live.some((b) => b.key === key)) lastCentre.delete(key);
       if (!f.bodies.some((b) => b.look.material === 'star')) {
-        const g = fireList[7];
+        const g = glareList[0];
         if (g) {
           g.r = 0;
           g.g = 0;
           g.b = 0;
         }
       }
-      fire.update(fireList, 8);
+      fire.update(fireList, parts.fire ? FIREBALLS : 0);
+      glare.update(glareList, parts.fire ? 1 : 0);
       for (const id of turned.keys()) if (!f.bodies.some((b) => b.id === id)) turned.delete(id);
       return report;
+    },
+    toggle(next) {
+      Object.assign(parts, next);
+      return { ...parts };
     },
     clear() {
       fireballs.clear();
@@ -615,6 +693,8 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
       rocks.update(rockList, 0);
       dust.update(dustList, 0);
       fire.update(fireList, 0);
+      glare.update(glareList, 0);
+      lastCentre.clear();
       for (const p of pointList) {
         p.opacity = 0;
         p.marker = 0;
@@ -626,6 +706,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
       rocks.dispose();
       dust.dispose();
       fire.dispose();
+      glare.dispose();
       points.dispose();
       for (const a of annuli) a.dispose();
     },

@@ -288,3 +288,32 @@ test('an edit made on a view the run has since passed is made at that view’s s
   expect(e.redo()).toBe(true);
   expect(e.checkpoints.every((c) => c.step <= (back?.step ?? 0))).toBe(true);
 });
+
+test('a run gone back to a checkpoint goes on exactly as it did, to the last bit, with oblate worlds turning (the accelerations it went on from are kept: found afresh, the spins already turned, they differ)', () => {
+  const ROOT = new URL('../../', import.meta.url);
+  const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
+  const physical = readJson('public/assets/jpl/physical.json') as PhysicalFile;
+  const constants = (readJson('data/constants.json') as { constants: Array<{ id: string; value: number }> }).constants;
+  const value = (id: string): number | null => constants.find((c) => c.id === id)?.value ?? null;
+  const eph = createEphemeris(readJson('public/assets/jpl/planets.json') as PlanetsFile, readJson('public/assets/jpl/moon.json') as MoonFile, physical);
+  const ids = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+  const shapes = Object.fromEntries(ids.map((id) => [id, { j2: value(`${id}.j2`), inertia: value(`${id}.momentOfInertia`) }]));
+  const scenario = seedSolarSystem(eph, physical, 2_461_336.75, {}, shapes);
+  const bits = (s: { pos: number[]; vel: number[]; spin: number[] }): number[] => [...s.pos, ...s.vel, ...s.spin];
+  const e = new Engine(scenario);
+  for (let k = 0; k < 300; k += 1) e.stepOnce();
+  const mark = e.snapshotNow();
+  for (let k = 0; k < 500; k += 1) e.stepOnce();
+  // A replica from the checkpoint (as ./rewind replays history), and the run itself taken back to it.
+  const replica = new Engine(scenario, mark);
+  while (replica.state.step < e.state.step) replica.stepOnce();
+  expect(bits(replica.state)).toEqual(bits(e.state));
+  const end = bits(e.state);
+  const step = e.state.step;
+  e.restoreFrom(mark, step);
+  expect(bits(e.state)).toEqual(end);
+  // Without them, the replay is off in the last bits (what a backwards replay once showed as a last-bit difference).
+  const fresh = new Engine(scenario, { ...mark, acc: undefined });
+  while (fresh.state.step < step) fresh.stepOnce();
+  expect(bits(fresh.state)).not.toEqual(end);
+});

@@ -6,7 +6,7 @@ import type { KfTestHandle } from '../core/hooks';
 import { BODY_IDS, type BodyId, type LabAim, type LabCommand, type LabEditResult, type LabImpactor, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody, type UniverseTimeCommand } from '../core/types';
 import labMessages from '../i18n/en.lab.json';
 import type { ThrowPlan } from '../sim/aim';
-import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
+import { commandId, RING_MAX_BODIES, STALE, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
 import type { Look } from '../sim/looks';
 import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
@@ -77,13 +77,16 @@ export interface LabFrame {
   focusRadius: number;
   focusDistance: number;
   compensation: number;
+  /** This frame's step (s, by the frames' own clock): every effect's easing is timed by it, as the frames are shown. */
+  dt: number;
 }
 
-/** The explorer's camera for the pointer: a point (render frame, km from the camera) on the canvas (CSS px; null behind the camera), a canvas point's ray, and the view's direction (unit vectors, render frame). */
+/** The explorer's camera for the pointer: a point (render frame, km from the camera) on the canvas (CSS px; null behind the camera), a canvas point's ray, the view's direction (unit vectors, render frame), and what the interface covers at the view's edges (CSS px). */
 export interface LabPointerView {
   toScreen(rel: Km): { x: number; y: number } | null;
   ray(x: number, y: number): Km;
   forward(): Km;
+  insets(): { top: number; bottom: number; left: number; right: number };
 }
 
 export interface Lab {
@@ -212,6 +215,8 @@ const ENCOUNTER = [0.95, 0.6, 0.4] as const;
 const PLACING = [0.6, 0.95, 0.7] as const;
 /** The velocity arrow's tip can be taken within this many CSS px; the arrow is drawn this long on screen (its direction is the velocity's; dragging its tip twice as far doubles the speed). */
 const HANDLE_PX = 14;
+/** On a coarse pointer (a finger) the handle's reach is a 44 px target (CONTRACTS, touch rule). */
+const HANDLE_TOUCH_PX = 22;
 const ARROW_PX = 90;
 const DEG = Math.PI / 180;
 /** Colours of the lines (display terms): a trail, the chosen body's trail, its prediction, its velocity. */
@@ -265,6 +270,9 @@ const ROCK_LOOK: Look = { albedo: 0.12, tint: [1, 0.96, 0.9], material: 'rock' }
 const OCCLUDERS = 8;
 /** A tap within this many CSS px of a small body chooses it (a finger's reach: 44 px across). */
 const PICK_PX = 22;
+/** The chosen body's pointer when it is off the view: this far inside the clear view (CSS px), its arrow by direction (east, then clockwise on screen). */
+const EDGE_PX = 28;
+const EDGE_ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'] as const;
 
 /** Ecliptic (the scenario's frame) to the render frame: (x, z, -y). */
 const toRender = (x: number, y: number, z: number, out: Km): Km => {
@@ -275,7 +283,7 @@ const toRender = (x: number, y: number, z: number, out: Km): Km => {
 };
 
 /** A polyline as an orbit path: u runs along it and back (so the hairline never joins its ends). */
-function polylinePath(color: readonly [number, number, number]): OrbitPath & { set(points: readonly number[], count: number): void; readonly count: number } {
+function polylinePath(color: readonly [number, number, number]): OrbitPath & { set(points: ArrayLike<number>, count: number): void; readonly count: number } {
   let pts = new Float64Array(0);
   let n = 0;
   const centre = km();
@@ -326,6 +334,42 @@ function polylinePath(color: readonly [number, number, number]): OrbitPath & { s
       return n > 1 ? (best / (n - 1)) * 0.5 : 0;
     },
   };
+}
+
+/**
+ * A body's recent path (W1.0): its positions (scenario frame, km) and their times, in rings of
+ * TRAIL_POINTS, the oldest first by index; sampled and drawn without allocating.
+ */
+class TrailRing {
+  readonly pos = new Float64Array(TRAIL_POINTS * 3);
+  readonly time = new Float64Array(TRAIL_POINTS);
+  start = 0;
+  count = 0;
+  /** The simulated time it was last sampled at. */
+  at = Number.NEGATIVE_INFINITY;
+  /** Point k's coordinate c (oldest first). */
+  x(k: number, c: number): number {
+    return this.pos[((this.start + k) % TRAIL_POINTS) * 3 + c] ?? 0;
+  }
+  t(k: number): number {
+    return this.time[(this.start + k) % TRAIL_POINTS] ?? 0;
+  }
+  push(x: number, y: number, z: number, t: number): void {
+    let i = (this.start + this.count) % TRAIL_POINTS;
+    if (this.count < TRAIL_POINTS) this.count += 1;
+    else {
+      i = this.start;
+      this.start = (this.start + 1) % TRAIL_POINTS;
+    }
+    this.pos[i * 3] = x;
+    this.pos[i * 3 + 1] = y;
+    this.pos[i * 3 + 2] = z;
+    this.time[i] = t;
+  }
+  /** Drops the newest. */
+  pop(): void {
+    if (this.count > 0) this.count -= 1;
+  }
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -414,7 +458,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let forkJdTdb = 0;
   let selected: string | null = null;
   let horizonS = DEFAULT_HORIZON_S;
-  let prediction: { id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; revision: number; encounters: Encounter[] } | null = null;
+  /** The chosen body's path integrated ahead from simulated time `fromT` (its times are from then). */
+  let prediction: { id: string; horizonS: number; fromT: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; revision: number; encounters: Encounter[] } | null = null;
   let predictedAt = Number.NEGATIVE_INFINITY;
   /** Edits sent to the worker in this generation (its snapshots say how many it had). */
   let sentEdits = 0;
@@ -454,7 +499,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const spinDrawn = new Map<BodyId, { t: number; basis: number[]; pole: Vec3; periodS: number; flip: boolean; spin: Vec3 }>();
 
   // Trails: each body's recent positions (scenario frame, km), sampled once a snapshot.
-  const trails = new Map<string, { points: number[]; at: number; times: number[] }>();
+  const trails = new Map<string, TrailRing>();
+  /** A trail as drawn this frame (render frame, km): filled for each in turn, copied by its path. */
+  const trailDrawn = new Float64Array(TRAIL_POINTS * 3);
   const trailPaths = Array.from({ length: TRAIL_SLOTS }, () => polylinePath(TRAIL));
   const chosenTrail = polylinePath(TRAIL_CHOSEN);
   const predictionPath = polylinePath(PREDICTION);
@@ -488,6 +535,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   /** The worlds' bases now (render frame), so a plume rises from its crater as the world turns. */
   const basisNow = new Map<BodyId, number[]>();
   const labelList: SceneLabel[] = [];
+  const edgeAt = km();
   const scratch = km();
   const abs = km();
   const rel = km();
@@ -537,13 +585,14 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const fxPlumes: FxPlume[] = [];
   const impacts: FireballEvent[] = [];
   /** Hot bodies (W2.3's first part): melt exposed at simulated time `t0` (s), at `meltK`, its surface crusting over (./lab-fx/heat). */
-  const heats = new Map<string, { meltK: number; t0: number }>();
+  const heats = new Map<string, { meltK: number; t0: number; event: string }>();
   /** Giant impacts' heat on the worlds drawn (no crater): a glow over the face struck, by event. */
   const heatMarks = new Map<string, { body: BodyId; site: Vec3; local: Vec3 | null; angle: number; meltK: number; t: number; glow: number; at: number }>();
   /** Craters going (a 13th came): fading before their place is given up. */
   const evicted = new Set<string>();
   /** Each body's radius and look as last seen (an impactor's, once it is gone). */
   const lastRadius = new Map<string, number>();
+  const lastGm = new Map<string, number>();
   const lastLook = new Map<string, Look>();
   /** The built-in worlds' drawn sizes (eased) and those leaving (shrinking away from where they were). */
   const builtScale = new Map<BodyId, number>();
@@ -576,8 +625,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let aim: (LabAim & { plan: ThrowPlan | null; requestId: number; spec: { id: string; name: string; gm: number; radiusKm: number }; logLength: number }) | null = null;
   let aimRequest = 0;
 
-  // What the effects are given each frame (reused).
-  let lastFxWall = Number.NaN;
+  // What the effects are given each frame (reused), and their clock (s: the frames' own, so each easing is per frame as shown).
+  let fxClock = 0;
   const presentIds = new Set<string>();
   const plumeBuffers: FxPlume[] = [];
   const fxLights: Array<{ id: string; pos: readonly number[]; watts: number }> = [];
@@ -672,6 +721,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     latestKey = '';
     lastOrigin.clear();
     lastRadius.clear();
+    lastGm.clear();
     lastLook.clear();
     slow = null;
     dismissed.clear();
@@ -689,6 +739,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     requestPrediction();
   };
 
+  /** The time (s) from simulated time `t` to the prediction's nearest encounter or merger still to come (infinite for none). */
+  const soonest = (t: number): number => {
+    const p = prediction;
+    if (!p) return Number.POSITIVE_INFINITY;
+    let best = Number.POSITIVE_INFINITY;
+    for (const e of p.encounters) if (p.fromT + e.t > t) best = Math.min(best, p.fromT + e.t - t);
+    if (p.merged && p.fromT + p.merged.t > t) best = Math.min(best, p.fromT + p.merged.t - t);
+    return best;
+  };
   const requestPrediction = (): void => {
     send({ type: 'predict', generation, id: selected, horizonS, accuracy: ACCURACY[accuracy] });
     predictedAt = snap?.t ?? 0;
@@ -732,14 +791,20 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
    */
   const noteEvent = (msg: LabSnapshot, e: LabSnapshot['events'][number], key: string, fresh: boolean): void => {
     const ti = msg.ids.indexOf(e.survivor);
-    const after = ti >= 0 ? (msg.radius[ti] ?? null) : null;
+    // The event's own (its pieces may have fallen back before this snapshot), and as it is now.
+    const after = e.radiusKm > 0 ? e.radiusKm : ti >= 0 ? (msg.radius[ti] ?? null) : null;
+    const radiusNow = ti >= 0 ? (msg.radius[ti] ?? null) : null;
     const before = lastRadius.get(e.survivor) ?? after;
+    const gmBefore = lastGm.get(e.survivor);
     // Its own pieces falling back (a breakup's debris, a torn body's pieces striking) are counted on its card, not a card of their own.
     const echo = latest !== null && e.kind !== 'disrupt' && (lastOrigin.get(e.absorbed) === latestKey || lastOrigin.get(e.survivor) === latestKey);
-    if (echo && latest) latest = { ...latest, later: latest.later + 1, radiusAfterKm: e.survivor === latest.survivor ? after : latest.radiusAfterKm };
+    // The event's own radius after stays its own; what its pieces falling back make of the survivor is said apart.
+    if (echo && latest) latest = { ...latest, later: latest.later + 1, radiusNowKm: e.survivor === latest.survivor ? radiusNow : latest.radiusNowKm };
     else {
-      latest = { t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, angleDeg: (Math.acos(Math.min(1, Math.max(0, e.b))) * 180) / Math.PI, energyJ: joules(e.energy), created: e.created.length, craterKm: e.crater?.diameterKm ?? null, radiusBeforeKm: before, radiusAfterKm: after, later: 0 };
+      latest = { t: e.t, kind: e.kind, regime: e.regime, survivor: e.survivor, absorbed: e.absorbed, speedKmS: e.speedKmS, angleDeg: (Math.acos(Math.min(1, Math.max(0, e.b))) * 180) / Math.PI, energyJ: joules(e.energy), created: e.created.length, craterKm: e.crater?.diameterKm ?? null, radiusBeforeKm: before, radiusAfterKm: after, massBeforeKg: gmBefore === undefined ? null : gmBefore / gPerKg, massAfterKg: e.gm > 0 ? e.gm / gPerKg : null, later: 0, radiusNowKm: null };
       latestKey = key;
+      // Pieces that fell back within the snapshot that brought it: counted as they are seen (each its own event), the radius now as it is.
+      if (radiusNow !== null && after !== null && Math.abs(radiusNow - after) > 1e-9 * after) latest.radiusNowKm = radiusNow;
     }
     if (!fresh || e.kind === 'graze') return;
     const now = performance.now() / 1000;
@@ -750,7 +815,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       if (!e.crater && ti >= 0) {
         const kg = [e.survivor, ...e.created].reduce((sum, id) => sum + (msg.gm[msg.ids.indexOf(id)] ?? 0), 0) / gPerKg;
         const meltK = giantMeltK(kg > 0 ? joules(e.energy) / kg : 0);
-        for (const id of [e.survivor, ...e.created]) if (!builtIn(id)) heats.set(id, { meltK, t0: e.t });
+        for (const id of [e.survivor, ...e.created]) if (!builtIn(id)) heats.set(id, { meltK, t0: e.t, event: key });
         const world = builtIn(e.survivor);
         const rp = lastRadius.get(e.absorbed) ?? 0;
         if (world && MARKED.includes(world) && targetKm > 0) heatMarks.set(key, { body: world, site: [e.site[0], e.site[1], e.site[2]], local: null, angle: Math.min(Math.PI / 2, Math.max(0.05, 1.5 * Math.asin(Math.min(1, rp / targetKm)))), meltK, t: e.t, glow: 0, at: performance.now() });
@@ -793,6 +858,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       aim.plan = msg.plan;
       aim.status = msg.plan.refused ? 'refused' : 'ready';
       aim.reason = msg.plan.refused;
+      aim.missKm = msg.plan.missKm;
+      aim.logLength = msg.logLength;
       aim.contact = c ? { with: c.with, inS: c.inS, speedKmS: c.speedKmS, angleDeg: c.angleDeg, regime: c.regime, craterKm: c.craterKm, energyJ: joules(c.energy) } : null;
       return;
     }
@@ -828,6 +895,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         if (!present.has(key) && step >= Math.min(earliest, msg.step)) {
           seenEvents.delete(key);
           craterMarks.delete(key);
+          // Its heat too (an undo or a jump back before it): it glows again only if the event comes again.
+          heatMarks.delete(key);
+          for (const [id, h] of heats) if (h.event === key) heats.delete(id);
         }
       }
       // An event is new if the run reached it since the last snapshot (within FRESH_S of real time's worth at the rate).
@@ -873,11 +943,13 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       }
       // A body just added or duplicated is chosen at once; a snapshot taken before the worker had the edit does not have it yet.
       if (selected && msg.applied >= sentEdits && !msg.ids.includes(selected)) selected = null;
-      // As simulated time passes, the prediction (from "now") is redone every eighth of its horizon.
-      if (selected && Math.abs(msg.t - predictedAt) > horizonS / 8) requestPrediction();
+      // As simulated time passes, the prediction (from "now") is redone every eighth of its horizon, and more
+      // often as an encounter it found comes near (every half of the time left to it, at most hourly).
+      if (selected && Math.abs(msg.t - predictedAt) > Math.min(horizonS / 8, Math.max(3600, soonest(msg.t) / 2))) requestPrediction();
       // Each body's size and look as last seen (an impactor's still known once it has gone).
       msg.ids.forEach((id, i) => {
         lastRadius.set(id, msg.radius[i] ?? 0);
+        lastGm.set(id, msg.gm[i] ?? 0);
         const look = msg.looks[i];
         if (look) lastLook.set(id, look);
         const origin = msg.origin[i];
@@ -889,7 +961,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         if (q) void lab.command(q.c).then(q.resolve);
       }
     } else if (msg.type === 'prediction') {
-      if (!prediction || msg.revision >= prediction.revision) prediction = { id: msg.id, horizonS: msg.horizonS, path: msg.path, merged: msg.merged, frame: msg.frame, framePath: msg.framePath, revision: msg.revision, encounters: msg.encounters };
+      if (!prediction || msg.revision >= prediction.revision) prediction = { id: msg.id, horizonS: msg.horizonS, fromT: msg.fromT, path: msg.path, merged: msg.merged, frame: msg.frame, framePath: msg.framePath, revision: msg.revision, encounters: msg.encounters };
     } else if (msg.type === 'saved') {
       saveWaiters.get(msg.requestId)?.(msg.scenario);
       saveWaiters.delete(msg.requestId);
@@ -903,24 +975,16 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       const id = s.ids[i] ?? '';
       let t = trails.get(id);
       if (!t) {
-        t = { points: [], at: Number.NEGATIVE_INFINITY, times: [] };
+        t = new TrailRing();
         trails.set(id, t);
       }
       if (s.t === t.at) continue;
       // Going back: the path after this moment is not yet travelled.
-      while (t.times.length > 0 && (t.times[t.times.length - 1] ?? 0) > s.t) {
-        t.times.pop();
-        t.points.length -= 3;
-      }
+      while (t.count > 0 && t.t(t.count - 1) > s.t) t.pop();
       t.at = s.t;
-      t.points.push(s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0);
-      t.times.push(s.t);
-      if (t.points.length > TRAIL_POINTS * 3) {
-        t.points.splice(0, t.points.length - TRAIL_POINTS * 3);
-        t.times.splice(0, t.times.length - TRAIL_POINTS);
-      }
+      t.push(s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0, s.t);
     }
-    for (const id of [...trails.keys()]) if (!s.ids.includes(id)) trails.delete(id);
+    for (const id of trails.keys()) if (!s.ids.includes(id)) trails.delete(id);
   };
 
   /** Asks the worker for the scenario as it stands (start, settings, edits). */
@@ -932,7 +996,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     });
 
   /** An edit to the run, answered once the worker has it (applied, or refused with the reason: Engine.refusal). `atStep`: the step it is made at (by default the view last seen). */
-  const edit = (given: Command, atStep?: number): void => {
+  const edit = (given: Command, atStep?: number, exact = false): void => {
     // A solid body the visitor adds has a temperature too: an airless rock, unless it comes with a climate.
     const command: Command = given.kind === 'add' && !given.body.climate && given.body.gm > 0 && given.body.gm <= SOLID_MAX_GM ? { ...given, body: { ...given.body, climate: airlessRock() } } : given;
     sentEdits += 1;
@@ -943,7 +1007,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     });
     // On the run as last seen: the worker goes back to that step if it has run on since.
     const step = atStep ?? (snap?.generation === generation ? snap.step : undefined);
-    send({ type: 'command', generation, command, editSeq: seq, ...(step !== undefined ? { atStep: step } : {}) });
+    send({ type: 'command', generation, command, editSeq: seq, ...(step !== undefined ? { atStep: step } : {}), ...(exact ? { exact } : {}) });
     edited.add(commandId(command));
     lastAnswer = answer;
   };
@@ -1325,12 +1389,13 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     fxOccluders.length = 0;
     for (const k of occluderIndex) fxOccluders.push({ id: s.ids[k] ?? '', pos: place(s, k), radiusKm: s.radius[k] ?? 0 });
     const out = effects.frame({
-      nowS: wallNow / 1000,
+      nowS: fxClock,
       dtS: dt,
       simT: tNow,
       reduced: reducedNow(),
       pxPerTan: frame.pxPerTan,
       far: frame.far,
+      forward: frame.forward,
       widthPx: window.innerWidth,
       heightPx: window.innerHeight,
       compensation: frame.compensation,
@@ -1433,6 +1498,47 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       }
       labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [...position], opacity: 0.9, offset: [10, -10], rank });
     }
+    edgePointer(s, frame, relative);
+  };
+
+  /**
+   * The chosen body off the view (beyond its edge, or behind the camera): its name at the clear view's
+   * edge, on the line from the view's middle toward it, with an arrow that way (W1.10; the explorer's
+   * worlds have the same). Only the chosen body has one.
+   */
+  const edgePointer = (s: LabSnapshot, frame: LabFrame, relative: (abs: Km, out: Km) => Km): void => {
+    const k = selected ? s.ids.indexOf(selected) : -1;
+    const v = pointerView;
+    if (k < 0 || !v || builtIn(s.ids[k] ?? '')) return;
+    const p = place(s, k);
+    relative(toRender(p[0], p[1], p[2], abs), rel);
+    const f = v.forward();
+    const ahead = rel.x * f.x + rel.y * f.y + rel.z * f.z;
+    const d = Math.hypot(rel.x, rel.y, rel.z);
+    // Behind the camera: its mirror in the screen's plane lies the same way across the screen.
+    const back = ahead <= 0.05 * d ? 2 * ahead - 0.1 * d : 0;
+    edgeAt.x = rel.x - back * f.x;
+    edgeAt.y = rel.y - back * f.y;
+    edgeAt.z = rel.z - back * f.z;
+    const at = v.toScreen(edgeAt);
+    if (!at) return;
+    const box = v.insets();
+    const left = box.left + EDGE_PX;
+    const right = window.innerWidth - box.right - EDGE_PX;
+    const top = box.top + EDGE_PX;
+    const bottom = window.innerHeight - box.bottom - EDGE_PX;
+    if (back === 0 && at.x >= left && at.x <= right && at.y >= top && at.y <= bottom) return;
+    if (!(right > left && bottom > top)) return;
+    const cx = (left + right) / 2;
+    const cy = (top + bottom) / 2;
+    const dx = at.x - cx;
+    const dy = at.y - cy;
+    const t = Math.min(Math.abs(dx) > 1e-9 ? (dx > 0 ? right - cx : left - cx) / dx : Number.POSITIVE_INFINITY, Math.abs(dy) > 1e-9 ? (dy > 0 ? bottom - cy : top - cy) / dy : Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(t)) return;
+    const ray = v.ray(cx + dx * t, cy + dy * t);
+    const r = Math.min(d, frame.far * 0.25);
+    const arrow = EDGE_ARROWS[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8] ?? '';
+    labelList.push({ id: `lab-edge-${selected ?? ''}`, textKey: 'ui.universe.lab.body', text: fill('ui.universe.lab.offView', { name: s.names[k] ?? selected ?? '', arrow }), position: [ray.x * r, ray.y * r, ray.z * r], opacity: 0.9, offset: [10, -10], rank: Number.MAX_VALUE });
   };
 
   /**
@@ -1519,7 +1625,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         aimRequest += 1;
         const id = freshId('rock');
         const name = fill(`ui.universe.lab.throw.name.${c.impactor}`, {});
-        aim = { status: 'working', target: c.target, impactor: c.impactor, vInfKmS: c.vInfKmS, angleDeg: c.angleDeg, leadS: c.leadS, contact: null, reason: null, id: null, plan: null, requestId: aimRequest, spec: { id, name, gm, radiusKm }, logLength: s.logLength };
+        aim = { status: 'working', target: c.target, impactor: c.impactor, vInfKmS: c.vInfKmS, angleDeg: c.angleDeg, leadS: c.leadS, contact: null, reason: null, missKm: null, id: null, plan: null, requestId: aimRequest, spec: { id, name, gm, radiusKm }, logLength: s.logLength };
         send({ type: 'aim', generation, requestId: aimRequest, request: { id, name, target: c.target, gm, radiusKm, vInfKmS: c.vInfKmS, angleDeg: c.angleDeg, leadS: c.leadS, site, heading: unit3(right, [1, 0, 0]) } });
         return;
       }
@@ -1529,16 +1635,25 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           why = 'nothing aimed to throw';
           return;
         }
-        // Made exactly as worked out: at the step it was aimed from (the run goes back there if it has moved on).
+        // Made exactly as worked out: at the step it was aimed from (the run goes back there if it has moved on),
+        // or refused (an edit made since, at a later step: the worker cannot put the run back there with it).
         if (s.logLength !== a.logLength || s.step < a.plan.step) {
-          why = 'the experiment has changed since it was aimed: aim again';
+          a.status = 'refused';
+          a.reason = 'stale';
+          why = STALE;
           return;
         }
-        edit({ kind: 'add', body: { id: a.spec.id, name: a.spec.name, gm: a.spec.gm, radiusKm: a.spec.radiusKm, pos: a.plan.pos, vel: a.plan.vel, origin: 'user-edited', sourceIds: [] } }, a.plan.step);
+        edit({ kind: 'add', body: { id: a.spec.id, name: a.spec.name, gm: a.spec.gm, radiusKm: a.spec.radiusKm, pos: a.plan.pos, vel: a.plan.vel, origin: 'user-edited', sourceIds: [] } }, a.plan.step, true);
         a.status = 'thrown';
         a.id = a.spec.id;
         selected = a.spec.id;
         requestPrediction();
+        void lastAnswer?.then((r) => {
+          if (r.ok || aim !== a) return;
+          a.status = 'refused';
+          a.reason = r.reason === STALE ? 'stale' : r.reason;
+          a.id = null;
+        });
         return;
       }
       case 'aimClear':
@@ -2422,7 +2537,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       const pair = viewMode === 'corotating' ? corotatingPair(s) : null;
       const ta = pair ? trails.get(s.ids[pair.a] ?? '') : undefined;
       const tb = pair ? trails.get(s.ids[pair.b] ?? '') : undefined;
-      let turning: { aNow: Vec3; e1: Vec3; e2: Vec3; e3: Vec3; omega: number; ta: { points: number[] }; tb: { points: number[] } } | null = null;
+      let turning: { aNow: Vec3; e1: Vec3; e2: Vec3; e3: Vec3; omega: number; ta: TrailRing; tb: TrailRing } | null = null;
       if (pair && ta && tb) {
         const aNow = now(pair.a, [0, 0, 0]) as Vec3;
         const r = sub3(now(pair.b, [0, 0, 0]), aNow);
@@ -2432,7 +2547,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         turning = { aNow, e1, e2: cross3(e3, e1), e3, omega: norm3(cross3(r, v)) / Math.max(dot3(r, r), 1e-9), ta, tb };
       }
       // The frame turning with the chosen body's primary's own rotation (view "bodyfixed"): its axis and rate.
-      let spinning: { a: number; aNow: Vec3; axis: Vec3; omega: number; ta: { points: number[]; times: number[] } } | null = null;
+      let spinning: { a: number; aNow: Vec3; axis: Vec3; omega: number; ta: TrailRing } | null = null;
       if (viewMode === 'bodyfixed' && selected) {
         const i0 = s.ids.indexOf(selected);
         const a = i0 < 0 ? -1 : primaryOf(s.gm, s.pos, i0);
@@ -2460,46 +2575,47 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       let slot = 0;
       weights.fill(0);
       for (const [id, t] of trails) {
+        // As many as there are slots (the chosen one's always).
+        if (id !== selected && slot >= TRAIL_SLOTS) continue;
         const b = s.ids.indexOf(id);
         const p = viewMode !== 'primary' || b < 0 ? -1 : primaryOf(s.gm, s.pos, b);
         const pt = p < 0 ? undefined : trails.get(s.ids[p] ?? '');
-        const limit = turning ? Math.min(turning.ta.points.length, turning.tb.points.length) : spinning ? spinning.ta.points.length : pt ? pt.points.length : Number.POSITIVE_INFINITY;
-        const n = Math.min(t.points.length, limit) / 3;
+        const limit = turning ? Math.min(turning.ta.count, turning.tb.count) : spinning ? spinning.ta.count : pt ? pt.count : Number.POSITIVE_INFINITY;
+        const n = Math.min(t.count, limit);
         if (n < 2) continue;
-        const from = t.points.length / 3 - n;
-        const fromP = pt ? pt.points.length / 3 - n : 0;
-        const fromA = turning ? turning.ta.points.length / 3 - n : spinning ? spinning.ta.points.length / 3 - n : 0;
-        const fromB = turning ? turning.tb.points.length / 3 - n : 0;
+        const from = t.count - n;
+        const fromP = pt ? pt.count - n : 0;
+        const fromA = turning ? turning.ta.count - n : spinning ? spinning.ta.count - n : 0;
+        const fromB = turning ? turning.tb.count - n : 0;
         if (pt) now(p, anchor);
-        const pts = new Array<number>(n * 3);
         for (let k = 0; k < n; k += 1) {
           if (spinning) {
             // Turned back by the primary's rotation since that sample: the path as the ground under it sees it.
-            const sa = spinning.ta.points;
-            const rel = [0, 1, 2].map((c) => (t.points[(from + k) * 3 + c] ?? 0) - (sa[(fromA + k) * 3 + c] ?? 0));
-            const q = add3(spinning.aNow, rotate3(rel, spinning.axis, spinning.omega * (tNow - (t.times[from + k] ?? tNow))));
+            const sa = spinning.ta;
+            const rel = [0, 1, 2].map((c) => t.x(from + k, c) - sa.x(fromA + k, c));
+            const q = add3(spinning.aNow, rotate3(rel, spinning.axis, spinning.omega * (tNow - t.t(from + k))));
             point[0] = q[0];
             point[1] = q[1];
             point[2] = q[2];
           } else if (turning) {
-            const at = (arr: number[], k0: number): Vec3 => [arr[k0 * 3] ?? 0, arr[k0 * 3 + 1] ?? 0, arr[k0 * 3 + 2] ?? 0];
-            const q = turned(at(t.points, from + k), at(turning.ta.points, fromA + k), at(turning.tb.points, fromB + k), turning);
+            const at = (r: TrailRing, k0: number): Vec3 => [r.x(k0, 0), r.x(k0, 1), r.x(k0, 2)];
+            const q = turned(at(t, from + k), at(turning.ta, fromA + k), at(turning.tb, fromB + k), turning);
             point[0] = q[0];
             point[1] = q[1];
             point[2] = q[2];
           } else {
-            for (let c = 0; c < 3; c += 1) point[c] = (t.points[(from + k) * 3 + c] ?? 0) + (pt ? (anchor[c] ?? 0) - (pt.points[(fromP + k) * 3 + c] ?? 0) : 0);
+            for (let c = 0; c < 3; c += 1) point[c] = t.x(from + k, c) + (pt ? (anchor[c] ?? 0) - pt.x(fromP + k, c) : 0);
           }
           toRender(point[0] ?? 0, point[1] ?? 0, point[2] ?? 0, scratch);
-          pts[k * 3] = scratch.x;
-          pts[k * 3 + 1] = scratch.y;
-          pts[k * 3 + 2] = scratch.z;
+          trailDrawn[k * 3] = scratch.x;
+          trailDrawn[k * 3 + 1] = scratch.y;
+          trailDrawn[k * 3 + 2] = scratch.z;
         }
         if (id === selected) {
-          chosenTrail.set(pts, n);
+          chosenTrail.set(trailDrawn, n);
           weights[TRAIL_SLOTS] = 1;
-        } else if (slot < TRAIL_SLOTS) {
-          trailPaths[slot]?.set(pts, n);
+        } else {
+          trailPaths[slot]?.set(trailDrawn, n);
           weights[slot] = 0.8;
           slot += 1;
         }
@@ -2558,8 +2674,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       // engine's radius, soft dust and rings, fireballs; until they have loaded, points of light. Their
       // names either way (buildLabels).
       const wallNow = performance.now();
-      const dtFx = Number.isFinite(lastFxWall) ? Math.min(0.1, Math.max(0, (wallNow - lastFxWall) / 1000)) : 0;
-      lastFxWall = wallNow;
+      const dtFx = Math.min(0.1, Math.max(0, frame.dt));
+      fxClock += dtFx;
       // Plumes over, or done fading away early, go.
       for (let k = plumes.length - 1; k >= 0; k -= 1) {
         const q = plumes[k];
@@ -2667,9 +2783,12 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       if (prediction && framed && prediction.id === selected) {
         const n = prediction.path.length / 3;
         for (const e of prediction.encounters) {
+          // The time left from the moment drawn (the prediction began earlier); an encounter passed is not shown.
+          const left = prediction.fromT + e.t - tNow;
+          if (left < 0) continue;
           const k = Math.round((e.t / prediction.horizonS) * n) - 1;
           // Named as the encounter it is, not as the body (whose own name may show beside it).
-          const when = e.t < 2 * 86_400 ? fill('ui.universe.lab.hours', { value: (e.t / 3600).toFixed(1) }) : fill('ui.universe.lab.days', { value: (e.t / 86_400).toFixed(1) });
+          const when = left < 2 * 86_400 ? fill('ui.universe.lab.hours', { value: (left / 3600).toFixed(1) }) : fill('ui.universe.lab.days', { value: (left / 86_400).toFixed(1) });
           mark(framed(e.pos, k, e.t), ENCOUNTER, 8, 1, fill('ui.universe.lab.closest', { name: knownNames.get(e.with) ?? e.with, time: when }));
         }
       }
@@ -2862,7 +2981,12 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         discarded: s?.discarded ?? 0,
         prediction:
           prediction && prediction.id === selected
-            ? { id: prediction.id, horizonS: prediction.horizonS, merged: prediction.merged ? { t: prediction.merged.t, with: prediction.merged.with } : null, encounters: prediction.encounters.map((e) => ({ with: e.with, t: e.t, distanceKm: e.distanceKm })) }
+            ? (() => {
+                // Times from the moment drawn (the prediction was made a little earlier); those passed are left out.
+                const p = prediction;
+                const left = (t: number): number => p.fromT + t - clock.shown;
+                return { id: p.id, horizonS: p.horizonS, merged: p.merged && left(p.merged.t) >= 0 ? { t: left(p.merged.t), with: p.merged.with } : null, encounters: p.encounters.filter((e) => left(e.t) >= 0).map((e) => ({ with: e.with, t: left(e.t), distanceKm: e.distanceKm })) };
+              })()
             : null,
         horizonS,
         accuracy,
@@ -2901,7 +3025,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         generation,
         applied: s?.applied ?? 0,
         slow: { on: slowOn, active: slow ? { kind: slow.kind, target: slow.target, body: slow.body, rate: shownRate, inS: slow.contactT === null ? null : Math.max(0, slow.contactT - clock.shown) } : null },
-        aim: aim ? { status: aim.status, target: aim.target, impactor: aim.impactor, vInfKmS: aim.vInfKmS, angleDeg: aim.angleDeg, leadS: aim.leadS, contact: aim.contact, reason: aim.reason, id: aim.id } : null,
+        aim: aim ? { status: aim.status, target: aim.target, impactor: aim.impactor, vInfKmS: aim.vInfKmS, angleDeg: aim.angleDeg, leadS: aim.leadS, contact: aim.contact, reason: aim.reason, missKm: aim.missKm, id: aim.id } : null,
         latest,
       };
     },
@@ -2923,7 +3047,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       if (!a) return false;
       const tipRel = rel(toRender(a.tip[0], a.tip[1], a.tip[2], km()), km());
       const sp = v.toScreen(tipRel);
-      if (!sp || Math.hypot(sp.x - x, sp.y - y) > HANDLE_PX) return false;
+      if (!sp || Math.hypot(sp.x - x, sp.y - y) > (matchMedia('(pointer: coarse)').matches ? HANDLE_TOUCH_PX : HANDLE_PX)) return false;
       const f = v.forward();
       dragging = { id: selected, len: a.len, tipRel: [tipRel.x, tipRel.y, tipRel.z], normal: [f.x, f.y, f.z], vel: a.vel };
       return true;
@@ -2984,13 +3108,21 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       lines.dispose();
       dots.dispose();
       markers.dispose();
+      particles.dispose();
+      dust.dispose();
+      // The effects' meshes and buffers (their chunk stays loaded; a new laboratory makes them again).
+      fx?.dispose();
+      fxRoot.removeFromParent();
+      fx = null;
+      fxTier = null;
     },
   };
   // For tools and the tests: commands with their answers, and what the effects drew (window.__kf; read-only).
   const kf = (window as unknown as { __kf?: KfTestHandle }).__kf;
   if (kf) {
     kf.universe.lab = (c) => lab.command(c);
-    kf.universe.labDraw = () => (active ? { ...report, scale: Object.fromEntries(BODY_IDS.map((id) => [id, lab.scale(id)])), clock: { ms: clockWall, shownS: clock.shown } } : null);
+    kf.universe.labEffects = (parts) => fx?.toggle(parts) ?? null;
+    kf.universe.labDraw = () => (active ? { ...report, scale: Object.fromEntries(BODY_IDS.map((id) => [id, lab.scale(id)])), clock: { ms: clockWall, shownS: clock.shown, fxS: fxClock }, camera: pointerView?.forward() ?? null, heat: { marks: heatMarks.size, bodies: heats.size } } : null);
   }
   return lab;
 }

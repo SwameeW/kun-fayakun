@@ -24,7 +24,7 @@ test.use({ reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } });
 
 interface Report {
   tier: string;
-  bodies: Array<{ id: string; discPx: number; mesh: number; point: number; lit: number; drawnRadiusKm: number; screen: { x: number; y: number } | null; irregular: number; star: boolean; glow: number }>;
+  bodies: Array<{ id: string; discPx: number; projectedPx: number; axis: number; mesh: number; point: number; lit: number; light: { x: number; y: number } | null; drawnRadiusKm: number; screen: { x: number; y: number } | null; irregular: number; star: boolean; glow: number }>;
   meshes: [number, number, number];
   dust: { drawn: number; medianSizePx: number; color: [number, number, number]; shadowed: number; brightest: number };
   annuli: Array<{ id: string; weight: number; coverageDeg: number }>;
@@ -114,8 +114,8 @@ test.describe('the laboratory drawn as what it holds', () => {
         expect(Math.abs(cr - cg)).toBeLessThan(0.04);
         expect(Math.abs(cg - cb)).toBeLessThan(0.04);
         expect(r.dust.medianSizePx).toBeGreaterThan(3.2);
-        // Under sunlit ground at its brightest (a haze, not points of light).
-        expect(r.dust.brightest).toBeLessThanOrEqual(0.3);
+        // Never brighter than the Moon's own rock in full sunlight (albedo 0.12 at the Earth's distance from the Sun, about 1.0 of the light at 1 au): a haze, not points of light.
+        expect(r.dust.brightest).toBeLessThanOrEqual(0.12 * 1.04);
       }
       annulus = Math.max(annulus, r.annuli.find((a) => a.id.startsWith('dust-moon'))?.weight ?? 0);
     }
@@ -149,6 +149,79 @@ test.describe('the laboratory drawn as what it holds', () => {
     }
     await page.setViewportSize({ width: 1440, height: 900 });
     await expect.poll(async () => (await tags(page)).filter((t) => t.text === 'Moon: 8 pieces').length, LIVE).toBe(1);
+    // The card says how the dust and its band are drawn (illustrative), and so does the rings section.
+    await expect(page.getByTestId('lab-event-dust')).toBeVisible();
+    await expect(page.getByTestId('lab-event-dust')).toContainText('illustrative');
+    await page.getByTestId('lab-rings').locator('summary').click();
+    await expect(page.getByTestId('lab-rings-drawn')).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('the torn Moon’s pieces at three window sizes (2000 x 1300, 1440 x 900, 1280 x 800): meshes at their engine size, their projected size their disc’s within 5 per cent', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(300_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await openLab(page);
+    await fork(page);
+    expect(await command(page, { kind: 'elements', id: 'moon', aKm: 15_000, e: 0, iDeg: 5, nodeDeg: 0, periapsisArgDeg: 0, trueAnomalyDeg: 0 })).toEqual({ ok: true, created: [] });
+    await run(page, 3600);
+    await expect.poll(async () => (await lab(page))?.bodies.filter((b) => b.id.startsWith('moon-piece-')).length, LIVE).toBe(8);
+    for (const [width, height] of [[2000, 1300], [1440, 900], [1280, 800]] as const) {
+      await page.setViewportSize({ width, height });
+      let checked = 0;
+      for (let k = 0; k < 12 && checked < 4; k += 1) {
+        await page.waitForTimeout(300);
+        const r = await draw(page);
+        for (const b of r?.bodies.filter((x) => x.id.startsWith('moon-piece-') && x.discPx > 3 && x.screen) ?? []) {
+          expect(b.mesh, `${width}x${height} ${b.id}`).toBeGreaterThan(0.99);
+          // Off the view's axis, a perspective view draws it wider across by 1 / cos of its angle off the axis.
+          expect(Math.abs((b.projectedPx * b.axis) / b.discPx - 1), `${width}x${height} ${b.id}: ${b.projectedPx} at ${b.axis} against ${b.discPx}`).toBeLessThan(0.05);
+          checked += 1;
+        }
+      }
+      expect(checked, `${width}x${height}`).toBeGreaterThan(0);
+    }
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('the two-body laboratory: its star’s disc the size its radius and distance make it (within 2 per cent), its planet lit from the star’s side', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(240_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await openLab(page);
+    await command(page, { kind: 'start', seed: 'two' });
+    await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+    // At the star (its stand-in), settled.
+    await expect.poll(async () => (await view(page))?.trip ?? null, LIVE).toBeNull();
+    await page.waitForTimeout(1500);
+    const l = await lab(page);
+    const r = await draw(page);
+    const star = r?.bodies.find((b) => b.id === 'star');
+    const radius = l?.bodies.find((b) => b.id === 'star')?.radiusKm ?? 0;
+    const distance = (l?.standIn?.altitudeKm ?? 0) + radius;
+    // The camera's own field of view and the canvas's height: pixels per unit tangent, by the camera, not by the effects.
+    const { fov, height } = await page.evaluate(() => ({ fov: (window as unknown as KfHook).__kf.camera().fov, height: document.querySelector('#scene')?.getBoundingClientRect().height ?? 0 }));
+    const pxPerTan = height / 2 / Math.tan((fov * Math.PI) / 360);
+    const expected = pxPerTan * Math.tan(Math.asin(Math.min(1, radius / distance)));
+    expect(star?.star).toBe(true);
+    expect(Math.abs((star?.discPx ?? 0) / expected - 1)).toBeLessThan(0.02);
+    expect(Math.abs(((star?.projectedPx ?? 0) * (star?.axis ?? 1)) / expected - 1)).toBeLessThan(0.02);
+    // The planet: its light comes from the star's side on screen (the way to the star from it).
+    // The planet (1 au out, behind the camera at the star): seen with the star from five au above the plane.
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.universe.place({ body: 'sun', distanceKm: 7.5e8, azimuthDeg: 0, elevationDeg: 70 });
+    });
+    await page.waitForTimeout(800);
+    const seen = await draw(page);
+    const planet = seen?.bodies.find((b) => b.id === 'planet');
+    const starNow = seen?.bodies.find((b) => b.id === 'star');
+    expect(planet?.lit ?? 0).toBeGreaterThan(0);
+    expect(planet?.screen).toBeTruthy();
+    expect(planet?.light).toBeTruthy();
+    const dx = (starNow?.screen?.x ?? 0) - (planet?.screen?.x ?? 0);
+    const dy = (starNow?.screen?.y ?? 0) - (planet?.screen?.y ?? 0);
+    const cos = ((planet?.light?.x ?? 0) * dx + (planet?.light?.y ?? 0) * dy) / Math.hypot(dx, dy);
+    expect(cos).toBeGreaterThan(Math.cos((3 * Math.PI) / 180));
     expect(pageErrors).toEqual([]);
   });
 

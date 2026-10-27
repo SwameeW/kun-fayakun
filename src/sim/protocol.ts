@@ -27,8 +27,8 @@ export type LabRequest =
   | { type: 'run'; generation: number; control: number; rate: number; paused: boolean; landAt?: number }
   /** Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a tick; the clock then runs (or not) as `run` last said. */
   | { type: 'goto'; generation: number; control: number; t: number }
-  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt); `editSeq` numbers it, and the worker's 'ack' answers with it. */
-  | { type: 'command'; generation: number; command: Command; atStep?: number; editSeq?: number }
+  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt; `exact`: made there or refused); `editSeq` numbers it, and the worker's 'ack' answers with it. */
+  | { type: 'command'; generation: number; command: Command; atStep?: number; exact?: boolean; editSeq?: number }
   /** A throw worked out (./aim) from the run as it stands, not yet made: answered with 'aimed'. */
   | { type: 'aim'; generation: number; requestId: number; request: ThrowRequest }
   | { type: 'predict'; generation: number; id: string | null; horizonS: number; accuracy: number }
@@ -108,9 +108,11 @@ export interface LabSnapshot {
 
 export type LabReply =
   | LabSnapshot
-  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; encounters: Encounter[] }
+  /** A body's path integrated ahead from simulated time `fromT` (its times, the merger's and the encounters', are from then). */
+  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; fromT: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; encounters: Encounter[] }
   | { type: 'saved'; generation: number; requestId: number; scenario: Scenario }
   /** An edit's answer: applied, or refused with the reason (Engine.refusal); the bodies it made. */
   | { type: 'ack'; generation: number; editSeq: number; ok: boolean; reason: string | null; created: string[] }
-  | { type: 'aimed'; generation: number; requestId: number; plan: ThrowPlan }
+  /** A throw worked out, from the run with `logLength` edits logged (an edit since makes it stale). */
+  | { type: 'aimed'; generation: number; requestId: number; logLength: number; plan: ThrowPlan }
   | { type: 'error'; generation: number; message: string };

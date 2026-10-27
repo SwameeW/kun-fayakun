@@ -9,7 +9,7 @@
  * the conductive half-space solution for a cooling lava lake's surface (Turcotte and Schubert 2014,
  * Geodynamics, chapter 4), with rock's conductivity k = 2 W/m/K, diffusivity kappa = 1e-6 m^2/s and
  * emissivity 0.9. Its surface falls below the visible glow (about 1,100 K) within minutes of simulated
- * time (two for melt at 2,000 K, ten at 3,000 K), however large the melt: the glow is seen only while
+ * time (about three for melt at 2,000 K, fourteen at 3,000 K), however large the melt: the glow is seen only while
  * the clock runs slowly over the impact. The melt's own temperature is illustrative: impact melt at
  * about 2,000 K, and for a giant impact the energy per kilogram over rock's heat capacity, at least
  * 1,500 K, at most 3,000 K (near where silicate rock boils). The glow's brightness follows from the temperature by Planck's law

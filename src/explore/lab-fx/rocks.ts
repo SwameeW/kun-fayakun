@@ -36,9 +36,11 @@ export interface RockInstance {
   /** Albedo times tint (linear), and how much of it shows (fades, the crossover to a point). */
   color: [number, number, number];
   alpha: number;
-  /** Two lights: unit direction to the star (render frame) and its light there (1: the Sun's at 1 au). */
+  /** Up to four lights, the strongest first: unit direction to the star (render frame) and its light there (1: the Sun's at 1 au; 0 for none). */
   light0: [number, number, number, number];
   light1: [number, number, number, number];
+  light2: [number, number, number, number];
+  light3: [number, number, number, number];
   /** Its own light (linear, scene terms): a star's surface or hot rock's glow; `star` 1 for a star (no reflected light, darkened toward its limb). */
   glow: [number, number, number];
   star: number;
@@ -54,8 +56,8 @@ export interface Rocks {
 }
 
 const MAX_ROCKS = 64;
-/** Numbers a rock in the instanced buffer: seven fours (centre and radius, orientation, shape, look, two lights, glow). */
-const STRIDE = 28;
+/** Numbers a rock in the instanced buffer: nine fours (centre and radius, orientation, shape, look, two lights, glow, two more lights). */
+const STRIDE = 36;
 /** The lumps: broad dents and swells on the unit sphere (direction, height, width), illustrative and fixed. */
 const LUMPS = ((): Array<[number, number, number, number, number]> => {
   let a = 0x2545f491;
@@ -234,6 +236,8 @@ function bucket(detail: number): Bucket {
   const l0 = node(4);
   const l1 = node(5);
   const glow = node(6);
+  const l2 = node(7);
+  const l3 = node(8);
   const material = new MeshBasicNodeMaterial({ transparent: true, depthWrite: true, fog: false });
   const irregular = shape.w;
   // The sphere's own position and normal (the geometry's), and the lumpy twin's.
@@ -256,7 +260,7 @@ function bucket(detail: number): Bucket {
     return ls.add(lambert).mul(sunlit(cosine)).mul(l.w);
   };
   // A faint floor on the night side (a visual aid, as the explorer's worlds' night sides and points have: illustrative).
-  const reflected = look.xyz.mul(light(l0).add(light(l1)).add(NIGHT));
+  const reflected = look.xyz.mul(light(l0).add(light(l1)).add(light(l2)).add(light(l3)).add(NIGHT));
   const limb = float(1).sub(float(LIMB).mul(float(1).sub(mu)));
   // Hot rock: brighter where it faces the camera (its crust thickest toward the limb), in patches where the crust has cracked (illustrative).
   const cracks = sin(vLocal.x.mul(13)).mul(sin(vLocal.y.mul(11))).mul(sin(vLocal.z.mul(17))).mul(0.3).add(0.85);
@@ -318,6 +322,8 @@ export function createRocks(effects: LabEffects): Rocks {
         a[o + 25] = r.glow[1];
         a[o + 26] = r.glow[2];
         a[o + 27] = r.star;
+        a.set(r.light2, o + 28);
+        a.set(r.light3, o + 32);
       }
       for (const id of was.keys()) if (!seen.has(id)) was.delete(id);
       buckets.forEach((b, k) => {

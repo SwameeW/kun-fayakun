@@ -195,6 +195,12 @@ export interface Checkpoint {
   dt: number;
   /** Log entries already applied when it was taken. */
   logIndex: number;
+  /**
+   * The accelerations the next step starts from, as the run had them (the end of the last step's, found
+   * before its second half kick turned the spins, which set the oblate bodies' axes): a run going on from
+   * here goes on exactly as it did, to the last bit, not from ones found afresh with the spins turned.
+   */
+  acc?: number[];
 }
 
 export interface PredictionResult {
@@ -207,6 +213,8 @@ export interface PredictionResult {
   framePath: number[];
   /** Its closest approaches to other bodies (at most ENCOUNTERS, nearest first relative to their size): when (s from now), how close (km between centres), where it is then and where the other is. */
   encounters: Encounter[];
+  /** The simulated time it was made from (s since the epoch): its times are from then. */
+  fromT: number;
 }
 
 export interface Encounter {
@@ -221,6 +229,8 @@ export interface Encounter {
 export const ENCOUNTERS = 3;
 
 const MAX_CHECKPOINTS = 48;
+/** Why an edit tied to one step (Engine.applyAt `exact`) is refused when the run cannot be put there. */
+export const STALE = 'the experiment has changed since it was aimed';
 
 /** A body spec's state: its rotation as a spin angular momentum, its J2 and moment of inertia factor. */
 function bodyOf(b: BodySpec): Parameters<typeof addBody>[1] {
@@ -275,6 +285,7 @@ export class Engine {
       this.state = cloneState(from.state);
       this.dt = from.dt;
       this.logIndex = from.logIndex;
+      this.acc = from.acc ? [...from.acc] : [];
       this.lastPeriodic = from.step;
       this.reference = diagnostics(this.state);
       return;
@@ -293,7 +304,7 @@ export class Engine {
 
   /** The state now as a checkpoint (a deep copy; without the rings' particles when `withSwarms` is false). */
   snapshotNow(withSwarms = true): Checkpoint {
-    return { step: this.state.step, t: this.state.t, state: cloneState(this.state, withSwarms), dt: this.dt, logIndex: this.logIndex };
+    return { step: this.state.step, t: this.state.t, state: cloneState(this.state, withSwarms), dt: this.dt, logIndex: this.logIndex, acc: [...this.acc] };
   }
 
   /** The step size the state calls for now (or for a timescale already found). */
@@ -533,14 +544,23 @@ export class Engine {
    * last shown and the edit's arrival (a frame or two: a long stretch at a fast rate), so the run goes
    * back to that step first (exactly: a checkpoint, the log replayed), unless an edit has been made
    * since. A body placed beside another is then placed where that one was seen, not where it has
-   * moved since (at a day a second, a hundred thousand kilometres for the Earth).
+   * moved since (at a day a second, a hundred thousand kilometres for the Earth). An edit made at that
+   * same step before it is kept: the run goes back to just after it (its checkpoint, then the edits due
+   * there applied again, as a replay would).
+   *
+   * `exact`: made only at `atStep` (a thrown rock, worked out from the run there: ./aim), refused when the
+   * run cannot be put there (an edit made since, or it has not got there yet).
    */
-  applyAt(command: Command, atStep: number): string | null {
+  applyAt(command: Command, atStep: number, exact = false): string | null {
     // Refused as things stand now: the run is not taken back for it.
     const refused = this.refusal(command);
     if (refused) return refused;
     const last = this.logIndex > 0 ? (this.scenario.log[this.logIndex - 1]?.step ?? 0) : -1;
-    if (!this.failure && atStep > last && atStep < this.state.step) this.restore(atStep);
+    if (!this.failure && atStep >= last && atStep < this.state.step) {
+      this.restore(atStep);
+      this.applyDue();
+    }
+    if (exact && this.state.step !== atStep) return STALE;
     return this.apply(command);
   }
 
@@ -657,7 +677,8 @@ export class Engine {
     // The history as it stood then (the replay adds back what it passes again): interventions mirror the log entries applied, collisions their steps.
     this.interventions.length = Math.min(this.interventions.length, c.logIndex);
     for (let k = this.events.length - 1; k >= 0; k -= 1) if ((this.events[k]?.step ?? 0) >= c.step) this.events.splice(k, 1);
-    this.acc.length = 0;
+    // The accelerations the run went on from there (Checkpoint.acc), so it goes on exactly as it did.
+    this.acc = c.acc ? [...c.acc] : [];
     this.reference = diagnostics(this.state);
     this.lastPeriodic = this.state.step;
     // Checkpoints later than this one belong to a future that is no longer certain: keep them (the log replays the same way) unless a new edit branches.
@@ -858,7 +879,7 @@ export class Prediction {
   }
 
   result(): PredictionResult {
-    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath], encounters: this.encounters() };
+    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath], encounters: this.encounters(), fromT: this.start };
   }
 }
 
