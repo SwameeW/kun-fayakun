@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { labBodyLabel, readContext, withoutCameraDistance } from '../../src/ai/context';
-import { guardInput, guardOutput, INPUT_MAX, stripMarkers, type OutputGuardData } from '../../src/ai/guards';
+import { asksScriptureClaim, guardInput, guardOutput, INPUT_MAX, stripMarkers, type OutputGuardData } from '../../src/ai/guards';
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
 import { buildAnswerMessages, buildPlanMessages, buildRepairMessages } from '../../src/ai/prompts';
 import { withheldFrom } from '../../src/ai/tools';
@@ -517,6 +517,33 @@ test.describe('output', () => {
     }
   });
 
+  test('what is left after a removal is read on its own: a verse’s marker is no sentence’s subject, a pronoun after a verse is the verse', () => {
+    // Qwen3.5 9B, at 598476c: the chapter's sentence went with the verse's marker left before it, and "It describes … hot and dense" then read as 21:30's.
+    const raw =
+      'The verse that describes the hot, dense beginning is Quran 21:30 [[verse:21:30]]. This verse states that the heavens and the earth were once a single piece before they were separated.\n\nThe film’s Chapter 1, "The beginning," explains that this separation happened about 13.8 billion years ago [[passage:chapter:ch01]]. It describes the start of our universe as a moment that was extremely hot and dense, followed by space stretching out [[passage:prose:ch01.caption.beginning]].';
+    const side = 'The app sets scripture and science side by side for reflection.';
+    const out = stripMarkers(guardOutput(raw, data({ facts: [], passages: [P('verse:21:30'), P('chapter:ch01'), P('prose:ch01.caption.beginning')], given: ['13.8 billion'], sideBySide: side })).text);
+    expect(out).toContain('The film’s Chapter 1, "The beginning," explains');
+    expect(out).not.toMatch(/^\(21:30\) It describes/mu);
+    // A pronoun with a verb straight after a sentence about a verse speaks of the verse.
+    expect(guardOutput('Verse 21:30 speaks of the heavens and the earth. It describes a hot, dense beginning.', data({ facts: [], sideBySide: side })).text).toBe(`Verse 21:30 speaks of the heavens and the earth. ${side}`);
+    // A verse as the object of a preposition is not the subject; a quotation ending its own sentence is not presented by the next one's marker.
+    const readings = 'Modern readings of this verse suggest it relates to the expansion of the universe.';
+    expect(guardOutput(readings, data({ facts: [] })).text).toBe(readings);
+    // A reading reported as others', as the app's own note reports it, stays; so does what follows the app's own words.
+    const reported = '21:30 describes, as some modern writers interpret it, a beginning resembling the Big Bang.';
+    expect(guardOutput(reported, data({ facts: [] })).text).toBe(reported);
+    const after = `${side} It mentions that some modern writers read 21:30 as resembling the Big Bang.`;
+    expect(guardOutput(after, data({ facts: [], sideBySide: side })).text).toBe(after);
+    const titled = guardOutput('The chapter is titled "A vast heaven."\n\nVerse 51:47 states: "We have built the heaven with might." Science measures the expansion.', data({ facts: [] }));
+    expect(stripMarkers(titled.text)).toContain('titled "A vast heaven."');
+  });
+
+  test('a question whether scripture predicted or proved science is one the app answers first in its own words', () => {
+    for (const q of ['Does the Quran predict the Big Bang?', 'Prove that the Quran confirms the expansion of the universe', 'Is 21:30 a scientific miracle that foretold modern cosmology?', 'Did the Quran anticipate the Big Bang?']) expect(asksScriptureClaim(q), q).toBe(true);
+    for (const q of ['Predict where Mars will be next year', 'What does 21:30 say?', 'Does the Quran describe the stars?']) expect(asksScriptureClaim(q), q).toBe(false);
+  });
+
   test('when the visitor asks for scripture’s words, any quotation is taken for them (Qwen3 0.6B, with no lead-in)', () => {
     const recite = guardOutput(
       '"Indeed, the best of the angels is the best of the believers, and the best of the believers is the best of the angels."',
@@ -578,6 +605,8 @@ test.describe('output', () => {
     // The summary retold, of the hadith named, stays.
     const retold = 'A hadith in Sahih al-Bukhari 3199 states that the Sun goes at its setting to prostrate beneath the Throne and asks permission to rise again.';
     expect(guardOutput(retold, withSummaries).text).toBe(retold);
+    // Qwen3 1.7B at 598476c: 3199's content given to 3191, beside a passage whose marker's id holds "bukhari3199".
+    expect(stripMarkers(guardOutput('Sahih al-Bukhari 3191 mentions that the Prophet \uFDFA said the sun goes, at its setting, to prostrate beneath the Throne [[passage:note:ch07.hadith.bukhari3199.note]].', withSummaries).text)).toBe('');
     // A hadith said to be "about" what its summary does not speak of goes.
     expect(stripMarkers(guardOutput('[[hadith:bukhari-3191]] is a hadith about black holes.', withSummaries).text)).toBe('');
   });
@@ -610,6 +639,9 @@ test.describe('output', () => {
     const gm: Fact = { id: 'earth.gm', label: 'GM of the Earth', value: 398600.4, unit: 'km³/s²', knowledge: 'observed' };
     expect(guardOutput("The Earth's GM is 398600.4 km³/s².", data({ facts: [gm] })).flags).not.toContain('unchecked-number');
     expect(withoutCameraDistance('In the solar-system explorer near the Earth, 35,647 km from its centre, on 2026-10-27, the clock at real time.')).toBe('In the solar-system explorer near the Earth, on 2026-10-27, the clock at real time.');
+    // A duration in two parts is one number (Qwen3.5 9B: 14,909 s as "about 4 hours and 8 minutes").
+    const light: Fact = { id: 'light.seconds', label: 'Light time', value: 14909, unit: 's', knowledge: 'model' };
+    expect(guardOutput('That is about 4 hours and 8 minutes, not 5 hours and 8 minutes.', data({ facts: [light] })).text).toBe('That is about 4 hours and 8 minutes, not 5 hours (not checked) and 8 minutes (not checked).');
   });
 
   test('an offer to confirm needs a card that waits; the answer prompt says so only then', () => {

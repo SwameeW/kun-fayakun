@@ -30,7 +30,7 @@ import type { App, BodyId, I18n } from '../core/types';
 import { createEventBus } from '../core/events';
 import messages from '../i18n/en.ai.mind.json' with { type: 'json' };
 import { readContext, withoutCameraDistance } from './context';
-import { guardInput, guardOutput, removeArabic, removeOtherScripts, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
+import { asksScriptureClaim, guardInput, guardOutput, removeArabic, removeOtherScripts, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
 import { conventionsNamed, route, type NamedPlace } from './router';
@@ -180,6 +180,8 @@ interface TurnRecord {
   };
   controller: AbortController;
   ctx: AiContext;
+  /** The app's own words on scripture and science were shown first (asksScriptureClaim): the guards need not say them again. */
+  sideBySideShown?: boolean;
   pending: Map<string, Pending>;
   /** Experiments confirmed whose run has not begun yet (a second Confirm does nothing). */
   confirming: Set<string>;
@@ -911,7 +913,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
           const v = retriever.get(`verse:${key}`);
           return v ? `${v.text} ${retriever.get(`plain:${key}`)?.text ?? ''}` : null;
         },
-        sideBySide: i18n.t('ai.mind.guard.sideBySide'),
+        ...(rec.sideBySideShown ? {} : { sideBySide: i18n.t('ai.mind.guard.sideBySide') }),
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         truncated,
         withheld,
@@ -985,6 +987,11 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const passages = wantsAnswer ? search(retriever, rec, query, MODEL_PASSAGES) : [];
     rec.passages = passages;
     const onlyViews = rec.done.length > 0 && rec.done.every((d) => d.tool.kind === 'view');
+    // Asked whether scripture predicted, proved or foretold science: the app says where it stands first, in its own words.
+    if (asksScriptureClaim(rec.turn.question)) {
+      addBlock(rec, { type: 'text', knowledge: 'explanation', text: i18n.t('ai.mind.guard.sideBySide') });
+      rec.sideBySideShown = true;
+    }
     let answered = false;
     if (engine && !rec.guideOnly && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, [...shownScripture(rec, retriever, passages), ...passages], retriever);
     checkpoint(rec);

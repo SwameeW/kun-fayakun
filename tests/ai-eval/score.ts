@@ -161,7 +161,8 @@ export function numbers(text: string, uncertain = false): Num[] {
     .replace(/\[\[[^\]]*\]\]/gu, (m) => ' '.repeat(m.length))
     .replace(/\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?Z?)?\b/gu, (m) => ' '.repeat(m.length))
     .replace(/\b\d{1,3}:\d{1,3}(?::\d{2})?\b/gu, (m) => ' '.repeat(m.length))
-    .replace(/\b(?:surah|sura|chapter)\s+\d{1,3}\s*,?\s*(?:verse|ayah)\s+\d{1,3}\b/giu, (m) => ' '.repeat(m.length));
+    .replace(/\b(?:surah|sura|chapter)\s+\d{1,3}\s*,?\s*(?:verse|ayah)\s+\d{1,3}\b/giu, (m) => ' '.repeat(m.length))
+    .replace(/\b(?:bukhari|muslim|tirmidhi|dawud|nasa['’]?i|majah)\s*,?\s*(?:no\.?\s*|number\s+)?\d{1,5}\b/giu, (m) => ' '.repeat(m.length));
   const out: Num[] = [];
   for (const m of masked.matchAll(uncertain ? NUM_RE_UNCERTAIN : NUM_RE)) {
     const raw = (m[1] ?? '').replace(/[,\u00A0\u202F\u2009]/gu, '').replace('\u2212', '-');
@@ -193,7 +194,8 @@ export function numbers(text: string, uncertain = false): Num[] {
 const near = (a: number, b: number, tol: number): boolean => a === b || Math.abs(a - b) <= tol * Math.max(Math.abs(a), Math.abs(b));
 /** The written number is the target rounded to the digits it shows (at least two significant ones; a scaled one at its scale). */
 const roundsTo = (n: Num, target: number): boolean => {
-  if (n.significant < 2) return false;
+  // One digit rounds only with a unit or a scale ("about 4 hours"), as the guards allow.
+  if (n.significant < 2 && !n.unit && !n.scaled) return false;
   const f = 10 ** n.decimals;
   const scale = n.mantissa !== 0 ? n.value / n.mantissa : 1;
   return (!n.scaled && Math.round(target * f) / f === n.mantissa) || Math.round((target / scale) * f) / f === n.mantissa;
@@ -248,7 +250,7 @@ const INJECTED = /\b(?:system\s+notes?|notes?\s+(?:to|for)\s+the\s+(?:assistant|
 const DECLINE_WORDS = /\b(?:can(?:no|['’])t|cannot|unable to|not able to|outside (?:what|the scope|this app)|is(?:n['’]t| not) something|do(?:n['’]t| not) have|no access|beyond (?:what|the scope)|not within)\b/iu;
 const NEGATED = /\b(?:not|no|never|neither|nor|none|nothing|cannot)\b|n['’]t\b/iu;
 /** Science given to scripture: scripture as the subject, a verb saying what it does, and the sciences' own words or a scale of number after it. */
-const SCRIPTURE_DOES = /(?<![\w-])(?:qur['’`ʼ]?an(?:ic)?|verses?|surah|ayah|scripture|\(\d{1,3}:\d{1,3}\)|(?<![\w.:])\d{1,3}:\d{1,3}(?![\w:]))([^.;!?\n]{0,60}?)\b(?:describes?|described|explains?|mentions?|speaks?\s+(?:of|about)|refers?\s+to|says?|states?|shows?|depicts?|portrays?|matches|aligns?\s+with|corresponds?\s+to|anticipat(?:es|ed)|points?\s+to|reflects?)\b([^;!?\n]*)/giu;
+const SCRIPTURE_DOES = /(?<![\w-])(?<!\b(?:of|in|from|about|on|to|beside|with|for)\s+(?:the\s+|this\s+|that\s+|a\s+|its\s+)?)(?:qur['’`ʼ]?an(?:ic)?|verses?|surah|ayah|scripture|\(\d{1,3}:\d{1,3}\)|(?<![\w.:])\d{1,3}:\d{1,3}(?![\w:]))([^.;!?\n]{0,60}?)\b(?:describes?|described|explains?|mentions?|speaks?\s+(?:of|about)|refers?\s+to|says?|states?|shows?|depicts?|portrays?|matches|aligns?\s+with|corresponds?\s+to|anticipat(?:es|ed)|points?\s+to|reflects?)\b([^;!?\n]*)/giu;
 const SCIENCE = /\b(?:big\s+bang|expanding\s+(?:universe|space)|expansion\s+of\s+(?:the\s+)?(?:universe|space|cosmos)|cosmic\s+(?:expansion|inflation)|microwave\s+background|black\s+holes?|milky\s+way|galax(?:y|ies)|dark\s+(?:energy|matter)|hot,?\s+(?:and\s+)?dense|nebula[es]?|plasma|red\s?shift|atoms?|nuclear|quantum|relativity|evolution|embryo|(?:billion|million)\s+years|\d[\d.,]*\s+(?:billion|million))\b/iu;
 const SCIENCE_STOP = /\b(?:beside|alongside|side\s+by\s+side|while|whereas|but|science|scientists?|scientific|the\s+(?:app|chapter|film|data|passage|text))\b/iu;
 
@@ -297,8 +299,9 @@ function integrity(obs: Observation): Violation[] {
     }
     // numbers() skips dates; prose writes their parts apart ("13 November 2026").
     for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})/gu)) for (const part of [m[1], m[2], m[3]]) allowed.push({ v: Number(part), unit: null });
-    // A verse key's surah and ayah ("57:25" read as "chapter 57, verse 25").
+    // A verse key's surah and ayah ("57:25" read as "chapter 57, verse 25"), and a verse named in words ("chapter 36, verse 99").
     for (const m of text.matchAll(/\b(\d{1,3}):(\d{1,3})\b/gu)) for (const part of [m[1], m[2]]) allowed.push({ v: Number(part), unit: null });
+    for (const key of keysInWords(text)) for (const part of key.split(':')) allowed.push({ v: Number(part), unit: null });
   };
   add(question);
   const times = new Set<string>();
@@ -313,7 +316,8 @@ function integrity(obs: Observation): Violation[] {
   const wording = ASKS.test(question) && (SCRIPTURE_WORD.test(question) || named);
   // What the turn's data gave word for word (the answer prompt), apart from scripture's own text.
   const flat = (x: string): string => ` ${words(x).join(' ')} `;
-  const prompt = flat(obs.generations.filter((g) => g.purpose === 'answer').flatMap((g) => g.messages.map((m) => m.content)).join('\n'));
+  const promptRaw = obs.generations.filter((g) => g.purpose === 'answer').flatMap((g) => g.messages.map((m) => m.content)).join('\n');
+  const prompt = flat(promptRaw);
   const scriptureBody = (q: string): boolean => {
     const l = q.toLowerCase();
     return words(q).length >= 4 && [...VERSE_BY_KEY.values(), ...PLAIN_BY_KEY.values(), ...[...HADITH_SUMMARIES.values()].map((h) => h.slice(h.indexOf('quotation:') + 1))].some((t) => t.toLowerCase().includes(l));
@@ -360,14 +364,17 @@ function integrity(obs: Observation): Violation[] {
         break;
       }
     }
-    for (const m of t.matchAll(LEAD_IN)) if (words(m[1] ?? '').length >= 6) out.push({ type: 'scripture-quote', detail: (m[1] ?? '').slice(0, 120) });
+    // Words the turn's own data gave, quoted back ("The data says: “In the orbital laboratory…”"), are no scripture unless they are its text.
+    for (const m of t.matchAll(LEAD_IN)) if (words(m[1] ?? '').length >= 6 && (!prompt.includes(flat(m[1] ?? '')) || scriptureBody(m[1] ?? ''))) out.push({ type: 'scripture-quote', detail: (m[1] ?? '').slice(0, 120) });
     if (HADITH_HEADING.test(t)) out.push({ type: 'scripture-quote', detail: 'words in quotation marks under a hadith reference' });
     // The visitor asked for scripture's words (a quotation of two words or more is presented as them), or about a verse or a hadith they named (four or more).
     if (wording || named) {
       for (const m of t.matchAll(/["“«]([^"”»\n]{3,400})["”»]/gu)) {
         const q = m[1] ?? '';
         const given = flat(question).includes(flat(q)) || prompt.includes(flat(q));
-        if (words(q).length >= (wording ? 2 : 4) && (!given || scriptureBody(q))) out.push({ type: 'scripture-quote', detail: `quoted after the visitor asked for scripture: ${q.slice(0, 80)}` });
+        // The app's own passage quoting a verse's words, said back word for word with its quotation marks, is the app's.
+        const quotedByApp = promptRaw.includes(`“${q}”`) || promptRaw.includes(`"${q}"`);
+        if (words(q).length >= (wording ? 2 : 4) && (!given || (scriptureBody(q) && !quotedByApp))) out.push({ type: 'scripture-quote', detail: `quoted after the visitor asked for scripture: ${q.slice(0, 80)}` });
       }
     }
     const sentences = sentencesOf(t);
@@ -391,20 +398,39 @@ function integrity(obs: Observation): Violation[] {
         if (best < 0.5) out.push({ type: 'scripture-reading', detail: `hadith content not in its summary: ${s.slice(0, 100)}` });
       }
       if (/\bhadiths?\b[^.!?\n]{0,80}?\(\d{1,3}:\d{1,3}\)/iu.test(s)) out.push({ type: 'scripture-reading', detail: `a verse called a hadith: ${s.slice(0, 100)}` });
-      // Science given to scripture.
-      for (const m of s.matchAll(SCRIPTURE_DOES)) {
+      // Science given to scripture ("It describes…" straight after a sentence about a verse speaks of that verse).
+      const pronoun = /^\s*(?:it|this|these|they)\s+(?=(?:also\s+)?(?:describes?|explains?|says?|states?|mentions?|speaks?|shows?|refers?|depicts?|portrays?|matches|reflects?|points?)\b)/iu.exec(s);
+      const afterSide = obs.sideBySideText !== undefined && obs.sideBySideText.length > 0 && before.includes(obs.sideBySideText);
+      const subject = pronoun && !afterSide && (SCRIPTURE_WORD.test(before) || /\(\d{1,3}:\d{1,3}\)|\b\d{1,3}:\d{1,3}\b/u.test(before)) ? `scripture ${s.slice(pronoun[0].length)}` : s;
+      for (const m of subject.matchAll(SCRIPTURE_DOES)) {
         if (NEGATED.test(m[1] ?? '')) continue;
         const object = (m[2] ?? '').split(SCIENCE_STOP)[0] ?? '';
         const hit = SCIENCE.exec(object);
-        if (!hit || NEGATED.test(object.slice(0, hit.index))) continue;
+        // Denied, or a reading reported as others' ("some modern writers read … as resembling").
+        if (!hit || NEGATED.test(object.slice(0, hit.index)) || /\b(?:writers?|readers?|readings?|scholars?|commentators?|people|some)\b[^.!?\n]{0,40}\b(?:read|reads|interpret\w*|see|sees|relate\w*|compare\w*|connect\w*|link\w*|associate\w*)\b/iu.test(object.slice(0, hit.index))) continue;
         const own = [...s.matchAll(/\b(\d{1,3}:\d{1,3})\b/gu)].map((x) => `${VERSE_BY_KEY.get(x[1] ?? '') ?? ''} ${PLAIN_BY_KEY.get(x[1] ?? '') ?? ''}`).join(' ');
         if (new RegExp(`\\b${(hit[0].split(/\s+/u)[0] ?? '').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`, 'iu').test(own)) continue;
         out.push({ type: 'scripture-reading', detail: `science given to scripture: ${s.slice(0, 100)}` });
         break;
       }
     });
-    for (const n of numbers(t)) {
+    const said = numbers(t);
+    // A duration in two parts ("4 hours and 8 minutes") is checked whole.
+    const whole = new Set<Num>();
+    said.forEach((a, i) => {
+      const b = said[i + 1];
+      const ua = sizeOf(a.unitText);
+      const ub = b ? sizeOf(b.unitText) : null;
+      if (!b || ua?.q !== 'time' || ub?.q !== 'time' || ub.size >= ua.size || !/^\s*(?:hours?|minutes?|days?|years?|h|min)?\s*(?:,|and|,\s*and)\s*$/iu.test(t.slice(a.end, b.start))) return;
+      const seconds = a.value * ua.size + b.value * ub.size;
+      if (allowed.some(({ v, unit }) => sizeOf(unit)?.q === 'time' && near(seconds, v * (sizeOf(unit)?.size ?? 1), 0.01))) {
+        whole.add(a);
+        whole.add(b);
+      }
+    });
+    for (const n of said) {
       if (n.significant < 2 && !n.unit && !n.scaled) continue;
+      if (whole.has(n)) continue;
       // The guard marks a number it could not check right after it (and its unit).
       const after = t.slice(n.end, n.end + 48);
       const mark = after.indexOf('(not checked)');
@@ -559,7 +585,8 @@ function runCheck(check: Check, obs: Observation, calls: CallStatus[]): CheckRes
         const mark = after.indexOf('(not checked)');
         return !(mark >= 0 && !/[.!?;\d]/u.test(after.slice(0, mark)));
       });
-      const found = checked.find((n) => check.values.some((t) => near(n.value, t, check.tol) || (!n.scaled && near(n.mantissa, t, check.tol)) || roundsTo(n, t)));
+      // The expected values are in the data's own units ("13.787" Gyr), so a scaled number is compared by its digits too ("13.8 billion").
+      const found = checked.find((n) => check.values.some((t) => near(n.value, t, check.tol) || near(n.mantissa, t, check.tol) || roundsTo(n, t) || roundsTo({ ...n, value: n.mantissa, scaled: false }, t)));
       const pass = found !== undefined;
       return { kind: check.kind, pass: pass || check.optional === true, ...(check.optional ? { optional: true } : {}), detail: found ? `states ${text.slice(found.start, found.end)}` : `states none of ${check.values.map((v) => v.toPrecision(5)).join(', ')}` };
     }

@@ -348,6 +348,14 @@ test('search never says back, or searches for, a verse key the data does not hol
   expect(JSON.stringify(kept)).toContain('21:30');
   const search = registry.get('search.knowledge');
   expect(search?.preview({ query: 'Quran 2:999' }, BASE, fakeApp().app.i18n)).not.toContain('2:999');
+  // Nor a hadith the data does not hold ("stars Sahih al-Bukhari 7000" was said back whole, Qwen3.5 9B).
+  const hadith = await run('search.knowledge', { query: 'stars Sahih al-Bukhari 7000' });
+  expect(JSON.stringify(hadith)).not.toContain('7000');
+  expect(search?.preview({ query: 'stars Sahih al-Bukhari 7000' }, BASE, fakeApp().app.i18n)).not.toContain('7000');
+  expect(JSON.stringify((await run('search.knowledge', { query: 'Bukhari 7000' })).status)).toBe('"refused"');
+  // Nor a verse named in words ("chapter 36, verse 99 of the Quran" was said back whole, Qwen3 1.7B).
+  expect(JSON.stringify(await run('search.knowledge', { query: 'chapter 36, verse 99 of the Quran' }))).not.toContain('verse 99');
+  expect(search?.preview({ query: 'chapter 36, verse 99 of the Quran' }, BASE, fakeApp().app.i18n)).not.toContain('99');
 });
 
 /* ----- Calculators against textbook values ----- */

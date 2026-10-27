@@ -348,7 +348,14 @@ function presentedSpans(text: string): Presented[] {
 }
 
 /** Between sentences: the space after a sentence's mark. */
-const SPLIT = new RegExp(String.raw`(?<=[.!?…])(?<!\b(?:cf|vs|st|dr|mr|mrs|ms|e\.g|i\.e|approx|ca)\.)(?<!\b(?:no|nos|vol|pp?)\.(?=\s*\d))(\s+)`, 'iu');
+// A citation marker left where a sentence was removed ("[[verse:21:30]] The film's chapter…") ends that sentence too, so
+// what follows is read as a sentence of its own, never as one whose subject is the verse.
+// (Case-sensitive for that capital, so the abbreviations are spelt in either case.)
+const anyCase = (w: string): string => w.replace(/[a-z]/gu, (c) => `[${c}${c.toUpperCase()}]`);
+const SPLIT = new RegExp(
+  String.raw`(?:(?<=[.!?…])(?<!\b(?:${['cf', 'vs', 'st', 'dr', 'mr', 'mrs', 'ms', 'e\\.g', 'i\\.e', 'approx', 'ca'].map(anyCase).join('|')})\.)(?<!\b(?:${['no', 'nos', 'vol', 'pp?'].map(anyCase).join('|')})\.(?=\s*\d))|(?<=\]\])(?=\s+[A-Z“"‘'(]))(\s+)`,
+  'u',
+);
 
 interface QuoteSpan {
   start: number;
@@ -592,7 +599,8 @@ function scriptureQuotes(text: string, data: OutputGuardData): { text: string; c
     const words = plainWords(span.inner).length;
     const presented =
       PRESENTED.test(text.slice(Math.max(0, span.start - 60), span.start)) ||
-      /^\s*\(?\s*(?:\[\[(?:verse|hadith):|(?:quran\s+)?\d{1,3}:\d{1,3})/iu.test(after) ||
+      // A verse's key or marker right after it, in the same sentence (not one a sentence after it, or one put in for words removed there).
+      (!/[.!?]["”»’']?$/u.test(text.slice(span.start, span.end)) && /^[^\S\n]*\(?[^\S\n]*(?:\[\[(?:verse|hadith):|(?:quran\s+)?\d{1,3}:\d{1,3})/iu.test(after)) ||
       // The visitor asked for scripture's words, or about a verse or a hadith they named: a quotation is that.
       ((asked.wording ? words >= 2 : asked.named && words >= 4) && (!verbatim(span.inner, data) || scriptureVerbatim(span.inner, data))) ||
       // Four or more words of a verse's or a hadith's text as the data gives it, in quotation marks beside scripture: put forward as its words.
@@ -686,7 +694,8 @@ const VERSE_AS_HADITH = /\bhadiths?\b[^.!?\n]{0,80}?(?:\[\[verse:|\(\s*\d{1,3}:\
 /** The hadith a sentence names: by marker, or by collection and number ("Sahih al-Bukhari 3191"). */
 function hadithNamed(s: string): string[] {
   const ids = [...s.matchAll(/\[\[hadith:([^\]\s]+)\]\]/gu)].map((m) => m[1] ?? '');
-  for (const m of s.matchAll(new RegExp(HADITH_REF.source, 'giu'))) {
+  // A marker's id is no reference in prose ("[[passage:note:ch07.hadith.bukhari3199.note]]" names no hadith).
+  for (const m of s.replace(MARKER, ' ').matchAll(new RegExp(HADITH_REF.source, 'giu'))) {
     const c = m[0].toLowerCase();
     const prefix = /bukhari/u.test(c) ? 'bukhari' : /muslim/u.test(c) ? 'muslim' : /tirmidhi/u.test(c) ? 'tirmidhi' : /dawud/u.test(c) ? 'abudawud' : /nasa/u.test(c) ? 'nasai' : 'ibnmajah';
     ids.push(`${prefix}-${m[1] ?? ''}`);
@@ -695,9 +704,12 @@ function hadithNamed(s: string): string[] {
 }
 
 /** The share of a text's words (beside the reference itself) found in these hadith's sourced summaries. */
+/** Words every summary shares (its reference, its frame, the honorific folded to its words): no evidence of which hadith is meant. */
+const SUMMARY_FRAME = new Set(tokenize('sahih al hadith hadiths narrated narration narrator reported prophet messenger allah summary quotation graded inclusion collection'));
 function summaryShare(text: string, ids: readonly string[], data: OutputGuardData): number {
+  const own = (w: string): boolean => /^[\p{Script=Latin}\d]+$/u.test(w) && !/^\d/u.test(w) && !SUMMARY_FRAME.has(w);
   const summary = new Set(tokenize(ids.map((id) => data.hadith?.(id) ?? '').join(' ')));
-  const words = tokenize(text.replace(MARKER, ' ').replace(new RegExp(HADITH_REF.source, 'giu'), ' ').replace(new RegExp(TELLS.source, 'giu'), ' ')).filter((w) => !/^\d/u.test(w));
+  const words = tokenize(text.replace(MARKER, ' ').replace(new RegExp(HADITH_REF.source, 'giu'), ' ').replace(new RegExp(TELLS.source, 'giu'), ' ')).filter(own);
   if (words.length === 0) return 1;
   return words.filter((w) => summary.has(w)).length / words.length;
 }
@@ -896,6 +908,16 @@ function banned(s: string): boolean {
 /** Negation: a denial ("does not say the Quran predicts…"), which the app's own words replace when it goes. */
 const NEGATION = /\b(?:not|no|never|neither|nor|none|nothing|cannot)\b|n['’]t\b/iu;
 
+/**
+ * A question whether scripture predicted, foretold or proved science, is a scientific miracle or
+ * anticipated it ("Does the Quran predict the Big Bang?"): the app answers where it stands in its own
+ * words, first, whatever the model writes (a model's own denial can be lost with its banned word, and a
+ * small model may write nothing usable at all).
+ */
+export function asksScriptureClaim(question: string): boolean {
+  return /\b(?:predict\w*|foretold|foretell\w*|prov(?:e|es|ed|en|ing)|proof|miracl\w*|anticipat\w*)\b/iu.test(question) && (SCRIPTURE_WORDS.test(question) || /\b\d{1,3}:\d{1,3}\b/u.test(question));
+}
+
 /** The app's own words, said once in place of the first sentence about scripture these rules remove. */
 function sayOnce(data: OutputGuardData): () => string {
   let said = data.sideBySide ? false : true;
@@ -932,7 +954,13 @@ function bannedPhrasing(text: string, say: () => string): { text: string; change
 const SCRIPTURE_SUBJECT = String.raw`(?:qur['’ʼʾ]?an(?:ic)?|koran|verses?|ayah?s?|ayat|surah?s?|scriptures?|revelation|\[\[verse:[^\]\s]+\]\]|(?<![\w.:])[1-9]\d{0,2}:[1-9]\d{0,2}(?![\w:]))`;
 /** What a sentence says scripture does with something. */
 const DESCRIBING = String.raw`(?:describes?|described|describing|depicts?|depicted|depicting|explains?|explained|explaining|mentions?|mentioned|mentioning|speaks?\s+(?:of|about)|spoke\s+(?:of|about)|speaking\s+(?:of|about)|refers?\s+to|referring\s+to|talks?\s+about|tells?\s+(?:of|about|us)|says?|said|saying|states?|stated|stating|shows?|showed|portrays?|portrayed|match(?:es|ed)?|aligns?\s+with|corresponds?\s+to|reflects?|reflected|(?:is|are|was|were)\s+consistent\s+with|agrees?\s+with|anticipates?|anticipated|points?\s+to|hints?\s+at|alludes?\s+to|foreshadows?|foreshadowed|captures?|teaches|taught|reveals?|indicates?|indicated|suggests?|suggested|implies|implied|contains?|includes?|is\s+about|are\s+about)`;
-const SCRIPTURE_DESCRIBES = new RegExp(String.raw`(?<![\w-])${SCRIPTURE_SUBJECT}(?<gap>[^.;!?\n]{0,60}?)\b${DESCRIBING}\b(?<object>[^;!?\n]*)`, 'giu');
+// Scripture as the subject, not the object of a preposition ("modern readings of this verse suggest…" is the readings').
+const SCRIPTURE_DESCRIBES = new RegExp(
+  String.raw`(?<![\w-])(?<!\b(?:of|in|from|about|on|to|beside|with|for)\s+(?:the\s+|this\s+|that\s+|a\s+|its\s+)?)${SCRIPTURE_SUBJECT}(?<gap>[^.;!?\n]{0,60}?)\b${DESCRIBING}\b(?<object>[^;!?\n]*)`,
+  'giu',
+);
+/** A reading reported as other people's ("some modern writers read … as", "commentators relate it to"). */
+const OTHERS_READING = /\b(?:writers?|readers?|readings?|scholars?|commentators?|interpreters?|people|some)\b[^.!?\n]{0,40}\b(?:read|reads|interpret\w*|see|sees|relate\w*|compare\w*|connect\w*|link\w*|associate\w*|match\w*)\b/iu;
 /** Where a sentence turns from what scripture says to the app or the science beside it. */
 const TURNS = /\b(?:beside|alongside|side\s+by\s+side|while|whereas|but|science|scientists?|scientific|the\s+(?:app|chapter|film|data|passage|text)|this\s+(?:app|chapter|film))\b/iu;
 /** The sciences' own words: none is in a verse's translation the data holds, so a verse said to speak of one is a reading. */
@@ -955,9 +983,16 @@ function scriptureScience(text: string, data: OutputGuardData, say: () => string
     .filter((p) => p.kind === 'verse' || p.kind === 'hadith' || p.id.startsWith('plain:'))
     .map((p) => p.text)
     .join(' ');
+  let previous = '';
   const out = sentences(text).map((s) => {
+    const before = previous;
+    previous = s;
     if (data.sideBySide && s.includes(data.sideBySide)) return s;
-    for (const m of s.matchAll(SCRIPTURE_DESCRIBES)) {
+    // "It describes…" just after a sentence about a verse (or after a verse's marker left where words were removed) speaks of that verse.
+    const pronoun = /^\s*(?:it|this|these|they)\b(?=\s+(?:also\s+|then\s+)?(?:describes?|explains?|says?|states?|mentions?|speaks?|shows?|refers?|tells?|depicts?|portrays?|matches|suggests?|indicates?|reflects?|points?|is\s+about)\b)/iu.exec(s);
+    const afterSide = data.sideBySide !== undefined && before.includes(data.sideBySide);
+    const subject = pronoun && !afterSide && (speaksOfScripture(before, data) || /^\s*(?:\[\[(?:verse|hadith):[^\]\s]+\]\]\s*)+$/u.test(before)) ? `[[verse:it]]${s.slice(pronoun[0].length)}` : s;
+    for (const m of subject.matchAll(SCRIPTURE_DESCRIBES)) {
       if (NEGATION.test(m.groups?.gap ?? '')) continue;
       const raw = m.groups?.object ?? '';
       const object = raw.slice(0, TURNS.exec(raw)?.index ?? raw.length);
@@ -966,8 +1001,10 @@ function scriptureScience(text: string, data: OutputGuardData, say: () => string
         .join(' ')}`;
       const hit = SCIENCE_TERMS.exec(object);
       const term = hit?.[0];
-      // "…, not a direct confirmation of cosmic expansion": the science denied, not given to the verse.
-      const denied = hit !== null && NEGATION.test(object.slice(0, hit.index));
+      // "…, not a direct confirmation of cosmic expansion": the science denied, not given to the verse; "…
+      // that some modern writers read 21:30 as resembling the Big Bang": a reading reported as others', as
+      // the app's own note reports it.
+      const denied = hit !== null && (NEGATION.test(object.slice(0, hit.index)) || OTHERS_READING.test(object.slice(0, hit.index)));
       const science = term !== undefined && !denied && !new RegExp(String.raw`\b${escapeRe(term.split(/\s+/u)[0] ?? term)}`, 'iu').test(own);
       const masked = object.replace(MARKER, ' ').replace(VERSE_KEY_PATTERN, ' ');
       const measured = parseNumbers(masked).some((n) => n.scaled || (n.unit !== null && /^(?:km|au|ly|pc|mpc|kg|kelvin|k|°c|°f|°|%|percent|km\/s|m\/s|gyr|myr|light|parsecs?|kilomet|met)/iu.test(n.unit)));
@@ -1245,14 +1282,30 @@ function allowedNumbers(data: OutputGuardData): { values: Allowed[]; mantissas: 
 function uncheckedNumbers(text: string, data: OutputGuardData): { text: string; changed: boolean } {
   // Markers and verse keys carry digits that are not quantities.
   let masked = text.replace(MARKER, (m) => '\u0001'.repeat(m.length)).replace(VERSE_KEY_PATTERN, (m) => '\u0001'.repeat(m.length));
-  // A verse named in words ("Surah 21, verse 30") carries no quantity either.
+  // A verse named in words ("Surah 21, verse 30") carries no quantity either, nor a hadith's number ("Sahih Muslim 2787").
   for (const [re] of WORD_KEYS) masked = masked.replace(re, (m) => '\u0001'.repeat(m.length));
+  masked = masked.replace(new RegExp(HADITH_REF.source, 'giu'), (m) => '\u0001'.repeat(m.length));
   const { values, mantissas } = allowedNumbers(data);
+  const found = parseNumbers(masked);
+  // A duration in two parts ("4 hours and 8 minutes") is one number: both parts pass when the whole does.
+  const whole = new Set<ParsedNumber>();
+  found.forEach((a, i) => {
+    const b = found[i + 1];
+    const ua = sizeOf(a.unit);
+    const ub = b ? sizeOf(b.unit) : null;
+    if (!b || ua?.quantity !== 'time' || ub?.quantity !== 'time' || ub.size >= ua.size || !/^\s*(?:,|and|,\s*and)\s*$/u.test(masked.slice(a.end, b.start))) return;
+    const seconds = a.value * ua.size + b.value * ub.size;
+    if (values.some((v) => v.unit?.quantity === 'time' && close(seconds, v.value * v.unit.size))) {
+      whole.add(a);
+      whole.add(b);
+    }
+  });
   let changed = false;
   let out = '';
   let last = 0;
-  for (const n of parseNumbers(masked)) {
+  for (const n of found) {
     if (n.significant < 2 && n.unit === null && !n.scaled) continue;
+    if (whole.has(n)) continue;
     const unit = n.compound ? null : sizeOf(n.unit);
     const ok =
       values.some((a) => {

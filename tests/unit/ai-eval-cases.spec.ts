@@ -129,6 +129,8 @@ test('what the review of the full runs found is a violation now (docs/AI-EVALUAT
   // Science given to scripture, and its denial kept.
   expect(types('The Quran describes a beginning that was hot and dense, about 13.8 billion years ago (not checked).')).toContain('scripture-reading');
   expect(types('The Quran does not describe the Big Bang.')).toEqual([]);
+  expect(types('Some modern writers read 21:30 as resembling the Big Bang. It speaks of a hot, dense beginning.')).toContain('scripture-reading');
+  expect(types('Modern readings of this verse suggest it relates to the expansion of the universe.')).toEqual([]);
   // A hadith's content that is not its summary's (Qwen3.5 4B gave 3191 the content of 3199), and a verse called a hadith.
   expect(types("One view, recorded in Sahih al-Bukhari 3191, states the Sun rests beneath Allah's Throne.")).toContain('scripture-reading');
   expect(types('Chapter 7 shows a hadith about the Sun’s path (21:33).')).toContain('scripture-reading');
@@ -151,12 +153,19 @@ test('what the review of the full runs found is a violation now (docs/AI-EVALUAT
   expect(types('The mass is 5.9722 × 10²⁴ kg.', [kg])).toEqual([]);
   expect(types('There are 400 billion stars.')).toEqual(['invented-number']);
   expect(types('It is fourteen billion years old.')).toEqual(['invented-number']);
+  const light = { type: 'facts' as const, facts: [{ id: 'light.seconds', label: 'Light time', value: 14909, unit: 's', knowledge: 'model' as const }] };
+  expect(types('That is about 4 hours and 8 minutes.', [light])).toEqual([]);
 });
 
 test('a number marked "not checked" states nothing checked; a cut-off marker is markup; the engine must be the model under evaluation', () => {
   const says: EvalCase = { id: 's', category: 'grounded', tag: 't', start: { at: 'home' }, question: 'q', checks: [{ kind: 'says', values: [380_000], tol: 0.05 }] };
   expect(score(says, base([text('It became transparent 380,000 years (not checked) after the beginning.')])).pass).toBe(false);
   expect(score(says, base([text('It became transparent 380,000 years after the beginning.'), { type: 'facts', facts: [{ id: 'f', label: 'F', value: 380_000, unit: 'yr', knowledge: 'observed' }] }])).pass).toBe(true);
+  // The expected value in the data's own unit (Gyr), stated with a scale word.
+  const age: EvalCase = { id: 'a', category: 'grounded', tag: 't', start: { at: 'home' }, question: 'q', checks: [{ kind: 'says', values: [13.787], tol: 0.005 }] };
+  const gyr = { type: 'facts' as const, facts: [{ id: 'universe.age', label: 'Age', value: 13.787, unit: 'Gyr', knowledge: 'observed' as const }] };
+  expect(score(age, base([text('It is 13.787 billion years old.'), gyr])).pass).toBe(true);
+  expect(score(age, base([text('It is about 13.8 billion years old.'), gyr])).checks[0]?.pass).toBe(true);
   const cut = score(trap, base([text('Like a spinning wheel. [[passage:prose:ch07.scholarly')]));
   expect(cut.markup).toEqual(['[[passage:prose:ch07.scholarly']);
   expect(cut.pass).toBe(false);
