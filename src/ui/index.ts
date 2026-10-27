@@ -124,6 +124,9 @@ export function mountUI(app: App, root: HTMLElement): void {
     explore() {
       if (inChapter()) app.setMode('explore');
     },
+    ask() {
+      ask(true);
+    },
     leaveExplore() {
       if (view === 'universe') {
         // Esc in the explorer: back to the film where the visitor came from.
@@ -145,7 +148,7 @@ export function mountUI(app: App, root: HTMLElement): void {
   });
   const shortcutsButton = h(
     'button',
-    { type: 'button', class: 'kf-btn kf-btn--icon kf-btn--quiet', title: i18n.t('ui.header.shortcuts') },
+    { type: 'button', class: 'kf-btn kf-btn--icon kf-btn--quiet kf-shortcuts-button', title: i18n.t('ui.header.shortcuts'), 'data-testid': 'shortcuts-button' },
     icon('keyboard'),
     h('span', { class: 'kf-sr-only' }, i18n.t('ui.header.shortcuts')),
   );
@@ -181,12 +184,46 @@ export function mountUI(app: App, root: HTMLElement): void {
     sound.set(!sound.get());
   });
   sound.subscribe(showSound);
+  // The assistant (src/ai/ui with src/ai/boot.ts, chunks of their own): loaded the first time Ask or / is pressed.
+  const askButton = h(
+    'button',
+    { type: 'button', class: 'kf-btn kf-btn--quiet', title: i18n.t('ui.header.askTitle'), 'aria-expanded': 'false', 'data-testid': 'ask' },
+    icon('ask'),
+    h('span', {}, i18n.t('ui.header.ask')),
+  );
+  let assistant: Promise<import('../ai/ui').AssistantUi> | null = null;
+  /** Opens the assistant (`open`), or opens or closes it (a press of Ask); a press while its code loads waits for it. */
+  function ask(open: boolean): void {
+    if (askButton.getAttribute('aria-busy') === 'true') return;
+    if (!assistant) askButton.setAttribute('aria-busy', 'true');
+    assistant ??= import('../ai/ui').then((m) =>
+      m.mountAssistant(app, root, askButton, (text) => {
+        announcer.announce(text);
+      }),
+    );
+    assistant
+      .then((ui) => {
+        if (open) ui.open();
+        else ui.toggle();
+      })
+      .catch((err: unknown) => {
+        console.error('[ui] The assistant could not be loaded', err);
+        assistant = null;
+        announcer.announce(i18n.t('ui.header.askFailed'));
+      })
+      .finally(() => {
+        askButton.removeAttribute('aria-busy');
+      });
+  }
+  askButton.addEventListener('click', () => {
+    ask(false);
+  });
   const header = h(
     'header',
     { class: 'kf-header' },
     h('h1', { class: 'kf-brand' }, brand),
     params.get('fps') === '1' ? createFpsReadout(app) : null,
-    h('div', { class: 'kf-header-actions' }, shortcutsButton, soundButton, panel.toggleButton),
+    h('div', { class: 'kf-header-actions' }, shortcutsButton, soundButton, panel.toggleButton, askButton),
   );
 
   /* Main stage -------------------------------------------------------- */

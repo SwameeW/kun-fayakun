@@ -12,6 +12,8 @@ export interface ShortcutActions {
   explore(): void;
   /** Esc: leave explore mode and return focus to the timeline. */
   leaveExplore(): void;
+  /** /: open the assistant (its panel, with the question field focused). */
+  ask(): void;
 }
 
 const SEEK_STEP_S = 10;
@@ -45,6 +47,7 @@ function helpDialog(i18n: I18n): HTMLDialogElement {
     [['Shift', '←', '→'], 'ui.shortcuts.shiftArrows'],
     [['P'], 'ui.shortcuts.panel'],
     [['E'], 'ui.shortcuts.explore'],
+    [['/'], 'ui.shortcuts.ask'],
     [['Esc'], 'ui.shortcuts.escape'],
     [['?'], 'ui.shortcuts.help'],
   ];
@@ -112,6 +115,9 @@ export function createShortcuts(i18n: I18n, actions: ShortcutActions): Shortcuts
         break;
       case '?':
         openHelp();
+        break;
+      case '/':
+        actions.ask();
         break;
       default:
         handled = false;
