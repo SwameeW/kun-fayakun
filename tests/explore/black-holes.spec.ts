@@ -120,7 +120,10 @@ async function skyOutside(page: Page, cx: number, cy: number, r: number): Promis
 
 async function enterStars(page: Page, kf: { open: (r: string, o?: { query?: Record<string, string> }) => Promise<void> }): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await kf.open('/universe/earth', { query: { jd: JD } });
+  // The tier fixed by the address holds the resolution at full (./quality): these tests count stars and
+  // judge flashes in pixels, and a GPU shared with other tests would otherwise lower it mid-measure (by
+  // 4 per cent, upscaled, it halves the faint stars counted past a hole).
+  await kf.open('/universe/earth', { query: { jd: JD, detail: 'high' } });
   await waitForUniverse(page);
   await page.getByTestId('stars-open').click();
   await expect.poll(async () => (await stars(page))?.focus.name ?? null, LIVE).toBe('Sun');
@@ -341,11 +344,14 @@ test('the lens’s capture of the sky’s glow is never another hole’s: forgot
   await expect.poll(async () => (await stars(page))?.travelling, LIVE).toBe(false);
   await expect.poll(async () => (await stars(page))?.blackHole?.skyCaptured ?? false, LIVE).toBe(true);
   await command(page, { kind: 'starsPlace', place: 'bh:gaia-bh1' });
-  // All the way there, near the new hole too, the capture is not Sagittarius A*'s.
+  // All the way there, near the new hole too, the capture is not Sagittarius A*'s. Each sample is one
+  // view, the travel and the capture together (read apart, the trip could end between them and the
+  // capture taken on arrival be read as one taken on the way).
   let samples = 0;
-  while ((await stars(page))?.travelling) {
+  for (;;) {
     const n = await stars(page);
-    if (n?.blackHole?.id === 'gaia-bh1') {
+    if (!n?.travelling) break;
+    if (n.blackHole?.id === 'gaia-bh1') {
       expect(n.blackHole.skyCaptured).toBe(false);
       samples += 1;
     }
