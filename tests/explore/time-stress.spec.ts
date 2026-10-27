@@ -6,7 +6,10 @@
  * out of range, and impossible ones) say what they do, fast time never strobes a world's turn nor
  * day and night on foot, hundreds of random presses inside single frames leave a sound state, and the
  * row fits and works at five sizes of window (two of them phones, folded and pulled up, with taps
- * between the sheet's folds). Page errors and console errors fail every test.
+ * between the sheet's folds). A world let go at a slower rate catches up the way time runs (backwards
+ * too), and paused it stays still; offline, the chunk beyond the everyday is asked for a few times,
+ * not every frame; and a date beyond the tables asked for before the theories come goes there, with
+ * no note naming the tables' span. Page errors and console errors fail every test.
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
@@ -168,6 +171,9 @@ test.describe('the time machine at 1280x800', () => {
     await expect(page.getByTestId('universe-time-rate')).toHaveText('Real time during the trip, then 6 hours a second', LIVE);
     await page.keyboard.press(']');
     await expect(page.getByTestId('universe-time-rate')).toHaveText('Real time during the trip, then 1 day a second');
+    // Backwards: said so, in its own words.
+    await page.keyboard.press('\\');
+    await expect(page.getByTestId('universe-time-rate')).toHaveText('Backwards in real time during the trip, then backwards at 1 day a second');
     expect(pageErrors).toEqual([]);
   });
 
@@ -257,10 +263,10 @@ test.describe('the time machine at 1280x800', () => {
     await waitForUniverse(page);
     await place(page, { body: 'earth', distanceKm: 30_000 });
     await step(page, 2);
-    /** The longitude under the camera, frame by frame (degrees; the camera does not turn with the Earth). */
-    const turns = async (rate: number, frames: number): Promise<{ steps: number[]; held: boolean }> => {
+    /** The longitude under the camera, frame by frame (degrees; the camera does not turn with the Earth), after `warm` frames unmeasured. */
+    const turns = async (rate: number, frames: number, warm = 40): Promise<{ steps: number[]; held: boolean }> => {
       await command(page, { kind: 'rate', rate });
-      await step(page, 40);
+      await step(page, warm);
       return page.evaluate((n) => {
         const kf = (window as unknown as KfHook).__kf;
         const out: number[] = [];
@@ -289,10 +295,39 @@ test.describe('the time machine at 1280x800', () => {
       }
     }
     await expect(page.getByTestId('universe-time-note')).toContainText('Too fast to show it turning');
+    // Let go while time runs backwards: it catches up backwards (eastward under the camera), every frame
+    // from the first the way the clock travels, never more than 30 degrees.
+    for (const fast of [-604_800, -2_592_000]) {
+      expect((await turns(fast, 30)).held).toBe(true);
+      const back = await turns(-86_400, 150, 0);
+      expect(back.held, `let go after ${String(fast)}`).toBe(false);
+      for (const d of back.steps) {
+        expect(d, `${String(fast)} then a day a second back: ${String(d)}`).toBeGreaterThanOrEqual(-0.05);
+        expect(Math.abs(d)).toBeLessThan(31);
+      }
+    }
+    // Paused while held: still, and still held, for sixty frames and more.
+    expect((await turns(604_800, 30)).held).toBe(true);
+    await command(page, { kind: 'toggle' });
+    const still = await page.evaluate(() => {
+      const kf = (window as unknown as KfHook).__kf;
+      const lons: number[] = [];
+      for (let k = 0; k < 90; k += 1) {
+        kf.step(1, 1 / 60);
+        lons.push(kf.universe.state()?.place?.lon ?? Number.NaN);
+      }
+      return { lons, held: kf.universe.state()?.time.spinHeld ?? false, paused: kf.universe.state()?.time.paused ?? false };
+    });
+    expect(still.paused).toBe(true);
+    expect(still.held).toBe(true);
+    for (const lon of still.lons) expect(lon).toBe(still.lons[0]);
     // Let go at a day a second: it catches up forwards (westward under the camera), never back.
-    const freed = await turns(86_400, 120);
+    const freed = await turns(86_400, 150, 0);
     expect(freed.held).toBe(false);
-    for (const d of freed.steps) expect(d).toBeLessThanOrEqual(0.05);
+    for (const d of freed.steps) {
+      expect(d).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(d)).toBeLessThan(31);
+    }
     // Held over a place (Cairo) at a week a second: the place stays under the view.
     await command(page, { kind: 'rate', rate: 1 });
     await page.evaluate(() => {
@@ -317,6 +352,63 @@ test.describe('the time machine at 1280x800', () => {
     });
     expect(held.length).toBe(60);
     expect(Math.max(...held)).toBeLessThan(1);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('offline, the chunk beyond the everyday is asked for a few times, not every frame; a date beyond stops at the tables’ end and says so', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(180_000 * SLOW);
+    let asked = 0;
+    await page.route(/\/time-beyond-[^/]*\.js$/u, (route) => {
+      asked += 1;
+      return route.abort();
+    });
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    // Backwards at thirty days a second: every frame heads beyond the tables, for ten seconds.
+    await command(page, { kind: 'rate', rate: -MAX });
+    await page.waitForTimeout(10_000);
+    expect(asked).toBeGreaterThanOrEqual(1);
+    expect(asked).toBeLessThanOrEqual(2);
+    // Stopped at the tables' start (the theories never came), saying so.
+    await expect.poll(async () => (await state(page)).time.edge, LIVE).toBe('start');
+    await expect(page.getByTestId('universe-time-rate')).toHaveText('Time stops here: the start of the explorer’s dates');
+    // A date beyond asks once more; then it stops at the tables' end, and the note gives their span.
+    await page.getByTestId('universe-time-date').fill('2000-08-04');
+    await expect(page.getByTestId('universe-time-note')).toHaveText('The explorer’s dates run from 2025-12-31 to 2035-12-31', LIVE);
+    expect((await state(page)).time).toMatchObject({ edge: 'start', pending: false });
+    expect(asked).toBeLessThanOrEqual(3);
+    // Nothing broke: the only errors are the chunk's own failed loads.
+    expect(pageErrors.filter((e) => !/time-beyond|net::ERR_FAILED|Failed to fetch dynamically imported module/u.test(e))).toEqual([]);
+    expect(pageErrors.filter((e) => e.startsWith('pageerror'))).toEqual([]);
+  });
+
+  test('a date beyond the tables asked for before the theories come: on its way, then there, and no note names the tables’ span', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(150_000 * SLOW);
+    let open = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    await page.route(/\/time-beyond-[^/]*\.js$/u, async (route) => {
+      await gate;
+      await route.continue();
+    });
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    const note = page.getByTestId('universe-time-note');
+    await page.getByTestId('universe-time-date').fill('2000-08-04');
+    await expect(page.getByTestId('universe-time-rate')).toHaveText('Going to 2000-08-04…');
+    expect((await state(page)).time.pending).toBe(true);
+    // While it waits, nothing says the date is out of range.
+    for (let k = 0; k < 10; k += 1) {
+      expect(await note.textContent()).not.toContain('explorer’s dates');
+      await page.waitForTimeout(100);
+    }
+    open();
+    await expect.poll(() => dayShown(page), LIVE).toBe('2000-08-04');
+    await expect(note).toContainText('Meeus’s theory');
+    expect((await state(page)).time).toMatchObject({ edge: null, pending: false });
+    await page.waitForTimeout(300);
+    await expect(note).not.toContainText('explorer’s dates');
     expect(pageErrors).toEqual([]);
   });
 

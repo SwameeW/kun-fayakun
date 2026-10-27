@@ -1585,7 +1585,6 @@
     display: none;
   }
 
-
   /* Pulled up on a phone held sideways, the worlds sit in two columns: ten worlds remain reachable in a scrolling list. */
   .kf-nav.is-sheet.is-expanded .kf-nav-list {
     display: grid;

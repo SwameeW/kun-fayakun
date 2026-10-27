@@ -24,6 +24,8 @@ import { helpButton, withHelp } from './help';
 
 export interface LabPanel {
   readonly element: HTMLElement;
+  /** The time machine's Reset (back to the fork, paused), for its row (./time-control): shown while an experiment runs. */
+  readonly reset: HTMLButtonElement;
   update(view: UniverseView, slow: boolean): void;
 }
 
@@ -862,8 +864,15 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     if (bodies.some((b) => b.id === keep) || (keep === '' && blank !== null)) s.value = keep;
   };
 
+  // The time machine's Reset, joining its row while an experiment runs: back to the fork, paused.
+  const reset = h('button', { type: 'button', class: 'kf-universe-time-now', 'aria-label': i18n.t('ui.universe.time.resetLabel'), title: i18n.t('ui.universe.time.resetLabel'), 'data-testid': 'universe-time-reset', hidden: true }, i18n.t('ui.universe.time.reset'));
+  reset.addEventListener('click', () => {
+    send({ kind: 'reset' });
+  });
+
   return {
     element,
+    reset,
     update(view, slow) {
       lab = view.lab;
       element.hidden = !lab;

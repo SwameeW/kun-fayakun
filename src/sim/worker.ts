@@ -1,9 +1,9 @@
 /// <reference lib="webworker" />
 import { luminosities } from './climate';
-import { commandId, Engine, Prediction } from './engine';
+import { commandId, Engine, Prediction, type Checkpoint } from './engine';
 import { accelerations, diagnostics, drift, type Diagnostics } from './nbody';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
-import { Rewind, swarmPlaces } from './rewind';
+import { REWIND_SEGMENT, Rewind, swarmPlaces } from './rewind';
 
 /**
  * The orbital laboratory's worker: the engine (./engine) in Float64, off the main thread.
@@ -13,10 +13,15 @@ import { Rewind, swarmPlaces } from './rewind';
  * scenario), and reports the rate it achieved: when it falls short, simulated time runs slower, never
  * skips. Going backwards (a negative rate) it shows the history replayed exactly (./rewind), a whole
  * step at a time, replaying the part before within the same budget, and stops (paused) at the start.
- * Going to a moment (`goto`) steps toward it within the budget. Predictions (engine Prediction) run
- * after the live steps, PREDICT_BUDGET_MS a tick, and a newer request or any edit replaces the one
- * under way. Snapshots go out about 30 times a second, with what the page needs to draw between them
- * smoothly (accelerations, the time owed) and a timeline count that changes only when the run jumps.
+ * Going backwards it keeps to the pace the history can be replayed at, so a heavy experiment goes
+ * back evenly; going forwards it keeps a full state every REWIND_SEGMENT steps (the latest
+ * RECENT_MARKS), so going back starts from near the moment shown. Paused, it steps on (or back) to
+ * the moment the page draws, so an edit is made on what is drawn. Going to a moment (`goto`) steps
+ * toward it within the budget, and stops where it is at any run request (a pause, a rate).
+ * Predictions (engine Prediction) run after the live steps, PREDICT_BUDGET_MS a tick, and a newer
+ * request or any edit replaces the one under way. Snapshots go out about 30 times a second, with
+ * what the page needs to draw between them smoothly (accelerations, the time owed) and a timeline
+ * count that changes only when the run jumps.
  */
 
 const TICK_MS = 16;
@@ -29,6 +34,10 @@ const MAX_WALL_S = 0.25;
 const ACHIEVED_WINDOW_S = 1;
 /** A budget spent this recently (ms) still counts: the rate shown as the most possible here does not flicker. */
 const BOUND_HOLD_MS = 1000;
+/** Full states of the run kept as it goes forwards (one every REWIND_SEGMENT steps): going back replays from them. */
+const RECENT_MARKS = 16;
+/** Going back is shown at most this share of the pace its history is replayed at. */
+const REWIND_MARGIN = 0.85;
 const PREDICTION_SAMPLES = 360;
 /** The most steps one prediction may take (a long horizon is sampled more coarsely, not without end). */
 const PREDICTION_STEPS = 400_000;
@@ -56,6 +65,10 @@ let rewind: Rewind | null = null;
 let atStart = false;
 /** A goto under way: the simulated time it is going to. */
 let seekTo: number | null = null;
+/** Paused: the moment the page draws, which the run steps on to (back to, going backwards) and stops at; or null. */
+let landTo: number | null = null;
+/** The run's recent full states, oldest first (./rewind replays from them). */
+let marks: Checkpoint[] = [];
 let boundAt = Number.NEGATIVE_INFINITY;
 /** The diagnostics at the scenario's start (drift going backwards is measured from the edit before the moment shown, or from here). */
 let startDiagnostics: Diagnostics | null = null;
@@ -65,10 +78,39 @@ const post = (reply: LabReply, transfer: Transferable[] = []): void => {
   scope.postMessage(reply, transfer);
 };
 
+/** One step of the run forwards, keeping a full state every REWIND_SEGMENT steps. */
+function stepOn(e: Engine): void {
+  e.stepOnce();
+  if (e.state.step % REWIND_SEGMENT === 0) {
+    marks.push(e.snapshotNow());
+    if (marks.length > RECENT_MARKS) marks.shift();
+  }
+}
+
+/** The recent states still the run's own: after a jump back or a change of its log, those of a future it no longer has go. */
+function trimMarks(e: Engine): void {
+  marks = marks.filter((m) => m.step <= e.state.step && m.logIndex <= e.applied);
+}
+
 /** The run put exactly at the moment the history shows (before an edit, a run forwards, a seek), and the history let go. */
 function settleRewind(): void {
   rewind?.commit();
   rewind = null;
+  if (engine) trimMarks(engine);
+}
+
+/** Paused: whole steps on to the moment the page draws (back to it, going backwards) within the budget, and still there. */
+function land(e: Engine, started: number): void {
+  const to = landTo;
+  if (to === null) return;
+  if (rewind) {
+    let guard = 0;
+    while (rewind.shown.t > to && guard < 100_000 && rewind.stepBack()) guard += 1;
+    if (rewind.shown.t <= to || rewind.atStart) landTo = null;
+    return;
+  }
+  while (e.state.t < to && !e.failure && performance.now() - started < STEP_BUDGET_MS) stepOn(e);
+  if (e.state.t >= to || e.failure) landTo = null;
 }
 
 function startPrediction(): void {
@@ -148,17 +190,27 @@ function tick(): void {
   let moved = 0;
   if (engine && seekTo !== null) {
     // Going to a moment: whole steps toward it within the budget, whatever the rate.
-    while (engine.state.t + engine.dt <= seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) engine.stepOnce();
+    while (engine.state.t + engine.dt <= seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) stepOn(engine);
     if (engine.failure || engine.state.t + engine.dt > seekTo) {
       seekTo = null;
       owed = 0;
       recent = [];
     }
   } else if (engine && !paused && !engine.failure && rate < 0) {
-    // Backwards: the history a step at a time, the part before it replayed meanwhile; paused at the start.
-    const r = (rewind ??= new Rewind(engine));
+    // Backwards: the history a step at a time, the part before it replayed meanwhile (at the pace that can
+    // be done, when that is short of the rate: evenly, not in bursts); paused at the start.
+    if (!rewind) {
+      rewind = new Rewind(engine, marks);
+      // Short of its budget going forwards, replaying is no faster: shown at that pace from the first step back.
+      if (now - boundAt < BOUND_HOLD_MS && achieved > 0) rewind.made = achieved;
+    }
+    const r = rewind;
     const t0 = r.shown.t;
-    owed = Math.min(owed - rate * wall, -rate * MAX_WALL_S + r.shown.dt);
+    // A little under the pace history is made at, so the segments replayed ahead build up rather than run out.
+    const speed = Math.min(-rate, REWIND_MARGIN * r.pace(now));
+    if (speed < -rate) boundAt = now;
+    // Waiting for the history before the moment shown, no backlog piles up (it would be taken in a burst after).
+    owed = Math.min(owed + speed * wall, r.waiting ? r.shown.dt : speed * MAX_WALL_S + r.shown.dt);
     owed = r.back(owed);
     r.work(STEP_BUDGET_MS);
     if (r.waiting) boundAt = now;
@@ -178,12 +230,13 @@ function tick(): void {
         break;
       }
       const dt = engine.dt;
-      engine.stepOnce();
+      stepOn(engine);
       owed -= dt;
     }
     moved = engine.state.t - t0;
   } else {
     owed = 0;
+    if (engine) land(engine, now);
     // Paused going backwards: the history before the moment shown is made ready meanwhile.
     rewind?.work(STEP_BUDGET_MS);
   }
@@ -230,6 +283,8 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       rewind = null;
       atStart = false;
       seekTo = null;
+      landTo = null;
+      marks = [];
       startDiagnostics = null;
       snapshot();
       startPrediction();
@@ -240,11 +295,18 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
     switch (msg.type) {
       case 'run':
         control = msg.control;
+        // A goto under way stops where it is (paused there, or running on from there).
+        if (seekTo !== null) {
+          seekTo = null;
+          owed = 0;
+          recent = [];
+        }
         // Achieved is measured from a change of rate; time owed one way is not owed the other.
         if (msg.rate !== rate) recent = [];
         if (Math.sign(msg.rate) !== Math.sign(rate)) owed = 0;
         rate = msg.rate;
         paused = msg.paused;
+        landTo = msg.paused && typeof msg.landAt === 'number' && Number.isFinite(msg.landAt) ? msg.landAt : null;
         // Forwards again: the run goes on from the moment shown, exactly.
         if (rate > 0) {
           atStart = false;
@@ -257,6 +319,7 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       case 'goto': {
         control = msg.control;
         rewind = null;
+        landTo = null;
         const target = Math.max(0, Number.isFinite(msg.t) ? msg.t : 0);
         // To the fork, paused (a date before it): stopped at the start, as going backwards stops there.
         atStart = target === 0 && paused;
@@ -264,6 +327,7 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         if (target < engine.state.t) {
           engine.restoreBefore(target);
           timeline += 1;
+          trimMarks(engine);
         }
         seekTo = target;
         owed = 0;
@@ -276,10 +340,12 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         applied += 1;
         settleRewind();
         seekTo = null;
+        landTo = null;
         const before = engine.state.step;
         engine.applyAt(msg.command, msg.atStep ?? engine.state.step);
         // Made on a view the run had passed: it went back there first.
         if (engine.state.step < before) timeline += 1;
+        trimMarks(engine);
         startPrediction();
         snapshot();
         break;
@@ -293,28 +359,36 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         applied += 1;
         settleRewind();
         seekTo = null;
+        landTo = null;
         atStart = false;
         if (msg.type === 'undo') engine.undo();
         else engine.redo();
         timeline += 1;
+        trimMarks(engine);
         startPrediction();
         snapshot();
         break;
       case 'seek':
+        // Only to a whole step up to the run's or its latest checkpoint's (one beyond would be replayed here at once, a huge one without end).
+        if (!Number.isFinite(msg.step)) break;
         rewind = null;
         seekTo = null;
+        landTo = null;
         atStart = false;
-        engine.seek(msg.step);
+        engine.seek(Math.min(Math.max(engine.state.step, engine.checkpoints.at(-1)?.step ?? 0), Math.max(0, Math.floor(msg.step))));
         timeline += 1;
+        trimMarks(engine);
         startPrediction();
         snapshot();
         break;
       case 'replay':
         rewind = null;
         seekTo = null;
+        landTo = null;
         atStart = false;
         engine.replayFromStart();
         timeline += 1;
+        trimMarks(engine);
         startPrediction();
         snapshot();
         break;

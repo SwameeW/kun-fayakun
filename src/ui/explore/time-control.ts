@@ -1,6 +1,6 @@
 import { julianDateUtc } from '../../astro/time';
 import type { App, UniverseTimeCommand, UniverseView } from '../../core/types';
-import { FOOT_MAX_RATE, LAB_DATE_SPAN_S, MAX_RATE, rateParts } from '../../explore/time';
+import { FOOT_MAX_RATE, MAX_RATE, rateParts } from '../../explore/time';
 import { h, uniqueId } from '../dom';
 import { helpButton } from './help';
 import { icon } from '../icons';
@@ -16,12 +16,14 @@ import { icon } from '../icons';
  * the reason in the note under the row (announced politely). Space always pauses or plays, even with
  * a time button focused (Enter presses that button). The date takes effect when picked, or with
  * Enter or on leaving the field when typed (so a year half typed never moves the clock); a date
- * outside the span is shown at its nearest end, and the note says so.
+ * outside the span is shown at its nearest end, and the note says so once where the clock goes is
+ * known (once the published theories are in, for a date beyond JPL's tables), giving the span then.
  *
  * In an experiment the same row drives its clock (src/explore/lab): backwards replays its history,
- * Now and a date go to that moment of the experiment, and Reset (shown only there) goes back to the
- * fork, paused. A change of rate or of pause is announced politely, once; the line itself is plain
- * text (it is rewritten as the clock runs).
+ * Now and a date go to that moment of the experiment (from its fork to a century after: beyond, the
+ * note says so), and the laboratory's panel adds Reset (back to the fork, paused), its words with
+ * its chunk. A change of rate or of pause is announced politely, once; the line itself is plain text
+ * (it is rewritten as the clock runs).
  */
 
 export interface TimeControl {
@@ -46,8 +48,6 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
   const pause = button('pause', i18n.t('ui.universe.time.pause'), 'universe-time-pause', false);
   const faster = button('faster', i18n.t('ui.universe.time.faster'), 'universe-time-faster');
   const now = h('button', { type: 'button', class: 'kf-universe-time-now', 'aria-label': i18n.t('ui.universe.time.nowLabel'), title: i18n.t('ui.universe.time.nowLabel'), 'data-testid': 'universe-time-now' }, i18n.t('ui.universe.time.now'));
-  // In an experiment: back to its fork, paused.
-  const reset = h('button', { type: 'button', class: 'kf-universe-time-now', 'aria-label': i18n.t('ui.universe.time.resetLabel'), title: i18n.t('ui.universe.time.resetLabel'), 'data-testid': 'universe-time-reset', hidden: true }, i18n.t('ui.universe.time.reset'));
   const rate = h('span', { class: 'kf-universe-time-rate', 'data-testid': 'universe-time-rate' });
   const note = h('p', { class: 'kf-universe-time-note', 'data-testid': 'universe-time-note', hidden: true });
   const dateId = uniqueId('universe-date');
@@ -80,20 +80,20 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
   }
   now.addEventListener('click', () => {
     send({ kind: 'now' });
-  });
-  reset.addEventListener('click', () => {
-    app.universeLab({ kind: 'reset' });
+    // In an experiment, Now is a moment of it like a date (an old fork's century may end before it).
+    if (inLab) asked = Date.now();
   });
 
   // A chosen day at the time of day already shown (UTC), so only the date changes.
   let shownMs = 0;
-  let startMs = 0;
-  let endMs = 0;
   /** A date typed is sent with Enter or on leaving the field; one picked (or filled in) at once. */
   let typing = false;
   /** The day last sent, and whether the field is to show the day the clock went to (even while focused). */
   let sentValue = '';
   let rewrite = false;
+  /** The moment last asked for (Unix ms), until it is known where the clock went; and whether in an experiment. */
+  let asked: number | null = null;
+  let inLab = false;
   /** The day (UTC) as the date field writes it (the span is far inside years 1000 to 9999). */
   const dayOf = (ms: number): string => (Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : '');
   const commit = (): void => {
@@ -108,9 +108,8 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
     sentValue = value;
     rewrite = true;
     const timeOfDay = ((shownMs % DAY_MS) + DAY_MS) % DAY_MS;
-    const at = day + timeOfDay;
-    if (endMs > startMs && (at < startMs || at > endMs)) tell(i18n.t('ui.universe.time.outOfRange', { from: dayOf(startMs), to: dayOf(endMs) }));
-    send({ kind: 'date', jdUtc: julianDateUtc(at) });
+    asked = day + timeOfDay;
+    send({ kind: 'date', jdUtc: julianDateUtc(asked) });
   };
   date.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -139,7 +138,7 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
   const element = h(
     'div',
     { class: 'kf-universe-time', role: 'group', 'aria-label': i18n.t('ui.universe.time.label'), 'data-testid': 'universe-time' },
-    h('span', { class: 'kf-universe-time-buttons' }, reverse, slower, pause, faster, now, reset),
+    h('span', { class: 'kf-universe-time-buttons' }, reverse, slower, pause, faster, now),
     rate,
     day,
     note,
@@ -201,17 +200,18 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
       able(slower, blocked.slower);
       reverse.setAttribute('aria-pressed', String(t.rate < 0));
       pause.setAttribute('aria-pressed', String(t.paused));
-      reset.hidden = lab === null;
       const edge = t.edge === null ? '' : lab ? i18n.t('ui.universe.time.edgeLab') : i18n.t(t.edge === 'end' ? 'ui.universe.time.edgeEnd' : 'ui.universe.time.edgeStart');
+      // On the way to a moment: an experiment's goto, or a date beyond the tables waiting for the theories.
+      const going = lab?.seekingS != null ? shownMs + (lab.seekingS - lab.elapsedS) * 1000 : t.pending ? asked : null;
       const text =
-        lab?.seekingS != null
-          ? i18n.t('ui.universe.time.going', { date: dayOf(shownMs + (lab.seekingS - lab.elapsedS) * 1000) })
+        going !== null
+          ? i18n.t('ui.universe.time.going', { date: dayOf(going) })
           : edge
             ? edge
             : t.paused
               ? i18n.t('ui.universe.time.paused')
               : t.held === 'trip' && size !== 1
-                ? i18n.t('ui.universe.time.trip', { rate: words(t.rate) })
+                ? i18n.t(t.rate < 0 ? 'ui.universe.time.tripBack' : 'ui.universe.time.trip', { rate: words(size) })
                 : t.held === 'foot' && size > FOOT_MAX_RATE
                   ? i18n.t('ui.universe.time.onFoot', { rate: words(sign * FOOT_MAX_RATE) })
                   : words(t.rate);
@@ -222,14 +222,18 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
       said = state;
       // The note: a reason just given; else at an end how to go on; else, beyond JPL's tables, what the places come from.
       const beyond = [t.spinHeld ? i18n.t('ui.universe.time.spinHeld') : '', t.beyond.moon ? i18n.t('ui.universe.time.beyondMoon') : '', t.beyond.planets ? i18n.t('ui.universe.time.beyondPlanets') : ''].filter(Boolean).join(' ');
-      const hint = t.edge ? i18n.t(t.edge === 'start' ? 'ui.universe.time.edgeHintStart' : 'ui.universe.time.edgeHintEnd') : beyond;
+      const hint = t.edge && !t.pending ? i18n.t(t.edge === 'start' ? 'ui.universe.time.edgeHintStart' : 'ui.universe.time.edgeHintEnd') : beyond;
       const noteText = performance.now() < noteUntil ? told : hint;
       write(note, noteText);
       note.hidden = noteText === '';
-      // The span of dates: the explorer's, or in an experiment from its fork to LAB_DATE_SPAN_S after it.
-      const epochMs = lab ? shownMs - lab.elapsedS * 1000 : 0;
-      startMs = lab ? epochMs : t.startMs;
-      endMs = lab ? epochMs + LAB_DATE_SPAN_S * 1000 : t.endMs;
+      // The span of dates: the explorer's, or in an experiment from its fork to a century after it.
+      const { startMs, endMs } = t;
+      inLab = lab !== null;
+      // A moment asked for, once it is known where the clock goes: outside the span (as it is then), it stops at its end, and the note says why.
+      if (asked !== null && !t.pending) {
+        if (endMs > startMs && (asked < startMs || asked > endMs)) tell(i18n.t(lab ? 'ui.universe.time.outOfRangeLab' : 'ui.universe.time.outOfRange', { from: dayOf(startMs), to: dayOf(endMs) }));
+        asked = null;
+      }
       if (endMs > startMs) {
         const min = dayOf(startMs);
         const max = dayOf(endMs);

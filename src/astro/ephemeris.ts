@@ -128,7 +128,6 @@ export function validRange(moon: MoonFile): { planets: JdRange; moon: JdRange } 
   return theories ? { planets: theories.range, moon: theories.range } : tableRange(moon);
 }
 
-
 /**
  * The body's elements on the date (a in au, angles in degrees): Table 1's, with T clamped to its fit
  * interval (its linear rates do not hold outside it); beyond it, once installed, the long-span ones.

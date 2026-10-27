@@ -314,14 +314,17 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         if (row.light.textContent !== l) row.light.textContent = l;
       }
       if (slow && expanded) orrery.update(view);
+      // The laboratory's panel comes with the first experiment, folded or not: its Reset joins the time machine's row.
+      if (view.lab && !lab && !labLoading) {
+        labLoading = true;
+        void import('./lab-panel').then(({ createLabPanel }) => {
+          lab = createLabPanel(app, f);
+          labSlot.replaceChildren(lab.element);
+          time.querySelector('.kf-universe-time-buttons')?.append(lab.reset);
+        });
+      }
+      if (lab) lab.reset.hidden = !view.lab;
       if (expanded) {
-        if (view.lab && !lab && !labLoading) {
-          labLoading = true;
-          void import('./lab-panel').then(({ createLabPanel }) => {
-            lab = createLabPanel(app, f);
-            labSlot.replaceChildren(lab.element);
-          });
-        }
         lab?.update(view, true);
         // Among the stars: their panel (loaded the first time) heads the body, and the solar system's sections step aside.
         const inStars = view.neighbourhood !== null;

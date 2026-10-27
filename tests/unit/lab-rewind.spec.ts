@@ -3,8 +3,11 @@
  * every moment gone back through is the state the run had there, bit for bit (the solar system with
  * the IAU spins and J2s; with an edit and a merger; past evicted checkpoints; with a ring's particles);
  * going back stops at the start; the run put at a moment gone back to goes on exactly as it did; the
- * checkpoints stay spread over the whole run; and the drawn clock never turns back, keeps its pace,
- * and draws a planet between snapshots where Kepler puts it.
+ * checkpoints stay spread over the whole run; going back from the run's own recent states replays
+ * only the last few steps first, and the pace history is made at is measured; and the drawn clock
+ * never turns back, keeps its pace (also when the worker is short of its budget, either way), lands
+ * on the worker's state when paused within a quarter of a second, and draws a planet between
+ * snapshots where Kepler puts it.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -12,8 +15,9 @@ import { createEphemeris, type MoonFile, type PlanetsFile } from '../../src/astr
 import type { PhysicalFile } from '../../src/astro/physical';
 import { Engine, type Scenario } from '../../src/sim/engine';
 import { REWIND_SEGMENT, Rewind } from '../../src/sim/rewind';
+import type { Checkpoint } from '../../src/sim/engine';
 import { seedLaboratory, seedSolarSystem } from '../../src/sim/seed';
-import { DRAW_LAG_S, LabClock, placeAt, type PlaceSnapshot } from '../../src/explore/lab-clock';
+import { BOUND_LAG_S, DRAW_LAG_S, LAND_S, LabClock, placeAt, type PlaceSnapshot } from '../../src/explore/lab-clock';
 
 const ROOT = new URL('../../', import.meta.url);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
@@ -236,6 +240,130 @@ test('the drawn clock: never back, an even pace, a little behind the worker and 
   // A new scenario: set wherever its first snapshot is.
   still.restart();
   expect(still.advance(1 / 60, rate, true, { t: 0, dt: dtStep, owed: 0, timeline: 0, at: 0 }, 64)).toBe(0);
+});
+
+test('going back from the run’s own recent states: only the steps since the latest one are replayed first, exactly; the pace of replay is measured', () => {
+  // As the worker runs forwards: a full state every REWIND_SEGMENT steps (no checkpoint near the end).
+  const e = new Engine(solar());
+  const marks: Checkpoint[] = [];
+  const kept = new Map<number, Seen>();
+  const forwards = (to: number): void => {
+    while (e.state.step < to) {
+      e.stepOnce();
+      kept.set(e.state.step, seen(e));
+      if (e.state.step % REWIND_SEGMENT === 0) marks.push(e.snapshotNow());
+    }
+  };
+  // On until well past the latest periodic checkpoint (two marks and a hundred steps beyond it).
+  forwards(1000);
+  const latest = Math.max(...e.checkpoints.map((c) => c.step));
+  const end = (Math.floor(Math.max(latest, e.state.step) / REWIND_SEGMENT) + 3) * REWIND_SEGMENT + 108;
+  forwards(end);
+  expect(Math.max(...e.checkpoints.map((c) => c.step))).toBe(latest);
+  const lastMark = Math.floor(end / REWIND_SEGMENT) * REWIND_SEGMENT;
+  /** Steps a replica takes before the history before the moment shown is ready (a clock that counts calls, one per step). */
+  const replayed = (r: Rewind): number => {
+    let calls = 0;
+    const now = (): number => (calls += 1);
+    while (r.waiting) r.work(1e9, now);
+    return calls;
+  };
+  const withMarks = new Rewind(e, marks);
+  const fresh = new Rewind(e);
+  const a = replayed(withMarks);
+  const b = replayed(fresh);
+  // From the latest mark: the 108 steps since, not all those since the last checkpoint.
+  expect(a).toBeLessThan(end - lastMark + 10);
+  expect(b).toBeGreaterThan(end - latest);
+  // The same history either way, bit for bit.
+  for (let k = 0; k < 150; k += 1) {
+    expect(withMarks.stepBack()).toBe(true);
+    const x = withMarks.shown;
+    const want = kept.get(x.step);
+    expect(x.state.pos).toEqual(want?.pos);
+    expect(x.state.vel).toEqual(want?.vel);
+    withMarks.work(1e9);
+  }
+  // How fast history is made ready, measured (here from a clock of whole milliseconds: finite, positive).
+  expect(Number.isFinite(withMarks.made)).toBe(true);
+  expect(withMarks.made).toBeGreaterThan(0);
+  // With a segment being replayed and none ready ahead, no faster than what is left to show lasts while it
+  // is: the slower its replay has gone so far, the slower the history may be shown.
+  const slow = new Rewind(e, marks);
+  let ms = 0;
+  const clock = (): number => (ms += 1);
+  slow.work(1e9, clock);
+  // Into the segment just made (none ready ahead), half of it shown, and a few steps of the one before replayed.
+  slow.back((slow.shown.t - (e.state.t - 60 * 3300)) / 1);
+  slow.work(5, clock);
+  const soon = slow.pace(ms + 10);
+  const later = slow.pace(ms + 10_000);
+  expect(soon).toBeGreaterThan(0);
+  expect(later).toBeLessThan(soon);
+});
+
+test('the drawn clock short of the worker’s budget (heavy rings at thirty days a second): it moves every frame, evenly, a little behind, either way', () => {
+  // The probe's pattern: the worker reaches about 1.5 million s a second of the 2.6 asked for, a snapshot every 33 to 50 ms
+  // carrying 40,000 to 61,000 s (whole steps of 3,300 s), and owing more than a step all along.
+  const rate = 2_592_000;
+  const dtStep = 3300;
+  for (const d of [1, -1]) {
+    const clock = new LabClock();
+    let workerT = d > 0 ? 0 : 1e9;
+    let nextSnap = 0;
+    let k = 0;
+    const held: Array<{ t: number; at: number }> = [];
+    let snapshot = { t: workerT, dt: dtStep, owed: 200_000, budgetBound: true, timeline: 0, at: 0 };
+    clock.advance(0, d * rate, true, snapshot, 0);
+    const shown: number[] = [];
+    for (let frame = 0; frame < 60 * 6; frame += 1) {
+      const now = (frame * 1000) / 60;
+      if (now >= nextSnap) {
+        workerT += d * dtStep * (k % 3 === 1 ? 12 : 18);
+        k += 1;
+        snapshot = { t: workerT, dt: dtStep, owed: 200_000, budgetBound: true, timeline: 0, at: now };
+        held.push({ t: workerT, at: now });
+        if (held.length > 6) held.shift();
+        nextSnap += k % 2 === 0 ? 33 : 50;
+      }
+      // The pace reached, as the laboratory measures it over the snapshots it holds.
+      const first = held[0];
+      const reached = first && snapshot.at - first.at > 100 ? (Math.abs(snapshot.t - first.t) * 1000) / (snapshot.at - first.at) : 0;
+      shown.push(clock.advance(1 / 60, d * rate, true, snapshot, now, 'run', reached));
+    }
+    const steps = shown.slice(60).map((t, i) => d * (t - (shown[59 + i] ?? 0)));
+    // Never back, frozen on at most a couple of frames, and even.
+    expect(Math.min(...steps), `${String(d)}: never back`).toBeGreaterThanOrEqual(0);
+    expect(steps.filter((x) => x === 0).length, `${String(d)}: frozen frames`).toBeLessThanOrEqual(2);
+    const sorted = [...steps].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    expect(sorted[Math.floor(sorted.length * 0.95)] ?? 0, `${String(d)}: even`).toBeLessThan(1.6 * median);
+    // At the pace the worker reaches (not the rate asked for), a little behind its newest snapshot, never past it.
+    const reachedPace = (Math.abs(workerT - (d > 0 ? 0 : 1e9)) * 1000) / (6 * 1000);
+    expect(median * 60).toBeGreaterThan(0.8 * reachedPace);
+    expect(median * 60).toBeLessThan(1.2 * reachedPace);
+    const behind = d * (snapshot.t - (shown.at(-1) ?? 0));
+    expect(behind).toBeGreaterThanOrEqual(0);
+    expect(behind).toBeLessThan(reachedPace * (BOUND_LAG_S + 0.1));
+  }
+});
+
+test('paused, the drawn clock lands on the worker’s state within a quarter of a second, however far (a whole 14-hour step at ten seconds a second), and stays', () => {
+  for (const [rate, shownAt, workerAt] of [
+    [10, 30, 50_226],
+    [3600, 20_506, 50_226],
+    [-86_400, 40_000, 37_000],
+  ] as const) {
+    const clock = new LabClock();
+    clock.advance(0, rate, true, { t: shownAt, dt: 50_226, owed: 0, timeline: 0, at: 0 }, 0);
+    const path: number[] = [];
+    for (let frame = 1; frame <= 60; frame += 1) path.push(clock.advance(1 / 60, rate, false, { t: workerAt, dt: 50_226, owed: 0, timeline: 0, at: 0 }, (frame * 1000) / 60, 'land'));
+    const d = rate > 0 ? 1 : -1;
+    // On in the direction of travel only, there by LAND_S (and a frame), and still there.
+    for (let k = 1; k < path.length; k += 1) expect(d * ((path[k] ?? 0) - (path[k - 1] ?? 0))).toBeGreaterThanOrEqual(0);
+    expect(path[Math.ceil(LAND_S * 60)]).toBe(workerAt);
+    expect(path.at(-1)).toBe(workerAt);
+  }
 });
 
 test('drawn between snapshots: a planet where Kepler puts it, within a kilometre, at half a step and a whole one', () => {

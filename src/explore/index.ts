@@ -94,7 +94,8 @@ import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretch
 import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile } from './sky';
 import { createSoundscape, type Soundscape, type SoundState } from './sound';
 import { createSolarSystem, type SolarSystem } from './system';
-import { advanceClock, applyTimeCommand, FOOT_MAX_RATE, heldRate, validTimeCommand } from './time';
+import { advanceClock, applyTimeCommand, FOOT_MAX_RATE, heldRate, LAB_DATE_SPAN_S, validTimeCommand } from './time';
+import type { SpinHold } from './time-beyond';
 
 const DEFAULT_BODY: BodyId = 'earth';
 const NOISE = { size: 64, seed: 31_415 } as const;
@@ -155,10 +156,8 @@ const MARKER_RANGE_KM = 60_000;
 const MARKER_SPACING_PX = 64;
 const MARKER_EASE = 0.12;
 const UNIX_EPOCH_JD = 2440587.5;
-/** A world's turn is held (spinHold) past this many degrees a frame, let go under the second (radians), and caught up at this rate (per second). */
-const SPIN_HOLD = (30 * Math.PI) / 180;
-const SPIN_FREE = (20 * Math.PI) / 180;
-const SPIN_CATCH_UP = 4;
+/** The chunk beyond the everyday, when it failed to come: asked for again after this long (s), or at once for a date beyond the tables. */
+const BEYOND_RETRY_S = 30;
 
 /** Exposure adapts to sunlight as r^EXPOSURE_POWER (2 would be full adaptation), r in au. */
 const EXPOSURE_POWER = 1.8;
@@ -381,8 +380,14 @@ export default function create(): UniverseModule {
   let range = { startJd: 0, endJd: Infinity };
   /** JPL's tables' own spans (positions beyond them come from the published theories: UniverseTime.beyond). */
   let tables: ReturnType<typeof tableRange> | null = null;
-  /** The published theories beyond the tables (src/astro/analytic, their own chunk): not asked for, on the way, or in. */
-  let theoryState: 'none' | 'loading' | 'ready' = 'none';
+  /**
+   * The time machine beyond the everyday (./time-beyond, its own chunk: the published theories beyond
+   * the tables, and the hold of a world's turn too fast to show): not asked for, on the way, in, or
+   * failed (offline: asked for again BEYOND_RETRY_S later, not every frame).
+   */
+  let theoryState: 'none' | 'loading' | 'ready' | 'failed' = 'none';
+  let theoryRetryAt = 0;
+  let spinHold: SpinHold | null = null;
   /** A date asked for beyond the tables before the theories came (UTC), and whether the clock was paused before it. */
   let pendingDate: { utc: number; paused: boolean } | null = null;
   /**
@@ -529,15 +534,8 @@ export default function create(): UniverseModule {
   const stretch = { active: false, t: 0, amount: 1, rush: false, steered: false, then: DEFAULT_BODY };
   /** Each body's drawn size over its true one this frame, and its true distance from the Sun (for its light). */
   const grow = Object.fromEntries(BODY_IDS.map((id) => [id, 1])) as Record<BodyId, number>;
-  /**
-   * Fast time and the worlds' turn: past SPIN_HOLD degrees a frame a world's turn cannot be shown (it
-   * would strobe, even seem to turn backwards: at a week a second the Earth turns 42 degrees a frame), so
-   * it is drawn at one hour of its own day, the Sun held at the longitude it had there (its seasons
-   * still go on); under SPIN_FREE it turns again, catching up forwards, never back. Each world's IAU
-   * spin (degrees a day), and its hold: the Sun's longitude held, and the turn still to catch up.
-   */
+  /** Each world's IAU spin (degrees a day), for the hold of its turn at fast time (./time-beyond). */
   const spinRate = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
-  const spinHold = new Map<BodyId, { lon: number | null; turn: number }>();
   const trueSunKm = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
   const earthTrue = km();
   /** The film's scene unit, km (set on the way in). */
@@ -642,17 +640,20 @@ export default function create(): UniverseModule {
     range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
   };
   /**
-   * The theories' chunk, loaded when the clock heads beyond the tables (backwards, fast, near an end,
-   * or a date beyond asked for). Once in, the span widens to theirs: a clock held at a table's end goes
-   * on, and a date asked for beyond is gone to. Offline, the tables' span stays.
+   * The chunk beyond the everyday, loaded when the clock heads beyond the tables or runs fast
+   * (backwards, a day a second or more, near an end, or a date beyond asked for: `now`, which asks
+   * again at once after a failure), or a few seconds in. Once in, the span widens to the theories': a
+   * clock held at a table's end goes on, and a date asked for beyond is gone to. Offline, the tables'
+   * span stays, the date waits no more (the note gives the span), and it is asked for again later.
    */
-  const loadTheories = (): void => {
+  const loadTheories = (now = false): void => {
     const inputs = labInputs;
-    if (theoryState !== 'none' || !inputs) return;
+    if (!inputs || theoryState === 'loading' || theoryState === 'ready' || (theoryState === 'failed' && !now && shownFor < theoryRetryAt)) return;
     theoryState = 'loading';
-    import('../astro/analytic').then(
+    import('./time-beyond').then(
       (m) => {
         installTheories(m.theories);
+        spinHold = m.createSpinHold(spinRate);
         theoryState = 'ready';
         spanOf(inputs.moon);
         const asked = pendingDate;
@@ -664,7 +665,9 @@ export default function create(): UniverseModule {
         }
       },
       () => {
-        theoryState = 'none';
+        theoryState = 'failed';
+        theoryRetryAt = shownFor + BEYOND_RETRY_S;
+        pendingDate = null;
       },
     );
   };
@@ -675,7 +678,7 @@ export default function create(): UniverseModule {
     timePaused = outside ? true : paused;
     if (outside && theoryState !== 'ready') {
       pendingDate = { utc, paused };
-      loadTheories();
+      loadTheories(true);
     }
   };
   /** A TDB Julian date as UTC (TDB runs about a minute ahead of UTC), for the span's ends as dates. */
@@ -748,7 +751,7 @@ export default function create(): UniverseModule {
     solarFilter: false,
     jdTdb: 0,
     unixMs: 0,
-    time: { rate: 1, paused: false, edge: null, held: null, beyond: { moon: false, planets: false }, spinHeld: false, startMs: 0, endMs: 0, hijri: null },
+    time: { rate: 1, paused: false, edge: null, held: null, beyond: { moon: false, planets: false }, spinHeld: false, pending: false, startMs: 0, endMs: 0, hijri: null },
     sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
     lab: null,
     islamic: null,
@@ -827,7 +830,7 @@ export default function create(): UniverseModule {
     v.time.paused = lab?.active ? lab.paused : timePaused;
     v.time.edge = lab?.active ? lab.edge : timeEdge;
     v.time.held = lab?.active ? null : clockHold();
-    v.time.spinHeld = spinHold.get(focus)?.lon != null;
+    v.time.spinHeld = spinHold?.held(focus) ?? false;
     v.time.beyond.moon = !lab?.active && tables !== null && (jdTdb < tables.moon.startJd || jdTdb > tables.moon.endJd);
     v.time.beyond.planets = !lab?.active && tables !== null && (jdTdb < tables.planets.startJd || jdTdb > tables.planets.endJd);
     v.lab = lab?.view() ?? null;
@@ -849,9 +852,12 @@ export default function create(): UniverseModule {
     v.descent = descent?.view() ?? null;
     v.neighbourhood = hoodShown ? (hood?.view() ?? null) : null;
     v.sound = soundView;
-    // The span (TDB), as the UTC dates the clock shows at its ends.
-    v.time.startMs = (tdbToUtc(range.startJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
-    v.time.endMs = Number.isFinite(range.endJd) ? (tdbToUtc(range.endJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
+    // The span (TDB), as the UTC dates the clock shows at its ends: the explorer's, or an experiment's (from its
+    // fork to LAB_DATE_SPAN_S after it); and a date asked for beyond the tables, waiting for the theories.
+    const span = v.lab ? { startJd: v.lab.epochJdTdb, endJd: v.lab.epochJdTdb + LAB_DATE_SPAN_S / SECONDS_PER_DAY } : range;
+    v.time.startMs = (tdbToUtc(span.startJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    v.time.endMs = Number.isFinite(span.endJd) ? (tdbToUtc(span.endJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
+    v.time.pending = !v.lab && pendingDate !== null;
     v.mode = navOut.mode;
     v.speedKmS = navOut.speedKmS;
     const trip = nav.tripState;
@@ -1166,51 +1172,6 @@ export default function create(): UniverseModule {
       }
       beforeLab = null;
     }
-  };
-
-  /** A world's basis turned about its pole by `a` (radians, eastward: the Sun's longitude on it falls by a); and that longitude. */
-  const turnBasis = (m: number[], a: number): void => {
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    for (let k = 0; k < 3; k += 1) {
-      const x = m[k] ?? 0;
-      const z = m[6 + k] ?? 0;
-      m[k] = x * c - z * s;
-      m[6 + k] = z * c + x * s;
-    }
-  };
-  const sunLongitude = (sys: SolarSystem, id: BodyId): number => {
-    const m = sys.bodies[id].basis;
-    const p = sys.bodies[id].position;
-    const sun = sys.bodies.sun.position;
-    const d = [sun.x - p.x, sun.y - p.y, sun.z - p.z];
-    const dot = (o: number): number => (d[0] ?? 0) * (m[o] ?? 0) + (d[1] ?? 0) * (m[o + 1] ?? 0) + (d[2] ?? 0) * (m[o + 2] ?? 0);
-    return Math.atan2(-dot(6), dot(0));
-  };
-  /** The hold (spinHold) for one world this frame, given how far it turns a frame (degrees). */
-  const holdSpin = (sys: SolarSystem, id: BodyId, perFrame: number, dt: number): void => {
-    const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
-    let h = spinHold.get(id);
-    // Held from the turn drawn now (catching up or not): no jump.
-    if (dt > 0 && perFrame > SPIN_HOLD && id !== 'sun' && h?.lon == null) spinHold.set(id, (h = { lon: sunLongitude(sys, id) - (h?.turn ?? 0), turn: h?.turn ?? 0 }));
-    if (!h) return;
-    const sign = Math.sign(spinRate[id]) || 1;
-    // A frame of no time (a pose placed at once) neither holds nor lets go: the turn stays as it was.
-    if (h.lon !== null && dt > 0 && perFrame < SPIN_FREE) {
-      // Let go: the turn held back, caught up forwards (a whole turn at most, ahead of the true one, shrinking).
-      const behind = wrap(sunLongitude(sys, id) - h.lon);
-      h.turn = sign > 0 ? (behind > 0 ? behind - 2 * Math.PI : behind) : behind < 0 ? behind + 2 * Math.PI : behind;
-      h.lon = null;
-    }
-    if (h.lon !== null) h.turn = wrap(sunLongitude(sys, id) - h.lon);
-    else {
-      h.turn *= Math.exp(-SPIN_CATCH_UP * Math.min(0.1, dt));
-      if (Math.abs(h.turn) < 1e-3) {
-        spinHold.delete(id);
-        return;
-      }
-    }
-    turnBasis(sys.bodies[id].basis, h.turn);
   };
 
   /** Whether a point on the Earth (degrees) is near enough to Makkah that the view keeps its distance (MAKKAH_FRAME). */
@@ -1547,18 +1508,20 @@ export default function create(): UniverseModule {
     adaptation.setReducedMotion(c.reducedMotion);
     ambient += c.reducedMotion ? 0 : dt;
     shownFor += dt;
+    // How far the clock moves this frame (days; a jump, a cut, is not a movement), for the hold of the worlds' turn.
+    let days = jdTdb;
     if (lab?.active) {
       // The experiment's clock as drawn (its epoch plus the simulated time: ./lab-clock), with no data span to keep to.
-      lab.tick(performance.now());
+      const cut = lab.tick(performance.now());
       const jd = lab.jdTdb();
       clockRate = lab.paused ? 0 : lab.rate;
       jdUtc += jd - jdTdb;
       jdTdb = jd;
+      if (cut) days = jd;
     } else {
       // The time machine: the clock at its rate, held to real time during a trip (not the arrival's glide,
       // which follows its own world) and to FOOT_MAX_RATE on foot or on the way down, kept in the span.
       clockRate = timePaused ? 0 : heldRate(timeRate, clockHold());
-      if (theoryState === 'none' && (shownFor > 3 || clockRate < 0 || clockRate >= 86_400 || jdTdb - range.startJd < 120 || range.endJd - jdTdb < 120)) loadTheories();
       const clock = advanceClock(jdTdb, dt, clockRate, range.startJd, range.endJd);
       jdUtc += clock.jd - jdTdb;
       jdTdb = clock.jd;
@@ -1567,6 +1530,8 @@ export default function create(): UniverseModule {
         timeEdge = clock.edge;
       }
     }
+    days = jdTdb - days;
+    if (shownFor > 3 || clockRate < 0 || clockRate >= 86_400 || Math.abs(days) > 0.02 || jdTdb - range.startJd < 120 || range.endJd - jdTdb < 120) loadTheories();
     sys.update(jdTdb);
     // Among the stars: the dip into or out of them, and then their own scene and camera instead of the solar system's.
     hoodVeil = 1;
@@ -1623,7 +1588,8 @@ export default function create(): UniverseModule {
       // A laboratory of its own (two or three bodies, none of them the worlds): the view goes to its star, at the Sun's place, never to a world it lacks.
       else if (hiddenBodies.has(nav.focus) && nav.focus !== 'sun' && !nav.busy) nav.flyTo(world, 'sun');
     }
-    for (const id of BODY_IDS) holdSpin(sys, id, Math.abs((spinRate[id] * clockRate * dt) / 86_400) * (Math.PI / 180), dt);
+    // Too fast to show a world turning: held at an hour of its day (./time-beyond), let go only as the clock runs on its own (not paused, not a trip).
+    spinHold?.update(sys, days, dt, clockRate !== 0 && (lab?.active === true || !nav.travelling), c.reducedMotion);
     advanceStretch(dt);
     warpSystem(sys);
     for (const path of orbitPaths) path.setDate(jdTdb);

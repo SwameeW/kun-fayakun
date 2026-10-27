@@ -9,10 +9,15 @@ import { Engine, type Checkpoint } from './engine';
  * before the moment shown, a replica of the engine (never the run itself) steps forward over a
  * segment of at most REWIND_SEGMENT steps, keeping a sample of every step (the bodies, their spins,
  * climates and ships; the rings' particles every few steps), and the samples are then shown in
- * reverse, a whole step at a time. While one segment is shown, the one before it is replayed, a few
- * steps a tick within the worker's budget (`work`). Across a long gap between checkpoints the replica
- * keeps full states every REWIND_SEGMENT steps on its way (marks), so each segment further back
- * replays only its own steps. Going back stops at the scenario's start (step 0).
+ * reverse, a whole step at a time. While one segment is shown, the ones before it are replayed (up to
+ * READY_AHEAD of them), a few steps a tick within the worker's budget (`work`). Across a long gap
+ * between checkpoints the replica keeps full states every REWIND_SEGMENT steps on its way (marks), so
+ * each segment further back replays only its own steps; the run's own recent marks (kept by the
+ * worker as it runs forwards) let the first ones start there too. `pace` is how fast the history may
+ * be shown so as not to run out (the pace segments are made ready at, and with none ready ahead, what
+ * the one being replayed leaves time for), so a heavy experiment (rings of thousands of particles)
+ * goes back at the pace it can be replayed, evenly, rather than in bursts and waits. Going back stops
+ * at the scenario's start (step 0).
  *
  * The run itself stays where it was until the moment shown is needed (an edit, running forwards
  * again, a seek): `commit` then puts it exactly there (from that segment's full state, or from the
@@ -25,6 +30,8 @@ import { Engine, type Checkpoint } from './engine';
 
 /** Steps in a segment of history replayed at once (and the spacing of the marks kept across a long gap). */
 export const REWIND_SEGMENT = 256;
+/** Segments replayed ahead of the one shown, at most. */
+const READY_AHEAD = 2;
 /** Particles' places a segment keeps, at most (single-precision triples: about 0.4 MB): every step for a few hundred particles, every 32nd for the most a scenario may have. */
 const SWARM_BUDGET = 32_000;
 
@@ -47,8 +54,9 @@ interface Job {
   /** The segment being made: from step lo up to (not including) hi; the replica on its way, and the segment once the replica reaches lo. */
   lo: number;
   hi: number;
-  /** The checkpoint or mark the replica started from (marks are kept every REWIND_SEGMENT steps from it). */
+  /** The checkpoint or mark the replica started from (marks are kept every REWIND_SEGMENT steps from it), and when it began (ms). */
   from: number;
+  began: number;
   replica: Engine;
   segment: Segment | null;
   stride: number;
@@ -64,17 +72,24 @@ function sampleOf(engine: Engine, keepSwarms: boolean): Sample {
 export class Rewind {
   private segment: Segment;
   private index = 0;
-  /** The segment before the one shown, once replayed. */
-  private ready: Segment | null = null;
+  /** The segments before the one shown, once replayed (the nearest first). */
+  private ready: Segment[] = [];
   private job: Job | null = null;
-  private marks: Checkpoint[] = [];
+  private marks: Checkpoint[];
   /** A replay that could not be made (the history did not replay healthily): going back stops where it is. */
   private broken = false;
+  /** Simulated seconds of history made ready each real second, over the last segments replayed (Infinity until one is, unless set). */
+  made = Number.POSITIVE_INFINITY;
 
-  constructor(private readonly engine: Engine) {
+  /** `marks`: full states of the run before now (with the edits applied by then) to replay from. */
+  constructor(
+    private readonly engine: Engine,
+    marks: readonly Checkpoint[] = [],
+  ) {
     // The moment shown first is the run's own state now (with its rings).
     const start = engine.snapshotNow();
     this.segment = { lo: start.step, start, samples: [{ ...start, state: cloneState(engine.state, false), swarms: swarmPlaces(engine.state) }] };
+    this.marks = marks.filter((m) => m.step < start.step);
   }
 
   /** The moment shown. */
@@ -98,7 +113,7 @@ export class Rewind {
 
   /** Waiting for the history before the moment shown (going back holds there meanwhile). */
   get waiting(): boolean {
-    return this.index === 0 && !this.atStart && this.ready === null;
+    return this.index === 0 && !this.atStart && this.ready.length === 0;
   }
 
   /**
@@ -117,7 +132,7 @@ export class Rewind {
         continue;
       }
       if (this.atStart) return 0;
-      const before = this.ready;
+      const before = this.ready[0];
       const last = before?.samples[before.samples.length - 1];
       if (!before || !last) return left;
       const step = (this.segment.samples[0]?.t ?? 0) - last.t;
@@ -125,26 +140,43 @@ export class Rewind {
       left -= step;
       this.segment = before;
       this.index = before.samples.length - 1;
-      this.ready = null;
+      this.ready.shift();
       // Marks after this segment's start are behind the moment shown for good.
       this.marks = this.marks.filter((m) => m.step <= before.lo);
     }
   }
 
+  /**
+   * How fast the history may be shown going back (simulated s per real s, `nowMs` now): the pace it is
+   * made ready at, and, with none ready ahead, no faster than lets what is left of the segment shown
+   * last until the one being replayed is ready (from the replay's own pace so far).
+   */
+  pace(nowMs: number = performance.now()): number {
+    const job = this.job;
+    if (!job || this.ready.length > 0) return this.made;
+    const done = job.replica.state.step - job.from;
+    const seconds = (nowMs - job.began) / 1000;
+    if (!(done > 0) || !(seconds > 0)) return this.made;
+    const left = ((job.hi - 1 - job.from - done) * seconds) / done;
+    const showable = this.shown.t - (this.segment.samples[0]?.t ?? this.shown.t);
+    return left > 0 ? Math.min(this.made, showable / left) : this.made;
+  }
+
   /** Goes back exactly one step, if the history before it is ready (false at the start or while it is replayed). */
   stepBack(): boolean {
     const t = this.shown.t;
-    const before = this.index > 0 ? this.segment.samples[this.index - 1] : this.ready?.samples[this.ready.samples.length - 1];
+    const before = this.index > 0 ? this.segment.samples[this.index - 1] : this.ready[0]?.samples.at(-1);
     if (!before || this.atStart) return false;
     this.back(t - before.t);
     return this.shown.t !== t;
   }
 
-  /** Replays the history before the segment shown, for at most `budgetMs` (`now` in ms). */
+  /** Replays the history before the segments shown and made ready, for at most `budgetMs` (`now` in ms). */
   work(budgetMs: number, now: () => number = () => performance.now()): void {
-    if (this.ready || this.segment.lo === 0 || this.broken) return;
+    const earliest = this.ready.at(-1) ?? this.segment;
+    if (this.ready.length >= READY_AHEAD || earliest.lo === 0 || this.broken) return;
     const started = now();
-    const job = (this.job ??= this.plan(this.segment.lo));
+    const job = (this.job ??= this.plan(earliest.lo, started));
     while (now() - started < budgetMs) {
       const r = job.replica;
       if (r.failure) {
@@ -163,8 +195,12 @@ export class Rewind {
       }
       const seg = job.segment;
       if (r.state.step >= job.hi - 1) {
-        this.ready = seg;
+        this.ready.push(seg);
         this.job = null;
+        // The pace history is made at (a mean over the last few, so one slow replay across a long gap counts, not rules).
+        const made = (seg.samples.at(-1)?.t ?? 0) - (seg.samples[0]?.t ?? 0) + (seg.samples.at(-1)?.dt ?? 0);
+        const took = Math.max(1e-3, (now() - job.began) / 1000);
+        this.made = Number.isFinite(this.made) ? 0.5 * this.made + 0.5 * (made / took) : made / took;
         return;
       }
       r.stepOnce();
@@ -172,8 +208,8 @@ export class Rewind {
     }
   }
 
-  /** The segment ending just before `hi`: from the latest checkpoint or mark before it, on the grid of marks from there. */
-  private plan(hi: number): Job {
+  /** The segment ending just before `hi`: from the latest checkpoint or mark before it, on the grid of marks from there (`began`: now, ms). */
+  private plan(hi: number, began: number): Job {
     const e = this.engine;
     let base: Checkpoint | undefined;
     for (const c of [...e.checkpoints, ...this.marks]) {
@@ -185,7 +221,7 @@ export class Rewind {
     const lo = from.step + Math.floor(Math.max(0, hi - 1 - from.step) / REWIND_SEGMENT) * REWIND_SEGMENT;
     const particles = from.state.swarms.reduce((n, w) => n + w.pos.length / 3, 0);
     const kept = Math.max(1, Math.min(REWIND_SEGMENT, Math.floor(SWARM_BUDGET / Math.max(particles, 1))));
-    return { lo, hi, from: from.step, replica: new Engine(e.scenario, from), segment: null, stride: Math.ceil(REWIND_SEGMENT / kept) };
+    return { lo, hi, from: from.step, began, replica: new Engine(e.scenario, from), segment: null, stride: Math.ceil(REWIND_SEGMENT / kept) };
   }
 
   /**

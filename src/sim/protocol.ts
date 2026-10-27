@@ -16,9 +16,11 @@ export type LabRequest =
    * The clock: simulated seconds per real second (negative: the history played backwards, exactly, by
    * replaying it from its checkpoints: ./rewind) and whether paused. `control` counts the page's run
    * and goto requests; snapshots echo the latest they had, so the page takes a stop at the start or a
-   * goto's end only from a snapshot that knew its latest request.
+   * goto's end only from a snapshot that knew its latest request. A run stops a goto under way where
+   * it is. Paused, `landAt` is the moment the page draws (s): the run steps on to the first whole step
+   * at or past it (back to one, going backwards), so an edit is made on what is drawn.
    */
-  | { type: 'run'; generation: number; control: number; rate: number; paused: boolean }
+  | { type: 'run'; generation: number; control: number; rate: number; paused: boolean; landAt?: number }
   /** Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a tick; the clock then runs (or not) as `run` last said. */
   | { type: 'goto'; generation: number; control: number; t: number }
   /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt). */

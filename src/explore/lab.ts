@@ -77,8 +77,8 @@ export interface Lab {
   /** Forks a scenario (the solar system at `jdTdb`, or a laboratory) and runs it. */
   start(seed: 'solar' | 'two' | 'three', jdTdb: number): void;
   stop(): void;
-  /** Advances the drawn clock (./lab-clock) by a frame; once a frame, before jdTdb and the rest. */
-  tick(nowMs: number): void;
+  /** Advances the drawn clock (./lab-clock) by a frame; once a frame, before jdTdb and the rest. True when it was set anew (a new timeline: a cut, not a movement). */
+  tick(nowMs: number): boolean;
   /** The simulated date as drawn (TDB Julian date). */
   jdTdb(): number;
   /** Puts the built-in worlds where the experiment has them; returns those it no longer has. */
@@ -331,10 +331,20 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let clockWall = Number.NaN;
   let rate = 86_400;
   let paused = false;
-  /** Run and goto requests sent (snapshots echo the latest the worker had); back at the start going backwards; a goto under way. */
+  /**
+   * Run and goto requests sent (snapshots echo the latest the worker had); back at the start going
+   * backwards; a goto under way, one being stopped by a run request (still followed, and reported as
+   * under way, until the worker says it has stopped), and one just ended or stopped (drawn at once
+   * where the worker got to).
+   */
   let control = 0;
   let edge: 'start' | null = null;
   let seekingS: number | null = null;
+  let stopping: number | null = null;
+  let arrived = false;
+  /** A laboratory of its own (no Sun): its star, which the hidden Sun stands in for (the view follows it), and its height above the camera's (km); -1 for none. */
+  let standIn = -1;
+  let standInAltitudeKm = 0;
   /** The explorer's date the solar system was forked at (a Solar system start later forks at it again). */
   let forkJdTdb = 0;
   let selected: string | null = null;
@@ -443,10 +453,12 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     }
     return p;
   };
-  /** The clock's state as the time machine's reducer (./time) takes it. */
+  /** The clock's rate and pause to the worker (a goto under way stops where it is, drawn there at once); paused, with the moment drawn, which the run steps on to. */
   const sendRun = (): void => {
     control += 1;
-    send({ type: 'run', generation, control, rate, paused });
+    if (seekingS !== null) stopping = seekingS;
+    seekingS = null;
+    send({ type: 'run', generation, control, rate, paused, ...(paused ? { landAt: clock.shown } : {}) });
   };
   /** Goes to simulated time `t` (s since the epoch), kept from the fork to LAB_DATE_SPAN_S after it. */
   const goTo = (t: number): void => {
@@ -464,6 +476,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     clock.restart();
     edge = null;
     seekingS = null;
+    stopping = null;
     prediction = null;
     trails.clear();
     edited.clear();
@@ -535,6 +548,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       if (msg.control === control) {
         edge = msg.edge;
         if (msg.edge && rate < 0) paused = true;
+        if ((seekingS !== null || stopping !== null) && msg.seekingS === null) arrived = true;
+        stopping = null;
         seekingS = msg.seekingS;
       }
       msg.ids.forEach((id, i) => knownNames.set(id, msg.names[i] ?? id));
@@ -899,12 +914,19 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       const wall = Number.isFinite(clockWall) ? Math.min(0.1, Math.max(0, (nowMs - clockWall) / 1000)) : 0;
       clockWall = nowMs;
       const s = held[held.length - 1];
-      if (!s) return;
-      // Following a goto as it goes; paused (or stopped at the start), running on to where the worker stopped (an
-      // edit is made on the newest snapshot, so what is drawn is then exactly what it changes); else at the rate asked for.
-      const mode = seekingS !== null ? 'follow' : paused ? 'land' : 'run';
-      clock.advance(wall, rate, !paused && !s.failure, s, nowMs, mode);
+      if (!s) return false;
+      const cuts = clock.cuts;
+      // Following a goto as it goes (and at its last moment); paused (or stopped at the start), on to where the
+      // worker stopped, which it stepped on to (an edit is made on the newest snapshot, so what is drawn is then
+      // exactly what it changes); else at the rate asked for, or at the pace the worker reaches when short of it
+      // (over the snapshots held: a few tenths of a second).
+      const mode = seekingS !== null || stopping !== null || arrived ? 'follow' : paused ? 'land' : 'run';
+      arrived = false;
+      const first = held[0];
+      const reached = first && s.at - first.at > 100 ? (Math.abs(s.t - first.t) * 1000) / (s.at - first.at) : Math.abs(s.achievedRate);
+      clock.advance(wall, rate, !paused && !s.failure, s, nowMs, mode, reached);
       if (clock.shown < 0) clock.shown = 0;
+      return clock.cuts !== cuts;
     },
     jdTdb() {
       return (seedScenario?.epochJdTdb ?? 0) + clock.shown / 86_400;
@@ -921,6 +943,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         }
         const p = place(s, i);
         toRender(p[0], p[1], p[2], sys.bodies[id].position);
+      }
+      // A laboratory of its own: the hidden Sun stands at its heaviest body (its star), so the view goes round that.
+      standIn = -1;
+      if (hidden.has('sun')) {
+        for (let k = 0; k < s.ids.length; k += 1) if (!builtIn(s.ids[k] ?? '') && (standIn < 0 || (s.gm[k] ?? 0) > (s.gm[standIn] ?? 0))) standIn = k;
+        if (standIn >= 0) {
+          const p = place(s, standIn);
+          toRender(p[0], p[1], p[2], sys.bodies.sun.position);
+        }
       }
       // A world whose spin the visitor set turns as set: from the moment it was set, its drawn pole turned
       // onto the new one (or its opposite, so its north stays the side it was), at the new period. The
@@ -1009,6 +1040,11 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         return;
       }
       const s = snap;
+      if (standIn >= 0) {
+        const p = place(s, standIn);
+        const r = relative(toRender(p[0], p[1], p[2], km()), km());
+        standInAltitudeKm = Math.hypot(r.x, r.y, r.z) - (s.radius[standIn] ?? 0);
+      }
       /** How far the drawn clock is past the snapshot (s), for paths integrated from it. */
       const ahead = clock.shown - s.t;
       /** Where body `k` is as drawn (scenario frame). */
@@ -1335,14 +1371,17 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       return rate;
     },
     get paused() {
-      return paused;
+      // A goto under way runs whatever the pause (a press of Pause stops it there).
+      return paused && seekingS === null;
     },
     get edge() {
       return edge;
     },
     time(command) {
-      // The explorer's reducer (./time): at the start going backwards, play, faster and slower turn round.
-      const next = applyTimeCommand({ rate, paused, edge }, command).state;
+      // The explorer's reducer (./time): at the start going backwards, play, faster and slower turn round. A goto
+      // under way counts as running: Pause stops it where it is, a rate or Reverse runs on from there (a new date
+      // keeps the pause as it was set).
+      const next = applyTimeCommand({ rate, paused: command.kind === 'date' ? paused : lab.paused, edge }, command).state;
       if (command.kind === 'now' || command.kind === 'date') {
         // Now and a date: that moment of the experiment (its clock is TDB), from the fork on. Now runs on at real
         // time; a date before the fork stops there (the experiment has no history before it), as at the explorer's ends.
@@ -1774,11 +1813,13 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           if (builtIn(c.id)) refocus = 'sun';
           return;
         case 'seek':
-          // Back (or on) to a checkpoint, paused there: the moment gone back to stays to be looked at.
+          // Back (or on) to a checkpoint, paused there: the moment gone back to stays to be looked at. Only a whole
+          // step up to the run's or its latest checkpoint's (the worker replays to it at once: a huge one would never end).
+          if (!s || !Number.isFinite(c.step)) return;
           paused = true;
           edge = null;
           sendRun();
-          send({ type: 'seek', generation, step: c.step });
+          send({ type: 'seek', generation, step: Math.min(Math.max(s.step, ...s.checkpoints.map((k) => k.step)), Math.max(0, Math.floor(c.step))) });
           trails.clear();
           return;
         case 'replay':
@@ -1940,13 +1981,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         frame: seedScenario.frame,
         epochJdTdb: seedScenario.epochJdTdb,
         elapsedS: clock.shown,
+        t: s?.t ?? 0,
         step: s?.step ?? 0,
         dtS: s?.dt ?? 0,
         requestedRate: rate,
         achievedRate: s?.achievedRate ?? 0,
         budgetBound: s?.budgetBound ?? false,
-        paused,
-        seekingS,
+        paused: lab.paused,
+        seekingS: seekingS ?? stopping,
+        standIn: s && standIn >= 0 ? { name: knownNames.get(s.ids[standIn] ?? '') ?? '', altitudeKm: standInAltitudeKm } : null,
         failure: s?.failure ?? null,
         bodies,
         selected,

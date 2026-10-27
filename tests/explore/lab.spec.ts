@@ -7,14 +7,19 @@
  * export and bad ones are refused; leaving gives the real explorer back exactly as it was, and the
  * film after it; and removing the world the camera is on moves the camera, not into nothing. Its
  * clock: played backwards to the fork through the run's own states, Reset paused at the fork, a drawn
- * clock that never turns back and keeps an even pace at every rate (slow ones too), a rate change
- * seen at once, Now and a date, a checkpoint gone back to paused, five hundred presses inside single
- * frames; a two-body laboratory shows its own star, not the real Earth; and the Solar system forks at
- * the explorer's date after a lesson. Reduced motion, so flights land at once.
+ * clock that never turns back and keeps an even pace at every rate (slow ones too, and rings of
+ * thousands of particles at thirty days a second either way), a rate change seen at once, Now and a
+ * date (and beyond the experiment's century, saying so), a goto that ends drawn at the worker's
+ * moment, every time button during a goto (Pause stops it there), paused at slow rates drawn at the
+ * run's own step so an edit is made at the moment drawn, a checkpoint gone back to paused, a seek
+ * checked at the boundary, five hundred presses inside single frames, the Earth held (not strobing)
+ * during a goto; a two-body laboratory shows its own star, named and measured as itself, not the
+ * real Earth; and the Solar system forks at the explorer's date after a lesson. Reduced motion, so
+ * flights land at once.
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
-import type { UniverseLab } from '../../src/core/types';
+import type { LabCommand, UniverseLab, UniverseTimeCommand } from '../../src/core/types';
 import { stateFromElements } from '../../src/sim/elements';
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
 import { SLOW } from '../support/env';
@@ -397,6 +402,48 @@ const burst = (page: Page, ids: readonly string[]): Promise<void> =>
     for (const id of list) document.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
   }, ids);
 const LAB_BUTTONS = ['universe-time-reverse', 'universe-time-slower', 'universe-time-pause', 'universe-time-faster', 'universe-time-now', 'universe-time-reset'] as const;
+/** A laboratory or time machine command from the page, as an interface, a lesson or an assistant would send it. */
+const labCommand = (page: Page, c: LabCommand): Promise<void> =>
+  page.evaluate((x) => {
+    (window as unknown as KfHook).__kf.app.universeLab(x);
+  }, c);
+const timeCommand = (page: Page, c: UniverseTimeCommand): Promise<void> =>
+  page.evaluate((x) => {
+    (window as unknown as KfHook).__kf.app.universeTime(x);
+  }, c);
+/** The drawn clock over `ms`, frame by frame: never against direction `d`, frozen on at most three frames, the 95th percentile step under 1.6 times the median. */
+const evenly = async (page: Page, d: 1 | -1, what: string, ms = 1500): Promise<number> => {
+  const s = await sampleClock(page, ms);
+  const steps = s.slice(1).map((x, k) => d * (x.t - (s[k]?.t ?? 0)));
+  expect(steps.length, `${what}: frames`).toBeGreaterThan(20);
+  expect(Math.min(...steps), `${what}: never back`).toBeGreaterThanOrEqual(0);
+  expect(steps.filter((x) => x === 0).length, `${what}: frozen frames of ${String(steps.length)}`).toBeLessThanOrEqual(3);
+  const sorted = [...steps].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  expect(median, `${what}: moving`).toBeGreaterThan(0);
+  expect(sorted[Math.floor(sorted.length * 0.95)] ?? 0, `${what}: even`).toBeLessThan(1.6 * median);
+  return median;
+};
+/** The first frame on which a goto (seen under way) has ended: the drawn clock and the run's own time then. */
+const arrival = (page: Page): Promise<{ elapsedS: number; t: number; dtS: number; paused: boolean }> =>
+  page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const kf = (window as unknown as KfHook).__kf;
+        let going = false;
+        const tick = (): void => {
+          const l = kf.universe.state()?.lab;
+          if (l?.seekingS != null) going = true;
+          if (going && l && l.seekingS === null) resolve({ elapsedS: l.elapsedS, t: l.t, dtS: l.dtS, paused: l.paused });
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+const DAY_MS = 86_400_000;
+const dayOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+/** A goto's target, null when none is under way (and not null when there is no experiment). */
+const going = (l: UniverseLab | null): number | string | null => (l ? l.seekingS : 'no experiment');
 
 test('backwards through the experiment’s history to its fork, exactly as it ran; forwards again; Reset pauses at the fork', async ({ page, kf, pageErrors }) => {
   test.setTimeout(240_000 * SLOW);
@@ -546,11 +593,12 @@ test('Now and a date in an experiment, a checkpoint gone back to (paused), and h
   // A date: that day of the experiment (back through its history, then on).
   await page.getByTestId('universe-time-date').fill('2010-06-15');
   await expect.poll(async () => new Date((await view(page))?.unixMs ?? 0).toISOString().slice(0, 10), LIVE).toBe('2010-06-15');
-  // Before the fork: stopped at the fork, saying so.
+  // Before the fork: stopped at the fork, saying so, and the note gives the experiment's span (not the explorer's).
   await page.getByTestId('universe-time-date').fill('1990-01-01');
   await expect.poll(async () => (await lab(page))?.elapsedS, LIVE).toBe(0);
-  expect((await lab(page))?.paused).toBe(true);
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
   await expect(page.getByTestId('universe-time-rate')).toHaveText('Back at the start of the experiment');
+  await expect(page.getByTestId('universe-time-note')).toHaveText('This experiment runs from 2000-01-01 to 2100-01-01');
   // A checkpoint: gone back to, paused there.
   await setRate(page, 2_592_000);
   await expect.poll(async () => (await lab(page))?.checkpoints.length ?? 0, LIVE).toBeGreaterThan(2);
@@ -579,7 +627,256 @@ test('Now and a date in an experiment, a checkpoint gone back to (paused), and h
   expect(pageErrors).toEqual([]);
 });
 
-test('a laboratory of its own shows its star and planet, not the real Earth; the Solar system forks again at the explorer’s date after a lesson', async ({ page, kf, pageErrors }) => {
+test('rings at thirty days a second: the drawn clock moves every frame and evenly, forwards and backwards, at the pace the worker reaches', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  // A belt of 2,000 particles about the Sun and a ring of 2,000 about Saturn (the most an experiment may have).
+  const AU = 149_597_870.7;
+  await labCommand(page, { kind: 'addSwarm', primary: 'sun', name: 'Belt', count: 2000, innerKm: 2.2 * AU, outerKm: 3.2 * AU, eccentricity: 0.1, inclinationDeg: 5, plane: 'equator' });
+  await expect.poll(async () => (await lab(page))?.swarms.length, LIVE).toBe(1);
+  await labCommand(page, { kind: 'addSwarm', primary: 'saturn', name: 'Ring', count: 2000, innerKm: 80_000, outerKm: 140_000, eccentricity: 0, inclinationDeg: 0, plane: 'equator' });
+  await expect.poll(async () => (await lab(page))?.swarms.reduce((n, w) => n + w.count, 0), LIVE).toBe(4000);
+  await setRate(page, 2_592_000);
+  // A few seconds on (a history to go back through), then frame by frame.
+  await page.waitForTimeout(3000);
+  const bound = (await lab(page))?.budgetBound ?? false;
+  test.info().annotations.push({ type: 'budget bound', description: String(bound) });
+  await evenly(page, 1, 'forwards');
+  // Backwards: once it is going back (the steps since the run's latest full state replayed first), evenly back too.
+  await page.getByTestId('universe-time-reverse').click();
+  const from = (await lab(page))?.elapsedS ?? 0;
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? from, LIVE).toBeLessThan(from - 86_400);
+  await page.waitForTimeout(300);
+  await evenly(page, -1, 'backwards');
+  expect(pageErrors).toEqual([]);
+});
+
+test('a goto ends drawn at the worker’s moment: with the clock running backwards, and paused', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  // Backwards at a day a second (after a while forwards), a date two years on: on the first frame after it gets
+  // there, drawn exactly where the worker is.
+  await setRate(page, 2_592_000);
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(30 * 86_400);
+  await timeCommand(page, { kind: 'rate', rate: -86_400 });
+  await page.waitForTimeout(500);
+  expect(await lab(page)).toMatchObject({ paused: false, requestedRate: -86_400 });
+  const fork = (await lab(page))?.epochJdTdb ?? 0;
+  const target = ((await view(page))?.unixMs ?? 0) + 2 * 365 * DAY_MS;
+  const there = arrival(page);
+  await page.getByTestId('universe-time-date').fill(dayOf(target));
+  const a = await there;
+  expect(a.elapsedS).toBe(a.t);
+  expect(Math.abs(fork + a.t / 86_400 - (target / DAY_MS + 2_440_587.5))).toBeLessThan(1.5);
+  // Then on backwards from there, never forwards.
+  const after = await sampleClock(page, 500);
+  expect(after[0]?.t ?? Infinity).toBeLessThanOrEqual(a.elapsedS);
+  for (let k = 1; k < after.length; k += 1) expect(after[k]?.t ?? 0).toBeLessThanOrEqual(after[k - 1]?.t ?? 0);
+  // Paused, a date a year on: there exactly, and still there.
+  await page.getByTestId('universe-time-pause').click();
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  const year = ((await view(page))?.unixMs ?? 0) + 365 * DAY_MS;
+  const paused = arrival(page);
+  await page.getByTestId('universe-time-date').fill(dayOf(year));
+  const b = await paused;
+  expect(b.paused).toBe(true);
+  expect(b.elapsedS).toBe(b.t);
+  await page.waitForTimeout(500);
+  expect(await lab(page)).toMatchObject({ elapsedS: b.t, t: b.t, paused: true });
+  expect(pageErrors).toEqual([]);
+});
+
+test('every time button during a goto: Pause stops it there, Reverse and the rates run on from there; Now in an old fork says it stops a century on; hundreds of presses', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(300_000 * SLOW);
+  // The explorer at 1 June 1650 (beyond JPL's tables: the theories take it there), forked.
+  const jd1650 = Date.UTC(1650, 5, 1) / DAY_MS + 2_440_587.5;
+  await kf.open('/universe/earth', { query: { jd: String(jd1650) } });
+  await waitForUniverse(page);
+  await expect.poll(async () => dayOf((await view(page))?.unixMs ?? 0), LIVE).toBe('1650-06-01');
+  await openLab(page);
+  expect(Math.abs(((await lab(page))?.epochJdTdb ?? 0) - jd1650)).toBeLessThan(0.01);
+  const rate = page.getByTestId('universe-time-rate');
+  const note = page.getByTestId('universe-time-note');
+  /** Now: a century of the experiment at most; under way, moving. */
+  const now = async (): Promise<void> => {
+    const from = (await lab(page))?.elapsedS ?? 0;
+    await page.getByTestId('universe-time-now').click();
+    await expect(rate).toHaveText(/^Going to 1750-06-0[12]…$/u, LIVE);
+    await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(from + 30 * 86_400);
+  };
+  await now();
+  // The fork is more than a century old: the note says where it stops, at once.
+  await expect(note).toHaveText(/^This experiment runs from 1650-06-01 to 1750-06-0[12]$/u);
+  // Pause: stopped where it is (landed on the worker's moment within a few tenths of a second), said so.
+  await page.getByTestId('universe-time-pause').click();
+  await expect.poll(async () => going(await lab(page)), LIVE).toBeNull();
+  await expect(rate).toHaveText('Time paused');
+  await expect.poll(async () => {
+    const x = await lab(page);
+    return x !== null && x.elapsedS === x.t;
+  }, { timeout: 3000 * SLOW }).toBe(true);
+  const stopped = await lab(page);
+  expect(stopped?.paused).toBe(true);
+  await page.waitForTimeout(600);
+  expect(await lab(page)).toMatchObject({ elapsedS: stopped?.elapsedS, paused: true });
+  expect((await lab(page))?.elapsedS).toBe((await lab(page))?.t);
+  // Reverse: runs back from there (at real time: Now set it), never on through the century.
+  await now();
+  await page.getByTestId('universe-time-reverse').click();
+  await expect.poll(async () => going(await lab(page)), LIVE).toBeNull();
+  expect((await lab(page))?.requestedRate).toBe(-1);
+  await page.waitForTimeout(300);
+  const back = (await lab(page))?.elapsedS ?? 0;
+  await page.waitForTimeout(1000);
+  expect((await lab(page))?.elapsedS ?? Infinity).toBeLessThanOrEqual(back);
+  // Faster: runs on from there at ten seconds a second, not nine hundred days.
+  await now();
+  await page.getByTestId('universe-time-faster').click();
+  await expect.poll(async () => going(await lab(page)), LIVE).toBeNull();
+  expect((await lab(page))?.requestedRate).toBe(10);
+  await page.waitForTimeout(300);
+  const on = (await lab(page))?.elapsedS ?? 0;
+  await page.waitForTimeout(1000);
+  const moved = ((await lab(page))?.elapsedS ?? 0) - on;
+  expect(moved).toBeGreaterThanOrEqual(0);
+  expect(moved).toBeLessThan(86_400);
+  // Three hundred presses in bursts inside single frames, gotos among them: sound after; Pause still stops a goto.
+  let seed = 3;
+  const next = (): number => ((seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648);
+  for (let b = 0; b < 15; b += 1) {
+    await burst(page, Array.from({ length: 20 }, () => LAB_BUTTONS[Math.floor(next() * LAB_BUTTONS.length)] ?? 'universe-time-pause'));
+    await page.waitForTimeout(16 + Math.floor(next() * 300));
+  }
+  const l = await lab(page);
+  expect([1, 10, 60, 600, 3600, 21_600, 86_400, 604_800, 2_592_000]).toContain(Math.abs(l?.requestedRate ?? 0));
+  expect(l?.elapsedS ?? -1).toBeGreaterThanOrEqual(0);
+  expect(l?.elapsedS ?? Infinity).toBeLessThanOrEqual(100 * 365.25 * 86_400);
+  await now();
+  await page.getByTestId('universe-time-pause').click();
+  await expect.poll(async () => going(await lab(page)), LIVE).toBeNull();
+  expect((await lab(page))?.paused).toBe(true);
+  expect(pageErrors).toEqual([]);
+});
+
+test('paused at ten seconds and at an hour a second (two-body, steps of 14 hours): drawn at the run’s own step, and an edit made at the moment drawn', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  for (const rate of [10, 3600]) {
+    await page.getByTestId('universe-time-reset').click();
+    await expect.poll(async () => (await lab(page))?.elapsedS ?? Infinity, LIVE).toBe(0);
+    await setRate(page, rate);
+    await page.waitForTimeout(3000);
+    // Drawn ahead of the worker's last whole step (it has not finished its first).
+    const before = await lab(page);
+    expect(before?.elapsedS ?? 0, `${String(rate)}: moving`).toBeGreaterThan(0.5 * 3 * rate);
+    expect(before?.t ?? Infinity).toBeLessThan(before?.elapsedS ?? 0);
+    await page.getByTestId('universe-time-pause').click();
+    // Within moments: drawn at the run's own latest step, the first at or past the moment drawn.
+    await expect.poll(async () => {
+      const x = await lab(page);
+      return x !== null && x.paused && x.elapsedS === x.t;
+    }, { timeout: 3000 * SLOW }).toBe(true);
+    const landed = await lab(page);
+    expect(landed?.t ?? 0).toBeGreaterThanOrEqual(before?.elapsedS ?? Infinity);
+    await page.waitForTimeout(400);
+    expect((await lab(page))?.elapsedS).toBe(landed?.elapsedS);
+    // An edit now is made at exactly the moment drawn.
+    const edits = (await lab(page))?.interventions.length ?? 0;
+    await labCommand(page, { kind: 'mass', id: 'planet', massKg: 2 * ((await body(page, 'planet'))?.massKg ?? 0) });
+    await expect.poll(async () => (await lab(page))?.interventions.length ?? 0, LIVE).toBe(edits + 1);
+    expect((await lab(page))?.interventions.at(-1)?.t).toBe(landed?.elapsedS);
+    expect((await lab(page))?.elapsedS).toBe(landed?.elapsedS);
+  }
+  expect(pageErrors).toEqual([]);
+});
+
+test('a seek is checked at the boundary: NaN, infinite, negative and huge steps neither hang nor break the laboratory', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await setRate(page, 2_592_000);
+  await expect.poll(async () => (await lab(page))?.step ?? 0, LIVE).toBeGreaterThan(500);
+  // Not numbers: refused, the run goes on.
+  for (const step of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) await labCommand(page, { kind: 'seek', step });
+  const running = (await lab(page))?.elapsedS ?? 0;
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(running + 10 * 86_400);
+  expect((await lab(page))?.paused).toBe(false);
+  // A step far beyond the run: held to the run's own (paused there, at once), not replayed for ever.
+  const at = (await lab(page))?.step ?? 0;
+  await labCommand(page, { kind: 'seek', step: 1e12 });
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  await page.waitForTimeout(300);
+  expect((await lab(page))?.step ?? Infinity).toBeLessThan(at + 2000);
+  // Between steps: a whole one; before the start: the fork.
+  await labCommand(page, { kind: 'seek', step: 2.5 });
+  await expect.poll(async () => (await lab(page))?.step, LIVE).toBe(2);
+  await labCommand(page, { kind: 'seek', step: -5 });
+  await expect.poll(async () => (await lab(page))?.step, LIVE).toBe(0);
+  // Still answering: Play runs it, Pause stops it.
+  await page.getByTestId('universe-time-pause').click();
+  const from = (await lab(page))?.elapsedS ?? 0;
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(from + 86_400);
+  await page.getByTestId('universe-time-pause').click();
+  expect((await lab(page))?.paused).toBe(true);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a goto in an experiment never strobes the Earth: its turn held while the clock leaps, let go after', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await expect.poll(async () => (await view(page))?.focus, LIVE).toBe('earth');
+  await setRate(page, 3600);
+  await page.waitForTimeout(500);
+  expect((await view(page))?.time.spinHeld).toBe(false);
+  // Three years on: the drawn clock leaps a snapshot at a time; the Earth is held, every frame of it.
+  const target = ((await view(page))?.unixMs ?? 0) + 3 * 365 * DAY_MS;
+  /** Each frame of the goto: how far the clock moved (days) and whether the Earth's turn was held. */
+  const frames = page.evaluate(
+    () =>
+      new Promise<Array<{ days: number; held: boolean }>>((resolve) => {
+        const kf = (window as unknown as KfHook).__kf;
+        const out: Array<{ days: number; held: boolean }> = [];
+        let last = kf.universe.state()?.jdTdb ?? 0;
+        let seen = false;
+        const tick = (): void => {
+          const v = kf.universe.state();
+          const moving = v?.lab?.seekingS != null;
+          if (v && moving) {
+            seen = true;
+            out.push({ days: v.jdTdb - last, held: v.time.spinHeld });
+          }
+          last = v?.jdTdb ?? last;
+          if (seen && !moving) resolve(out);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  await page.getByTestId('universe-time-date').fill(dayOf(target));
+  const f = await frames;
+  // From its first leap (more than 30 degrees of the Earth's turn: a twelfth of a day) to its end, held on every frame.
+  const first = f.findIndex((x) => Math.abs(x.days) > 30 / 360.9856);
+  expect(first).toBeGreaterThanOrEqual(0);
+  expect(f.length - first).toBeGreaterThan(5);
+  expect(f.slice(first).filter((x) => !x.held).length).toBe(0);
+  // At an hour a second again, let go.
+  await expect.poll(async () => (await view(page))?.time.spinHeld, LIVE).toBe(false);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a laboratory of its own shows its star and planet, the readout naming and measuring its star, not the real Earth or Sun; the Solar system forks again at the explorer’s date after a lesson', async ({ page, kf, pageErrors }) => {
   test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -587,9 +884,13 @@ test('a laboratory of its own shows its star and planet, not the real Earth; the
   await page.getByTestId('lab-lessons').locator('summary').click();
   await page.getByTestId('lab-lesson-kepler').click();
   await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id).join(), LIVE).toBe('star,planet');
-  // The view leaves the Earth (which this experiment does not have) for its star; no Earth named or described.
+  // The view leaves the Earth (which this experiment does not have) for its star, going round it; the readout
+  // names it and measures from it (not the real Sun's); no Earth named or described.
   await expect.poll(async () => (await view(page))?.focus, LIVE).toBe('sun');
-  await expect(page.getByTestId('universe-readout')).toHaveText(/^Sun\d/u, LIVE);
+  await expect(page.getByTestId('universe-readout')).toHaveText(/^Star\d/u, LIVE);
+  const own = await view(page);
+  expect(own?.lab?.standIn?.name).toBe('Star');
+  expect(Math.abs((own?.lab?.standIn?.altitudeKm ?? 0) - (own?.altitudeKm ?? 0))).toBeLessThan(0.01 * (own?.altitudeKm ?? 0) + 1);
   const labels = await page.evaluate(() => (window as unknown as { __kf: { app: { hud(): { labels: Array<{ id: string }> } } } }).__kf.app.hud().labels.map((x) => x.id));
   expect(labels.filter((id) => /^(earth|edge-earth)$/u.test(id))).toEqual([]);
   // The Solar system preset: forked at the explorer's date, not the lesson's J2000.

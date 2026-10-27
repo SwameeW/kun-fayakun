@@ -42,9 +42,12 @@ its own and has no real baseline.
   plays the experiment's history backwards, exactly as it ran (see "Going backwards" below), and
   stops at the fork; play, faster or slower there run it forwards again. Now goes to today's date in
   the experiment and runs at real time; a date goes to that moment (from the fork to a century
-  after it; before the fork, it stops at the fork). Reset, in the time row, goes back to the fork,
-  paused, at a day a second; going back to a checkpoint and replaying leave it paused too. The panel
-  shows the rate and the current step, and the achieved rate only when the worker cannot keep up.
+  after it: before the fork it stops at the fork, after the century at its end, and the note under
+  the row says "This experiment runs from … to …", Now too). While it is on its way the row
+  says "Going to …"; Pause stops it where it is, and Reverse, Faster, Slower or a rate run on from
+  there at that rate. Reset, in the time row, goes back to the fork, paused, at a day a second;
+  going back to a checkpoint and replaying leave it paused too. The panel shows the rate and the
+  current step, and the achieved rate only when the worker cannot keep up.
 - **The drawn clock** (`src/explore/lab-clock.ts`). The worker moves in whole steps (from seconds to
   a day) and sends a snapshot about 30 times a second. What is drawn follows a clock of its own: it
   runs at the rate asked for (so a rate change shows at once), steered gently toward the moment the
@@ -53,8 +56,16 @@ its own and has no real baseline.
   elsewhere. Each body is drawn between the two snapshots around that moment (cubic Hermite in
   position and velocity), or within a step of the nearest (velocity and acceleration). So the Earth
   turns smoothly at every rate, slow rates (ten seconds a second, with steps of 14 hours) move, and
-  nothing judders back and forth. Paused, it runs on to the worker's last state and stops, so an
-  edit changes exactly what is drawn.
+  nothing judders back and forth. When the worker cannot keep up (its 8 ms step budget spent: rings
+  of thousands of particles at thirty days a second, forwards or backwards) it runs at the pace the
+  worker reaches instead, a tenth of a second behind its newest snapshot, so it still moves every
+  frame rather than wait and leap half a day. At the end of a goto it is set at the worker's moment.
+  Paused, the page tells the worker the moment drawn; the worker steps on to the first whole step at
+  or past it (back to one, going backwards), and the drawn clock runs on to that step within a
+  quarter of a second and stops. So, paused, what is drawn is the run's own state at its latest
+  step, and an edit is made at exactly the moment drawn (`UniverseLab.elapsedS` equals
+  `UniverseLab.t`, the edit's time). At a slow rate with long steps the picture glides on by at
+  most one step after the press (fourteen hours of a two-body orbit, about a third of a degree).
 - **Inspect.** Choose a body. The panel shows:
   - its mass, radius, density, speed, escape speed, and its speed and distance relative to the body
     it moves about (its primary);
@@ -293,8 +304,12 @@ plus its log.
   and steps forward over a segment of at most 256 steps, keeping every step's state (the bodies,
   spins, climates and ships; the rings' particles every few steps, within about 0.4 MB), which is then
   shown in reverse, a whole step at a time. While one segment is shown the one before it is replayed
-  within the worker's 8 ms step budget; across a long gap between checkpoints the replica keeps full
-  states every 256 steps on its way, so each segment further back replays only its own steps. The
+  within the worker's 8 ms step budget (two segments ahead at most); across a long gap between
+  checkpoints the replica keeps full states every 256 steps on its way, so each segment further back
+  replays only its own steps, and the worker keeps the run's own full state every 256 steps as it
+  goes forwards (the latest sixteen), so going back starts from near the moment shown. A heavy
+  experiment goes back at the pace its history can be replayed (measured over the last segments),
+  evenly, rather than in bursts and waits; the row then says it is replaying. The
   history, the interventions and the collisions shown are those before the moment shown (craters and
   dust come again as the run passes them forwards). Running forwards, an edit, a seek or undo first
   puts the run exactly at the moment shown; an edit there branches as any edit does.
