@@ -124,11 +124,14 @@ the file itself.
   faintest drawn stays above the tone curve's black (30 of 255 or more at magnitude 6.5, worst
   placed). The brightest stars spread into a halo rather than clipping; the bloom does the rest.
   A sprite is as wide as its core stays above the tone curve's black (a faint star's a few pixels,
-  a bright one's seven sigma), and a star too faint to show is not drawn at all. The solar system's
-  sky's stars can be held under a peak (`heldStarLight`): a star of a given magnitude is held at the
-  peak and every other star is dimmed with it. On foot the walk holds them so
+  a bright one's seven sigma), and a star too faint to show is not drawn at all (`starDrawn`); where
+  a material's exposure is far from 1 it says so (`StarScreen`), and both are judged on the screen. The
+  solar system's sky's stars can be held under a peak (`heldStarLight`): a star of a given magnitude is
+  held at the peak and every other star is dimmed with it. On foot the walk holds them so
   (`src/explore/walk/daylight.ts` `footStarLight`, docs/WALKING.md): by night a star of magnitude 3.5
-  short of white, and on an airless world by day the brightest, Sirius, under the glare.
+  short of white, and on an airless world by day the brightest, Sirius, under the glare, the fainter
+  dimmed less than it by a knee (`kneedStarLight`); and, the exposure there up to 384, which are drawn
+  is judged on the screen. Here, the stars around the Sun, and the sky in orbit, nothing changes.
   Measured at 2000x1300, lit spots of 64 of 255 or more in the left 72% of the view, the same
   protocol for the build before this work (the `worlds` branch) and after, both ways of counting:
 

@@ -2176,10 +2176,13 @@ export default function create(): UniverseModule {
     stars.setRadius(lens.far * LENS.starShare);
     // On foot the walk holds them short of white by night, and by day the sky hides them (through the
     // twilight letting them through) or, on an airless world, the sunlit ground's glare holds them under
-    // a peak on the screen (the exposure multiplies what they draw), at the target's pixels a CSS pixel.
+    // a peak on the screen (the exposure multiplies what they draw), at the target's pixels a CSS pixel;
+    // and which are drawn is judged on the screen, the exposure there far above the orbit's (./starlight
+    // StarScreen).
     const starlight = walking ? (walk?.starlight() ?? 1) : descending ? (descent?.starlight() ?? 1) : 1;
     const followed = STARS.light * adapted ** (STARS.follow - 1);
-    stars.setLight(walking && walk ? walk.starLight(followed, adapted, (c.renderer.domElement.height * renderScale) / viewportPx, stars.brightest) : followed * starlight);
+    const onFoot = walking ? walk?.starLight(followed, adapted, (c.renderer.domElement.height * renderScale) / viewportPx, stars.brightest) : null;
+    stars.setLight(onFoot ? onFoot.light : followed * starlight, onFoot ? adapted : 1, onFoot?.knee ?? 0);
     stars.update(dt);
 
     // Orbit lines: the focus's own (and the Moon's around the Earth) up close, the rest as the view

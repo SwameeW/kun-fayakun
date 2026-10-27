@@ -21,7 +21,8 @@ import { starMaterial, starSprites } from './starlight';
  * How bright a star is drawn is the explorer's star light (./starlight): its magnitude's light,
  * integrated over each pixel, the same at any pixel density, the brightest spreading into a halo.
  * On foot the walk holds their light in display terms (./walk/daylight footStarLight): short of white
- * by night, and on an airless world by day under the sunlit ground's glare.
+ * by night, and on an airless world by day under the sunlit ground's glare; and, the exposure there far
+ * above the orbit's, which stars are drawn is judged on the screen (./starlight StarScreen).
  */
 
 export interface SkyFile {
@@ -43,8 +44,11 @@ export interface Sky {
   /** The brightest star's magnitude (Sirius's, in the Bright Star Catalogue), for a hold on the light. */
   readonly brightest: number;
   setRadius(radius: number): void;
-  /** The stars' light: a multiple of the star light's. */
-  setLight(light: number): void;
+  /**
+   * The stars' light (a multiple of the star light's) and, on foot, the exposure the screen puts on it
+   * and a knee on the brightest (./starlight StarScreen): by default 1 and none, as in orbit.
+   */
+  setLight(light: number, exposure?: number, knee?: number): void;
   setLayer(layer: SkyLayer, on: boolean): void;
   readonly layers: Readonly<Record<SkyLayer, boolean>>;
   /** Eases the layers in and out (dt, s). */
@@ -126,11 +130,13 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
     colors.set(blackbodyRgb(bv === null ? 6000 : bvKelvin(bv)), i * 3);
   });
   const uLight = uniform(1);
+  const uExposure = uniform(1);
+  const uKnee = uniform(0);
   const uRadius = uniform(400);
   const star = instancedBufferAttribute(new InstancedBufferAttribute(directions, 4)) as unknown as Node<'vec4'>;
   const color = instancedBufferAttribute(new InstancedBufferAttribute(colors, 3)) as unknown as Node<'vec3'>;
   // The stars are transparent, so they draw after every opaque body: a planet hides the stars behind it.
-  const material = starMaterial(cameraPosition.add(star.xyz.mul(uRadius)), star.w, color, uLight, true);
+  const material = starMaterial(cameraPosition.add(star.xyz.mul(uRadius)), star.w, color, uLight, true, { exposure: uExposure, knee: uKnee });
   const stars = starSprites(material, count, 'explore-sky-stars');
   const geometry = stars.geometry;
 
@@ -207,8 +213,10 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
       radius = next;
       uRadius.value = next;
     },
-    setLight(light) {
+    setLight(light, exposure = 1, knee = 0) {
       uLight.value = light;
+      uExposure.value = exposure;
+      uKnee.value = knee;
     },
     setLayer(layer, on) {
       layers[layer] = on;

@@ -6,8 +6,8 @@
  * sunset the Sun and the sky under it reddened, the land still seen; at night dark; a day passing in ten
  * minute steps with no pumping; the Earth's ground with no dark streaks (no stones' shadows) at a low or a
  * high Sun; on the Moon and Mars the ground near middle grey too (the eye's meter), and on the Moon by day
- * only the brightest stars (the sunlit ground's glare), none near white; the Moon's night dark, its stars out,
- * held by night so only the brightest are near white (on the Earth too);
+ * only a handful of the brightest stars (the sunlit ground's glare), none near white; the Moon's night dark,
+ * its stars out, the faint ones too, held by night so only the brightest are near white (on the Earth too);
  * a cliff's shadow over the ground below it (horizon mapping); and the ground's heights decoded to the
  * metre (this spec runs in Brave too, whose canvas read-backs are tampered with). Mocked flat terrain at
  * 1,000 m (or a cliff made per tile) and a one-pixel imagery tile.
@@ -445,6 +445,9 @@ for (const [world, at, sunDeg, span, stepDays, ceiling] of [
     // Only the brightest stars by day, under the sunlit ground's glare (or the sky): a dozen lit spots at
     // most. The star light alone lit 312 on the Moon here, some near white, 593 px from the Sun.
     expect(toward.stars).toBeLessThanOrEqual(12);
+    // On the Moon a handful, not two or three (src/explore/walk/daylight AIRLESS_DAY's lift): 7 when measured,
+    // one of them a planet; 3 with the brightest held and every other star dimmed with it.
+    if (world === 'moon') expect(toward.stars).toBeGreaterThanOrEqual(5);
     expect(toward.clipped).toBeLessThan(0.0005);
     expect(pageErrors).toEqual([]);
   });
@@ -460,16 +463,18 @@ test('the Moon after sunset: its ground dark, however the eye opens; its stars o
   await face(page, APOLLO, jd, 180, -20);
   const s = await shot(page, -20);
   expect(s.half.p99).toBeLessThanOrEqual(20);
-  // The stars out over it (no glare held by night): 128 lit spots when measured (220 before they were held by night).
+  // The stars out over it (by night the sunlit ground's glare is gone): 128 lit spots when measured (220 before they were held by night).
   expect(s.stars).toBeGreaterThan(100);
   // Held by night (src/explore/walk/daylight NIGHT_STARS), only the brightest near white: 2 when measured (22 before, the eye still opening).
   expect(s.white).toBeLessThanOrEqual(12);
-  // Looking 30 degrees up, the eye open as far as it goes (its exposure 384): 6 near white of 207 lit when
-  // measured. Before the night's hold, 144 of 892, every star brighter than about magnitude 5.5 near white.
+  // Looking 30 degrees up, the eye open as far as it goes (its exposure 384): 6 near white of 561 lit when
+  // measured. Before the night's hold, 144 of 892, every star brighter than about magnitude 5.5 near white;
+  // with it, but which stars are drawn judged before the exposure (src/explore/starlight StarScreen), 207,
+  // nothing fainter than about magnitude 5 drawn at all.
   await face(page, APOLLO, jd, 180, 30);
   const up = await shot(page, 30);
   test.info().annotations.push({ type: 'light', description: JSON.stringify({ half: s.half, stars: s.stars, white: s.white, up: { stars: up.stars, white: up.white } }) });
-  expect(up.stars).toBeGreaterThan(100);
+  expect(up.stars).toBeGreaterThan(400);
   expect(up.white).toBeLessThanOrEqual(12);
   expect(pageErrors).toEqual([]);
 });

@@ -5,7 +5,7 @@ import { qiblaBearing } from '../islamic/kaaba';
 import { createTransmittanceTable, type AirModel } from '../render/air';
 import { createGround, MARS_HAZE, VENUS_HAZE } from './ground';
 import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFACE, type SurfaceStyle } from './surface';
-import { footStarLight, pointsSeen } from './daylight';
+import { footStarLight, pointsSeen, type FootStars } from './daylight';
 import { clearDayAir, dayAdaptation, groundIlluminance, marsSunlight, sunDiscTint, sunThroughAir, walkExposure, type LightKind } from './light';
 import { createMeter } from './meter';
 import { createWalkSky, type SkyKind } from './sky';
@@ -74,13 +74,14 @@ export interface Walk {
    */
   starlight(): number;
   /**
-   * The sky's stars' light (a multiple of the star light's, before the exposure) from the explorer's own
-   * (`light`, following a fifth of the eye's `exposure`), at `dpr` pixels a CSS pixel, the sky's brightest
-   * star of magnitude `brightest`: held short of white by night, hidden by the day and the twilight, and
-   * on an airless world held under the sunlit ground's glare by day (./daylight footStarLight). The
-   * explorer's own while not walking.
+   * The sky's stars' light (a multiple of the star light's, before the exposure) and the knee on their
+   * brightest, from the explorer's own light (`light`, following a fifth of the eye's `exposure`), at `dpr`
+   * pixels a CSS pixel, the sky's brightest star of magnitude `brightest`: held short of white by night,
+   * hidden by the day and the twilight, and on an airless world held under the sunlit ground's glare by
+   * day (./daylight footStarLight). The explorer's own, and no knee, while not walking. The object is
+   * the walk's, rewritten each call.
    */
-  starLight(light: number, exposure: number, dpr: number, brightest: number): number;
+  starLight(light: number, exposure: number, dpr: number, brightest: number): Readonly<FootStars>;
   look(dxPx: number, dyPx: number): void;
   /** Steps the walker: its eye's pose in the world's frame (km from the centre, gaze, up), or null while the ground under it loads. */
   step(dt: number, input: WalkInput): { position: [number, number, number]; forward: [number, number, number]; up: [number, number, number] } | null;
@@ -163,6 +164,7 @@ export function createWalk(setup: WalkSetup): Walk {
   let metered: number | null = null;
   /** How far the eye has adapted to the day (./light dayAdaptation, set as placed): the airless sky's glare on the stars eases in by it. */
   let day = 0;
+  const footStars: FootStars = { light: 1, knee: 0 };
   const sunTint: [number, number, number] = [1, 1, 1];
 
   const footing = (lat: number, lon: number): { metres: number; zoom: number } | null => heights.at(lat, lon, zoomFor(FOOT_ZOOM_M, lat, world.radiusKm));
@@ -211,7 +213,10 @@ export function createWalk(setup: WalkSetup): Walk {
       return walker && landed ? pointsSeen(skyKind, sky.sunDeg, day) : 1;
     },
     starLight(light, exposure, dpr, brightest) {
-      return walker && landed ? footStarLight(skyKind, sky.sunDeg, day, light, exposure, dpr, brightest) : light;
+      if (walker && landed) return footStarLight(skyKind, sky.sunDeg, day, light, exposure, dpr, brightest, footStars);
+      footStars.light = light;
+      footStars.knee = 0;
+      return footStars;
     },
     look(dx, dy) {
       if (walker) look(walker, dx, dy);
