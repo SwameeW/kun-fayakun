@@ -12,7 +12,17 @@ import type { Burn } from './ships';
 
 export type LabRequest =
   | { type: 'load'; generation: number; scenario: Scenario }
-  | { type: 'run'; generation: number; rate: number; paused: boolean }
+  /**
+   * The clock: simulated seconds per real second (negative: the history played backwards, exactly, by
+   * replaying it from its checkpoints: ./rewind) and whether paused. `control` counts the page's run
+   * and goto requests; snapshots echo the latest they had, so the page takes a stop at the start or a
+   * goto's end only from a snapshot that knew its latest request. A run stops a goto under way where
+   * it is. Paused, `landAt` is the moment the page draws (s): the run steps on to the first whole step
+   * at or past it (back to one, going backwards), so an edit is made on what is drawn.
+   */
+  | { type: 'run'; generation: number; control: number; rate: number; paused: boolean; landAt?: number }
+  /** Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a tick; the clock then runs (or not) as `run` last said. */
+  | { type: 'goto'; generation: number; control: number; t: number }
   /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt). */
   | { type: 'command'; generation: number; command: Command; atStep?: number }
   | { type: 'predict'; generation: number; id: string | null; horizonS: number; accuracy: number }
@@ -32,13 +42,29 @@ export interface LabSnapshot {
   t: number;
   step: number;
   dt: number;
+  /**
+   * Simulated time asked for and not yet stepped (s, in the direction of travel: the page's drawn clock
+   * aims at t + owed, or t - owed going back); counts discontinuities of the run (a load, seek, replay,
+   * undo, redo, a goto going back, an edit made on an earlier view), which alone may move the drawn
+   * clock against its direction; the latest run or goto request it had (LabRequest `control`).
+   */
+  owed: number;
+  timeline: number;
+  control: number;
+  /** Back at the scenario's start while going backwards (the worker has paused there), or null. */
+  edge: 'start' | null;
+  /** A goto under way: the time it is going to (s), or null. */
+  seekingS: number | null;
+  /** The worker's step budget was spent before the time asked for was reached (the achieved rate is then the most possible here). */
+  budgetBound: boolean;
   ids: string[];
   names: string[];
   gm: Float64Array;
   radius: Float64Array;
-  /** Positions (km) and velocities (km/s), three per body, in the scenario's frame. */
+  /** Positions (km), velocities (km/s) and accelerations (km/s^2), three per body, in the scenario's frame (the page draws between snapshots with them). */
   pos: Float64Array;
   vel: Float64Array;
+  acc: Float64Array;
   /** Spin angular momenta (G units, three per body), J2s and moment of inertia factors; the bodies held in place. */
   spin: Float64Array;
   j2: Float64Array;
@@ -49,7 +75,7 @@ export interface LabSnapshot {
   redoable: number;
   /** Drift since the last intervention (relative), and the closed model's totals now. */
   drift: { energy: number; momentum: number; angularMomentum: number };
-  /** Requested and achieved simulated seconds per real second (achieved: over the last second). */
+  /** Requested and achieved simulated seconds per real second (achieved: since the rate was set, over at least a second and two steps). */
   requestedRate: number;
   achievedRate: number;
   paused: boolean;

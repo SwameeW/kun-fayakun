@@ -204,12 +204,14 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
     trip,
     update(view) {
       const focus = view.bodies.find((b) => b.id === view.focus);
+      // A laboratory of its own: the view follows its star in the Sun's stead, named and measured as itself.
+      const stand = view.focus === 'sun' ? view.lab?.standIn : null;
       if (view.travelling && view.from) {
         write(title, i18n.t('ui.universe.flying', { from: f.name(view.from), to: f.name(view.focus) }));
         write(altitude, i18n.t('ui.universe.toGo', { distance: f.distance(view.altitudeKm), body: f.name(view.focus) }));
       } else {
-        write(title, f.name(view.focus));
-        write(altitude, i18n.t(surfaceKey(view.focus), { distance: f.distance(view.altitudeKm) }));
+        write(title, stand ? stand.name : f.name(view.focus));
+        write(altitude, i18n.t(surfaceKey(view.focus), { distance: f.distance(stand ? stand.altitudeKm : view.altitudeKm) }));
       }
       const flying = view.mode === 'flight' && !view.travelling;
       const modeLine = view.travelling

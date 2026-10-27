@@ -144,6 +144,9 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
       toast.show(title, line);
     },
     timeRow,
+    (slot) => {
+      time.placeDay(slot);
+    },
   );
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));
@@ -194,18 +197,20 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   );
 
   // The time machine's keys ([ slower, ] faster, \ backwards; Space is the page's play key) and photo mode's (H; Esc leaves it).
+  // They pass the date field too, which cannot type them: after choosing a date the keys still work.
   window.addEventListener('keydown', (event) => {
     if (!visible || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
     const target = event.target;
-    if (target instanceof HTMLElement && (target.closest('input, textarea, select, [contenteditable="true"], [data-kf-keys="own"], dialog') !== null)) return;
+    const command = event.key === '[' ? 'slower' : event.key === ']' ? 'faster' : event.key === '\\' ? 'reverse' : null;
+    const dateField = target instanceof HTMLInputElement && target.type === 'date';
+    if (target instanceof HTMLElement && !(command && dateField) && target.closest('input, textarea, select, [contenteditable="true"], [data-kf-keys="own"], dialog') !== null) return;
     if (event.key === 'Escape' && photoOn()) {
       setPhoto(false);
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
     }
-    const command = event.key === '[' ? 'slower' : event.key === ']' ? 'faster' : event.key === '\\' ? 'reverse' : null;
-    if (command) app.universeTime({ kind: command });
+    if (command) time.press(command);
     else if (event.key === 'h' || event.key === 'H') setPhoto(!photoOn());
     else return;
     event.preventDefault();

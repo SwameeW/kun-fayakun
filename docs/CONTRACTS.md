@@ -456,13 +456,33 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
 - **Time machine** (`src/explore/time.ts`, `src/ui/explore/time-control.ts`). The explorer's clock
   runs at `UniverseTime.rate` explorer seconds per real second (negative backwards), stepped along
   `TIME_RATES` (1 to 30 days a second) by `UniverseTimeCommand` (`toggle`, `faster`, `slower`,
-  `reverse`, `now`, `date`, `rate`) through `app.universeTime`. `advanceClock` keeps it inside the
-  data's span (the Moon's table, intersected with the planets'), stopping and pausing at either end
-  (`UniverseTime.edge`). During a trip it runs at real time. Satellites draw up to
+  `reverse`, `now`, `date`, `rate`) through `app.universeTime`. Every command is checked at that
+  boundary (`validTimeCommand`: a rate or date that is not a finite number is refused, a rate's size
+  held to [1, `MAX_RATE`]) and applied by one pure reducer, `applyTimeCommand`, which the laboratory
+  shares: faster and slower step to the next rung (never skipping one), and at an end with the rate
+  pointing into it play, faster and slower turn the clock round. `advanceClock` keeps it inside the
+  span, stopping and pausing at either end (`UniverseTime.edge`); a date outside it stops at its
+  nearest end, and the note says so once where the clock went is known. The span is JPL's tables'
+  (the Moon's 2026 to 2035) until the chunk beyond the everyday (`src/explore/time-beyond`, with
+  `src/astro/analytic`: Meeus's lunar theory, Standish's Table 2, blended into the tables at their
+  ends; `installTheories`) arrives a few seconds in or as the clock heads past them or runs fast;
+  then 1600-01-01 to 2399-12-31, and `UniverseTime.beyond` says which body comes from a theory (the
+  note names it and its accuracy). A date beyond the tables asked for before it arrives waits for it
+  (`UniverseTime.pending`, the row saying "Going to …"); offline, it stops at the tables' end and the
+  chunk is asked for again 30 s later (or at the next such date), never every frame. During a trip
+  (not the arrival's glide) it runs at real time, and on foot or on the way down at most
+  `FOOT_MAX_RATE` (an hour a second: flash safety); `UniverseTime.held` says which. Past about 30
+  degrees a frame (measured from the clock's own change, so a laboratory's goto counts) a world's turn
+  is held at one hour of its day (`UniverseTime.spinHeld`); it is let go once the clock has run on its
+  own under 20 degrees a frame for half a second (never while paused or during a trip), and caught up
+  the way time runs, at most 8 degrees a frame (with reduced motion, at once). Satellites draw up to
   `SATELLITE_MAX_RATE` (600) and hide a state further than `STALE_MS` from the clock until a fresh
   one arrives; earthquakes draw only within a day of the present. Keys: Space (the page's play key
-  pauses it in the explorer), [ and ], \. The controls head the navigator (after the list on a
-  phone's sheet); a change is announced politely.
+  pauses it in the explorer; in the row, even on a focused time button), [ and ], \ (also from the
+  date field). A control that cannot act is `aria-disabled`, dimmed, and says why in the note
+  (`universe-time-note`) when pressed. The controls head the navigator; on a phone's sheet the
+  buttons sit above its scrolling part, folded or not, and the help, date and Islamic date under
+  the list. A change is announced politely.
 - **Photo mode.** `kf-photo` on the root hides the header, the HUD tags and everything in the
   explorer's interface but "Show the interface"; H toggles it and Esc leaves it (before Esc would
   leave the explorer).
@@ -597,9 +617,13 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   path for drawing), `validateScenario` and `IMPORT_LIMITS`; `ENGINE_VERSION` `kf-nbody-1`,
   `SCHEMA_VERSION` 1. `seed.ts`: `seedSolarSystem` (from the explorer's ephemeris; the Sun in
   `persistentIds`), `seedLaboratory`.
-- **Worker protocol** (`src/sim/protocol.ts`). Requests `load`, `run` (rate, paused), `command`,
-  `predict` (id, horizon), `seek`, `replay`, `save`; replies `snapshot` (ids, names, GM, radii,
-  positions, velocities, step, dt, drift, requested and achieved rate, failure, collision events
+- **Worker protocol** (`src/sim/protocol.ts`). Requests `load`, `run` (signed rate, paused, and
+  paused the moment drawn, `landAt`: a negative rate plays the history backwards, exactly, by
+  `src/sim/rewind`; a run stops a goto under way), `goto` (a time), `command`,
+  `predict` (id, horizon), `seek`, `replay`, `save`; `run` and `goto` carry a `control` count the
+  snapshots echo; replies `snapshot` (ids, names, GM, radii,
+  positions, velocities, accelerations, step, dt, time owed, timeline, edge (back at the start),
+  a goto under way, whether the step budget was spent, drift, requested and achieved rate, failure, collision events
   (with the crater's size, depth and rim, and the contact site in the scenario's frame),
   interventions, checkpoints), `prediction` (path, merger, frame and its path), `saved`, `error`. Every message
   carries the scenario's `generation`; replies from an older one are dropped, and snapshots by
@@ -620,7 +644,18 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
   `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`. Following a
   world is the explorer's own focus. The time machine's commands drive the experiment's clock
-  (`toggle`, `faster`, `slower`, `rate`); `reverse`, `now` and `date` are disabled in it.
+  through the same reducer: backwards replays its history and stops at the fork (`UniverseTime.edge`
+  'start'); `now` and `date` go to that moment (from the fork to `LAB_DATE_SPAN_S` after it;
+  `UniverseLab.seekingS`; a run request stops it where it is: Pause there, a rate or Reverse on from
+  there); the row's Reset (`universe-time-reset`, added by the laboratory's panel) goes back to the
+  fork, paused, as `seek` (only to a whole step, at most the run's or its latest checkpoint's: never
+  an endless replay), `replay` and `reset` all leave it paused. The drawn clock
+  (`src/explore/lab-clock`) runs at the rate asked for, or at the pace the worker reaches when it
+  cannot keep up, never against its direction, the bodies drawn between two snapshots; paused, it
+  lands on the run's own latest step (`UniverseLab.t`), which the worker steps on to (`run`
+  `landAt`), so an edit is made at the moment drawn. A laboratory of its own (none of the worlds)
+  is followed at its star, standing in for the hidden Sun (`UniverseLab.standIn`: the readout gives
+  its name and height).
 - **Persistence.** IndexedDB database `kf-lab`, store `scenarios`, key `current`; export as
   `kun-fayakun-<name>.json`; import through `validateScenario` (refused with reasons, nothing
   changed).

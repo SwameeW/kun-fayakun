@@ -1,7 +1,8 @@
 import type { Object3D } from 'three/webgpu';
 import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
-import { BODY_IDS, type BodyId, type LabCommand, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody } from '../core/types';
+import { utcToTdb } from '../astro/time';
+import { BODY_IDS, type BodyId, type LabCommand, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody, type UniverseTimeCommand } from '../core/types';
 import { commandId, RING_MAX_BODIES, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
 import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
@@ -15,10 +16,12 @@ import type { LabReply, LabRequest, LabSnapshot } from '../sim/protocol';
 import { seedLaboratory, seedSolarSystem, type Shapes } from '../sim/seed';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
 import type { SurfaceMark } from './bodies/marks';
+import { LabClock, placeAt } from './lab-clock';
 import { createOrbits, type OrbitFrame, type OrbitPath, type Orbits } from './orbits';
 import { km, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import type { SolarSystem } from './system';
+import { applyTimeCommand, LAB_DATE_SPAN_S } from './time';
 
 /**
  * The orbital laboratory inside the explorer (Sandbox): an experiment forked from the solar system
@@ -35,7 +38,13 @@ import type { SolarSystem } from './system';
  * integrated ahead in the worker, redone after every edit and as time passes) and its velocity, all
  * relative to the body it moves about (its primary: a moon's path is drawn about its planet, where the
  * planet is now), through the explorer's orbit renderer (scaled space, constant-width hairlines).
- * Positions between snapshots are carried along each body's velocity.
+ * Between snapshots everything is drawn at the drawn clock (./lab-clock): smooth and never turning
+ * back at any rate, each body between the two snapshots around it.
+ *
+ * Time: the time machine's commands drive the experiment's clock through the explorer's reducer
+ * (./time): backwards plays its history exactly (src/sim/rewind) and stops at the fork; Now and a date
+ * go to that moment of the experiment (from the fork to LAB_DATE_SPAN_S after it); seek, replay and
+ * reset leave it paused there.
  *
  * Masses: the engine works in GM. Kilograms for the interface use one constant, the Earth's GM (DE440)
  * over its mass (JPL's physical parameters), so every body is converted by the same G.
@@ -68,7 +77,9 @@ export interface Lab {
   /** Forks a scenario (the solar system at `jdTdb`, or a laboratory) and runs it. */
   start(seed: 'solar' | 'two' | 'three', jdTdb: number): void;
   stop(): void;
-  /** The simulated date (TDB Julian date), carried on from the last snapshot. */
+  /** Advances the drawn clock (./lab-clock) by a frame; once a frame, before jdTdb and the rest. True when it was set anew (a new timeline: a cut, not a movement). */
+  tick(nowMs: number): boolean;
+  /** The simulated date as drawn (TDB Julian date). */
   jdTdb(): number;
   /** Puts the built-in worlds where the experiment has them; returns those it no longer has. */
   applyBuiltIns(sys: SolarSystem, hidden: Set<BodyId>): void;
@@ -79,10 +90,14 @@ export interface Lab {
   readonly climateView: boolean;
   update(frame: LabFrame, relative: (abs: Km, out: Km) => Km): void;
   labels(out: SceneLabel[]): void;
-  /** The requested rate and pause (the time machine's controls drive them here). */
+  /** The requested rate (negative: backwards through the history) and pause. */
   setRun(rate: number, paused: boolean): void;
   readonly rate: number;
   readonly paused: boolean;
+  /** Back at the experiment's start, going backwards (stopped there), or null. */
+  readonly edge: 'start' | null;
+  /** A time machine command (already checked: src/explore/time validTimeCommand) on the experiment's clock. */
+  time(command: UniverseTimeCommand): void;
   command(c: LabCommand): void;
   view(): UniverseLab | null;
   /** A body merged away or removed: the one the camera should go to instead (its survivor), once. */
@@ -310,9 +325,28 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     return baselines.byId.get(id) ?? null;
   };
   let snap: LabSnapshot | null = null;
-  let snapAt = 0;
+  /** The latest snapshots of this timeline, each with when it arrived (ms): the bodies are drawn between them (./lab-clock). */
+  let held: Array<LabSnapshot & { at: number }> = [];
+  const clock = new LabClock();
+  let clockWall = Number.NaN;
   let rate = 86_400;
   let paused = false;
+  /**
+   * Run and goto requests sent (snapshots echo the latest the worker had); back at the start going
+   * backwards; a goto under way, one being stopped by a run request (still followed, and reported as
+   * under way, until the worker says it has stopped), and one just ended or stopped (drawn at once
+   * where the worker got to).
+   */
+  let control = 0;
+  let edge: 'start' | null = null;
+  let seekingS: number | null = null;
+  let stopping: number | null = null;
+  let arrived = false;
+  /** A laboratory of its own (no Sun): its star, which the hidden Sun stands in for (the view follows it), and its height above the camera's (km); -1 for none. */
+  let standIn = -1;
+  let standInAltitudeKm = 0;
+  /** The explorer's date the solar system was forked at (a Solar system start later forks at it again). */
+  let forkJdTdb = 0;
   let selected: string | null = null;
   let horizonS = DEFAULT_HORIZON_S;
   let prediction: { id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; revision: number; encounters: Encounter[] } | null = null;
@@ -400,17 +434,49 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
 
   const builtIn = (id: string): BodyId | null => (BODY_IDS as readonly string[]).includes(id) ? (id as BodyId) : null;
 
-  /** A body's place now (scenario frame), carried on from the snapshot along its velocity. */
-  const extrapolation = (): number => {
-    if (!snap || snap.paused) return 0;
-    const dt = Math.min(0.1, (performance.now() - snapAt) / 1000);
-    return dt * snap.achievedRate;
+  /** Each body's place at the drawn time (scenario frame, km), by id: worked out once a frame. */
+  const drawnAt = new Map<string, Vec3>();
+  let drawnFor = Number.NaN;
+  let drawnSnap: LabSnapshot | null = null;
+  const place = (s: LabSnapshot, i: number): Vec3 => {
+    if (drawnFor !== clock.shown || drawnSnap !== snap) {
+      drawnAt.clear();
+      drawnFor = clock.shown;
+      drawnSnap = snap;
+    }
+    const id = s.ids[i] ?? '';
+    let p = drawnAt.get(id);
+    if (!p) {
+      p = [s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0];
+      placeAt(held, id, clock.shown, p);
+      drawnAt.set(id, p);
+    }
+    return p;
+  };
+  /** The clock's rate and pause to the worker (a goto under way stops where it is, drawn there at once); paused, with the moment drawn, which the run steps on to. */
+  const sendRun = (): void => {
+    control += 1;
+    if (seekingS !== null) stopping = seekingS;
+    seekingS = null;
+    send({ type: 'run', generation, control, rate, paused, ...(paused ? { landAt: clock.shown } : {}) });
+  };
+  /** Goes to simulated time `t` (s since the epoch), kept from the fork to LAB_DATE_SPAN_S after it. */
+  const goTo = (t: number): void => {
+    control += 1;
+    seekingS = Math.min(LAB_DATE_SPAN_S, Math.max(0, t));
+    edge = null;
+    send({ type: 'goto', generation, control, t: seekingS });
   };
 
   const load = (scenario: Scenario): void => {
     generation += 1;
     sentEdits = 0;
     snap = null;
+    held = [];
+    clock.restart();
+    edge = null;
+    seekingS = null;
+    stopping = null;
     prediction = null;
     trails.clear();
     edited.clear();
@@ -424,7 +490,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       };
     }
     send({ type: 'load', generation, scenario: structuredClone(scenario) });
-    send({ type: 'run', generation, rate, paused });
+    sendRun();
     requestPrediction();
   };
 
@@ -449,6 +515,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   const sampleTracked = (s: LabSnapshot): void => {
     const t = tracked;
     if (!t || s.t === t.lastT) return;
+    // Going back: what was followed after this moment has not happened yet.
+    while (t.points.length > 0 && (t.points[t.points.length - 1]?.[0] ?? 0) > s.t) t.points.pop();
     const merged = s.events.find((e) => consumes(e) && e.absorbed === t.id);
     if (merged && !s.ids.includes(t.id)) {
       t.mergedInto = merged.survivor;
@@ -468,12 +536,36 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     if (msg.generation !== generation || !active) return;
     if (msg.type === 'snapshot') {
       if (snap && msg.seq <= snap.seq) return;
+      // A jump of the run (a seek, a replay, an undo, a goto going back): drawn from its new place, its trails begun again.
+      if (snap && msg.timeline !== snap.timeline) {
+        held = [];
+        trails.clear();
+      }
       snap = msg;
-      snapAt = performance.now();
+      held.push({ ...msg, at: performance.now() });
+      if (held.length > 6) held.shift();
+      // What the worker did with the latest request: stopped at the start going backwards (paused there), or finished a goto.
+      if (msg.control === control) {
+        edge = msg.edge;
+        if (msg.edge && rate < 0) paused = true;
+        if ((seekingS !== null || stopping !== null) && msg.seekingS === null) arrived = true;
+        stopping = null;
+        seekingS = msg.seekingS;
+      }
       msg.ids.forEach((id, i) => knownNames.set(id, msg.names[i] ?? id));
       for (const w of msg.swarms) knownNames.set(w.id, w.name);
       sampleTrails(msg);
       sampleTracked(msg);
+      // Collisions gone back before (the history played backwards): their craters and dust go, and come again with them.
+      const present = new Set(msg.events.map(eventKey));
+      const earliest = msg.events[0]?.step ?? Number.POSITIVE_INFINITY;
+      for (const key of seenEvents) {
+        const step = Number(key.slice(0, key.indexOf(':')));
+        if (!present.has(key) && step >= Math.min(earliest, msg.step)) {
+          seenEvents.delete(key);
+          craterMarks.delete(key);
+        }
+      }
       for (const e of msg.events) {
         const key = eventKey(e);
         if (seenEvents.has(key)) continue;
@@ -527,6 +619,11 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         trails.set(id, t);
       }
       if (s.t === t.at) continue;
+      // Going back: the path after this moment is not yet travelled.
+      while (t.times.length > 0 && (t.times[t.times.length - 1] ?? 0) > s.t) {
+        t.times.pop();
+        t.points.length -= 3;
+      }
       t.at = s.t;
       t.points.push(s.pos[i * 3] ?? 0, s.pos[i * 3 + 1] ?? 0, s.pos[i * 3 + 2] ?? 0);
       t.times.push(s.t);
@@ -697,7 +794,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     const at = (a: Float64Array, k: number): Vec3 => [a[k * 3] ?? 0, a[k * 3 + 1] ?? 0, a[k * 3 + 2] ?? 0];
     return { p, r: sub3(at(s.pos, i), at(s.pos, p)), v: sub3(at(s.vel, i), at(s.vel, p)), mu: (s.gm[p] ?? 0) + (s.gm[i] ?? 0) };
   };
-  const posNow = (s: LabSnapshot, i: number, ahead: number): Vec3 => [0, 1, 2].map((k) => (s.pos[i * 3 + k] ?? 0) + (s.vel[i * 3 + k] ?? 0) * ahead) as Vec3;
+  /** Body i's place as drawn now (a copy). */
+  const posNow = (s: LabSnapshot, i: number): Vec3 => [...place(s, i)] as Vec3;
   const spinOf = (s: LabSnapshot, i: number): Vec3 => [s.spin[i * 3] ?? 0, s.spin[i * 3 + 1] ?? 0, s.spin[i * 3 + 2] ?? 0];
 
   /** A new body's rotation from a preset's period: prograde (or backwards) about the pole of its orbit. */
@@ -705,11 +803,11 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     preset?.rotationH ? { periodS: Math.abs(preset.rotationH) * 3600, pole: scale3(unit3(orbitPole), preset.rotationH < 0 ? -1 : 1) } : undefined;
 
   /** The chosen body's velocity arrow: its tip (scenario frame), its length per km/s (s), and the velocity it shows (relative to the primary). */
-  const arrow = (s: LabSnapshot, i: number, ahead: number, len: number, shown?: Vec3): { tip: Vec3; len: number; vel: Vec3 } | null => {
+  const arrow = (s: LabSnapshot, i: number, len: number, shown?: Vec3): { tip: Vec3; len: number; vel: Vec3 } | null => {
     const rel = relativeTo(s, i);
     const vel = shown ?? (rel ? rel.v : ([s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0] as Vec3));
     if (!(norm3(vel) > 0) || !(len > 0)) return null;
-    return { tip: add3(posNow(s, i, ahead), scale3(vel, len)), len, vel };
+    return { tip: add3(posNow(s, i), scale3(vel, len)), len, vel };
   };
 
   /** Where the pointer meets the plane of the placing primary's orbit (through its centre): the offset from it (scenario frame, km), or null. */
@@ -722,7 +820,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     if (p < 0) return null;
     const pole = poleOf(s, p);
     const n = toRender(pole[0] ?? 0, pole[1] ?? 0, pole[2] ?? 0, km());
-    const c = posNow(s, p, extrapolation());
+    const c = posNow(s, p);
     const P = rel(toRender(c[0], c[1], c[2], km()), km());
     const d = v.ray(x, y);
     const denom = d.x * n.x + d.y * n.y + d.z * n.z;
@@ -782,6 +880,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       active = true;
       selected = null;
       status = null;
+      if (seed === 'solar') forkJdTdb = jdTdb;
       seedScenario = seed === 'solar' ? seedSolarSystem(ephemeris, physical, jdTdb, names, shapes) : seedLaboratory(physical, seed === 'three', shapes);
       realSeed = seed === 'solar';
       load(seedScenario);
@@ -811,28 +910,54 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       dragging = null;
       spinDrawn.clear();
     },
+    tick(nowMs) {
+      const wall = Number.isFinite(clockWall) ? Math.min(0.1, Math.max(0, (nowMs - clockWall) / 1000)) : 0;
+      clockWall = nowMs;
+      const s = held[held.length - 1];
+      if (!s) return false;
+      const cuts = clock.cuts;
+      // Following a goto as it goes (and at its last moment); paused (or stopped at the start), on to where the
+      // worker stopped, which it stepped on to (an edit is made on the newest snapshot, so what is drawn is then
+      // exactly what it changes); else at the rate asked for, or at the pace the worker reaches when short of it
+      // (over the snapshots held: a few tenths of a second).
+      const mode = seekingS !== null || stopping !== null || arrived ? 'follow' : paused ? 'land' : 'run';
+      arrived = false;
+      const first = held[0];
+      const reached = first && s.at - first.at > 100 ? (Math.abs(s.t - first.t) * 1000) / (s.at - first.at) : Math.abs(s.achievedRate);
+      clock.advance(wall, rate, !paused && !s.failure, s, nowMs, mode, reached);
+      if (clock.shown < 0) clock.shown = 0;
+      return clock.cuts !== cuts;
+    },
     jdTdb() {
-      const epoch = seedScenario?.epochJdTdb ?? 0;
-      return epoch + ((snap?.t ?? 0) + extrapolation()) / 86_400;
+      return (seedScenario?.epochJdTdb ?? 0) + clock.shown / 86_400;
     },
     applyBuiltIns(sys, hidden) {
       hidden.clear();
       if (!snap) return;
       const s = snap;
-      const ahead = extrapolation();
       for (const id of BODY_IDS) {
         const i = s.ids.indexOf(id);
         if (i < 0) {
           hidden.add(id);
           continue;
         }
-        toRender((s.pos[i * 3] ?? 0) + (s.vel[i * 3] ?? 0) * ahead, (s.pos[i * 3 + 1] ?? 0) + (s.vel[i * 3 + 1] ?? 0) * ahead, (s.pos[i * 3 + 2] ?? 0) + (s.vel[i * 3 + 2] ?? 0) * ahead, sys.bodies[id].position);
+        const p = place(s, i);
+        toRender(p[0], p[1], p[2], sys.bodies[id].position);
+      }
+      // A laboratory of its own: the hidden Sun stands at its heaviest body (its star), so the view goes round that.
+      standIn = -1;
+      if (hidden.has('sun')) {
+        for (let k = 0; k < s.ids.length; k += 1) if (!builtIn(s.ids[k] ?? '') && (standIn < 0 || (s.gm[k] ?? 0) > (s.gm[standIn] ?? 0))) standIn = k;
+        if (standIn >= 0) {
+          const p = place(s, standIn);
+          toRender(p[0], p[1], p[2], sys.bodies.sun.position);
+        }
       }
       // A world whose spin the visitor set turns as set: from the moment it was set, its drawn pole turned
       // onto the new one (or its opposite, so its north stays the side it was), at the new period. The
       // rest turn as the IAU models have them.
       const spinSet = new Set(s.interventions.filter((x) => x.kind === 'setSpin').map((x) => x.id));
-      const tNow = s.t + ahead;
+      const tNow = clock.shown;
       for (const id of BODY_IDS) {
         const i = s.ids.indexOf(id);
         const L = i < 0 ? ([0, 0, 0] as Vec3) : spinOf(s, i);
@@ -892,7 +1017,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       const i = s.ids.indexOf(body);
       const radius = i >= 0 ? (s.radius[i] ?? 0) : 0;
       if (!(radius > 0)) return [];
-      const now = s.t + extrapolation();
+      const now = clock.shown;
       const wall = performance.now();
       const out: SurfaceMark[] = [];
       for (const e of s.events) {
@@ -915,10 +1040,17 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         return;
       }
       const s = snap;
-      const ahead = extrapolation();
-      /** Where body `k` is now (scenario frame), carried on from the snapshot. */
+      if (standIn >= 0) {
+        const p = place(s, standIn);
+        const r = relative(toRender(p[0], p[1], p[2], km()), km());
+        standInAltitudeKm = Math.hypot(r.x, r.y, r.z) - (s.radius[standIn] ?? 0);
+      }
+      /** How far the drawn clock is past the snapshot (s), for paths integrated from it. */
+      const ahead = clock.shown - s.t;
+      /** Where body `k` is as drawn (scenario frame). */
       const now = (k: number, out: number[]): number[] => {
-        for (let c = 0; c < 3; c += 1) out[c] = (s.pos[k * 3 + c] ?? 0) + (s.vel[k * 3 + c] ?? 0) * ahead;
+        const p = place(s, k);
+        for (let c = 0; c < 3; c += 1) out[c] = p[c] ?? 0;
         return out;
       };
       // The turning frame (view "corotating"): the chosen body's primary A and the heaviest body about it, B;
@@ -948,7 +1080,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           spinning = { a, aNow: now(a, [0, 0, 0]) as Vec3, axis: scale3(L, 1 / Ln), omega: (2 * Math.PI) / periodS, ta: ta0 };
         }
       }
-      const tNow = s.t + ahead;
+      const tNow = clock.shown;
       /** A point of the turning frame's sample k (A and B there) carried to the frame as it stands now. */
       const turned = (x: readonly number[], a: readonly number[], b: readonly number[], f: NonNullable<typeof turning>): Vec3 => {
         const d = sub3(x, a);
@@ -1041,15 +1173,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       // The velocity relative to the primary, ARROW_PX long on screen whatever its speed (kept while dragged, so the tip follows the pointer).
       const shown = dragging && dragging.id === selected ? dragging.vel : undefined;
       if (i >= 0 && !dragging) {
-        const b = posNow(s, i, ahead);
+        const b = posNow(s, i);
         const at = relative(toRender(b[0], b[1], b[2], km()), km());
         const rv = relativeTo(s, i)?.v ?? ([s.vel[i * 3] ?? 0, s.vel[i * 3 + 1] ?? 0, s.vel[i * 3 + 2] ?? 0] as Vec3);
         const speedNow = norm3(rv);
         arrowLen = speedNow > 0 ? (ARROW_PX * Math.hypot(at.x, at.y, at.z)) / Math.max(frame.pxPerTan, 1) / speedNow : 0;
       }
-      const arrowNow = i >= 0 ? arrow(s, i, ahead, dragging ? dragging.len : arrowLen, shown) : null;
+      const arrowNow = i >= 0 ? arrow(s, i, dragging ? dragging.len : arrowLen, shown) : null;
       if (arrowNow) {
-        const base = posNow(s, i, ahead);
+        const base = posNow(s, i);
         const a = toRender(base[0], base[1], base[2], km());
         const b = toRender(arrowNow.tip[0], arrowNow.tip[1], arrowNow.tip[2], km());
         velocityPath.set([a.x, a.y, a.z, b.x, b.y, b.z], 2);
@@ -1064,7 +1196,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       for (let k = 0; k < s.ids.length && d < DOT_SLOTS; k += 1) {
         const id = s.ids[k] ?? '';
         if (builtIn(id)) continue;
-        toRender((s.pos[k * 3] ?? 0) + (s.vel[k * 3] ?? 0) * ahead, (s.pos[k * 3 + 1] ?? 0) + (s.vel[k * 3 + 1] ?? 0) * ahead, (s.pos[k * 3 + 2] ?? 0) + (s.vel[k * 3 + 2] ?? 0) * ahead, abs);
+        const p = place(s, k);
+        toRender(p[0], p[1], p[2], abs);
         relative(abs, rel);
         const dot = dotList[d];
         if (!dot) break;
@@ -1088,7 +1221,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       for (const w of s.swarms) {
         const p = s.ids.indexOf(w.primary);
         if (p < 0) continue;
-        const primaryAt = posNow(s, p, ahead);
+        const primaryAt = posNow(s, p);
         const color = (s.gm[p] ?? 0) > STAR_GM ? PARTICLES.belt : PARTICLES.ring;
         const m = w.rel.length / 3;
         for (let k = 0; k < m && q < SWARM_LIMITS.total; k += 1) {
@@ -1126,7 +1259,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         const helper: Vec3 = Math.abs(up[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
         const t1 = unit3(cross3(up, helper));
         const t2 = cross3(up, t1);
-        const centre = posNow(s, p, ahead);
+        const centre = posNow(s, p);
         toRender(centre[0], centre[1], centre[2], scratch);
         const radiusKm = s.radius[p] ?? 0;
         const rise = 4 * x * (1 - x);
@@ -1191,13 +1324,13 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       }
       if (placing && hoverOffset) {
         const p = s.ids.indexOf(placing.primary);
-        if (p >= 0) mark(add3(posNow(s, p, ahead), hoverOffset), PLACING, 10, 1, null);
+        if (p >= 0) mark(add3(posNow(s, p), hoverOffset), PLACING, 10, 1, null);
       }
       if (arrowNow && !placing) mark(arrowNow.tip, VELOCITY, dragging ? 12 : 9, 1, null);
       // A chosen ship's burn directions about its primary, each the arrow's length from it, named as the burns are.
       const shipRel = arrowNow && !placing && s.ships.some((x) => x.id === selected) ? relativeTo(s, i) : null;
       if (shipRel && arrowNow) {
-        const base = posNow(s, i, ahead);
+        const base = posNow(s, i);
         const length = norm3(sub3(arrowNow.tip, base));
         const f = orbitalFrame(shipRel.r, shipRel.v);
         for (const [key, dir] of [
@@ -1228,21 +1361,51 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       if (active) for (const l of labelList) out.push(l);
     },
     setRun(next, nextPaused) {
+      if (!Number.isFinite(next) || next === 0) return;
       rate = next;
       paused = nextPaused;
-      send({ type: 'run', generation, rate, paused });
+      if (rate > 0) edge = null;
+      sendRun();
     },
     get rate() {
       return rate;
     },
     get paused() {
-      return paused;
+      // A goto under way runs whatever the pause (a press of Pause stops it there).
+      return paused && seekingS === null;
+    },
+    get edge() {
+      return edge;
+    },
+    time(command) {
+      // The explorer's reducer (./time): at the start going backwards, play, faster and slower turn round. A goto
+      // under way counts as running: Pause stops it where it is, a rate or Reverse runs on from there (a new date
+      // keeps the pause as it was set).
+      const next = applyTimeCommand({ rate, paused: command.kind === 'date' ? paused : lab.paused, edge }, command).state;
+      if (command.kind === 'now' || command.kind === 'date') {
+        // Now and a date: that moment of the experiment (its clock is TDB), from the fork on. Now runs on at real
+        // time; a date before the fork stops there (the experiment has no history before it), as at the explorer's ends.
+        const epoch = seedScenario?.epochJdTdb ?? 0;
+        const utc = command.kind === 'now' ? Date.now() / 86_400_000 + 2_440_587.5 : command.jdUtc;
+        const t = (utcToTdb(utc, physical.time) - epoch) * 86_400;
+        rate = next.rate;
+        paused = next.paused || t < 0;
+        sendRun();
+        goTo(t);
+        if (t < 0) edge = 'start';
+        return;
+      }
+      rate = next.rate;
+      paused = next.paused;
+      edge = next.edge === 'start' ? 'start' : null;
+      sendRun();
     },
     command(c) {
       const s = snap;
       switch (c.kind) {
         case 'start':
-          lab.start(c.seed, seedScenario?.epochJdTdb ?? 0);
+          // The solar system forks at the explorer's date again (not the last experiment's epoch), paused as it was.
+          lab.start(c.seed, forkJdTdb);
           return;
         case 'select':
           selected = c.id;
@@ -1650,14 +1813,26 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           if (builtIn(c.id)) refocus = 'sun';
           return;
         case 'seek':
-          send({ type: 'seek', generation, step: c.step });
+          // Back (or on) to a checkpoint, paused there: the moment gone back to stays to be looked at. Only a whole
+          // step up to the run's or its latest checkpoint's (the worker replays to it at once: a huge one would never end).
+          if (!s || !Number.isFinite(c.step)) return;
+          paused = true;
+          edge = null;
+          sendRun();
+          send({ type: 'seek', generation, step: Math.min(Math.max(s.step, ...s.checkpoints.map((k) => k.step)), Math.max(0, Math.floor(c.step))) });
           trails.clear();
           return;
         case 'replay':
+          paused = true;
+          edge = null;
+          sendRun();
           send({ type: 'replay', generation });
           trails.clear();
           return;
         case 'reset':
+          // Back to the fork, paused, at a day a second.
+          rate = 86_400;
+          paused = true;
           if (seedScenario) load(seedScenario);
           selected = null;
           status = { kind: 'reset', detail: [] };
@@ -1805,12 +1980,16 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         seedNote: seedScenario.seedNote,
         frame: seedScenario.frame,
         epochJdTdb: seedScenario.epochJdTdb,
-        elapsedS: (s?.t ?? 0) + extrapolation(),
+        elapsedS: clock.shown,
+        t: s?.t ?? 0,
         step: s?.step ?? 0,
         dtS: s?.dt ?? 0,
         requestedRate: rate,
         achievedRate: s?.achievedRate ?? 0,
-        paused,
+        budgetBound: s?.budgetBound ?? false,
+        paused: lab.paused,
+        seekingS: seekingS ?? stopping,
+        standIn: s && standIn >= 0 ? { name: knownNames.get(s.ids[standIn] ?? '') ?? '', altitudeKm: standInAltitudeKm } : null,
         failure: s?.failure ?? null,
         bodies,
         selected,
@@ -1855,10 +2034,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           const a = s.ids.indexOf(m.from);
           const b = s.ids.indexOf(m.to);
           if (a < 0 || b < 0) return null;
-          const ahead = extrapolation();
-          const r = measureBetween(posNow(s, a, ahead), posNow(s, b, ahead), s.radius[b] ?? 0);
+          const r = measureBetween(posNow(s, a), posNow(s, b), s.radius[b] ?? 0);
           const c = m.via === null ? -1 : s.ids.indexOf(m.via);
-          return { from: m.from, to: m.to, distanceKm: r.distanceKm, lightS: r.lightS, angularSizeDeg: r.angularSize / DEG, via: c >= 0 ? m.via : null, separationDeg: c >= 0 ? separation(posNow(s, a, ahead), posNow(s, b, ahead), posNow(s, c, ahead)) / DEG : null };
+          return { from: m.from, to: m.to, distanceKm: r.distanceKm, lightS: r.lightS, angularSizeDeg: r.angularSize / DEG, via: c >= 0 ? m.via : null, separationDeg: c >= 0 ? separation(posNow(s, a), posNow(s, b), posNow(s, c)) / DEG : null };
         })(),
         graph: tracked ? { id: tracked.id, quantity: tracked.quantity, points: tracked.points, mergedInto: tracked.mergedInto } : null,
         presets: presetView,
@@ -1884,7 +2062,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       const rel = lastRelative;
       if (!active || !s || !v || !rel || !selected || placing) return false;
       const i = s.ids.indexOf(selected);
-      const a = i < 0 ? null : arrow(s, i, extrapolation(), arrowLen);
+      const a = i < 0 ? null : arrow(s, i, arrowLen);
       if (!a) return false;
       const tipRel = rel(toRender(a.tip[0], a.tip[1], a.tip[2], km()), km());
       const sp = v.toScreen(tipRel);
@@ -1910,7 +2088,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       if (Math.abs(denom) < 1e-9) return;
       const t = dot3(d.tipRel, d.normal) / denom;
       if (!(t > 0)) return;
-      const b = posNow(s, i, extrapolation());
+      const b = posNow(s, i);
       const body = rel(toRender(b[0], b[1], b[2], km()), km());
       d.vel = fromRender((ray.x * t - body.x) / d.len, (ray.y * t - body.y) / d.len, (ray.z * t - body.z) / d.len);
     },

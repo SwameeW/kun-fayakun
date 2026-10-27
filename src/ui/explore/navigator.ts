@@ -48,8 +48,8 @@ const PANEL_QUERY = '(min-width: 900px) and (min-height: 560px)';
 /** The navigator's Walk here, under each world it offers a walk on. */
 const WALK_HINTS = { moon: 'ui.universe.walk.hereMoon', mars: 'ui.universe.walk.hereMars', mercury: 'ui.universe.walk.hereMercury', venus: 'ui.universe.walk.hereVenus' } as const;
 
-/** `time`: the time machine's line (./time-control and photo mode's button), placed at the head of the body. */
-export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void, time: HTMLElement): Navigator {
+/** `time`: the time machine's line (./time-control and photo mode's button), placed at the head of the body; `placeDay` puts its date where given (null: in its line). */
+export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void, time: HTMLElement, placeDay: (slot: HTMLElement | null) => void = () => undefined): Navigator {
   const { i18n } = app;
   const panelQuery = window.matchMedia(PANEL_QUERY);
   const coarse = window.matchMedia('(pointer: coarse)');
@@ -320,7 +320,9 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   // Detail and Sound share a row, so the foot keeps its height and the list its room on a phone.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, h('div', { class: 'kf-nav-foot-row' }, quality.element, sound));
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, aboutSection, walkEntry, descentEntry, skySection, savedSection, starsEntry, labEntry, living, islamic, seen);
+  // On a phone's sheet the time machine's date sits under the list (its buttons stay above the scrolling part).
+  const daySlot = h('div', { class: 'kf-nav-day' });
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, daySlot, aboutSection, walkEntry, descentEntry, skySection, savedSection, starsEntry, labEntry, living, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -348,7 +350,8 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     const set = (el: HTMLElement, hidden: boolean): void => {
       if (el.hidden !== hidden) el.hidden = hidden;
     };
-    set(time, !expanded);
+    set(time, layout === 'panel' && !expanded);
+    set(daySlot, layout === 'panel' || !expanded);
     set(labSlot, !expanded || !inLab);
     set(starsSlot, !expanded || !inStars);
     set(map, !expanded || inStars);
@@ -368,6 +371,12 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     element.classList.toggle('is-expanded', expanded);
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
+    // The time machine heads the body in the panel; on a phone's sheet it sits above the scrolling part,
+    // folded or not, always in reach, with its date under the list.
+    if (layout === 'sheet') {
+      if (time.parentElement !== element) element.insertBefore(time, body);
+    } else if (body.firstElementChild !== time) body.prepend(time);
+    placeDay(layout === 'sheet' ? daySlot : null);
     show();
     for (const { row } of rows.values()) row.classList.toggle('is-chip', !expanded);
     if (!expanded) quality.close();
@@ -465,6 +474,12 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
       const now = inLab ? 'lab' : inStars ? 'stars' : null;
       if (inLab) lab.want(wasIn !== 'lab');
       if (inStars) stars.want(wasIn !== 'stars');
+      // The experiment's Reset joins the time machine's row once its panel has come (it comes with any experiment, folded or not).
+      const labPart = lab.part;
+      if (labPart) {
+        if (!labPart.reset.isConnected) time.querySelector('.kf-universe-time-buttons')?.append(labPart.reset);
+        labPart.reset.hidden = !inLab;
+      }
       // The experiment's panel runs folded too (a lesson's set-up waits on it); its figures only while it shows.
       lab.part?.update(view, expanded);
       if (expanded) {

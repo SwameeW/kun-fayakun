@@ -7,11 +7,16 @@
  * north), the frame of both JPL files. Time: Julian dates in TDB (./time converts from UTC).
  *
  * Planets: the Keplerian elements and rates of Standish and Williams' Table 1, solved with
- * Kepler's equation. The fit holds for 1800 to 2050 AD, and dates outside it are held at its
- * edge. The Earth row of that table is the Earth-Moon barycentre (EMB), not the Earth.
+ * Kepler's equation. The fit holds for 1800 to 2050 AD. The Earth row of that table is the
+ * Earth-Moon barycentre (EMB), not the Earth.
  * Moon: Horizons' geocentric positions, one row a day, interpolated with cubic Hermite
- * polynomials whose tangents come from five-point differences of the table. Outside the table
- * the Moon is held at its first or last row.
+ * polynomials whose tangents come from five-point differences of the table.
+ *
+ * Beyond the tables: once the published theories are installed (installTheories, ./analytic: its own
+ * lazy chunk), the Moon outside its table comes from Meeus's truncated ELP-2000/82 and the planets
+ * outside 1800 to 2050 from Standish's Table 2, each blended into its table over the table's last
+ * stretch (no jump at the seam), and validRange reports the theories' span. Until then (and for code
+ * that never installs them) dates outside are held at the tables' edges.
  */
 
 /** Anything with writable x, y and z, such as a three.js Vector3. */
@@ -86,23 +91,46 @@ const DEG = Math.PI / 180;
 const PLANET_T_MIN = -2;
 const PLANET_T_MAX = 0.5;
 
+/** The published theories beyond the tables (./analytic, which hands each table over to its theory at its ends). */
+export interface Theories {
+  range: JdRange;
+  /** The geocentric Moon (km); `table` gives the table's own (clamped to its rows). */
+  moon(moon: MoonFile, jd: number, out: Vec3, table: (moon: MoonFile, jd: number, out: Vec3) => Vec3): Vec3;
+  /** A planet's elements: `out` holds Table 1's (T held to its fit interval), made the long-span ones beyond it. */
+  elements(body: PlanetBody, jd: number, out: Elements): Elements;
+}
+let theories: Theories | null = null;
+
+/** Installs the published theories for every ephemeris (the explorer's, the laboratory's seeds, the qibla and new moon's). */
+export function installTheories(t: Theories | null): void {
+  theories = t;
+}
+
 export function solveKepler(meanAnomaly: number, e: number): number {
   let E = meanAnomaly + e * Math.sin(meanAnomaly);
   for (let i = 0; i < 8; i += 1) E -= (E - e * Math.sin(E) - meanAnomaly) / (1 - e * Math.cos(E));
   return E;
 }
 
-/** The dates the data covers. Positions outside them are held at the nearest edge. */
-export function validRange(moon: MoonFile): { planets: JdRange; moon: JdRange } {
+/** Table 1's fit interval as dates (TDB Julian dates). */
+export const PLANET_TABLE: JdRange = { startJd: J2000 + PLANET_T_MIN * DAYS_PER_CENTURY, endJd: J2000 + PLANET_T_MAX * DAYS_PER_CENTURY };
+
+/** The tables' own spans: Table 1's fit and the Moon's rows. */
+export function tableRange(moon: MoonFile): { planets: JdRange; moon: JdRange } {
   return {
-    planets: { startJd: J2000 + PLANET_T_MIN * DAYS_PER_CENTURY, endJd: J2000 + PLANET_T_MAX * DAYS_PER_CENTURY },
+    planets: PLANET_TABLE,
     moon: { startJd: moon.startJdTdb, endJd: moon.startJdTdb + (moon.count - 1) * moon.stepDays },
   };
 }
 
+/** The dates positions are good for: the tables', or the theories' once installed. Outside them positions are held at the nearest edge. */
+export function validRange(moon: MoonFile): { planets: JdRange; moon: JdRange } {
+  return theories ? { planets: theories.range, moon: theories.range } : tableRange(moon);
+}
+
 /**
- * The body's fitted elements on the date (a in au, angles in degrees). T is clamped to the
- * table's fit interval, because the linear rates do not hold outside it.
+ * The body's elements on the date (a in au, angles in degrees): Table 1's, with T clamped to its fit
+ * interval (its linear rates do not hold outside it); beyond it, once installed, the long-span ones.
  */
 export function elementsAt(body: PlanetBody, jd: number, out: Elements = { a: 0, e: 0, I: 0, L: 0, varpi: 0, Omega: 0 }): Elements {
   const T = Math.min(PLANET_T_MAX, Math.max(PLANET_T_MIN, (jd - J2000) / DAYS_PER_CENTURY));
@@ -114,7 +142,7 @@ export function elementsAt(body: PlanetBody, jd: number, out: Elements = { a: 0,
   out.L = el.L + rate.L * T;
   out.varpi = el.varpi + rate.varpi * T;
   out.Omega = el.Omega + rate.Omega * T;
-  return out;
+  return theories ? theories.elements(body, jd, out) : out;
 }
 
 /** Heliocentric position for a set of elements, in the elements' unit (au), ecliptic J2000. */
@@ -188,8 +216,13 @@ function moonTangent(rows: MoonFile['positionsKm'], count: number, k: number, ax
   return sum / 12;
 }
 
-/** The geocentric Moon in km by cubic Hermite interpolation, clamped to the table's first and last rows. */
+/** The geocentric Moon in km: from the table, or (installed) beyond it from its theory. */
 export function moonHermiteKm(moon: MoonFile, jd: number, out: Vec3): Vec3 {
+  return theories ? theories.moon(moon, jd, out, moonTableKm) : moonTableKm(moon, jd, out);
+}
+
+/** The geocentric Moon in km by cubic Hermite interpolation, clamped to the table's first and last rows. */
+function moonTableKm(moon: MoonFile, jd: number, out: Vec3): Vec3 {
   const rows = moon.positionsKm;
   const count = Math.min(moon.count, rows.length);
   if (count < 5) return moonLinearKm(moon, jd, out);

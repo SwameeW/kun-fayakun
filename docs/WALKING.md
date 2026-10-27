@@ -43,6 +43,11 @@ stand on; their atmospheres are GR-6.
   repeats), it goes no further; pressed during the climb, it stops the climb where it is. Only after a
   pause does one Esc leave the explorer, as in orbit. In mouse-look the browser's own first Esc lets
   the pointer go.
+- **Time on foot.** From the descent to back in orbit (and on the way down through an atmosphere)
+  the time machine runs at most an hour a second (`FOOT_MAX_RATE`): a day passes in 24 seconds, so
+  the sky and the ground brighten and darken once in that time, never several times a second (at a
+  week a second the Sun would cross the horizon 14 times a second: a strobe). Faster stops there and
+  says why; the rate chosen before comes back in orbit.
 - **Moving.**
   - Keys:
     - W A S D walk (1.4 m/s), and step aside;

@@ -29,6 +29,8 @@ styles(css);
 
 export interface LabPanel {
   readonly element: HTMLElement;
+  /** The time machine's Reset (back to the fork, paused), for its row (./time-control): shown while an experiment runs. */
+  readonly reset: HTMLButtonElement;
   update(view: UniverseView, slow: boolean): void;
 }
 
@@ -123,6 +125,14 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   /** A crater's depth: metres below a kilometre (the distance format starts at whole kilometres). */
   const depthText = (kmValue: number): string => (kmValue < 1 ? f.keep(i18n.t('ui.universe.lab.metres', { value: f.number(kmValue * 1000, 0) })) : f.keep(i18n.t('ui.universe.lab.km', { value: f.number(kmValue, kmValue < 10 ? 1 : 0) })));
   const days = (s: number): string => f.keep(i18n.t('ui.universe.lab.days', { value: f.number(s / 86_400, s < 864_000 ? 2 : 1) }));
+  /** Simulated time each real second, in the unit it reads best in (seconds, minutes, hours or days). */
+  const perSecond = (rate: number): string => {
+    const r = Math.abs(rate);
+    if (r >= 86_400) return days(r);
+    if (r >= 3600) return f.keep(i18n.t('ui.universe.lab.hours', { value: f.number(r / 3600, r < 36_000 ? 2 : 1) }));
+    if (r >= 60) return f.keep(i18n.t('ui.universe.lab.minutes', { value: f.number(r / 60, r < 600 ? 2 : 1) }));
+    return f.keep(i18n.t('ui.universe.lab.seconds', { value: f.number(r, r < 10 ? 2 : 1) }));
+  };
   const speed = (v: number): string => f.keep(i18n.t('ui.universe.lab.kms', { value: f.number(v, v < 10 ? 3 : 2) }));
   const duration = (sec: number): string => (sec < 2 * 86_400 ? f.keep(i18n.t('ui.universe.lab.hours', { value: f.number(sec / 3600, sec < 36_000 ? 2 : 1) })) : sec < 2 * 365.25 * 86_400 ? days(sec) : f.keep(i18n.t('ui.universe.lab.years', { value: f.number(sec / (365.25 * 86_400), 2) })));
   const degrees = (d: number): string => f.number(d, Math.abs(d) < 10 ? 2 : 1);
@@ -801,6 +811,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const selectedBody = (): UniverseLabBody | undefined => lab?.bodies.find((b) => b.id === selectedId);
   /** The inspector's fields hold what the visitor types: refilled only when another body is chosen. */
   let filledFor: string | null = null;
+  /** The hold as last reported for the body shown: the box follows the experiment only when that changes (a tick the worker has not yet had is not undone). */
+  let fixedShown = '';
   /**
    * A choice made here and not yet in the experiment's view: until it is, the inspector stays hidden,
    * so nothing typed in that moment (a long one on a slow device) goes to the body chosen before.
@@ -857,8 +869,15 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     if (bodies.some((b) => b.id === keep) || (keep === '' && blank !== null)) s.value = keep;
   };
 
+  // The time machine's Reset, joining its row while an experiment runs: back to the fork, paused.
+  const reset = h('button', { type: 'button', class: 'kf-universe-time-now', 'aria-label': i18n.t('ui.universe.time.resetLabel'), title: i18n.t('ui.universe.time.resetLabel'), 'data-testid': 'universe-time-reset', hidden: true }, i18n.t('ui.universe.time.reset'));
+  reset.addEventListener('click', () => {
+    send({ kind: 'reset' });
+  });
+
   return {
     element,
+    reset,
     update(view, slow) {
       lab = view.lab;
       element.hidden = !lab;
@@ -872,7 +891,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       lessons.update(l);
       write(clock, i18n.t('ui.universe.lab.clock', { elapsed: days(l.elapsedS), date: new Date((l.epochJdTdb - julianDateUtc(0)) * 86_400_000 + l.elapsedS * 1000).toISOString().slice(0, 10) }));
       if (!slow) return;
-      write(rates, i18n.t(l.paused ? 'ui.universe.lab.paused' : l.achievedRate < 0.9 * l.requestedRate ? 'ui.universe.lab.ratesSlow' : 'ui.universe.lab.rates', { requested: days(l.requestedRate), achieved: days(l.achievedRate), step: f.number(l.dtS / 60, 1) }));
+      // The rate drawn is the one asked for; only when the worker's budget is spent is the rate achieved the most possible here.
+      const back = l.requestedRate < 0;
+      const ratesKey = l.paused ? 'paused' : l.budgetBound ? (back ? 'ratesBackSlow' : 'ratesSlow') : back ? 'ratesBack' : 'rates';
+      write(rates, i18n.t(`ui.universe.lab.${ratesKey}`, { requested: perSecond(l.requestedRate), achieved: perSecond(l.achievedRate), step: f.number(l.dtS / 60, 1) }));
       failure.hidden = l.failure === null;
       if (l.failure) write(failure, i18n.t('ui.universe.lab.failure'));
       undo.disabled = l.undoable === 0;
@@ -1059,7 +1081,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         write(warning, warn);
         remove.hidden = b.persistent;
         follow.hidden = !b.builtIn;
-        fixedBox.checked = b.fixed;
+        if (`${b.id}:${String(b.fixed)}` !== fixedShown) {
+          fixedShown = `${b.id}:${String(b.fixed)}`;
+          fixedBox.checked = b.fixed;
+        }
         if (filledFor !== b.id) {
           filledFor = b.id;
           rename.input.value = nameOf(b);
@@ -1187,11 +1212,12 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           ...(l.discarded > 0 ? [h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.discarded', { count: l.discarded }))] : []),
         );
       }
+      // The latest six, oldest first (a new one joins the foot): never rebuilt under the pointer or the focus, so a row is not moved as it is chosen.
       const ckey = l.checkpoints.map((c) => c.step).join('|');
-      if (ckey !== checkpointKey) {
+      if (ckey !== checkpointKey && !checkpoints.matches(':hover') && !checkpoints.contains(document.activeElement)) {
         checkpointKey = ckey;
         fillCheckpoints(
-          l.checkpoints.slice(-6).reverse().map((c) => ({
+          l.checkpoints.slice(-6).map((c) => ({
             key: `${c.step}:${c.t}`,
             make: () =>
               h('li', {}, button(i18n.t('ui.universe.lab.goBack', { when: days(c.t) }), `lab-checkpoint-${c.step}`, () => {
