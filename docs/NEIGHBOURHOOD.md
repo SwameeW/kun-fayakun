@@ -94,9 +94,10 @@ packs and manifest (`scripts/stars/catalogue.py`) and `black-holes.json`
   The packs stream as the detail and the faintest magnitude call for them (a desktop at High all 2.5
   million, a phone 150,000) and are decoded in a worker. The files' sha256 and the queries are in the
   manifest; the validator checks every pack whole, in order and unrepeated.
-- **Not used, waiting for the owner:** Gaia's catalogues (the Fifth Catalogue of Nearby Stars, the
-  Gaia Catalogue of Nearby Stars: Wolf 359, TRAPPIST-1 and Luhman 16 among them) are CC BY-NC 3.0 IGO,
-  non-commercial; HYG and AT-HYG are CC BY-SA 4.0 (AT-HYG carries Gaia's data too).
+- **Not used, by the owner's choice (2026-10-27):** Gaia's catalogues (the Fifth Catalogue of Nearby
+  Stars, the Gaia Catalogue of Nearby Stars: Wolf 359, TRAPPIST-1 and Luhman 16 among them), CC BY-NC
+  3.0 IGO, non-commercial; HYG and AT-HYG, CC BY-SA 4.0 (AT-HYG carries Gaia's data too). The stars
+  stay Hipparcos's and Tycho-2's.
 - **Names.** The IAU's Catalog of Star Names (WGSN), by Hipparcos number; a planet host with no IAU
   name takes the archive's (Lalande 21185 is "GJ 411").
 - **Planets.** The NASA Exoplanet Archive's Planetary Systems Composite Parameters, for the 183
@@ -345,7 +346,7 @@ hundredths of a millisecond; it was 4 ms every frame).
 
 - The stars' motions (they are where Hipparcos measured them, epoch 1991.25).
 - Stars of the Gaia catalogue (many faint nearby stars, Wolf 359 and TRAPPIST-1 among them, are not in
-  Hipparcos): its licence (CC BY-NC 3.0 IGO) waits for the owner.
+  Hipparcos): left out by the owner's choice (2026-10-27; its licence is CC BY-NC 3.0 IGO).
 - Binary orbits; generated systems (IS-5); the Sun up close drawn as the solar system's Sun.
 - Tycho-2's stars in the solar system's sky (it shows the Bright Star Catalogue's, through the same
   star light).
