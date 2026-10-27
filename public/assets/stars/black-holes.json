@@ -102,6 +102,7 @@
     "source": "planck-2018-cosmology",
     "how": "the comoving distance of redshift 2.219 in Planck 2018's cosmology (H0 67.66, matter 0.30966), as the survey's galaxies are placed"
    },
+   "lookbackGyr": 10.84,
    "schwarzschildKm": 194914505000.0,
    "schwarzschildAu": 1302.9229903942282
   },

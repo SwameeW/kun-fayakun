@@ -25,7 +25,7 @@
  * pixel-ratio cap. Notes about what the camera is near come from ./discoveries.
  */
 
-import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
+import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D, type PerspectiveCamera } from 'three/webgpu';
 import { createEphemeris, installTheories, tableRange, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { obliquityRad, PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import type { RotatingBody } from '../astro/rotation';
@@ -463,6 +463,9 @@ export default function create(): UniverseModule {
   let hoodShown = false;
   let hoodDip: { into: boolean; t: number; switched: boolean } | null = null;
   let hoodVeil = 1;
+  /** Still wanted when it has loaded (Esc calls it off); Esc held until this time (ms) after a switch. */
+  let hoodWanted = false;
+  let hoodHeld = 0;
   /** The orbit a walk's descent left (its body, the direction from it, render frame, and the height), to climb back to. */
   let walkReturn: { body: BodyId; dir: Km; altitudeKm: number } | null = null;
   let walkRefused = false;
@@ -527,6 +530,15 @@ export default function create(): UniverseModule {
   /** The clear part's offset from the middle of the view, CSS px, eased so a readout growing a line never jolts the view. */
   let offsetPx = 0;
   let offsetXPx = 0;
+  /** Turns the camera (its fov set) so what it looks at sits in the middle of the clear part, eased by `settle` (level: looking exactly where it faces). */
+  const inset = (camera: PerspectiveCamera, viewportPx: number, settle: number, level: boolean): void => {
+    const pxPerTan = viewportPx / (2 * Math.tan(MathUtils.degToRad(camera.fov / 2)));
+    offsetPx += ((level ? 0 : (insets.bottom - insets.top) / 2) - offsetPx) * settle;
+    offsetXPx += ((level ? 0 : (insets.right - insets.left) / 2) - offsetXPx) * settle;
+    if (level) return;
+    camera.rotateX(-Math.atan(offsetPx / pxPerTan));
+    camera.rotateY(-Math.atan(offsetXPx / pxPerTan));
+  };
 
   /* Detail: the rung running, the governor, what the device allows, and the visitor's wish. */
   let detail: ExploreDetail = DETAIL.high;
@@ -1006,6 +1018,7 @@ export default function create(): UniverseModule {
     }
     // The detail's share of the sky: its brightest stars (the catalogue is sorted by magnitude).
     if (stars) stars.object.count = Math.min(stars.count, detail.starCount);
+    hood?.setDetail(detail.tier, detail.starCount);
     // On foot, the ground's illustrative detail.
     for (const id of WALK_IDS) walks[id]?.setDetail(detail.groundDetail === 'full');
     if (entered && ctx) {
@@ -1386,6 +1399,7 @@ export default function create(): UniverseModule {
    */
   const startStars = (): void => {
     const c = ctx;
+    hoodWanted = true;
     if (!c || !labInputs || lab?.active || hoodShown || hoodLoading) return;
     if (walk?.active) endWalk(true);
     if (descent?.active) endDescent(true);
@@ -1407,10 +1421,11 @@ export default function create(): UniverseModule {
     void Promise.all([import('./neighbourhood'), c.assets.json<NeighbourhoodFile>('assets/stars/neighbourhood.json'), c.assets.json<LocalGroupFile>('assets/stars/localgroup.json')])
       .then(([{ createNeighbourhood }, file, localGroup]) => {
         hoodLoading = false;
-        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN }, { localGroup, loadWeb, detail: detail.groundDetail });
+        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN }, { localGroup, loadWeb, detail: detail.groundDetail, ctx: c });
         hood = made;
+        made.setDetail(detail.tier, detail.starCount);
         starsRoot.add(...made.objects);
-        begin(made);
+        if (hoodWanted) begin(made);
       })
       .catch(() => {
         hoodLoading = false;
@@ -1635,6 +1650,7 @@ export default function create(): UniverseModule {
       if (!hdip.switched && hdip.t >= WALK_DIP.downS) {
         hdip.switched = true;
         hoodCut = true;
+        hoodHeld = performance.now() + 600;
         hoodShown = hdip.into;
         if (!hdip.into) hood?.exit();
         root.visible = !hoodShown;
@@ -1647,16 +1663,17 @@ export default function create(): UniverseModule {
       const camera = c.camera;
       // Points beyond the stars are sized in device pixels from their distance: the screen's focal length.
       const focalPx = (c.renderer.domElement.clientHeight * c.renderer.getPixelRatio()) / (2 * Math.tan(MathUtils.degToRad((lensFov ?? DEFAULT_FOV) / 2)));
-      const pose = hood.update(dt, jdTdb - 2451545, camera, focalPx);
+      const pose = hood.update(dt, jdTdb - 2451545, camera, focalPx, insets);
       camera.position.set(0, 0, 0);
       target.set(...pose.forward);
       up.set(...pose.up);
       look.lookAt(eye, target, up);
       camera.quaternion.setFromRotationMatrix(look);
+      camera.fov = lensFov ?? DEFAULT_FOV;
+      inset(camera, c.renderer.domElement.clientHeight || 1, hoodCut ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS), false);
       camera.up.copy(up);
       camera.near = pose.near;
       camera.far = pose.far;
-      camera.fov = lensFov ?? DEFAULT_FOV;
       camera.updateProjectionMatrix();
       camera.updateMatrixWorld();
       c.exposure.setTarget(1);
@@ -1906,21 +1923,13 @@ export default function create(): UniverseModule {
     }
     // Photo mode's lens, when chosen, in place of the explorer's own framing (ledger CR-2).
     const fov = lensFov ?? navOut.fov;
-    const tanHalf = Math.tan(MathUtils.degToRad(fov / 2));
-    const pxPerTan = viewportPx / (2 * tanHalf);
-    const settle = entering || walkCut ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS);
+    const pxPerTan = viewportPx / (2 * Math.tan(MathUtils.degToRad(fov / 2)));
+    camera.fov = fov;
     // On foot the eye looks exactly where it faces: a turn about its tipped axes would tilt the horizon.
-    const eyeLevel = walking || descending;
-    offsetPx += ((eyeLevel ? 0 : (insets.bottom - insets.top) / 2) - offsetPx) * settle;
-    offsetXPx += ((eyeLevel ? 0 : (insets.right - insets.left) / 2) - offsetXPx) * settle;
-    if (!eyeLevel) {
-      camera.rotateX(-Math.atan(offsetPx / pxPerTan));
-      camera.rotateY(-Math.atan(offsetXPx / pxPerTan));
-    }
+    inset(camera, viewportPx, entering || walkCut ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS), walking || descending);
     camera.up.copy(up);
     camera.near = lens.near;
     camera.far = lens.far;
-    camera.fov = fov;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     projected.set(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -2020,7 +2029,7 @@ export default function create(): UniverseModule {
         earthTiles.setDate(lastWholeDay(day * 86_400_000 + 43_200_000));
       }
       // Scene pixels: the canvas's, at the internal render scale.
-      const scenePxPerTan = (c.renderer.domElement.height * renderScale) / (2 * tanHalf);
+      const scenePxPerTan = (c.renderer.domElement.height * renderScale * pxPerTan) / viewportPx;
       // On foot, aimed where the walker stands (looking along the ground, the view's centre may miss the globe).
       const standing = walking && walkWorld === 'earth' ? (walk?.where() ?? null) : null;
       const aim =
@@ -3157,7 +3166,7 @@ export default function create(): UniverseModule {
         },
         pan: (dx, dy) => {
           if (hoodShown) {
-            hood?.drag(dx, dy);
+            hood?.pan(dx, dy);
             return;
           }
           if (walk?.active) {
@@ -3171,9 +3180,9 @@ export default function create(): UniverseModule {
           stretch.steered = true;
           nav.pan(w, dx, dy);
         },
-        zoom: (dLn) => {
+        zoom: (dLn, x, y) => {
           if (hoodShown) {
-            hood?.zoom(dLn);
+            hood?.zoom(dLn, x, y);
             return;
           }
           // On foot the view narrows and widens (binoculars to a wide lens).
@@ -3186,6 +3195,11 @@ export default function create(): UniverseModule {
           // The left arrow turns the walker left (its azimuth is +1, for the orbit's own sense).
           walkInput.turn = -azimuth;
           walkInput.tip = elevation;
+          // Among the stars the keys are the stars' camera's (the solar system's waits).
+          if (hoodShown) {
+            hood?.turn(azimuth, elevation, zoom);
+            return;
+          }
           if (walk?.active || descent?.active) return;
           if (azimuth !== 0 || elevation !== 0 || zoom !== 0) stretch.steered = true;
           nav.setOrbitKeys(azimuth, elevation, zoom);
@@ -3198,13 +3212,28 @@ export default function create(): UniverseModule {
           walkInput.rover = ride === true;
           // On foot Q and E turn, as the arrows do.
           walkTurnKeys = roll;
+          if (hoodShown) {
+            hood?.keys(move, roll, boost);
+            return;
+          }
           if (walk?.active || descent?.active) return;
           if (move.x !== 0 || move.y !== 0 || move.z !== 0 || roll !== 0) stretch.steered = true;
           nav.setFlightKeys(w, move, roll, boost);
         },
         stop: () => {
-          if (hoodShown) {
-            if (hood?.travelling) hood.stop();
+          // Among the stars, or on the way in or out: Esc stops a flight, then goes back to the solar
+          // system; on the way in it turns round, while they load it calls them off. A switch holds Esc a
+          // little while (a burst or a held key goes no further).
+          if (hoodShown || hoodDip || hoodLoading) {
+            if (performance.now() < hoodHeld || (hoodDip && !hoodDip.into)) return true;
+            if (hoodDip && !hoodDip.switched) {
+              hoodDip = { into: false, t: WALK_DIP.downS + WALK_DIP.upS * (1 - hoodDip.t / WALK_DIP.downS), switched: true };
+              hood?.exit();
+              hoodHeld = performance.now() + 1500;
+            } else if (hoodLoading) {
+              hoodWanted = false;
+              hoodHeld = performance.now() + 600;
+            } else if (hood?.travelling) hood.stop();
             else endStars();
             return true;
           }
@@ -3249,6 +3278,10 @@ export default function create(): UniverseModule {
         // What is shown, not what is asked for: landing, the camera still waits in orbit.
         onFoot: () => (walking ? 'ground' : descending ? 'air' : null),
         orbit: () => {
+          if (hoodShown) {
+            hood?.toggleMode();
+            return;
+          }
           if (walk?.active) {
             endWalk();
             return;
@@ -3270,8 +3303,9 @@ export default function create(): UniverseModule {
         },
         hover: (x, y) => {
           if (lab?.active) lab.hover(x, y);
+          if (hoodShown) hood?.hover(x, y);
         },
-        tap: (x, y) => (lab?.active ? lab.tap(x, y) : false),
+        tap: (x, y) => (lab?.active ? lab.tap(x, y) : hoodShown ? (hood?.tap(x, y) ?? false) : false),
         travel: (id) => {
           nav.flyTo(w, id);
           // The interface keeps the address in step (app.focusBody), as for a choice from its list.
@@ -3455,6 +3489,18 @@ export default function create(): UniverseModule {
           return;
         case 'starsPlace':
           hood?.goToPlace(command.place);
+          return;
+        case 'starsLight':
+          hood?.setStarlight(command.brightness, command.faintest);
+          return;
+        case 'starsCamera':
+          hood?.setMode(command.mode);
+          return;
+        case 'starsFigures':
+          hood?.setFigures(command.on);
+          return;
+        case 'starsFind':
+          hood?.find(command.name);
           return;
         case 'sound':
           soundView.on = command.on;

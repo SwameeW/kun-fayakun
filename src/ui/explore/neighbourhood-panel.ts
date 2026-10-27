@@ -33,8 +33,9 @@ type PlaceId = UniverseNeighbourhood['places'][number]['id'];
 const HR = { bv: [-0.4, 2.1], mag: [-8, 17], width: 600, height: 440, pad: { left: 56, right: 14, top: 14, bottom: 46 }, fontPx: 11.5 } as const;
 /** The Sun among them: its absolute magnitude and colour (data/constants.json's, as the scene takes them). */
 const SUN_ON_HR = { bv: 0.653, mag: 4.81 } as const;
-/** Light years per kiloparsec. */
+/** Light years per kiloparsec; km per parsec (IAU 2015 B2). */
 const LY_PER_KPC = 3261.5638;
+const KM_PER_PC = (648_000 / Math.PI) * 149_597_870.7;
 
 export interface NeighbourhoodPanel {
   readonly element: HTMLElement;
@@ -70,6 +71,44 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
   back.addEventListener('click', () => {
     app.earthCommand({ kind: 'starsEnd' });
   });
+  // The camera: free look or orbit round the star in view, its speed when flying, its keys.
+  const modeButton = (mode: 'look' | 'orbit'): HTMLButtonElement => {
+    const b = h('button', { type: 'button', class: 'kf-living-choice', 'aria-pressed': 'false', 'data-testid': `stars-camera-${mode}` }, i18n.t(`ui.universe.stars.camera.${mode}`));
+    b.addEventListener('click', () => {
+      app.earthCommand({ kind: 'starsCamera', mode });
+    });
+    return b;
+  };
+  const lookButton = modeButton('look');
+  const orbitButton = modeButton('orbit');
+  const speed = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-speed', hidden: true });
+  // Star light: the visitor's brightness (a multiple, on a scale of halvings) and the faintest magnitude drawn.
+  const brightnessId = uniqueId('stars-brightness');
+  const faintestId = uniqueId('stars-faintest');
+  const brightness = h('input', { id: brightnessId, type: 'range', min: '-2', max: '2', step: '0.25', value: '0', class: 'kf-stars-range', 'data-testid': 'stars-brightness' });
+  const faintest = h('input', { id: faintestId, type: 'range', min: '4', max: '12.5', step: '0.5', value: '8.5', class: 'kf-stars-range', 'data-testid': 'stars-faintest' });
+  const brightnessValue = h('output', { for: brightnessId, class: 'kf-stars-value', 'data-testid': 'stars-brightness-value' });
+  const faintestValue = h('output', { for: faintestId, class: 'kf-stars-value', 'data-testid': 'stars-faintest-value' });
+  const lightCount = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-count' });
+  const sendLight = (): void => {
+    app.earthCommand({ kind: 'starsLight', brightness: 2 ** Number(brightness.value), faintest: Number(faintest.value) });
+  };
+  brightness.addEventListener('input', sendLight);
+  faintest.addEventListener('input', sendLight);
+  const figuresSwitch = h('button', { type: 'button', class: 'kf-living-switch', 'aria-pressed': 'true', 'data-testid': 'stars-figures' }, h('span', { class: 'kf-living-switch-mark', 'aria-hidden': 'true' }), i18n.t('ui.universe.stars.figures'));
+  figuresSwitch.addEventListener('click', () => {
+    app.earthCommand({ kind: 'starsFigures', on: figuresSwitch.getAttribute('aria-pressed') !== 'true' });
+  });
+  // The black holes: a way to each, and, when one is in view, what is known and what is a model.
+  const holesList = h('ul', { class: 'kf-living-places', 'data-testid': 'stars-black-holes' });
+  const holeHere = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-bh-here', hidden: true });
+  const holeModel = h('p', { class: 'kf-living-hint kf-stars-model', 'data-testid': 'stars-bh-model', hidden: true });
+  const holeNotes = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-bh-observation', hidden: true });
+  let holesKey = '';
+  // What is under the pointer (or a tap), beside it.
+  const tip = h('div', { class: 'kf-stars-tip', 'data-testid': 'stars-hover', 'aria-hidden': 'true', hidden: true });
+  document.body.append(tip);
+  const plxNote = h('p', { class: 'kf-living-hint', 'data-testid': 'stars-plx-note', hidden: true });
   // Search: names (the IAU's, the planet hosts'), Hipparcos and Bright Star numbers.
   const searchId = uniqueId('stars-search');
   const search = h('input', { id: searchId, type: 'search', class: 'kf-living-input', autocomplete: 'off', 'data-testid': 'stars-search' });
@@ -236,8 +275,15 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     h('h3', { class: 'kf-living-notes-title' }, i18n.t('ui.universe.stars.title')),
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.intro'), helpButton(app, 'stars', i18n.t('ui.universe.stars.title'))),
     withHelp(app, where, 'lightYear', i18n.t('ui.help.label.lightYear')),
+    h('div', { class: 'kf-lab-row', role: 'group', 'aria-label': i18n.t('ui.universe.stars.camera.label') }, lookButton, orbitButton),
+    speed,
+    h('p', { class: 'kf-living-hint', 'data-testid': 'stars-keys' }, i18n.t('ui.universe.stars.camera.keys')),
     name,
     facts,
+    holeHere,
+    holeModel,
+    holeNotes,
+    plxNote,
     archiveNote,
     planetsTitle,
     planets,
@@ -246,6 +292,15 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     h('div', { class: 'kf-living-group' }, withHelp(app, h('label', { class: 'kf-living-label', for: searchId }, i18n.t('ui.universe.stars.search')), 'starsSearch'), search, results),
     nearestTitle,
     nearestList,
+    h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.light.title')),
+    h('div', { class: 'kf-stars-control' }, h('label', { class: 'kf-living-label', for: brightnessId }, i18n.t('ui.universe.stars.light.brightness')), brightnessValue, brightness),
+    h('div', { class: 'kf-stars-control' }, h('label', { class: 'kf-living-label', for: faintestId }, i18n.t('ui.universe.stars.light.faintest')), faintestValue, faintest),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.light.note')),
+    lightCount,
+    figuresSwitch,
+    h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.holes.title')),
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.stars.holes.intro')),
+    holesList,
     withHelp(app, h('h4', { class: 'kf-living-subtitle' }, i18n.t('ui.universe.stars.hr.title')), 'hr'),
     hr,
     hrCaption,
@@ -287,8 +342,50 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
     update(view) {
       const n = view.neighbourhood;
       element.hidden = n === null;
-      if (!n) return;
+      if (!n) {
+        tip.hidden = true;
+        return;
+      }
       stop.hidden = !n.travelling;
+      // The camera's way of looking, and its speed in flight (light years a second and the speed of light's multiples; km a second when slow).
+      lookButton.setAttribute('aria-pressed', String(n.camera.mode === 'look'));
+      orbitButton.setAttribute('aria-pressed', String(n.camera.mode === 'orbit'));
+      const lyPerS = n.camera.speedPcPerS * (n.fromSunPc > 0 ? n.fromSunLy / n.fromSunPc : 3.2616);
+      speed.hidden = n.camera.speedPcPerS <= 0;
+      if (!speed.hidden)
+        write(speed, lyPerS >= 1e-4 ? i18n.t('ui.universe.stars.camera.speed', { ly: f.number(lyPerS, lyPerS < 1 ? 4 : 1), c: lyWordsPlain(Math.round(lyPerS * 31_557_600)) }) : i18n.t('ui.universe.stars.camera.speedKm', { km: lyWordsPlain(Math.round(n.camera.speedPcPerS * KM_PER_PC)) }));
+      // Star light: the sliders follow the view unless being moved.
+      if (document.activeElement !== brightness) brightness.value = String(Math.round(Math.log2(n.starlight.brightness) * 4) / 4);
+      if (document.activeElement !== faintest) faintest.value = String(n.starlight.faintest);
+      write(brightnessValue, i18n.t('ui.universe.stars.light.brightnessValue', { n: f.number(n.starlight.brightness, n.starlight.brightness < 1 ? 2 : 1) }));
+      write(faintestValue, i18n.t('ui.universe.stars.light.faintestValue', { n: f.number(n.starlight.faintest, 1) }));
+      write(lightCount, i18n.t('ui.universe.stars.light.count', { placed: lyWordsPlain(n.stars.placed), far: lyWordsPlain(n.stars.far) }));
+      figuresSwitch.setAttribute('aria-pressed', String(n.figures));
+      // The black holes, each a way there.
+      const hk = n.blackHoles.map((x) => x.id).join('|');
+      if (hk !== holesKey) {
+        holesKey = hk;
+        holesList.replaceChildren(
+          ...n.blackHoles.map((x) => {
+            const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': `stars-bh-${x.id}` }, h('span', { class: 'kf-living-place-name' }, x.name), h('span', { class: 'kf-living-place-where' }, i18n.t('ui.universe.stars.lyAway', { ly: lyWords(x.distPc * (LY_PER_KPC / 1000)) })));
+            b.addEventListener('click', () => {
+              app.earthCommand({ kind: 'starsPlace', place: `bh:${x.id}` });
+            });
+            return h('li', {}, b);
+          }),
+        );
+      }
+      // What is under the pointer, beside it (not over the panel).
+      const hv = n.hover;
+      tip.hidden = hv === null || element.contains(document.elementFromPoint(hv.x, hv.y));
+      if (hv && !tip.hidden) {
+        const parts = [hv.hole ? i18n.t('ui.universe.stars.hover.hole') : null, hv.distLy === null ? null : i18n.t('ui.universe.stars.hover.distance', { ly: lyWords(hv.distLy) }), hv.spType, hv.mag === null ? null : i18n.t('ui.universe.stars.hover.mag', { m: f.number(hv.mag, 1) })].filter((p): p is string => p !== null);
+        write(tip, `${hv.name} · ${parts.join(' · ')}`);
+        tip.style.transform = `translate(${Math.round(Math.min(hv.x + 14, window.innerWidth - tip.offsetWidth - 8)).toString()}px, ${Math.round(Math.min(hv.y + 14, window.innerHeight - tip.offsetHeight - 8)).toString()}px)`;
+      }
+      const bh = n.blackHole;
+      holeHere.hidden = bh === null;
+      if (bh) write(holeHere, i18n.t('ui.universe.stars.hole.here', { n: f.number(bh.cameraRs, bh.cameraRs < 10 ? 2 : 1), d: bh.rsKm * bh.cameraRs < 1e7 ? i18n.t('ui.universe.stars.hole.rsKm', { km: lyWordsPlain(Math.round(bh.rsKm * bh.cameraRs)) }) : i18n.t('ui.universe.stars.hole.rsAu', { au: f.number(bh.rsAu * bh.cameraRs, 2), km: f.number((bh.rsKm * bh.cameraRs) / 1e6, 1) }) }));
       write(where, n.fromSunPc < 1000 ? i18n.t('ui.universe.stars.where', { ly: f.number(n.fromSunLy, n.fromSunLy < 10 ? 2 : 1), pc: pc(n.fromSunPc) }) : i18n.t('ui.universe.stars.whereFar', { ly: lyWords(n.fromSunLy), pc: pcWords(n.fromSunPc) }));
       write(scaleNote, n.scale === 'stars' ? '' : n.scale === 'universe' && n.webGalaxies === 0 ? i18n.t('ui.universe.stars.beyond.scale.loading') : i18n.t(`ui.universe.stars.beyond.scale.${n.scale}`, { count: f.number(n.webGalaxies, 0) }));
       const pk = n.places.map((x) => x.id).join('|');
@@ -309,6 +406,14 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
         resultsKey = rk;
         results.replaceChildren(
           ...n.results.map((r) => {
+            if (r.hole !== null) {
+              const id = r.hole;
+              const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': `stars-result-bh-${id}` }, h('span', { class: 'kf-living-place-name' }, r.name), h('span', { class: 'kf-living-place-where' }, i18n.t('ui.universe.stars.holeAway', { ly: lyWords((r.distPc ?? 0) * (LY_PER_KPC / 1000)) })));
+              b.addEventListener('click', () => {
+                app.earthCommand({ kind: 'starsPlace', place: `bh:${id}` });
+              });
+              return h('li', {}, b);
+            }
             if (r.galaxy !== null) {
               const galaxy = r.galaxy;
               const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': `stars-result-galaxy-${galaxy.replace(/\W+/gu, '-')}` }, h('span', { class: 'kf-living-place-name' }, r.name), h('span', { class: 'kf-living-place-where' }, i18n.t('ui.universe.stars.galaxyAway', { ly: lyWords(((r.distPc ?? 0) / 1000) * LY_PER_KPC) })));
@@ -328,11 +433,46 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
         hrMarked = marked;
         drawHr({ hip: s.hip, name: s.name });
       }
-      const key = `${String(s.hip)}:${String(s.name)}:${pl?.id ?? ''}:${pl?.galaxy ?? ''}`;
+      const key = `${String(s.hip)}:${String(s.name)}:${pl?.id ?? ''}:${pl?.galaxy ?? ''}:${bh?.id ?? ''}`;
       if (key === shownFor) return;
       shownFor = key;
-      nearestTitle.hidden = pl !== null;
-      nearestList.hidden = pl !== null;
+      nearestTitle.hidden = pl !== null || bh !== null;
+      nearestList.hidden = pl !== null || bh !== null;
+      holeModel.hidden = bh === null;
+      holeNotes.hidden = bh === null;
+      plxNote.hidden = true;
+      if (bh) {
+        // A black hole: its mass and distance as measured (with where each comes from), its horizon, its shadow from here and from the Earth, and what is a model.
+        write(name, bh.name);
+        const source = (id: string): string => i18n.t(`ui.universe.stars.source.${id}`);
+        const mass =
+          bh.massLow !== null
+            ? i18n.t('ui.universe.stars.hole.massRange', { low: lyWordsPlain(bh.massLow), high: lyWordsPlain(bh.massMsun) })
+            : i18n.t('ui.universe.stars.hole.massValue', { n: bh.massMsun < 1000 ? f.number(bh.massMsun, 2) : lyWordsPlain(bh.massMsun), e: bh.massMsun < 1000 ? f.number(bh.massMinus, 2) : lyWordsPlain(bh.massMinus) });
+        const rows: HTMLElement[] = [
+          ...row(i18n.t('ui.universe.stars.hole.mass'), mass, 'bh-mass', 'mass'),
+          ...row(i18n.t('ui.universe.stars.distance'), i18n.t('ui.universe.stars.hole.distance', { ly: lyWords(bh.distPc * (LY_PER_KPC / 1000)), pc: pcWords(bh.distPc) }), 'bh-distance', 'lightYear'),
+        ];
+        if (bh.redshift !== null && bh.lookbackGyr !== null) rows.push(...row('z', i18n.t('ui.universe.stars.hole.redshift', { z: f.number(bh.redshift, 3), gyr: f.number(bh.lookbackGyr, 2) }), 'bh-redshift'));
+        rows.push(...row(i18n.t('ui.universe.stars.hole.rs'), bh.rsKm < 1e7 ? i18n.t('ui.universe.stars.hole.rsKm', { km: f.number(bh.rsKm, 1) }) : i18n.t('ui.universe.stars.hole.rsAu', { au: f.number(bh.rsAu, bh.rsAu < 1 ? 3 : 0), km: f.number(bh.rsKm / 1e6, 1) }), 'bh-rs'));
+        rows.push(...row(i18n.t('ui.universe.stars.hole.shadow'), i18n.t('ui.universe.stars.hole.shadowValue', { deg: f.number(2 * bh.shadowDeg, 1) }), 'bh-shadow'));
+        rows.push(...row(i18n.t('ui.universe.stars.hole.fromEarth'), i18n.t('ui.universe.stars.hole.fromEarthValue', { uas: f.number(bh.shadowFromEarthMicroArcsec, bh.shadowFromEarthMicroArcsec < 10 ? 3 : 1) }), 'bh-from-earth'));
+        facts.replaceChildren(...rows);
+        write(holeModel, i18n.t(`ui.universe.stars.hole.model.${bh.model}`));
+        const notes = [
+          bh.observation ? i18n.t('ui.universe.stars.hole.ring', { uas: f.number(bh.observation.ringMicroArcsec, 1), e: f.number(bh.observation.error, 1) }) : null,
+          bh.companion ? i18n.t('ui.universe.stars.hole.companion', { kind: bh.companion.kind, days: f.number(bh.companion.periodDays, bh.companion.periodDays < 10 ? 1 : 0) }) : null,
+          bh.inclinationNote ? i18n.t('ui.universe.stars.hole.axis', { note: bh.inclinationNote }) : null,
+          i18n.t('ui.universe.stars.hole.how', { how: bh.massHow, distance: bh.distanceHow }),
+          i18n.t('ui.universe.stars.hole.sources', { sources: [...new Set([bh.massSource, bh.massAlsoSource, bh.distanceSource, bh.observation?.source].filter((x): x is string => typeof x === 'string'))].map(source).join('; ') }),
+        ].filter((x): x is string => x !== null);
+        write(holeNotes, notes.join(' '));
+        archiveNote.hidden = true;
+        planetsTitle.hidden = true;
+        planetsNote.hidden = true;
+        planets.replaceChildren();
+        return;
+      }
       if (pl) {
         // A place beyond the stars: its name, and a galaxy's figures from the catalogue.
         write(name, placeName(pl.id, pl.galaxy));
@@ -365,6 +505,10 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
         items.push(...row(i18n.t('ui.universe.stars.lightV'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(suns, suns < 0.01 ? 5 : suns < 10 ? 3 : 0) }), 'light'));
       }
       if (s.radiusSun !== null) items.push(...row(i18n.t('ui.universe.stars.radius'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.radiusSun, 3) }), 'radius', 'radius'));
+      else if (s.radiusEstimated !== null) items.push(...row(i18n.t('ui.universe.stars.radiusEstimated'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.radiusEstimated, s.radiusEstimated < 10 ? 2 : 0) }), 'radius-estimated', 'radius'));
+      // Where its distance is from, when not its own parallax.
+      plxNote.hidden = s.plxFrom === null;
+      if (s.plxFrom !== null) write(plxNote, s.plxFrom.startsWith('HIP ') ? i18n.t('ui.universe.stars.plxFrom.companion', { hip: s.plxFrom }) : i18n.t(`ui.universe.stars.plxFrom.${s.plxFrom}`));
       if (s.massSun !== null) items.push(...row(i18n.t('ui.universe.stars.mass'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.massSun, 3) }), 'mass', 'mass'));
       if (s.luminositySun !== null) items.push(...row(i18n.t('ui.universe.stars.luminosity'), i18n.t('ui.universe.stars.sunsTimes', { n: f.number(s.luminositySun, s.luminositySun < 0.01 ? 5 : 3) }), 'luminosity', 'luminosity'));
       archiveNote.hidden = s.radiusSun === null && s.massSun === null && s.luminositySun === null;

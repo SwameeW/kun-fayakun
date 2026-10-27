@@ -939,6 +939,10 @@ export interface UniverseNeighbourhood {
     radiusSun: number | null;
     massSun: number | null;
     luminositySun: number | null;
+    /** Its radius estimated from its light and temperature (in the Sun's) where the archive gives none, else null. */
+    radiusEstimated: number | null;
+    /** Where its parallax is from when not its own Hipparcos one: a close companion's ("HIP n") or a cited source's id. */
+    plxFrom: string | null;
   };
   /** The camera's distance from the star in view (pc, km) and from the Sun (pc, light years). */
   cameraPc: number;
@@ -946,6 +950,58 @@ export interface UniverseNeighbourhood {
   fromSunPc: number;
   fromSunLy: number;
   travelling: boolean;
+  /**
+   * The camera: free look or orbit round the star in view; its speed when flying (pc/s), set by the
+   * distance to the nearest star; and the screen's direction of view (render frame).
+   */
+  camera: { mode: 'look' | 'orbit'; speedPcPerS: number; forward: [number, number, number] };
+  /** The visitor's star light (src/explore/starlight): brightness and the faintest magnitude drawn. */
+  starlight: { brightness: number; faintest: number };
+  /** Stars drawn: the neighbourhood's own and Hipparcos's placed in space, and those as directions (Tycho-2's and the rest); how many of the catalogue's have arrived. */
+  stars: { placed: number; far: number; loaded: number; catalogue: number };
+  /** The constellations' figures drawn between their stars' places in space. */
+  figures: boolean;
+  /** The star (or black hole) under the pointer, with its point on the screen (client CSS px). */
+  hover: { name: string; hip: number | null; distLy: number | null; mag: number | null; spType: string | null; x: number; y: number; hole: boolean } | null;
+  /** The black holes one can fly to (their distance from the Sun, pc). */
+  blackHoles: Array<{ id: string; name: string; distPc: number; kind: 'supermassive' | 'stellar' }>;
+  /**
+   * The black hole in view, as the catalogue gives it (each value's source an id in data/sources.json),
+   * with what is computed here: its Schwarzschild radius, the camera's distance in it, and its
+   * shadow's size from here and from the Earth (a non-spinning hole of the mass drawn).
+   */
+  blackHole: {
+    id: string;
+    name: string;
+    kind: 'supermassive' | 'stellar';
+    model: 'thin-disc' | 'hot-ring' | 'dormant';
+    massMsun: number;
+    massMinus: number;
+    massPlus: number;
+    /** A second estimate's mass where the catalogue gives a range (TON 618's), else null. */
+    massLow: number | null;
+    massSource: string;
+    massAlsoSource: string | null;
+    massHow: string;
+    distPc: number;
+    distMinusPc: number | null;
+    distPlusPc: number | null;
+    distanceSource: string;
+    distanceHow: string;
+    redshift: number | null;
+    lookbackGyr: number | null;
+    rsKm: number;
+    rsAu: number;
+    /** The camera's distance from it in Schwarzschild radii, and its shadow's angular radius from there (degrees). */
+    cameraRs: number;
+    shadowDeg: number;
+    /** Its shadow's angular diameter from the Earth (microarcseconds), and the ring the Event Horizon Telescope measured where it did. */
+    shadowFromEarthMicroArcsec: number;
+    observation: { ringMicroArcsec: number; error: number; source: string } | null;
+    companion: { kind: string; periodDays: number } | null;
+    inclinationDeg: number | null;
+    inclinationNote: string | null;
+  } | null;
   /** The star's planets drawn round it (the camera near enough, no trip under way). */
   systemShown: boolean;
   /** How far out the camera is (src/explore/neighbourhood/beyond.ts): among the stars, at the galaxy's scale, the Local Group's, or the universe's. */
@@ -973,8 +1029,8 @@ export interface UniverseNeighbourhood {
   places: Array<{ id: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web'; distKpc: number }>;
   /** The stars nearest the one in view (their distance from it, pc; how many planets they have). */
   nearest: Array<{ name: string; hip: number | null; distPc: number; planets: number }>;
-  /** The last search's matches (their distance from the Sun, pc, null where not placed). */
-  results: Array<{ name: string; hip: number | null; distPc: number | null; planets: number; galaxy: string | null }>;
+  /** The last search's matches (their distance from the Sun, pc, null where not placed): stars, galaxies of the Local Group, black holes. */
+  results: Array<{ name: string; hip: number | null; distPc: number | null; planets: number; galaxy: string | null; hole: string | null }>;
 }
 
 /** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
@@ -1324,6 +1380,12 @@ export type EarthCommand =
   | { kind: 'starsEnd' }
   | { kind: 'starsGoTo'; hip: number | null }
   | { kind: 'starsStop' }
+  /** The visitor's star light (brightness, a multiple; the faintest magnitude drawn); free look or orbit; the constellations' figures in space. */
+  | { kind: 'starsLight'; brightness: number; faintest: number }
+  | { kind: 'starsCamera'; mode: 'look' | 'orbit' }
+  | { kind: 'starsFigures'; on: boolean }
+  /** To a star, a galaxy of the Local Group or a black hole by its name (the best match of the search), as a tool would ask. */
+  | { kind: 'starsFind'; name: string }
   /** A place beyond the stars, or a galaxy of the Local Group as `galaxy:` and its catalogue name. */
   /** Sound where there is air, on or off (the visitor's choice; the interface keeps it). */
   | { kind: 'sound'; on: boolean }
@@ -1331,7 +1393,7 @@ export type EarthCommand =
   | { kind: 'lens'; fovDeg: number | null }
   /** Photo mode's tracking (ledger CR-2): the view turned about the focus as this body moves, so it keeps its place in the frame; null to stop. */
   | { kind: 'track'; body: BodyId | null }
-  | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` }
+  | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` | `bh:${string}` }
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }

@@ -93,7 +93,7 @@ const DISCS: Record<string, { points: number; thickness: number; colour: V3; lig
   SMC: { points: 2500, thickness: 0.35, colour: [0.86, 0.9, 1], light: 0.06 },
 };
 /** Display terms: when each part shows (pc from the Sun), and how bright its points are. */
-const FADE = { band: [800, 2500], stars: [3000, 8000], galaxy: [1200, 4000], web: [2e6, 2e7], webLoad: 1.5e6 } as const;
+const FADE = { band: [800, 2500], stars: [3000, 8000], galaxy: [1200, 4000], glows: [500, 2000], web: [2e6, 2e7], webLoad: 1.5e6 } as const;
 const LIGHT = { galaxy: 0.07, glow: 0.5, web: 0.35 } as const;
 /** The Milky Way's points' radius (pc) and the survey's (pc). */
 const RADIUS = { galaxy: 200, web: 6e5 } as const;
@@ -231,9 +231,10 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
   galaxies.forEach((g, i) => {
     glowPos.set(g.position, i * 3);
     // Its surface's brightness (display terms): luminosity over area, softened; the four discs' own glow kept low.
+    // One whose size the catalogue does not give (the Canis Major overdensity) has no glow: a size is not made up for it.
     const lum = 10 ** (-0.4 * ((g.absV ?? -8) + 15));
     const r = Math.max(g.radiusKpc ?? 0.1, 0.02);
-    const surface = Math.min(1.5, 0.12 * Math.sqrt(lum / (r * r))) * (DISCS[g.name] ? 0.4 : 1);
+    const surface = g.radiusKpc === null ? 0 : Math.min(1.5, 0.12 * Math.sqrt(lum / (r * r))) * (DISCS[g.name] ? 0.4 : 1);
     glowColour.set([0.9 * surface, 0.88 * surface, 0.85 * surface], i * 3);
     glowRadius[i] = r * KPC;
   });
@@ -341,7 +342,7 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
       return { id: a.id, at: at as V3 };
     });
 
-  const fades = { galaxy: 0, web: 0 };
+  const fades = { galaxy: 0, web: 0, glows: 0 };
 
   return {
     galaxies,
@@ -358,7 +359,10 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
       }
       milkyWay.uLight.value = LIGHT.galaxy * fades.galaxy;
       milkyWay.sprite.visible = fades.galaxy > 0.001;
-      glows.uLight.value = LIGHT.glow;
+      // The dwarf galaxies' glows come in past the stars near the Sun (as faint as they are, they would sit among the stars).
+      fades.glows = smoothstep(FADE.glows[0], FADE.glows[1], fromSunPc);
+      glows.uLight.value = LIGHT.glow * fades.glows;
+      glows.sprite.visible = fades.glows > 0.001;
       discs.uLight.value = 1;
       if (web) {
         web.uLight.value = LIGHT.web * fades.web;
@@ -386,9 +390,10 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
       // luminous (at most ten), the four discs by their own names.
       // (At the Local Group's scale, the satellites close by the Milky Way or Andromeda would sit on their names.)
       const near = (g: LocalGalaxy): boolean => g.name !== 'Andromeda' && (Math.hypot(g.position[0] - centre[0], g.position[1] - centre[1], g.position[2] - centre[2]) < 150 * KPC || (andromeda !== undefined && Math.hypot(g.position[0] - andromeda.position[0], g.position[1] - andromeda.position[1], g.position[2] - andromeda.position[2]) < 150 * KPC));
+      // (Among the stars, only the four seen there as discs: the dwarfs' glows are not drawn yet, and their names would read as constellations'.)
       const ranked = galaxies
         .map((g) => ({ g, seen: ((g.diameterKpc ?? (g.radiusKpc ?? 0.05) * 2) * KPC) / Math.max(dist(g.position), 1) }))
-        .filter((x) => dist(x.g.position) > 1000 && (fromSunPc >= LABELS.galaxy ? x.g.absV !== null && !near(x.g) : x.seen > 0.004))
+        .filter((x) => dist(x.g.position) > 1000 && (fromSunPc >= LABELS.galaxy ? x.g.absV !== null && !near(x.g) : x.seen > 0.004 && (DISCS[x.g.name] !== undefined || fades.glows > 0.3) && x.g.radiusKpc !== null))
         .sort((a, b) => (fromSunPc >= LABELS.galaxy ? (a.g.absV ?? 0) - (b.g.absV ?? 0) : b.seen - a.seen))
         .slice(0, 10);
       for (const { g } of ranked) {

@@ -107,6 +107,23 @@ def comoving_pc(z: float) -> float:
     return C_KM_S / COSMOLOGY["H0"] * integral * 1e6
 
 
+def lookback_gyr(z: float) -> float:
+    """The light-travel time from redshift z (billions of years), in the same cosmology."""
+    h = COSMOLOGY["H0"] / 100
+    orad = 2.4728e-5 * (COSMOLOGY["Tcmb"] / 2.7255) ** 4 / h**2 * (1 + 0.2271 * COSMOLOGY["Neff"])
+    om = COSMOLOGY["Om0"]
+    ol = 1 - om - orad
+    n = 20000
+    top = math.log1p(z)
+    total = 0.0
+    for k in range(n + 1):
+        a1 = math.exp(top * k / n)
+        f = 1 / math.sqrt(orad * a1**4 + om * a1**3 + ol)
+        total += f * (1 if k in (0, n) else 4 if k % 2 else 2)
+    hubble_gyr = 977.792 / COSMOLOGY["H0"]
+    return hubble_gyr * total * (top / n) / 3
+
+
 def main() -> None:
     folder = Path(sys.argv[1])
     folder.mkdir(parents=True, exist_ok=True)
@@ -125,6 +142,7 @@ def main() -> None:
         entry["decDeg"] = round(dec, 7)
         if "redshift" in h:
             entry["distance"] = {"pc": round(comoving_pc(h["redshift"])), "minus": None, "plus": None, "source": "planck-2018-cosmology", "how": f"the comoving distance of redshift {h['redshift']} in Planck 2018's cosmology (H0 {COSMOLOGY['H0']}, matter {COSMOLOGY['Om0']}), as the survey's galaxies are placed"}
+            entry["lookbackGyr"] = round(lookback_gyr(h["redshift"]), 2)
         rs_km = 2 * G_M_SUN_KM * h["mass"]["value"] / C_KM_S**2
         entry["schwarzschildKm"] = round(rs_km, 3) if rs_km < 1e6 else round(rs_km, -3)
         entry["schwarzschildAu"] = rs_km / AU_KM
