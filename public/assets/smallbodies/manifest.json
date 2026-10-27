@@ -68,6 +68,12 @@
    "sha256": "eb77e741ea55972ca160e0f5c39133346fa48d2bc7ecd774ef1517f47f0f416d"
   }
  ],
+ "checks": {
+  "Juno": 148,
+  "Hilda": 4739,
+  "Achilles": 6170,
+  "Ixion": 4
+ },
  "comets": {
   "file": "comets.json",
   "count": 799,
@@ -76,7 +82,7 @@
  "worlds": {
   "file": "worlds.json",
   "count": 66,
-  "sha256": "4e29fb786aabf45de626165a1bcd1dd624ea8d86382682286538f39335b840cf"
+  "sha256": "93fcbc1015f6b35bbc3e3dff05706a5725f057ccd754061c44b31c1728cb7627"
  },
  "sources": [
   "jpl-sbdb",

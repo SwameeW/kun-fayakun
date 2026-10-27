@@ -85,11 +85,12 @@ SPIN = {
     "134340": (132.993, -6.163, 302.695, 56.3625225),
 }
 # Sizes the SBDB does not carry, from the measurements that set them (stellar occultations, New
-# Horizons, thermal and light-curve fits): semi-axes in km, and the paper. Pluto's pole is the IAU's
-# (Archinal et al. 2018).
+# Horizons, thermal and light-curve fits): semi-axes in km, and the paper (and the visual geometric
+# albedo it measured, where the SBDB has none). Pluto's pole is the IAU's (Archinal et al. 2018);
+# Pluto's and Charon's albedos are NSSDCA's Pluto fact sheet's (fact_sheet).
 PUBLISHED = {
     "134340": {"axesKm": [1188.3, 1188.3, 1188.3], "pole": [132.993, -6.163], "ref": "Nimmo et al. 2017, Icarus 287, 12 (New Horizons)"},
-    "136199": {"axesKm": [1163, 1163, 1163], "ref": "Sicardy et al. 2011, Nature 478, 493 (stellar occultation)"},
+    "136199": {"axesKm": [1163, 1163, 1163], "albedo": 0.96, "ref": "Sicardy et al. 2011, Nature 478, 493 (stellar occultation; geometric albedo 0.96)"},
     "136108": {"axesKm": [1161, 852, 513], "ref": "Ortiz et al. 2017, Nature 550, 219 (stellar occultation)"},
     "136472": {"axesKm": [717, 717, 711], "ref": "Brown 2013, ApJ 767, L7"},
     "90377": {"axesKm": [497.5, 497.5, 497.5], "ref": "Pal et al. 2012, A&A 541, L6 (thermal)"},
@@ -113,9 +114,15 @@ FACT_SHEETS = {"mars": "marsfact", "jupiter": "joviansatfact", "saturn": "saturn
 # Neptune (its mean pole) and Pluto, the only equatorial frames used by the moons above.
 EQUATOR_POLES = {"uranus": (257.311, -15.175), "neptune": (299.36, 43.46), "w:Pluto": (132.993, -6.163)}
 
+# Points of the asteroid files whose places the unit tests check against Horizons (FIXTURE_OBJECTS): the
+# SBDB's designation and the name the fixture keeps them under; the manifest records each one's record.
+CHECKS = {"3": "Juno", "153": "Hilda", "588": "Achilles", "28978": "Ixion"}
 # Horizons fixtures for tests/unit/small-bodies.spec.ts: two dates, and what each object is checked as.
 FIXTURE_DATES = (2461339.5, 2464328.5)  # 2026-10-26.0 and 2035-01-01.0 TDB
+# Juno, Hilda, Achilles (a Trojan) and Ixion (beyond Neptune) are among the asteroid files' points (CHECKS):
+# their records, as quantised, are checked against Horizons too.
 FIXTURE_OBJECTS = {
+    "Juno": ("'3;'", "500@10"), "Hilda": ("'153;'", "500@10"), "Achilles": ("'588;'", "500@10"), "Ixion": ("'28978;'", "500@10"),
     "Ceres": ("'1;'", "500@10"), "Vesta": ("'4;'", "500@10"), "Hektor": ("'624;'", "500@10"),
     "Eris": ("'136199;'", "500@10"), "67P": ("'DES=67P;CAP;NOFRAG;'", "500@10"), "1P": ("'DES=1P;CAP;NOFRAG;'", "500@10"),
     "Io": ("'501'", "500@599"), "Titan": ("'606'", "500@699"), "Triton": ("'801'", "500@899"), "Charon": ("'901'", "500@999"),
@@ -316,6 +323,8 @@ def small_world(folder: Path, des: str, kind: str) -> tuple[dict, dict[str, str]
         world["axesKm"] = published["axesKm"]
         world["radiusKm"] = round(sum(published["axesKm"]) / 3, 1)
         world["sizeRef"] = published["ref"]
+        if "albedo" in published and world["albedo"] is None:
+            world["albedo"] = published["albedo"]
         if "pole" in published:
             world["pole"] = published["pole"]
     if world["radiusKm"] is None and world["H"] is not None:
@@ -438,6 +447,14 @@ def fact_sheet(folder: Path, sheet: str) -> tuple[dict[str, dict], dict[str, str
             if len(row) >= 6:
                 d = numbers(row[4])
                 out[re.sub(r"\s*\(.*$", "", row[0])] = {"axesKm": [x / 2 for x in d] if len(d) == 3 else None, "albedo": num(row[5])}
+        # Pluto's own (the first table's Pluto column) and Charon's (in the figures that follow "Charon (P1)").
+        first = {r[0]: r for r in tables[0] if r}
+        out["Pluto"] = {"axesKm": None, "albedo": num(first["Geometric albedo"][1])}
+        text = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", data.decode("latin-1"))))
+        charon = re.search(r"Charon \(P1\).*?Geometric Albedo ([\d.]+)", text)
+        if not charon:
+            raise SystemExit("plutofact: no albedo for Charon")
+        out["Charon"] = {"axesKm": None, "albedo": float(charon.group(1))}
     else:
         # The satellite sheets' first table: mass, radius (or three radii), density, albedo. Only the first
         # row of each name (the second table lists the orbits by the same names).
@@ -742,9 +759,12 @@ def main() -> None:
     pluto_gm = re.search(r"Satellites of Pluto Planet GM: ([\d.]+)", phys_text)
     if not pluto_gm:
         raise SystemExit("sats-phys: no GM for Pluto")
+    pluto_sheet, _ = fact_sheet(folder, "plutofact")
     for w in worlds:
         if w["id"] == "w:Pluto":
             w["gm"] = float(pluto_gm.group(1))
+            if w["albedo"] is None:
+                w["albedo"] = pluto_sheet["Pluto"]["albedo"]
     ring_list, ring_queries = rings(folder)
     queries.extend(ring_queries)
     worlds_doc = {
@@ -761,6 +781,8 @@ def main() -> None:
         "classes": list(CLASSES),
         "counts": {c: counts[c] for c in CLASSES if counts[c]},
         "tiers": tiers,
+        # (Each record's index in the files, cumulative.)
+        "checks": {name: next(k for k, r in enumerate(rows) if str(r[0]) == des) for des, name in CHECKS.items()},
         "comets": {"file": "comets.json", "count": len(comet_rows), "sha256": sha256(blob)},
         "worlds": {"file": "worlds.json", "count": len(worlds), "sha256": sha256((OUT / "worlds.json").read_bytes())},
         "sources": ["jpl-sbdb", "jpl-sat-elements", "jpl-sat-physical", "nssdca-fact-sheets"],

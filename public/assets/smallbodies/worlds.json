@@ -75,7 +75,7 @@
     1188.3,
     1188.3
    ],
-   "albedo": null,
+   "albedo": 0.52,
    "gm": 869.3,
    "bv": null,
    "rotationHours": 153.2935,
@@ -121,13 +121,13 @@
     1163,
     1163
    ],
-   "albedo": null,
+   "albedo": 0.96,
    "gm": null,
    "bv": null,
    "rotationHours": 25.9,
    "pole": null,
    "spectral": null,
-   "sizeRef": "Sicardy et al. 2011, Nature 478, 493 (stellar occultation)"
+   "sizeRef": "Sicardy et al. 2011, Nature 478, 493 (stellar occultation; geometric albedo 0.96)"
   },
   {
    "id": "w:Haumea",
@@ -2225,7 +2225,7 @@
    "gm": 106.1,
    "radiusKm": 606.0,
    "axesKm": null,
-   "albedo": null,
+   "albedo": 0.42,
    "synchronous": true
   },
   {

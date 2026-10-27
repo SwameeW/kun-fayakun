@@ -1381,7 +1381,7 @@
       "license": "Public domain (U.S. Government work, NASA)",
       "licenseUrl": null,
       "credit": "Moons' albedos and shapes, and the rings of Uranus and Neptune: NASA NSSDCA Planetary Fact Sheets",
-      "notes": "The moons' visual geometric albedos and three axes where measured; the rings' radii, widths, normal optical depths and particle albedos.",
+      "notes": "The moons' visual geometric albedos and three axes where measured (Pluto's 0.52 and Charon's 0.42 from the Pluto sheet); the rings' radii, widths, normal optical depths and particle albedos.",
       "review": {
         "reviewer": null,
         "role": null,
@@ -1398,7 +1398,7 @@
       "license": "Public domain (USGS and NASA works)",
       "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
       "credit": "Moons' and dwarf planets' maps: USGS Astrogeology Science Center; NASA/JPL, NASA/JPL-Caltech/Space Science Institute, NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, NASA/JHUAPL/SwRI",
-      "notes": "Resampled to 2048 by 1024 and scaled to a common mean brightness by scripts/smallbodies/maps.py; the explorer multiplies each by the world's albedo. Unimaged regions keep the mosaics' fill or the map's mean.",
+      "notes": "Resampled to 2048 by 1024 (and 1024 by 512 for the Low detail level) and scaled to a common mean brightness by scripts/smallbodies/maps.py; the explorer multiplies each by the world's albedo. The parts no spacecraft imaged (the mosaics' empty pixels: a third of Triton, a quarter of Pluto and of Charon) are drawn as a neutral grey grid, not filled, the data fading into it; their share of each surface is in maps.json and the explorer's readout and About say so.",
       "review": {
         "reviewer": null,
         "role": null,
@@ -1409,7 +1409,7 @@
       "id": "small-body-models",
       "kind": "paper",
       "title": "The models behind the small worlds and the sky's glow",
-      "author": "Bowell et al. 1989 (Asteroids II, 524: the H, G magnitude system); Archinal et al. 2018 (Celest. Mech. Dyn. Astron. 130, 22: rotation models of Ceres, Vesta and Pluto); Nimmo et al. 2017, Sicardy et al. 2011, Ortiz et al. 2017, Brown 2013, Pal et al. 2012, Braga-Ribas et al. 2013, Kiss et al. 2019, Fornasier et al. 2013, Spencer et al. 2020 (the sizes of Pluto, Eris, Haumea, Makemake, Sedna, Quaoar, Gonggong, Orcus and Arrokoth); Bland-Hawthorn and Gerhard 2016 (ARA&A 54, 529: the Galaxy's discs and bulge); Kelsall et al. 1998 (ApJ 508, 44: the zodiacal cloud); Hong 1985 (A&A 146, 67: its dust's phase function); Leinert et al. 1998 (A&AS 127, 1: the night sky's brightness)",
+      "author": "Bowell et al. 1989 (Asteroids II, 524: the H, G magnitude system); Archinal et al. 2018 (Celest. Mech. Dyn. Astron. 130, 22: rotation models of Ceres, Vesta and Pluto); Nimmo et al. 2017, Sicardy et al. 2011 (and Eris's geometric albedo, 0.96), Ortiz et al. 2017, Brown 2013, Pal et al. 2012, Braga-Ribas et al. 2013, Kiss et al. 2019, Fornasier et al. 2013, Spencer et al. 2020 (the sizes of Pluto, Eris, Haumea, Makemake, Sedna, Quaoar, Gonggong, Orcus and Arrokoth); Bland-Hawthorn and Gerhard 2016 (ARA&A 54, 529: the Galaxy's discs and bulge); Kelsall et al. 1998 (ApJ 508, 44: the zodiacal cloud); Hong 1985 (A&A 146, 67: its dust's phase function); Leinert et al. 1998 (A&AS 127, 1: the night sky's brightness); Standish 1992 via JPL's \"Keplerian Elements for Approximate Positions of the Major Planets\" (Jupiter's mean longitude, for the unit tests' Trojan clouds)",
       "url": "https://ui.adsabs.harvard.edu/",
       "version": null,
       "license": "Cited for their published values",

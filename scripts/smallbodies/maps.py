@@ -1,6 +1,7 @@
 """Writes the surface maps of the worlds the explorer can fly to (src/explore/worlds/bodies.ts) as
 public/assets/smallbodies/maps/<world>.jpg, 2048 x 1024 equirectangular (east longitude 0 at the
-middle, increasing to the right; north up), and maps.json: each map's source, credit and sha256.
+middle, increasing to the right; north up), and maps/1k/<world>.jpg, 1024 x 512 (the Low detail
+level's), and maps.json: each map's source, credit, sha256 and the share of the surface never imaged.
 
 Sources: the global mosaics of the USGS Astrogeology Science Center (in the public domain, from NASA
 missions' images): Dawn's of Ceres and Vesta, Galileo's and Voyager's of Io, Europa, Ganymede and
@@ -8,7 +9,12 @@ Callisto, Cassini's and Voyager's of Enceladus, Tethys, Rhea and Iapetus, Voyage
 New Horizons' of Pluto and Charon. Each is read with its ISIS label (its longitudes' range and
 direction), turned to east longitudes, resampled by area, and scaled so its mean linear brightness is
 MEAN: the explorer multiplies the map by the world's geometric albedo over MEAN, so a map gives the
-pattern and the albedo the level. Missing data (zeros) take the map's mean. Grey maps stay grey.
+pattern and the albedo the level. Grey maps stay grey.
+
+Missing data (zeros: the parts no spacecraft imaged, as Triton's northern half, Pluto's and Charon's
+far south) are not filled with a colour that could pass for a surface: they are a neutral grey a little
+under the mean level with a faint grid every GRID_DEG degrees, the data fading into it over FEATHER_PX (no
+jagged seam), and the explorer's readout says so (UniverseIllustration 'unimaged').
 
 Usage: .cache/venv-worlds/bin/python -I scripts/smallbodies/maps.py <download dir>
        (Pillow and numpy; downloads what is missing into <download dir>/maps)
@@ -31,8 +37,17 @@ OUT = ROOT / "public" / "assets" / "smallbodies" / "maps"
 BUCKET = "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/"
 USER_AGENT = "kun-fayakun/0.1 (educational; github.com/SwameeW/kun-fayakun)"
 WIDTH, HEIGHT = 2048, 1024
+SMALL = (1024, 512)
 MEAN = 0.4
 QUALITY = 86
+# Unimaged parts: their grey (a share of the mean level: a flat cap at the full mean draws the eye
+# as no surface does), the grid's spacing (degrees), its lines' width and depth (working pixels: twice
+# the output's; share darker), and how far the data fades into them (working pixels).
+GREY = 0.8
+GRID_DEG = 15
+GRID_LINE_PX = 3
+GRID_DEPTH = 0.16
+FEATHER_PX = 16
 Image.MAX_IMAGE_PIXELS = 2_000_000_000
 
 # World name -> (mosaic, credit).
@@ -84,6 +99,27 @@ def linear_to_srgb(x: np.ndarray) -> np.ndarray:
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * x ** (1 / 2.4) - 0.055)
 
 
+def box_blur(x: np.ndarray, r: int) -> np.ndarray:
+    """The mean over a (2r + 1) square about each pixel (edges clamped; longitudes wrap)."""
+    p = np.pad(x, ((r + 1, r), (0, 0)), mode="edge")
+    c = np.cumsum(p, axis=0)
+    x = (c[2 * r + 1 :] - c[: -2 * r - 1]) / (2 * r + 1)
+    p = np.concatenate([x[:, -(r + 1) :], x, x[:, :r]], axis=1)
+    c = np.cumsum(p, axis=1)
+    return (c[:, 2 * r + 1 :] - c[:, : -2 * r - 1]) / (2 * r + 1)
+
+
+def unimaged(shape: tuple[int, int]) -> np.ndarray:
+    """The unimaged parts' shade (linear, the mean level): grey with a faint grid of meridians and parallels."""
+    rows, cols = shape
+    per_deg = cols / 360
+    lon = -180 + (np.arange(cols) + 0.5) / per_deg
+    lat = 90 - (np.arange(rows) + 0.5) / per_deg
+    near = lambda v: np.abs((v + GRID_DEG / 2) % GRID_DEG - GRID_DEG / 2) * per_deg  # noqa: E731
+    line = np.maximum(np.clip(GRID_LINE_PX / 2 + 0.5 - near(lon)[None, :], 0, 1), np.clip(GRID_LINE_PX / 2 + 0.5 - near(lat)[:, None], 0, 1))
+    return GREY * MEAN * (1 - GRID_DEPTH * line)
+
+
 def build(folder: Path, world: str, mosaic: str) -> dict[str, object]:
     tif = fetch(folder, f"{mosaic}.tif")
     lbl = label(fetch(folder, f"{mosaic}.lbl"))
@@ -112,21 +148,31 @@ def build(folder: Path, world: str, mosaic: str) -> dict[str, object]:
     valid = valid[:, index]
     lum = linear.mean(axis=2)
     mean = float(lum[valid].mean()) if valid.any() else 0.5
-    fill = linear[valid].mean(axis=0) if valid.any() else np.full(linear.shape[2], 0.5)
-    linear[~valid] = fill
     linear *= MEAN / max(mean, 1e-6)
+    # The unimaged parts: the data fades (inside its own edge) into the grey grid.
+    weight = np.where(valid, box_blur(valid.astype(np.float64), FEATHER_PX), 0.0)[:, :, None]
+    linear = weight * linear + (1 - weight) * unimaged(valid.shape)[:, :, None]
+    # The share of the surface never imaged (by area: rows weighted by the cosine of their latitude).
+    lat = (0.5 - (np.arange(valid.shape[0]) + 0.5) / valid.shape[0]) * np.pi
+    area = np.cos(lat)[:, None] * np.ones(valid.shape[1])[None, :]
+    share = float((area * ~valid).sum() / area.sum())
     result = Image.fromarray((linear_to_srgb(linear) * 255 + 0.5).astype(np.uint8).squeeze(), mode="L" if linear.shape[2] == 1 else "RGB")
-    result = result.resize((WIDTH, HEIGHT), Image.Resampling.BOX)
     OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "1k").mkdir(exist_ok=True)
     out = OUT / f"{world.lower()}.jpg"
-    result.save(out, "JPEG", quality=QUALITY, optimize=True, progressive=True)
+    small = OUT / "1k" / f"{world.lower()}.jpg"
+    result.resize((WIDTH, HEIGHT), Image.Resampling.BOX).save(out, "JPEG", quality=QUALITY, optimize=True, progressive=True)
+    result.resize(SMALL, Image.Resampling.BOX).save(small, "JPEG", quality=QUALITY, optimize=True, progressive=True)
     return {
         "file": f"maps/{out.name}",
+        "small": f"maps/1k/{small.name}",
         "colour": linear.shape[2] == 3,
         "mean": MEAN,
+        "unimaged": round(share, 3),
         "source": BUCKET + f"{mosaic}.tif",
         "sourceSha256": hashlib.sha256(tif.read_bytes()).hexdigest(),
         "sha256": hashlib.sha256(out.read_bytes()).hexdigest(),
+        "smallSha256": hashlib.sha256(small.read_bytes()).hexdigest(),
     }
 
 
@@ -142,7 +188,7 @@ def main() -> None:
         maps[world] = entry
         print(f"{world}: {entry['file']}")
     doc = {
-        "$comment": "Generated by scripts/smallbodies/maps.py. Surface maps of the worlds to fly to: 2048 x 1024, east longitude 0 at the middle, north up; mean linear brightness `mean` (the explorer scales them by the world's albedo).",
+        "$comment": "Generated by scripts/smallbodies/maps.py. Surface maps of the worlds to fly to: 2048 x 1024 (`small`: 1024 x 512, the Low detail level's), east longitude 0 at the middle, north up; mean linear brightness `mean` (the explorer scales them by the world's albedo); `unimaged`: the share of the surface never imaged, drawn as a grey grid.",
         "license": "Public domain (USGS Astrogeology mosaics of NASA mission images)",
         "maps": maps,
     }
