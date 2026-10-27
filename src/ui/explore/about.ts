@@ -163,8 +163,7 @@ export function createAbout(app: App, f: Formatters): About {
   /** A small world: what it is, its size and shape, albedo, day and distance from the Sun (live), beside the Moon. */
   const buildWorld = (w: NonNullable<NonNullable<UniverseView['worlds']>['focus']>): void => {
     shown = w.id;
-    const kind = w.kind === 'moon' ? i18n.t('ui.universe.worlds.moonOf', { body: f.name(w.host) }) : i18n.t(`ui.universe.worlds.kind.${w.kind}`);
-    plain.replaceChildren(h('span', {}, i18n.t('ui.universe.worlds.about.plain', { body: w.name, kind })));
+    plain.replaceChildren(h('span', {}, i18n.t('ui.universe.worlds.about.plain', { body: w.name, kind: w.kind, host: f.name(w.host) })));
     const [a = 0, b = 0, c = 0] = [...w.axesKm].sort((x, y) => y - x);
     const size = w.sizeFromH
       ? i18n.t('ui.universe.worlds.about.fromH', { radius: km(w.radiusKm) })

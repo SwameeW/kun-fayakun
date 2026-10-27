@@ -246,7 +246,7 @@ export function createSkyGlow(obliquity: number): SkyGlow {
           milkyTexture.needsUpdate = true;
           zodiTexture.needsUpdate = true;
         }
-      } else ready = Math.min(1, ready + 0.05);
+      } else ready = Math.min(1, ready + 0.025);
       mesh.scale.setScalar(radius);
       mesh.visible = shown * ready > 1e-3;
       const d = Math.hypot(cameraKm.x, cameraKm.y, cameraKm.z) || 1;

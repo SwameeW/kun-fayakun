@@ -136,8 +136,8 @@ const ECLIPTIC_POLE: [number, number] = [270, 90 - 23.4392911];
 const lommel = (mu0: FloatNode, mu: FloatNode): FloatNode => mu0.mul(2).div(mu0.add(mu).add(1e-3));
 /** The maps' mean linear brightness (scripts/smallbodies/maps.py MEAN). */
 const MAP_MEAN = 0.4;
-/** A map eases in over this long once it has come (s, at 60 frames a second: a share a frame). */
-const MAP_EASE = 0.08;
+/** A map eases in once it has come, by this share a frame (about two thirds of a second at 60 frames a second: no change of light faster than half a second). */
+const MAP_EASE = 0.025;
 
 /** The prime meridian's direction (render frame) for an IAU rotation model: the pole at (ra, dec), W degrees on along the equator from its node on the ICRF's. */
 function spinAxis(ra: number, dec: number, w: number, obliquity: number, out: Km): Km {

@@ -56,6 +56,8 @@ const COMA = { mag: 6.5, light: 0.05, power: 0.45, marked: 0.14, minPx: 5, maxPx
 
 export interface CometsFrame {
   jd: number;
+  /** The comet flown to (its name as the list gives it), or null: its tails come first, marked as in a wide view. */
+  focus: string | null;
   camera: Km;
   far: number;
   compensation: number;
@@ -223,7 +225,8 @@ export function createComets(rows: readonly CometRow[], auKm: number): Comets {
       heads.update(dotList, frame.compensation);
 
       // Tails for the most active: nearest the Sun, brighter M1 first.
-      order.sort((a, b) => (r[a] ?? 0) - (r[b] ?? 0) + ((rows[a]?.[7] ?? 0) - (rows[b]?.[7] ?? 0)) * 0.05);
+      const focused = frame.focus === null ? -1 : rows.findIndex((row) => row[0] === frame.focus);
+      order.sort((a, b) => (a === focused ? -1 : b === focused ? 1 : (r[a] ?? 0) - (r[b] ?? 0) + ((rows[a]?.[7] ?? 0) - (rows[b]?.[7] ?? 0)) * 0.05));
       tails = 0;
       for (let slot = 0; slot < MAX_TAILS; slot += 1) {
         const i = order[slot];
@@ -262,7 +265,7 @@ export function createComets(rows: readonly CometRow[], auKm: number): Comets {
         head.z = p.z - frame.camera.z;
         const k = scaledFactor(Math.hypot(head.x, head.y, head.z), 0, frame.far);
         // As bright as the comet is (its coma's light as seen), or marked in wide views.
-        const light = TAILS.light * activity * frame.fade * Math.min(1, Math.max(frame.marked, (seenLight[i] ?? 0) * 4));
+        const light = TAILS.light * activity * frame.fade * Math.min(1, Math.max(i === focused ? 1 : frame.marked, (seenLight[i] ?? 0) * 4));
         if (light < TAILS.visible) {
           clear(slot * 2);
           clear(slot * 2 + 1);

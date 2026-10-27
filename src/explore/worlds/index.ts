@@ -95,7 +95,7 @@ interface WorldsFile {
  * crowd closer on screen (as the distance to the power 1.1), so the belt seen from far out is a faint
  * band, not a glare (the power 1.1 keeps the Trojans' sparser clouds in sight from the Kuiper belt).
  */
-const FADE_SECONDS = 0.4;
+const FADE_SECONDS = 0.5;
 const MARKED_SPAN_KM = [4.5e6, 1.5e8] as const;
 const CROWD = { fromKm: 9e8, power: 1.1 } as const;
 /** Asteroids decoded a frame (each slice a few milliseconds' work). */
@@ -359,7 +359,8 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
         shown: frame.shown,
         focus: frame.focus,
       });
-      comets.update({ jd: frame.jdTdb, camera: frame.camera, far: frame.far, compensation: frame.compensation, fade: layer, marked: marked * crowd });
+      const focusWorld = frame.focus.startsWith('w:') ? bodies.byId(frame.focus as WorldId) : undefined;
+      comets.update({ jd: frame.jdTdb, focus: focusWorld?.record.kind === 'comet' ? focusWorld.record.name : null, camera: frame.camera, far: frame.far, compensation: frame.compensation, fade: layer, marked: marked * crowd });
       // Uranus's and Neptune's rings, in their planets' equators, where their discs are more than a few pixels.
       for (const id of ['uranus', 'neptune'] as const) {
         const rings = iceRings[id];

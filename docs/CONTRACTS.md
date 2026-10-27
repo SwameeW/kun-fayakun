@@ -803,6 +803,24 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
   host, radius, axes, albedo, rotation, sizeFromH, sunAu, eclipsed, its map's credit), `eclipses`
   (receiver, occluder, depth) and `epochJdTdb`. Illustrative items: `small-body-light`,
   `comet-tails`, `world-shape`, `eclipse-red`, `ring-light`, `sky-glow`.
+- **Cost** (2026-10-27, this Mac's GPU, Chromium on WebGPU, 1440 x 900 at a pixel ratio of 2,
+  `?profile=1`; `tests/explore/small-worlds-perf.spec.ts`): 59.88 fps with the 99th percentile frame
+  at 16.8 ms (the display's own rate) at High (250,000 asteroids) and at Low (20,000), the layer on
+  and off, in the Earth's default view, the belt from above (7.4 au), Jupiter's system, Saturn's ring
+  plane, the Sun at 4 million km and the outer system from 50 au. Uncapped (vsync and the frame-rate
+  limit off), the median frame in ms over two runs each, with the layer on / off, against the commit
+  before (48988b7), on a machine busy with other work (load 8 to 16, so a run differs from the next
+  by up to a millisecond): High: Earth 2.2–2.9 / 2.2–2.4 against 1.8–2.9, the belt 2.0–2.1 / 2.0–2.1
+  against 1.1–1.6, Jupiter 1.6–2.1 / 1.7–2.2 against 0.9–1.7, Saturn's ring plane 1.3–1.7 / 1.2–1.5
+  against 1.0–1.1, the Sun 1.3–1.8 / 1.2 against 1.0–1.4, the outer system 1.9–2.2 / 1.9–2.0 against
+  1.5–2.1; Low: 0.6–0.9 / 0.5–0.8 against 0.3–0.4, 1.0–1.7 / 0.9–1.2 against 0.9–1.2, 0.9–1.1 /
+  0.8–1.0 against 0.8–0.9, 0.5–1.2 / 0.4–0.8 against 0.4–0.5, 0.6–1.3 / 0.4–1.0 against 0.3–0.6,
+  1.1–1.5 / 0.9–1.2 against 0.9–1.2. So up to about a millisecond a frame where it costs most (the
+  sky's glow fills every pixel; the moons, rings and eclipse shells stay with the layer off), far
+  inside a 16.7 ms frame. What keeps it so: a point's light and colour are worked out once in the vertex stage
+  (a varying), not for each of its pixels; a point too faint to see has no size, so no pixels; the
+  comets are placed again only when the clock has moved; the files are decoded, and the glows' tables
+  worked out, a slice a frame.
 - **Test ids.** `universe-worlds` (the navigator's section), `worlds-intro`, `worlds-layer`,
   `worlds-grouped`, `worlds-groups`, `worlds-group-<group>`, `worlds-search`, `worlds-results`,
   `worlds-go-<name>`, `worlds-none`; the About section's `about-size`, `about-albedo`, `about-day`,

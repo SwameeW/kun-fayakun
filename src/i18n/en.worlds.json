@@ -22,8 +22,7 @@
   "ui.universe.worlds.kind.comet": "comet",
   "ui.universe.worlds.moonOf": "moon of {body}",
   "ui.universe.worlds.note": "Places from orbital elements: the Small-Body Database’s for the asteroids and comets (two-body orbits, drifting from the real ones by up to a degree over this decade, more for comets), JPL’s mean elements fitted to Horizons for the moons. The asteroids’ light is enhanced in wide views so the belt shows; their places are not. The groups’ colours are illustrative.",
-  "ui.universe.worlds.about.plain": "{body}: a {kind}.",
-  "ui.universe.worlds.about.kind": "What",
+  "ui.universe.worlds.about.plain": "{body}: {kind, select, asteroid {an asteroid} dwarf {a dwarf planet} comet {a comet} other {a moon of {host}}}.",
   "ui.universe.worlds.about.size": "Size",
   "ui.universe.worlds.about.radius": "{radius} in radius",
   "ui.universe.worlds.about.axes": "{a} by {b} by {c} across its axes (an ellipsoid)",
@@ -34,7 +33,6 @@
   "ui.universe.worlds.about.day": "Day",
   "ui.universe.worlds.about.facesHost": "keeps one face to {body}",
   "ui.universe.worlds.about.sunNow": "From the Sun now",
-  "ui.universe.worlds.about.eclipsed": "In {body}’s shadow now",
   "ui.universe.worlds.about.surface": "Its surface is drawn plain: its size and shape are measured, no map of it is shown.",
   "ui.universe.worlds.about.map": "Its surface: {credit}.",
   "ui.universe.worlds.about.sources": "Sources: NASA JPL’s Small-Body Database and satellite tables (elements, sizes, spins), JPL Horizons, NSSDCA’s fact sheets (moons’ albedos and shapes), and the papers that measured the large trans-Neptunian objects."
