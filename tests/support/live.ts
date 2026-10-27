@@ -3,7 +3,8 @@
  * third parties with their own limits, and their answers change by the minute): imagery tiles (EOX,
  * NASA GIBS) get a one-pixel image, CelesTrak a few real element sets moved to the day the test runs
  * (so they are never out of date), and USGS a day of three earthquakes ending now. Every page gets
- * these routes (tests/support/fixtures); liveRequests(page) counts what each host was asked.
+ * these routes (tests/support/fixtures); liveRequests(page) counts what each host was asked. The
+ * assistant's model hosts are answered 404 the same way (MODEL_HOSTS, modelRequests).
  */
 import type { Page } from '@playwright/test';
 
@@ -70,7 +71,43 @@ export function liveRequests(page: Page): Readonly<Record<LiveHost, number>> {
   return counts.get(page) ?? (Object.fromEntries(LIVE_HOSTS.map((h) => [h, 0])) as Record<LiveHost, number>);
 }
 
+/**
+ * Where the assistant's models come from (src/ai/engine/catalogue.ts): Hugging Face (weights), its
+ * file CDNs (cdn-lfs.hf.co, cas-bridge.xethub.hf.co, us.aws.cdn.hf.co and the like, all under
+ * hf.co), jsDelivr (the pinned model libraries) and raw.githubusercontent.com (WebLLM's default
+ * library host). No test downloads a model: every request to these hosts is answered 404 unless the
+ * test routes it itself (Playwright runs the route registered last first, so a test's own
+ * page.route overrides this one).
+ */
+export const MODEL_HOSTS = ['huggingface.co', 'cdn.jsdelivr.net', 'raw.githubusercontent.com'] as const;
+
+export function isModelHost(hostname: string): boolean {
+  return (MODEL_HOSTS as readonly string[]).includes(hostname) || hostname === 'hf.co' || hostname.endsWith('.hf.co') || hostname.endsWith('.huggingface.co');
+}
+
+const modelCounts = new WeakMap<Page, Map<string, number>>();
+
+/** Requests each model host was sent from this page so far (that reached the default 404 route). */
+export function modelRequests(page: Page): ReadonlyMap<string, number> {
+  return modelCounts.get(page) ?? new Map<string, number>();
+}
+
+export async function mockModelHosts(page: Page): Promise<void> {
+  const requests = new Map<string, number>();
+  modelCounts.set(page, requests);
+  await page.route(
+    (url) => isModelHost(url.hostname),
+    async (route) => {
+      const host = new URL(route.request().url()).hostname;
+      requests.set(host, (requests.get(host) ?? 0) + 1);
+      await route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, contentType: 'text/plain', body: 'Model files are not served in tests.' });
+    },
+  );
+}
+
 export async function mockLiveHosts(page: Page): Promise<void> {
+  // Registered first, so a live host's route and a test's own model route both take precedence.
+  await mockModelHosts(page);
   const requests = Object.fromEntries(LIVE_HOSTS.map((h) => [h, 0])) as Record<LiveHost, number>;
   counts.set(page, requests);
   const cors = { 'access-control-allow-origin': '*' };
