@@ -24,46 +24,38 @@ const steps = (page: Page) => page.getByTestId('lab-lesson-steps');
 const shownTexts = (page: Page): Promise<string[]> => steps(page).locator('li').evaluateAll((items) => items.filter((li) => !(li as HTMLElement).hidden).map((li) => (li.querySelector('p:not([hidden])')?.textContent ?? '') + (li.querySelector('button') ? '[button]' : '')));
 
 /**
- * Kepler's lesson begun by `presses` presses within one task, then watched in the page frame by frame
- * until its first step opens (its set-up takes a frame or two: a check from here, a round trip later,
- * could come after it): every step closed at once, the first opening only with the lesson's experiment
- * shown (a star and a planet, no edit yet), the second still closed. Returns what went wrong.
+ * Watches a lesson's first two steps from before it is begun until the first opens: every change to them
+ * (their making, disabled; their opening) as it happens, against whether the lesson's experiment is there
+ * (the two-body laboratory, no edit yet). A set-up quicker than a frame, or than the presses, is seen too.
  */
-const keplerBegun = (page: Page, presses: number): Promise<string[]> =>
-  page.evaluate(
-    ({ n, limitMs }) =>
-      new Promise<string[]>((resolve) => {
-        const kf = (window as unknown as KfHook).__kf;
-        const step = (k: number): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>(`[data-testid="lab-lesson-step-${String(k)}"]`);
-        const problems: string[] = [];
-        /** True once the first step is open. */
-        const check = (when: string): boolean => {
-          const l = kf.universe.state()?.lab;
-          const theirs = l?.bodies.map((b) => b.id).join() === 'star,planet' && l.logLength === 0;
-          const first = step(1);
-          const second = step(2);
-          if (!first || !second) {
-            problems.push(`${when}: no steps`);
-            return false;
-          }
-          if (!second.disabled) problems.push(`${when}: the second step open`);
-          if (!first.disabled && !theirs) problems.push(`${when}: the first step open before its experiment`);
-          return !first.disabled;
-        };
-        const begin = document.querySelector<HTMLElement>('[data-testid="lab-lesson-kepler"]');
-        for (let i = 0; i < n; i += 1) begin?.click();
-        if (check('at once')) problems.push('the first step open at once');
-        const t0 = performance.now();
-        let frame = 0;
-        const tick = (): void => {
-          frame += 1;
-          if (check(`frame ${String(frame)}`) || performance.now() - t0 > limitMs) resolve(problems);
-          else requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      }),
-    { n: presses, limitMs: LIVE.timeout },
-  );
+const watchSteps = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const w = window as unknown as KfHook & { kfLessonWatch?: { early: string[]; waited: number; done: boolean } };
+    const watch = { early: [] as string[], waited: 0, done: false };
+    w.kfLessonWatch = watch;
+    const look = (): void => {
+      const l = w.__kf.universe.state()?.lab;
+      const ready = l?.logLength === 0 && l.bodies.map((b) => b.id).join() === 'star,planet';
+      for (const k of [1, 2]) {
+        const b = document.querySelector<HTMLButtonElement>(`[data-testid="lab-lesson-step-${String(k)}"]`);
+        if (!b) continue;
+        if (b.disabled) watch.waited += 1;
+        // Its experiment not there (the old one, or none): no step may be open.
+        else if (!ready) watch.early.push(`step ${String(k)} open before its experiment`);
+        else if (k === 1) watch.done = true;
+      }
+      if (watch.done) observer.disconnect();
+    };
+    const observer = new MutationObserver(look);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] });
+  });
+/** What the watch saw: no step open before its experiment, and the steps made waiting. */
+async function expectStepsWaited(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => (window as unknown as { kfLessonWatch?: { done: boolean } }).kfLessonWatch?.done ?? false), LIVE).toBe(true);
+  const watched = await page.evaluate(() => (window as unknown as { kfLessonWatch?: { early: string[]; waited: number } }).kfLessonWatch);
+  expect(watched?.early).toEqual([]);
+  expect(watched?.waited ?? 0).toBeGreaterThan(0);
+}
 
 async function openLessons(page: Page): Promise<void> {
   await page.getByTestId('lab-open').click();
@@ -135,11 +127,14 @@ test('a lesson’s steps wait for its experiment, go in order and once each, and
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
   await openLessons(page);
-  // Kepler: begun, every step waits for the experiment, the first step's place saying it is being set up.
-  await page.getByTestId('lab-lesson-kepler').scrollIntoViewIfNeeded();
-  expect(await keplerBegun(page, 1)).toEqual([]);
+  // Kepler: begun, every step waits for the experiment (watched as each changes: the set-up can be quicker
+  // than a frame), the first step's place saying it is being set up.
+  await watchSteps(page);
+  await page.getByTestId('lab-lesson-kepler').click();
   await expect(page.getByTestId('lab-lesson-text-0')).toHaveText(/Setting up the experiment|The planet goes round/);
   await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
+  await expectStepsWaited(page);
+  await expect(page.getByTestId('lab-lesson-step-2')).toBeDisabled();
   await expect(page.getByTestId('lab-lesson-text-0')).toContainText('1 AU from its star');
   // In order: the second waits for the first; the first says beforehand what it will do; the second has no words yet.
   await expect(page.getByTestId('lab-lesson-step-2')).toBeDisabled();
@@ -348,10 +343,14 @@ for (const size of [
         expect(name && what && name.y + name.height <= what.y + 1, id).toBe(true);
         expect(name?.height ?? 99, id).toBeLessThan(24);
       }
-      // Begun in a burst: every step waits for its experiment, then the first opens.
-      expect(await keplerBegun(page, 9)).toEqual([]);
-      expect(await shownTexts(page)).not.toContain('');
+      // Begun in a burst: every step waits for its experiment (watched as each changes: the set-up can be quicker
+      // than the presses), then the first opens, and the second waits for it.
+      await watchSteps(page);
+      await spam(page.getByTestId('lab-lesson-kepler'), 9);
       await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
+      await expectStepsWaited(page);
+      await expect(page.getByTestId('lab-lesson-step-2')).toBeDisabled();
+      expect(await shownTexts(page)).not.toContain('');
       // A numbered list: a small indent, a gap between steps, each step's words under its button.
       const layout = await steps(page).evaluate((ol) => {
         const items = [...ol.querySelectorAll(':scope > li')].filter((li) => !(li as HTMLElement).hidden);

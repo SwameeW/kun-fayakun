@@ -15,7 +15,7 @@
  * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
  * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
- * that load later still (the orbital laboratory, the qibla and new moon section, walking, the stars and a black hole's lens, photo mode,
+ * that load later still (the orbital laboratory and its effects, the qibla and new moon section, walking, the stars and a black hole's lens, photo mode,
  * the time machine beyond the everyday, more worlds, the film's sound, Explore Mode's dock), each
  * against its own budget.
  *
@@ -68,8 +68,12 @@ const EXPLORE_SOURCES = ['src/explore/index.ts', 'src/ui/explore/index.ts'] as c
 const EXPLORE_BUDGET_BYTES = 150_000;
 /** The orbital laboratory's lazy entry points (loaded with the first experiment): its explorer adapter, with the engine's worker, and its panel. */
 const LAB_SOURCES = ['src/explore/lab.ts', 'src/ui/explore/lab-panel.ts'] as const;
-/** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget). */
+/** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget); its effects' chunk counts toward it too. */
 const LAB_BUDGET_BYTES = 250_000;
+/** The laboratory's effects (src/explore/lab-fx: loaded with the first experiment, after its adapter and panel): rocks, dust and rings, fireballs, the flash guard. */
+const LAB_FX_SOURCES = ['src/explore/lab-fx/index.ts'] as const;
+/** What the effects may add beyond the shell, the explorer and the laboratory, gzipped (docs/SANDBOX-ROADMAP.md, section 5.1). */
+const LAB_FX_BUDGET_BYTES = 40_000;
 /** The qibla and the new moon's lazy entry points (loaded when their section first opens): the explorer's part and its panel. */
 const ISLAMIC_SOURCES = ['src/explore/islamic/index.ts', 'src/ui/explore/islamic-panel.ts'] as const;
 /** What that section may add beyond the shell and the explorer, gzipped. */
@@ -288,6 +292,17 @@ function main(): void {
   const labBytes = labRows.reduce((sum, row) => sum + row.gzip, 0);
   const labOk = labBytes <= LAB_BUDGET_BYTES;
   console.log(`${labOk ? 'PASS' : 'FAIL'}: orbital laboratory (lazy, ${labRows.length} files) = ${formatBytes(labBytes)} bytes gzipped (budget ${formatBytes(LAB_BUDGET_BYTES)})`);
+  // Its effects, beyond the shell, the explorer and the laboratory: what the first experiment's drawing adds; and the laboratory with them, against its budget.
+  const labLoaded = new Set([...loaded, ...labRows.map((row) => row.file)]);
+  const labFxRows = measure(exploreFiles(manifest, labLoaded, LAB_FX_SOURCES));
+  for (const row of [...labFxRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`lab-fx   ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const labFxBytes = labFxRows.reduce((sum, row) => sum + row.gzip, 0);
+  const labFxOk = labFxRows.length > 0 && labFxBytes <= LAB_FX_BUDGET_BYTES;
+  console.log(`${labFxOk ? 'PASS' : 'FAIL'}: the laboratory's effects (lazy, ${labFxRows.length} files) = ${formatBytes(labFxBytes)} bytes gzipped (budget ${formatBytes(LAB_FX_BUDGET_BYTES)})`);
+  const labAllOk = labBytes + labFxBytes <= LAB_BUDGET_BYTES;
+  console.log(`${labAllOk ? 'PASS' : 'FAIL'}: the laboratory with its effects = ${formatBytes(labBytes + labFxBytes)} bytes gzipped (budget ${formatBytes(LAB_BUDGET_BYTES)})`);
   // The qibla and the new moon, beyond the shell and the explorer: what opening their section adds.
   const islamicRows = measure(exploreFiles(manifest, loaded, ISLAMIC_SOURCES));
   for (const row of [...islamicRows].sort((a, b) => b.gzip - a.gzip)) {
@@ -389,7 +404,7 @@ function main(): void {
   const [indexRow] = measure(new Map([[AI_INDEX, 'data']]));
   const indexOk = indexRow !== undefined && indexRow.gzip <= AI_INDEX_BUDGET_BYTES;
   console.log(`${indexOk ? 'PASS' : 'FAIL'}: the knowledge index ${AI_INDEX} = ${formatBytes(indexRow?.raw ?? 0)} raw, ${formatBytes(indexRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_INDEX_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !starsOk || !lensOk || !photoOk || !theoryOk || !worldsOk || !soundOk || !discoverOk || !aiOk || !modelOk || !batchOk || !indexOk) process.exitCode = 1;
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !labFxOk || !labAllOk || !islamicOk || !walkOk || !starsOk || !lensOk || !photoOk || !theoryOk || !worldsOk || !soundOk || !discoverOk || !aiOk || !modelOk || !batchOk || !indexOk) process.exitCode = 1;
 }
 
 try {

@@ -752,3 +752,80 @@ test('the small worlds at Low on a phone: frame rate and slowest frames in four 
   for (const [name, r] of Object.entries(results)) expect(r.fps, `${name}: median frame rate`).toBeGreaterThanOrEqual(30);
   expect(pageErrors).toEqual([]);
 });
+
+test('slowed for an impact on a phone: the sheet’s header says the rate shown and offers Full speed, a 44 px touch target, folded or pulled up', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const toggle = page.getByTestId('universe-nav-toggle');
+  await toggle.tap();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  await expect(page.getByTestId('lab-panel')).toBeVisible({ timeout: 60_000 * SLOW });
+  const command = (c: Parameters<NonNullable<KfHook['__kf']['universe']['lab']>>[0]): Promise<unknown> => page.evaluate((x) => (window as unknown as KfHook).__kf.universe.lab?.(x), c);
+  await command({ kind: 'slow', on: true });
+  await command({ kind: 'reset' });
+  await expect.poll(async () => (await view(page))?.lab?.elapsedS, { timeout: 60_000 * SLOW }).toBe(0);
+  await command({ kind: 'aim', target: 'earth', impactor: 'mars', vInfKmS: 20, angleDeg: 80, leadS: 10 * 86_400, site: [0.6, -0.5, 0.62], heading: [0, 0, 1] });
+  await expect.poll(async () => (await view(page))?.lab?.aim?.status, { timeout: 60_000 * SLOW }).toBe('ready');
+  await command({ kind: 'throw' });
+  // Folded, as a visitor watching it come in would have it.
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.tap();
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeTime({ kind: 'rate', rate: 86_400 });
+  });
+  const cancel = page.getByTestId('lab-slowed-cancel');
+  await expect(cancel).toBeVisible({ timeout: 90_000 * SLOW });
+  await expect(page.getByTestId('lab-slowed-text')).toContainText('Slowed:');
+  const box = await cancel.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  // Inside the screen, and hit where it is drawn.
+  const size = page.viewportSize();
+  expect((box?.x ?? -1) >= 0 && (box?.x ?? 0) + (box?.width ?? 0) <= (size?.width ?? 0)).toBe(true);
+  await cancel.tap();
+  await expect.poll(async () => (await view(page))?.lab?.slow.active ?? null).toBeNull();
+  await expect(cancel).toBeHidden();
+  expect(pageErrors).toEqual([]);
+});
+
+test('the chosen body’s velocity arrow on a phone: taken by a finger 20 px off its tip (a 44 px target), dragged, and its velocity changed', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/moon', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const toggle = page.getByTestId('universe-nav-toggle');
+  await toggle.tap();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  await expect(page.getByTestId('lab-panel')).toBeVisible({ timeout: 60_000 * SLOW });
+  const lab = async (): Promise<NonNullable<Awaited<ReturnType<typeof view>>>['lab']> => (await view(page))?.lab ?? null;
+  await page.evaluate(async () => {
+    const kf = (window as unknown as KfHook).__kf;
+    await kf.universe.lab?.({ kind: 'reset' });
+    await kf.universe.lab?.({ kind: 'select', id: 'moon' });
+  });
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.tap();
+  // The handle where it rests (the view re-frames as the sheet folds).
+  let tip = { x: -1e9, y: -1e9 };
+  await expect
+    .poll(
+      async () => {
+        const was = tip;
+        tip = (await lab())?.handle ?? { x: -1e9, y: -1e9 };
+        return Math.hypot(tip.x - was.x, tip.y - was.y);
+      },
+      { timeout: 60_000 * SLOW, intervals: [300] },
+    )
+    .toBeLessThan(0.5);
+  const before = (await lab())?.bodies.find((b) => b.id === 'moon')?.relativeVelKmS ?? [0, 0, 0];
+  const cdp = await page.context().newCDPSession(page);
+  // Taken 20 px off the tip (within the finger's reach), dragged 60 px further out.
+  const start = { x: tip.x + 20, y: tip.y };
+  await touch(cdp, 'touchStart', [start]);
+  for (let k = 1; k <= 10; k += 1) await touch(cdp, 'touchMove', [{ x: start.x + 6 * k, y: start.y }]);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(async () => (await lab())?.interventions.some((i) => i.kind === 'setVelocity' && i.id === 'moon') ?? false, { timeout: 30_000 * SLOW }).toBe(true);
+  const after = (await lab())?.bodies.find((b) => b.id === 'moon')?.relativeVelKmS ?? [0, 0, 0];
+  expect(Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2])).toBeGreaterThan(0.01);
+  expect(pageErrors).toEqual([]);
+});

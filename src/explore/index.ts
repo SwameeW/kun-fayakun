@@ -39,6 +39,7 @@ import {
   BODY_IDS,
   type BodyId,
   type FocusId,
+  type LabCommand,
   type SceneLabel,
   type UniverseBodyView,
   type UniverseContext,
@@ -72,6 +73,7 @@ import type { EquirectGrids } from './walk/equirect';
 import type { WalkInput } from './walk/walker';
 import { hijriDate } from './islamic/hijri';
 import type { Lab, LabPointerView } from './lab';
+import { layoutNames, NAME_GEOM, NAME_TAG_PX, type NameState, type NameView } from './label-layout';
 import { composeBulletin } from './field-notes/bulletin';
 import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes/data';
 import { centralAngle, loadPlaces, type Place } from './field-notes/places';
@@ -228,21 +230,7 @@ const LABEL = {
   /** A form (tag or edge pointer) taking over from the other waits until that one is below this opacity. */
   handover: 0.08,
 } as const;
-/** The corners a laboratory name may take about its body (CSS px, its leader's end): up and right first, then up-left, down-right, down-left. */
-const LAB_SPOTS: ReadonlyArray<readonly [number, number]> = [
-  [10, -10],
-  [-10, -10],
-  [10, 18],
-  [-10, 18],
-];
-/**
- * Numbers kept per laboratory name each frame (declutterLab); a name's tag's height (CSS px); the room a
- * name showing keeps from another before it gives way; and the letters reckoned for a name given only by
- * its key (a ship's burn directions: the longest of them, "anti-normal").
- */
-const LAB_GEOM = 6;
-const LAB_TAG_PX = 21;
-const LAB_MARGIN_PX = 8;
+/** The letters reckoned for a laboratory name given only by its key (a ship's burn directions: the longest of them, "anti-normal"). */
 const LAB_KEY_LETTERS = 11;
 /**
  * Up close only the focus's own orbit is drawn (and the Moon's around the Earth); the others come
@@ -427,6 +415,8 @@ export default function create(): UniverseModule {
   let wantLab = false;
   /** A share link's scenario (src/sim/share), waiting for the laboratory to open. */
   let pendingShare: string | null = null;
+  /** Commands for the laboratory sent before its chunk came (the same tick as opening it): done once it has. */
+  const labQueue: LabCommand[] = [];
   const hiddenBodies = new Set<BodyId>();
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
@@ -637,23 +627,17 @@ export default function create(): UniverseModule {
   };
   window.addEventListener('kf-universe-avoid', onAvoid);
   /**
-   * The laboratory's names (declutterLab): each one's eased opacity, the corner it sits at and the frame
-   * it was last seen; this frame's order, where each is (LAB_GEOM numbers a name: its point, width,
-   * whether it shows, its box at its corner) and the corners given.
+   * The laboratory's names (declutterLab, laid out by ./label-layout): each one's eased opacity and the
+   * corner it sits at (`labNames`), the frame it was last seen, and where each is (NAME_GEOM numbers a
+   * name). `labShown` (in `labNames`): the names showing last frame, and the chosen body's name and marks
+   * given a place (showing or coming in), four numbers each (a box's left, top and width, its height
+   * NAME_TAG_PX; 1 for the chosen body's, which the worlds' names give way to).
    */
-  const labFade = new Map<string, number>();
-  const labPlace = new Map<string, number>();
+  const labNames: NameState = { place: new Map(), fade: new Map(), order: [], boxes: [], shown: [] };
   const labSeen = new Map<string, number>();
   let labFrame = 0;
-  const labOrder: number[] = [];
   const labGeom: number[] = [];
-  const labBoxes: Array<{ x: number; y: number; w: number }> = [];
-  /**
-   * The laboratory's names showing last frame, and the chosen body's name and marks given a place (showing
-   * or coming in): four numbers each (a box's left, top and width, its height LAB_TAG_PX; 1 for the
-   * chosen body's, which the worlds' names give way to).
-   */
-  const labShown: number[] = [];
+  const labShown = labNames.shown;
   const labels: SceneLabel[] = [];
   const dotList: ImpostorDot[] = BODY_IDS.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: 6, marker: 0 }));
   /** Saturn's rings' span and pole, for the lens (set from physical.json on load, the pole each frame). */
@@ -1142,6 +1126,7 @@ export default function create(): UniverseModule {
       const v = pointerRay.set(0, 0, -1).applyQuaternion(c.camera.quaternion);
       return { x: v.x, y: v.y, z: v.z };
     },
+    insets: () => insets,
   };
   const pointerRay = new Vector3();
 
@@ -1321,9 +1306,10 @@ export default function create(): UniverseModule {
       lab.start('solar', jdTdb);
       lab.setRun(86_400, false);
       if (pendingShare) {
-        lab.command({ kind: 'importShared', data: pendingShare });
+        void lab.command({ kind: 'importShared', data: pendingShare });
         pendingShare = null;
       }
+      for (const c of labQueue.splice(0)) void lab.command(c);
     } else if (!wantLab && lab.active) {
       lab.stop();
       hiddenBodies.clear();
@@ -1776,14 +1762,17 @@ export default function create(): UniverseModule {
       lab.applyBuiltIns(sys, hiddenBodies);
       const refocus = lab.takeRefocus();
       if (refocus && !hiddenBodies.has(refocus)) nav.flyTo(world, refocus);
-      // A laboratory of its own (two or three bodies, none of them the worlds): the view goes to its star, at the Sun's place, never to a world it lacks.
-      else if ((hiddenBodies.has(nav.focus as BodyId) || nav.focus !== host(nav.focus)) && nav.focus !== 'sun' && !nav.busy) nav.flyTo(world, 'sun');
+      // A laboratory of its own (two or three bodies, none of them the worlds): the view goes to its star, at the Sun's place, never to a world it lacks
+      // (at once: the entry glide toward the world it left gives way).
+      else if ((hiddenBodies.has(nav.focus as BodyId) || nav.focus !== host(nav.focus)) && nav.focus !== 'sun' && !nav.travelling) nav.flyTo(world, 'sun');
     }
     // Too fast to show a world turning: held at an hour of its day (./time-beyond), let go only as the clock runs on its own (not paused, not a trip).
     const running = clockRate !== 0 && (lab?.active === true || !nav.travelling);
     spinHold?.update(sys, days, dt, running, c.reducedMotion);
     advanceStretch(dt);
     warpSystem(sys);
+    // In the laboratory each world is drawn at the experiment's radius (eased; shrinking away when it ends).
+    if (lab?.active) for (const id of BODY_IDS) grow[id] *= lab.scale(id);
     for (const path of orbitPaths) path.setDate(jdTdb);
 
     // The view the bodies are framed in: the camera's resting lens and what the interface covers.
@@ -2235,7 +2224,7 @@ export default function create(): UniverseModule {
     const from = labels.length;
     if (lab?.active) {
       lab.update(
-        { camera: origin.camera, forward, near: lens.near, far: lens.far, pxPerTan, focus: focus.position, focusRadius: focus.radiusKm, focusDistance: focusKm, compensation: adapted },
+        { camera: origin.camera, forward, near: lens.near, far: lens.far, pxPerTan, focus: focus.position, focusRadius: focus.radiusKm, focusDistance: focusKm, compensation: adapted, dt },
         (abs, out) => origin.relative(abs, out),
       );
       lab.labels(labels);
@@ -2738,7 +2727,7 @@ export default function create(): UniverseModule {
       for (let t = 0; t + 3 < labShown.length; t += 4) {
         const lx = labShown[t] ?? 0;
         const ly = labShown[t + 1] ?? 0;
-        if (labShown[t + 3] === 1 && boxX - spare < lx + (labShown[t + 2] ?? 0) && lx < boxX + LABEL.widthPx + spare && boxY - spare < ly + LAB_TAG_PX && ly < boxY + LABEL.tagPx + spare) blocked = true;
+        if (labShown[t + 3] === 1 && boxX - spare < lx + (labShown[t + 2] ?? 0) && lx < boxX + LABEL.widthPx + spare && boxY - spare < ly + NAME_TAG_PX && ly < boxY + LABEL.tagPx + spare) blocked = true;
       }
       state.blocked = wanted && blocked;
       const showTag = wanted && !blocked && !offView;
@@ -2754,7 +2743,7 @@ export default function create(): UniverseModule {
         for (let t = 0; t + 3 < labShown.length; t += 4) {
           const lx = labShown[t] ?? 0;
           const ly = labShown[t + 1] ?? 0;
-          if (boxX < lx + (labShown[t + 2] ?? 0) && lx < boxX + LABEL.widthPx && boxY < ly + LAB_TAG_PX && ly < boxY + LABEL.tagPx) wait = true;
+          if (boxX < lx + (labShown[t + 2] ?? 0) && lx < boxX + LABEL.widthPx && boxY < ly + NAME_TAG_PX && ly < boxY + LABEL.tagPx) wait = true;
         }
       }
       state.tagBox[0] = sx + LABEL.gapPx;
@@ -2853,30 +2842,16 @@ export default function create(): UniverseModule {
     const sys = system;
     if (!c || !sys) return;
     labFrame += 1;
-    const show = 1 - Math.exp(-Math.max(0, dt) / LABEL.seconds);
-    const hide = 1 - Math.exp(-Math.max(0, dt) / LABEL.hideSeconds);
     const left = insets.left + LABEL.marginPx;
     const rightEdge = widthPx - insets.right - LABEL.marginPx;
     const top = insets.top + LABEL.tagPx;
     const bottom = viewportPx - insets.bottom - LABEL.marginPx;
-    // A tag's box at a corner (its text at 7.5 px a letter, its padding and rule; a line's height).
-    const h = LAB_TAG_PX;
-    const boxAt = (j: number, spot: number, out: 'x' | 'y'): number => {
-      const [dx, dy] = LAB_SPOTS[spot] ?? [0, 0];
-      const g = j * LAB_GEOM;
-      return out === 'x' ? (dx < 0 ? (labGeom[g] ?? 0) + dx - (labGeom[g + 2] ?? 0) : (labGeom[g] ?? 0) + dx) : (labGeom[g + 1] ?? 0) + dy - h / 2;
-    };
-    const meets = (ax: number, ay: number, aw: number, bx: number, by: number, bw: number, pad: number): boolean => ax - pad < bx + bw && bx < ax + aw + pad && ay - pad < by + h && by < ay + h + pad;
-    const rank = (label: SceneLabel | undefined): number => label?.rank ?? Number.MAX_VALUE;
-    const own = (label: SceneLabel): boolean => rank(label) === Number.MAX_VALUE;
-    // First where each name is now (its point on screen, whether it shows at all (2 once given a corner), its width, its box at the corner it had).
+    // First where each name is now (its point on screen, whether it shows at all, its width (its text at 7.5 px a letter, its padding and rule)).
     const count = labels.length - from;
-    labOrder.length = 0;
-    labGeom.length = count * LAB_GEOM;
+    labGeom.length = count * NAME_GEOM;
     for (let j = 0; j < count; j += 1) {
       const label = labels[from + j];
       if (!label) continue;
-      labOrder.push(j);
       const [px, py, pz] = label.position;
       const d = Math.hypot(px, py, pz);
       projected.set(px, py, pz).project(c.camera);
@@ -2893,118 +2868,31 @@ export default function create(): UniverseModule {
         const cos = (px * p.drawn.x + py * p.drawn.y + pz * p.drawn.z) / (d * q);
         if (Math.acos(Math.min(1, Math.max(-1, cos))) < Math.asin(Math.min(1, (sys.specs[id].radiusKm * grow[id] * p.k) / q))) visible = false;
       }
-      const g = j * LAB_GEOM;
+      const g = j * NAME_GEOM;
       labGeom[g] = sx;
       labGeom[g + 1] = sy;
       labGeom[g + 2] = (label.text?.length ?? LAB_KEY_LETTERS) * 7.5 + 20;
       labGeom[g + 3] = visible ? 1 : 0;
-      const had = labPlace.get(label.id) ?? 0;
-      labGeom[g + 4] = boxAt(j, had, 'x');
-      labGeom[g + 5] = boxAt(j, had, 'y');
     }
-    labOrder.sort((a, b) => rank(labels[from + b]) - rank(labels[from + a]) || a - b);
-    // Then, the most important first, where each may go: clear of the interface, the corners already given and (but for the chosen body's) the worlds' names.
-    let boxes = 0;
-    /** Inside the clear view and off what stands over it. */
-    const free = (bx: number, by: number, w: number): boolean => !(bx < insets.left || bx + w > widthPx - insets.right || by < insets.top || by + h > viewportPx - insets.bottom) && !avoid.some((r) => bx < r.right && r.left < bx + w && by < r.bottom && r.top < by + h);
-    /** The chosen body's name or mark (own()) the worlds' names give way to (theirs are not in its way); a name that fits() only where it allows. */
-    const clear = (bx: number, by: number, w: number, pad: number, label: SceneLabel): boolean => {
-      const first = own(label);
-      if (!free(bx, by, w) || label.fits?.(bx, by, w, h) === false) return false;
-      for (let t = 0; t < takenCount && !first; t++) {
-        const o = taken[t];
-        if (o && bx < o.x + LABEL.widthPx && o.x < bx + w && by < o.y + LABEL.tagPx && o.y < by + h) return false;
-      }
-      for (let t = 0; t < boxes; t++) {
-        const o = labBoxes[t];
-        if (o && meets(bx, by, w, o.x, o.y, o.w, pad)) return false;
-      }
-      return true;
-    };
-    for (const j of labOrder) {
+    labView.right = widthPx - insets.right;
+    labView.bottom = viewportPx - insets.bottom;
+    labView.left = insets.left;
+    labView.top = insets.top;
+    labView.takenCount = takenCount;
+    layoutNames(labels, from, count, labGeom, labView, labNames, 1 - Math.exp(-Math.max(0, dt) / LABEL.seconds), 1 - Math.exp(-Math.max(0, dt) / LABEL.hideSeconds), entering);
+    for (let j = 0; j < count; j += 1) {
       const label = labels[from + j];
-      if (!label) continue;
-      const g = j * LAB_GEOM;
-      const w = labGeom[g + 2] ?? 0;
-      const before = labFade.get(label.id) ?? (entering ? label.opacity : 0);
-      const showing = before > LABEL.handover;
-      const was = labPlace.get(label.id) ?? 0;
-      let spot = -1;
-      for (let t = -1; labGeom[g + 3] === 1 && spot < 0 && t < LAB_SPOTS.length; t += 1) {
-        if (t === was) continue;
-        const k = t < 0 ? was : t;
-        if (clear(boxAt(j, k, 'x'), boxAt(j, k, 'y'), w, showing ? LAB_MARGIN_PX : 0, label)) spot = k;
-      }
-      let wait = false;
-      if (spot >= 0) {
-        labGeom[g + 3] = 2;
-        const bx = boxAt(j, spot, 'x');
-        const by = boxAt(j, spot, 'y');
-        let box = labBoxes[boxes];
-        if (!box) {
-          box = { x: 0, y: 0, w: 0 };
-          labBoxes.push(box);
-        }
-        box.x = bx;
-        box.y = by;
-        box.w = w;
-        boxes += 1;
-        // Coming in, or to another corner: only once no other name still shows there (a world's fading out too).
-        if (!showing || spot !== was) {
-          for (const k of labOrder) {
-            const other = labels[from + k];
-            const q = k * LAB_GEOM;
-            if (k !== j && other && (labFade.get(other.id) ?? 0) > LABEL.handover && meets(bx, by, w, labGeom[q + 4] ?? 0, labGeom[q + 5] ?? 0, labGeom[q + 2] ?? 0, 0)) wait = true;
-          }
-          for (const id of BODY_IDS) if (worldNameAt(id, bx, by, w, h)) wait = true;
-        }
-        if (!wait || !showing) labPlace.set(label.id, spot);
-      }
-      label.offset = LAB_SPOTS[labPlace.get(label.id) ?? 0];
-      const want = spot >= 0 && !wait ? label.opacity : 0;
-      const now = before + (want - before) * (entering ? 1 : want < before ? hide : show);
-      labFade.set(label.id, now);
-      labSeen.set(label.id, labFrame);
-      label.opacity = now < 1e-3 ? 0 : now;
-    }
-    // Whatever the easing left, two never show over each other: by rank, a name whose box meets one
-    // shown (or given a place) before it gives way at once (it comes back once it has room), and so does
-    // a world's under the chosen body's name or marks, or over another of the laboratory's. What shows,
-    // and where the chosen body's names go, is kept for the worlds' names on the next frame.
-    labShown.length = 0;
-    for (const j of labOrder) {
-      const label = labels[from + j];
-      if (!label) continue;
-      const first = own(label);
-      const spot = labPlace.get(label.id) ?? 0;
-      const bx = boxAt(j, spot, 'x');
-      const by = boxAt(j, spot, 'y');
-      const w = labGeom[j * LAB_GEOM + 2] ?? 0;
-      if (label.opacity <= LABEL.handover) {
-        // The chosen body's name or mark coming in has its place: a world's name there gives way to it.
-        if (first && labGeom[j * LAB_GEOM + 3] === 2) labShown.push(bx, by, w, 1);
-        continue;
-      }
-      // (Nor where the interface now covers it: gone at once, never drawn under it while it fades.)
-      let meet = !free(bx, by, w);
-      for (let t = 0; t + 3 < labShown.length; t += 4) if (meets(bx, by, w, labShown[t] ?? 0, labShown[t + 1] ?? 0, labShown[t + 2] ?? 0, 0)) meet = true;
-      for (const id of BODY_IDS) {
-        if (meet || !worldNameAt(id, bx, by, w, h)) continue;
-        if (first) giveWay(id);
-        else meet = true;
-      }
-      if (meet) {
-        label.opacity = 0;
-        labFade.set(label.id, 0);
-      } else labShown.push(bx, by, w, first ? 1 : 0);
+      if (label) labSeen.set(label.id, labFrame);
     }
     for (const [id, at] of labSeen) {
       if (at === labFrame) continue;
       labSeen.delete(id);
-      labFade.delete(id);
-      labPlace.delete(id);
+      labNames.fade.delete(id);
+      labNames.place.delete(id);
     }
   };
+  /** What the laboratory's names keep clear of (./label-layout): the clear view, the interface, the worlds' names. */
+  const labView: NameView<BodyId> = { left: 0, top: 0, right: 0, bottom: 0, avoid, taken, takenCount: 0, worldW: LABEL.widthPx, worldH: LABEL.tagPx, worlds: BODY_IDS, worldAt: worldNameAt, giveWay };
 
   const occluded = (id: BodyId): boolean => {
     if (!system) return false;
@@ -3027,7 +2915,10 @@ export default function create(): UniverseModule {
       const pole = km(b[3] ?? 0, b[4] ?? 1, b[5] ?? 0);
       return {
         id,
-        radiusKm: spec.radiusKm,
+        // The camera keeps outside a world the experiment has grown.
+        get radiusKm() {
+          return spec.radiusKm * (lab?.active ? lab.scale(id) : 1);
+        },
         boundKm: spec.boundKm,
         minAltitudeKm: spec.minAltitudeKm,
         fill: spec.fill,
@@ -3355,11 +3246,8 @@ export default function create(): UniverseModule {
             endDescent();
             return true;
           }
-          // Esc while placing a body leaves placing.
-          if (lab?.active && lab.placing) {
-            lab.command({ kind: 'place', on: false });
-            return true;
-          }
+          // Esc while placing a body leaves placing; while the laboratory slows for an event, calls that off.
+          if (lab?.active && lab.escape()) return true;
           if (steer('stop')) return true;
           // Held: and pressed again within the second, held a second longer (only a pause lets Esc go on).
           if (performance.now() < escapeHeld) {
@@ -3698,7 +3586,9 @@ export default function create(): UniverseModule {
     },
 
     lab(command) {
-      lab?.command(command);
+      // Asked before the laboratory's chunk has come: done once it has.
+      if (lab) void lab.command(command);
+      else labQueue.push(command);
     },
 
     time(asked) {

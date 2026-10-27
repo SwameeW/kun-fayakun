@@ -88,6 +88,8 @@
   "help.descentProbe": "These numbers were measured by a real probe that fell through these clouds, sending them home by radio as it went.",
 
   "help.labClock": "The laboratory’s own clock. Speed it up to see orbits and changes happen faster, or pause it to change things carefully.",
+  "help.labSlow": "When something is about to hit something else, or a moon is about to be torn apart, the laboratory’s clock slows down so you can watch it, then speeds up again. The physics is the same at any speed. Turn it off to keep your own speed.",
+  "help.labThrow": "Aim a rock at a world. The laboratory works out where it must start so it strikes how and when you asked, shows you what will happen, and only then lets you throw it.",
   "help.labBodies": "Everything in this experiment. Choose one to see its numbers and change them, and tick several to follow them together.",
   "help.speed": "How fast it is moving, and how fast compared with the world it travels around.",
   "help.period": "How long one trip around its orbit takes.",

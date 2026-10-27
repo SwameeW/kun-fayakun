@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
+import { planner, type ThrowPlan, type ThrowRequest } from './aim';
+import { nextApproach } from './approach';
 import { luminosities } from './climate';
 import { commandId, Engine, Prediction, type Checkpoint } from './engine';
+import { lookOf } from './looks';
 import { accelerations, diagnostics, drift, type Diagnostics } from './nbody';
 import type { LabReply, LabRequest, LabSnapshot } from './protocol';
 import { REWIND_SEGMENT, Rewind, swarmPlaces } from './rewind';
@@ -27,6 +30,8 @@ import { REWIND_SEGMENT, Rewind, swarmPlaces } from './rewind';
 const TICK_MS = 16;
 const STEP_BUDGET_MS = 8;
 const PREDICT_BUDGET_MS = 3;
+/** A throw being worked out (./aim) is given this much of a tick. */
+const AIM_BUDGET_MS = 4;
 const SNAPSHOT_MS = 33;
 /** A stall longer than this (a hidden tab) is not made up for. */
 const MAX_WALL_S = 0.25;
@@ -39,6 +44,10 @@ const RECENT_MARKS = 16;
 /** Going back is shown at most this share of the pace its history is replayed at. */
 const REWIND_MARGIN = 0.85;
 const PREDICTION_SAMPLES = 360;
+/** The fastest the clock runs either way (simulated seconds a second: thirty days, the time machine's top rung); a rate asked for beyond it is held to it, one not finite refused. */
+const MAX_RATE = 2_592_000;
+/** What is coming is looked for this many real seconds ahead at the rate asked for (./approach). */
+const LOOKAHEAD_S = 4;
 /** The most steps one prediction may take (a long horizon is sampled more coarsely, not without end). */
 const PREDICTION_STEPS = 400_000;
 
@@ -58,6 +67,9 @@ let recent: Array<{ wall: number; sim: number }> = [];
 let job: { revision: number; prediction: Prediction } | null = null;
 let revision = 0;
 let pendingPrediction: { id: string | null; horizonS: number; accuracy: number } | null = null;
+/** A throw to work out (./aim), the latest asked for (a burst of requests costs one), and the one being worked out a few milliseconds a tick. */
+let aimWanted: { requestId: number; request: ThrowRequest } | null = null;
+let aimJob: { requestId: number; logLength: number; work: Generator<void, ThrowPlan> } | null = null;
 /** The page's latest run or goto request, echoed; the run's discontinuities; the history being played backwards; a stop at the start. */
 let control = 0;
 let timeline = 0;
@@ -136,6 +148,8 @@ function snapshot(): void {
   accelerations(s, accScratch);
   const acc = Float64Array.from(accScratch.slice(0, s.ids.length * 3));
   const swarms = rewind ? rewind.swarms.map((w) => ({ ...w, rel: w.rel.slice() })) : swarmPlaces(s);
+  // What is coming within a few real seconds at the rate asked for (forwards only: going back, it has happened).
+  const coming = !paused && rate > 0 && !shown ? nextApproach(s, rate * LOOKAHEAD_S, engine.keep) : null;
   const reference = engine.interventions[logIndex - 1]?.after ?? (startDiagnostics ??= diagnostics(engine.checkpoints[0]?.state ?? s));
   const reply: LabSnapshot = {
     type: 'snapshot',
@@ -174,6 +188,10 @@ function snapshot(): void {
     events: (shown ? engine.events.filter((e) => e.step < s.step) : engine.events).slice(-40),
     checkpoints: engine.checkpoints.map((c) => ({ step: c.step, t: c.t })),
     swarms,
+    looks: s.ids.map((_, i) => lookOf(s, i)),
+    origin: s.ids.map((id) => s.origins[id] ?? null),
+    rubble: [...s.rubble],
+    upcoming: coming ? { ...coming, t: s.t + coming.inS } : null,
     climate: Object.entries(s.climate).map(([id, c]) => ({ id, t: [...c.t], spec: { ...c.spec } })),
     light: luminosities(s),
     logLength: engine.scenario.log.length,
@@ -184,14 +202,34 @@ function snapshot(): void {
 }
 
 function tick(): void {
+  // A throw asked for: begun from the moment shown (going backwards, the run is first put there exactly)
+  // before the run steps on, then worked out AIM_BUDGET_MS a tick (it copies the run as it began).
+  if (engine && aimWanted) {
+    settleRewind();
+    aimJob = { requestId: aimWanted.requestId, logLength: engine.scenario.log.length, work: planner(engine.state, engine.dt, engine.scenario.integrator, engine.keep, aimWanted.request) };
+    aimWanted = null;
+  }
+  if (aimJob) {
+    const started = performance.now();
+    for (;;) {
+      const r = aimJob.work.next();
+      if (r.done) {
+        post({ type: 'aimed', generation, requestId: aimJob.requestId, logLength: aimJob.logLength, plan: r.value });
+        aimJob = null;
+        break;
+      }
+      if (performance.now() - started >= AIM_BUDGET_MS) break;
+    }
+  }
   const now = performance.now();
   const wall = Math.min(MAX_WALL_S, (now - lastTick) / 1000);
   lastTick = now;
   let moved = 0;
   if (engine && seekTo !== null) {
-    // Going to a moment: whole steps toward it within the budget, whatever the rate.
-    while (engine.state.t + engine.dt <= seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) stepOn(engine);
-    if (engine.failure || engine.state.t + engine.dt > seekTo) {
+    // Going to a moment: whole steps toward it within the budget, whatever the rate, to the first at or past
+    // it (with long steps, the last one short of it could be most of a day before: another date).
+    while (engine.state.t < seekTo && !engine.failure && performance.now() - now < STEP_BUDGET_MS) stepOn(engine);
+    if (engine.failure || engine.state.t >= seekTo) {
       seekTo = null;
       owed = 0;
       recent = [];
@@ -258,7 +296,7 @@ function tick(): void {
       const r = job.prediction.result();
       const path = Float64Array.from(r.path);
       const framePath = Float64Array.from(r.framePath);
-      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, path, merged: r.merged, frame: r.frame, framePath, encounters: r.encounters }, [path.buffer, framePath.buffer]);
+      post({ type: 'prediction', generation, revision: job.revision, id: r.id, horizonS: job.prediction.horizonS, fromT: r.fromT, path, merged: r.merged, frame: r.frame, framePath, encounters: r.encounters }, [path.buffer, framePath.buffer]);
       job = null;
     }
   }
@@ -288,8 +326,13 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       atStart = false;
       seekTo = null;
       landTo = null;
+      aimWanted = null;
+      aimJob = null;
       marks = [];
       startDiagnostics = null;
+      // Held at its start until the page says how to run it (its 'run' follows): a tick between the two
+      // would otherwise step the new scenario at the old one's pace, a Reset landing a step past the fork.
+      paused = true;
       snapshot();
       startPrediction();
       return;
@@ -305,10 +348,14 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
           owed = 0;
           recent = [];
         }
-        // Achieved is measured from a change of rate; time owed one way is not owed the other.
-        if (msg.rate !== rate) recent = [];
-        if (Math.sign(msg.rate) !== Math.sign(rate)) owed = 0;
-        rate = msg.rate;
+        // Achieved is measured from a change of rate; time owed one way is not owed the other. A rate not
+        // finite (or none) is refused (the last one kept); one beyond the fastest is held to it.
+        if (Number.isFinite(msg.rate) && msg.rate !== 0) {
+          const next = Math.sign(msg.rate) * Math.min(MAX_RATE, Math.abs(msg.rate));
+          if (next !== rate) recent = [];
+          if (Math.sign(next) !== Math.sign(rate)) owed = 0;
+          rate = next;
+        }
         paused = msg.paused;
         landTo = msg.paused && typeof msg.landAt === 'number' && Number.isFinite(msg.landAt) ? msg.landAt : null;
         // Forwards again: the run goes on from the moment shown, exactly.
@@ -346,14 +393,20 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
         seekTo = null;
         landTo = null;
         const before = engine.state.step;
-        engine.applyAt(msg.command, msg.atStep ?? engine.state.step);
+        const had = new Set(engine.state.ids);
+        const refused = engine.applyAt(msg.command, Number.isFinite(msg.atStep) ? (msg.atStep ?? engine.state.step) : engine.state.step, msg.exact === true);
         // Made on a view the run had passed: it went back there first.
         if (engine.state.step < before) timeline += 1;
+        post({ type: 'ack', generation, editSeq: msg.editSeq ?? applied, ok: refused === null, reason: refused, created: engine.state.ids.filter((id) => !had.has(id)) });
         trimMarks(engine);
         startPrediction();
         snapshot();
         break;
       }
+      case 'aim':
+        // Worked out at the next tick (tick): only the latest of several asked for at once.
+        aimWanted = { requestId: msg.requestId, request: msg.request };
+        break;
       case 'predict':
         pendingPrediction = { id: msg.id, horizonS: msg.horizonS, accuracy: msg.accuracy };
         startPrediction();

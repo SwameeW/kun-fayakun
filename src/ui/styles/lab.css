@@ -171,3 +171,21 @@
   justify-content: flex-end;
   margin-block-end: calc(-1 * var(--kf-space-2));
 }
+
+/* Slowed for an event: the time machine's row says the rate shown (its own rate is the one set), with a way back to full speed. */
+.kf-universe-time.is-slowed .kf-universe-time-rate {
+  display: none;
+}
+
+.kf-lab-slowed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-1) var(--kf-space-2);
+  color: var(--kf-gold-strong);
+  font-size: 0.75rem;
+}
+
+.kf-lab-slowed[hidden] {
+  display: none;
+}

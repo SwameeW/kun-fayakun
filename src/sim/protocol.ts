@@ -1,6 +1,10 @@
+import type { ThrowPlan, ThrowRequest } from './aim';
+import type { Approach } from './approach';
 import type { ClimateSpec } from './climate';
 import type { Command, Encounter, Scenario } from './engine';
+import type { BodyOrigin, Look } from './looks';
 import type { MergeEvent } from './nbody';
+import type { SwarmPlaces } from './rewind';
 import type { Burn } from './ships';
 
 /**
@@ -23,8 +27,10 @@ export type LabRequest =
   | { type: 'run'; generation: number; control: number; rate: number; paused: boolean; landAt?: number }
   /** Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a tick; the clock then runs (or not) as `run` last said. */
   | { type: 'goto'; generation: number; control: number; t: number }
-  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt). */
-  | { type: 'command'; generation: number; command: Command; atStep?: number }
+  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt; `exact`: made there or refused); `editSeq` numbers it, and the worker's 'ack' answers with it. */
+  | { type: 'command'; generation: number; command: Command; atStep?: number; exact?: boolean; editSeq?: number }
+  /** A throw worked out (./aim) from the run as it stands, not yet made: answered with 'aimed'. */
+  | { type: 'aim'; generation: number; requestId: number; request: ThrowRequest }
   | { type: 'predict'; generation: number; id: string | null; horizonS: number; accuracy: number }
   | { type: 'undo'; generation: number }
   | { type: 'redo'; generation: number }
@@ -86,8 +92,14 @@ export interface LabSnapshot {
   /** Each solid world's climate (./climate): its bands' temperatures (K, south to north) and what it is set to; every star's luminosity now (W). */
   climate: Array<{ id: string; t: number[]; spec: ClimateSpec }>;
   light: Record<string, number>;
-  /** Rings and belts: their particles' places relative to each one's primary (km, three per particle; single precision is ample to draw). */
-  swarms: Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array }>;
+  /** Rings and belts: their particles' places relative to each one's primary (km, three per particle; single precision is ample to draw), what each is and looks like (./rewind SwarmPlaces). */
+  swarms: SwarmPlaces;
+  /** Each body's look (./looks), and where a body a collision or the tides made came from (null for the rest); pieces of torn bodies. Drawing only. */
+  looks: Look[];
+  origin: Array<BodyOrigin | null>;
+  rubble: string[];
+  /** The next impact or tidal disruption within four seconds at the rate asked for (./approach), or null. */
+  upcoming: (Approach & { t: number }) | null;
   logLength: number;
   discarded: number;
   /** Ships (./ships): their rocket, propellant now and burns to come. */
@@ -96,6 +108,11 @@ export interface LabSnapshot {
 
 export type LabReply =
   | LabSnapshot
-  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; encounters: Encounter[] }
+  /** A body's path integrated ahead from simulated time `fromT` (its times, the merger's and the encounters', are from then). */
+  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; fromT: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; encounters: Encounter[] }
   | { type: 'saved'; generation: number; requestId: number; scenario: Scenario }
+  /** An edit's answer: applied, or refused with the reason (Engine.refusal); the bodies it made. */
+  | { type: 'ack'; generation: number; editSeq: number; ok: boolean; reason: string | null; created: string[] }
+  /** A throw worked out, from the run with `logLength` edits logged (an edit since makes it stale). */
+  | { type: 'aimed'; generation: number; requestId: number; logLength: number; plan: ThrowPlan }
   | { type: 'error'; generation: number; message: string };

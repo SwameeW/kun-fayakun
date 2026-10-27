@@ -1,7 +1,7 @@
 import type { ScriptedOptions, ScriptedReply } from '../ai/engine/scripted';
 import type { CapabilityReport, Intelligence } from '../ai/types';
 import type { FrameStats } from './perf';
-import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from './types';
+import type { App, ChapterContent, ChapterId, LabCommand, LabEditResult, UniversePose, UniverseView } from './types';
 
 /** <html> attributes that tests wait on (docs/CONTRACTS.md, "Test hooks"). */
 export type HookAttribute =
@@ -74,6 +74,15 @@ export interface KfTestHandle {
     state(): UniverseView | null;
     /** Throws when the explorer is not on screen. */
     place(pose: UniversePose): void;
+    /**
+     * Added by the orbital laboratory's chunk once it has loaded (src/explore/lab): a command with its
+     * answer (an edit applied or refused, with the reason: a tool can confirm what it did), and what its
+     * effects drew in the last frame (src/explore/lab-fx FxReport, read-only).
+     */
+    lab?(command: LabCommand): Promise<LabEditResult>;
+    labDraw?(): unknown;
+    /** The laboratory's effects switched on or off for an A/B measurement (src/explore/lab-fx FxParts); null before they have loaded. */
+    labEffects?(parts: Partial<Record<'rocks' | 'dust' | 'fire' | 'bands', boolean>>): Record<'rocks' | 'dust' | 'fire' | 'bands', boolean> | null;
   };
 }
 

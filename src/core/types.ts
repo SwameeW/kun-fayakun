@@ -1319,10 +1319,46 @@ export interface UniverseLab {
   /** The chosen body's velocity arrow's tip on the canvas (client px; drag it to change the velocity), or null. */
   handle: { x: number; y: number } | null;
   /** The last save, load, export or reset, or a refusal with its reasons. */
-  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error' | 'shared' | 'deleted'; detail: string[] } | null;
+  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error' | 'shared' | 'deleted' | 'refused'; detail: string[] } | null;
   /** Every body's name seen in this scenario (by id), kept after it merges or is removed. */
   names: Readonly<Record<string, string>>;
+  /** The scenario's generation (a new one for each start, load or reset) and the edits the run has received in it. */
+  generation: number;
+  applied: number;
+  /**
+   * Slowing down for events (docs/SANDBOX-ROADMAP.md W1.13): whether it is on (the visitor's setting,
+   * on unless turned off), and while it acts: what for, the rate the clock runs at instead of the one
+   * set (simulated seconds a second), and the simulated seconds until contact (null once it has happened).
+   */
+  slow: { on: boolean; active: { kind: 'impact' | 'disrupt'; target: string; body: string; rate: number; inS: number | null } | null };
+  /** A throw worked out and not yet made (./lab-throw): its request, the contact it makes (run with the experiment's rules), or why it cannot be made; null for none. */
+  aim: LabAim | null;
+  /** The latest impact or tidal disruption, for the event card, with its numbers (the radius after: the event's own), how many of its own pieces have struck since (they fall back: counted, not a new card) and the survivor's radius once they have (null until one has); null before any. */
+  latest: { t: number; kind: 'merge' | 'fragment' | 'graze' | 'disrupt'; regime: string; survivor: string; absorbed: string; speedKmS: number; angleDeg: number; energyJ: number; created: number; craterKm: number | null; radiusBeforeKm: number | null; radiusAfterKm: number | null; massBeforeKg: number | null; massAfterKg: number | null; later: number; radiusNowKm: number | null } | null;
 }
+
+/** A throw being aimed (W1.12). */
+export interface LabAim {
+  status: 'working' | 'ready' | 'refused' | 'thrown';
+  target: string;
+  impactor: LabImpactor;
+  vInfKmS: number;
+  angleDeg: number;
+  leadS: number;
+  /** The contact it makes, worked out with the experiment's rules: with what, how soon (s), how fast (km/s), at what angle from the horizontal (degrees), its regime, crater (km) and energy (J). */
+  contact: { with: string; inS: number; speedKmS: number; angleDeg: number; regime: string; craterKm: number | null; energyJ: number } | null;
+  /** Why it cannot be thrown (src/sim/aim REFUSED, or the experiment changed since it was worked out: 'stale'), and for a miss how near it came (km between the surfaces). */
+  reason: string | null;
+  missKm: number | null;
+  /** The rock's id once thrown. */
+  id: string | null;
+}
+
+/** What can be thrown: a stone a kilometre across, a ten-kilometre asteroid (Chicxulub's impactor's size), Ceres, a Mars. */
+export type LabImpactor = 'stone' | 'asteroid' | 'ceres' | 'mars';
+
+/** What an edit came to: applied (with the bodies it made), or refused with the reason. */
+export type LabEditResult = { ok: true; created: string[] } | { ok: false; reason: string };
 
 /** What the laboratory's interface asks of it. Masses in kg, distances km, velocities km/s relative to a body. */
 export type LabCommand =
@@ -1390,6 +1426,17 @@ export type LabCommand =
   | { kind: 'cancelBurns'; id: string }
   /** An autopilot: a prograde burn centred on the far side of the ship's orbit, to make the orbit round there (refused without the propellant for it). */
   | { kind: 'circularise'; id: string }
+  /** Slowing down for events: on or off (the visitor's setting, kept in this browser); or the slowing under way called off (Esc, a rate). */
+  | { kind: 'slow'; on?: boolean; cancel?: boolean }
+  /**
+   * A throw (W1.12): aimed (worked out first: speed far away km/s, angle from the horizontal degrees, time
+   * to contact s; where it strikes, a unit vector from the target's centre in the scenario's frame, and the
+   * way it comes in along the ground, by default the face toward the camera and from the camera's left),
+   * then let go, or put away.
+   */
+  | { kind: 'aim'; target: string; impactor: LabImpactor; vInfKmS: number; angleDeg: number; leadS: number; site?: [number, number, number]; heading?: [number, number, number] }
+  | { kind: 'throw' }
+  | { kind: 'aimClear' }
   /** The second autopilot: a Hohmann transfer from a round orbit to a round one `toKm` from the primary's centre (two burns; refused unless it can be done). */
   | { kind: 'transfer'; id: string; toKm: number };
 
