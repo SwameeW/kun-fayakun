@@ -23,6 +23,48 @@ const steps = (page: Page) => page.getByTestId('lab-lesson-steps');
 /** The words of each step on show (an item shown with no words is a defect: the empty "1."). */
 const shownTexts = (page: Page): Promise<string[]> => steps(page).locator('li').evaluateAll((items) => items.filter((li) => !(li as HTMLElement).hidden).map((li) => (li.querySelector('p:not([hidden])')?.textContent ?? '') + (li.querySelector('button') ? '[button]' : '')));
 
+/**
+ * Kepler's lesson begun by `presses` presses within one task, then watched in the page frame by frame
+ * until its first step opens (its set-up takes a frame or two: a check from here, a round trip later,
+ * could come after it): every step closed at once, the first opening only with the lesson's experiment
+ * shown (a star and a planet, no edit yet), the second still closed. Returns what went wrong.
+ */
+const keplerBegun = (page: Page, presses: number): Promise<string[]> =>
+  page.evaluate(
+    ({ n, limitMs }) =>
+      new Promise<string[]>((resolve) => {
+        const kf = (window as unknown as KfHook).__kf;
+        const step = (k: number): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>(`[data-testid="lab-lesson-step-${String(k)}"]`);
+        const problems: string[] = [];
+        /** True once the first step is open. */
+        const check = (when: string): boolean => {
+          const l = kf.universe.state()?.lab;
+          const theirs = l?.bodies.map((b) => b.id).join() === 'star,planet' && l.logLength === 0;
+          const first = step(1);
+          const second = step(2);
+          if (!first || !second) {
+            problems.push(`${when}: no steps`);
+            return false;
+          }
+          if (!second.disabled) problems.push(`${when}: the second step open`);
+          if (!first.disabled && !theirs) problems.push(`${when}: the first step open before its experiment`);
+          return !first.disabled;
+        };
+        const begin = document.querySelector<HTMLElement>('[data-testid="lab-lesson-kepler"]');
+        for (let i = 0; i < n; i += 1) begin?.click();
+        if (check('at once')) problems.push('the first step open at once');
+        const t0 = performance.now();
+        let frame = 0;
+        const tick = (): void => {
+          frame += 1;
+          if (check(`frame ${String(frame)}`) || performance.now() - t0 > limitMs) resolve(problems);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    { n: presses, limitMs: LIVE.timeout },
+  );
+
 async function openLessons(page: Page): Promise<void> {
   await page.getByTestId('lab-open').click();
   await expect(page.getByTestId('lab-panel')).toBeVisible(LIVE);
@@ -94,8 +136,8 @@ test('a lesson’s steps wait for its experiment, go in order and once each, and
   await waitForUniverse(page);
   await openLessons(page);
   // Kepler: begun, every step waits for the experiment, the first step's place saying it is being set up.
-  await page.getByTestId('lab-lesson-kepler').click();
-  for (const k of [1, 2]) await expect(page.getByTestId(`lab-lesson-step-${String(k)}`)).toBeDisabled();
+  await page.getByTestId('lab-lesson-kepler').scrollIntoViewIfNeeded();
+  expect(await keplerBegun(page, 1)).toEqual([]);
   await expect(page.getByTestId('lab-lesson-text-0')).toHaveText(/Setting up the experiment|The planet goes round/);
   await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
   await expect(page.getByTestId('lab-lesson-text-0')).toContainText('1 AU from its star');
@@ -307,8 +349,7 @@ for (const size of [
         expect(name?.height ?? 99, id).toBeLessThan(24);
       }
       // Begun in a burst: every step waits for its experiment, then the first opens.
-      await spam(page.getByTestId('lab-lesson-kepler'), 9);
-      for (const k of [1, 2]) await expect(page.getByTestId(`lab-lesson-step-${String(k)}`)).toBeDisabled();
+      expect(await keplerBegun(page, 9)).toEqual([]);
       expect(await shownTexts(page)).not.toContain('');
       await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
       // A numbered list: a small indent, a gap between steps, each step's words under its button.
