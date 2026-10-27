@@ -318,8 +318,9 @@ function main(): void {
     lines.push('', `Machine: ${m?.cpu ?? '?'}, ${((m?.memoryBytes ?? 0) / 2 ** 30).toFixed(0)} GB, ${m?.os ?? '?'}; WebGPU adapter ${m?.adapter?.vendor ?? '?'} ${m?.adapter?.architecture ?? ''}; ${m?.adapter?.userAgent.match(/Chrome\/[\d.]+/u)?.[0] ?? ''}.`);
     lines.push('', `Runs: ${runs.map((r) => `${basename(r.file)} (${r.run.startedAt.slice(0, 16)}Z${r.run.finishedAt ? '' : ', unfinished'})`).join('; ')}.`);
     const timing = runs.filter((r) => r.run.tag?.startsWith('timing') === true);
-    const after = runs.filter((r) => r.run.tag === 'after');
-    const scored = runs.filter((r) => !(r.run.tag?.startsWith('timing') === true) && r.run.tag !== 'after');
+    // Runs tagged "after…" ran some cases again after a fix: each beside the same cases of its full run.
+    const after = runs.filter((r) => r.run.tag?.startsWith('after') === true);
+    const scored = runs.filter((r) => !(r.run.tag?.startsWith('timing') === true) && !(r.run.tag?.startsWith('after') === true));
     const failed = scored.filter((r) => r.run.loadError);
     if (failed.length > 0) {
       lines.push('', H + ' Models that did not load', '', table(['Model', 'Mode', 'Stage', 'Error code', 'Error (as WebLLM or the panel gave it)', '1-min load average'], failed.map((r) => {
@@ -340,7 +341,7 @@ function main(): void {
           const before = full ? full.cases.filter((c) => ids.has(c.id)) : [];
           const loads = a.cases.flatMap((c) => (c.loadavg ? [c.loadavg.before[0] ?? NaN] : []));
           return [
-            a.name,
+            `${a.name}${a.tag && a.tag !== 'after' ? ` (${a.tag})` : ''}`,
             a.mode,
             String(a.cases.length),
             full ? pct(before.filter((c) => c.pass).length, before.length) : '–',

@@ -155,6 +155,8 @@ test('what the review of the full runs found is a violation now (docs/AI-EVALUAT
   expect(types('It is fourteen billion years old.')).toEqual(['invented-number']);
   const light = { type: 'facts' as const, facts: [{ id: 'light.seconds', label: 'Light time', value: 14909, unit: 's', knowledge: 'model' as const }] };
   expect(types('That is about 4 hours and 8 minutes.', [light])).toEqual([]);
+  // A hadith's number from the data, written without its collection, is the data's.
+  expect(types('The data holds hadiths 3191, 3199 and 4812.', [{ type: 'facts', facts: [{ id: 'h', label: 'Sahih al-Bukhari 3191, Sahih al-Bukhari 3199, Sahih al-Bukhari 4812', value: 'held', knowledge: 'scripture' }] }])).toEqual([]);
 });
 
 test('a number marked "not checked" states nothing checked; a cut-off marker is markup; the engine must be the model under evaluation', () => {
@@ -202,6 +204,8 @@ test('the checks: a call and its arguments, a waiting card, a fact within its to
   const d: EvalCase = { id: 'd', category: 'limits', tag: 't', start: { at: 'home' }, question: 'q', checks: [{ kind: 'decline' }] };
   expect(score(d, base([text('I cannot check the weather; this app is about creation.')])).decline).toBe(true);
   expect(score(d, base([text('Tomorrow will be sunny.')])).decline).toBe(false);
+  expect(score(d, base([text('The app’s verified content does not contain a ruling on that.')])).decline).toBe(true);
+  expect(score(d, base([text('It is not directly addressed in the data. However, it is generally permissible.')])).decline).toBe(false);
   expect(score(d, base([text('x')], { plan: { intent: 'decline', calls: [], source: 'model' } })).decline).toBe(true);
   expect(score(d, base([text('Fine.')])).labels).toEqual({ modelBlocks: 1, labelled: 1 });
 });

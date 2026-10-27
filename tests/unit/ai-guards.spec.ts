@@ -229,6 +229,13 @@ test.describe('output', () => {
     expect(guardOutput('The heavens and the earth took shape over billions of years.', data({ facts: [] })).flags).not.toContain('scripture-quote');
   });
 
+  test('seven words of a verse the turn gave count even when a search would not find it; the verse a sentence names is the one shown', () => {
+    // Qwen3.5 9B at 8c07e03, on 41:10, in 7:54's words.
+    const out = guardOutput('Regarding 41:10, the chapter explains that this verse refers to the creation of the heavens and the earth in six days.', data({ facts: [], passages: [P('verse:7:54'), P('verse:41:10')], verses: () => [] }));
+    expect(out.text).not.toContain('in six days');
+    expect(out.citations).toEqual([{ kind: 'verse', id: '41:10' }]);
+  });
+
   test('a whole sentence of four or more words found word for word in a verse is its wording; a common phrase in a sentence of its own is not', () => {
     const v = index.passages.find((p) => p.id === 'verse:57:25');
     if (!v) throw new Error('no 57:25');

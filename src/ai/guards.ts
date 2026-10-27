@@ -644,8 +644,11 @@ function copiedVerse(sentence: string, data: OutputGuardData): string | null {
   const runs = new Set<string>();
   for (let i = 0; i + VERSE_RUN <= words.length; i += 1) runs.add(words.slice(i, i + VERSE_RUN).join(' '));
   const whole = ` ${words.join(' ')} `;
-  for (const v of data.verses(sentence)) {
-    if (v.plain) continue;
+  // The verses a search for the sentence finds, and those the turn itself gave (a search can miss the one copied:
+  // "…the creation of the heavens and the earth in six days" is 7:54's, Qwen3.5 9B).
+  const given = data.passages.filter((p) => p.kind === 'verse' && p.ref).map((p) => ({ key: p.ref ?? '', text: p.text }));
+  for (const v of [...data.verses(sentence), ...given]) {
+    if ('plain' in v && v.plain) continue;
     const w = plainWords(v.text);
     if (words.length < VERSE_RUN && ` ${w.join(' ')} `.includes(whole)) return v.key;
     for (let i = 0; i + VERSE_RUN <= w.length; i += 1) if (runs.has(w.slice(i, i + VERSE_RUN).join(' '))) return v.key;
@@ -665,7 +668,9 @@ function unquotedVerses(text: string, data: OutputGuardData): { text: string; ch
     const key = (bare.trim().length > 60 ? matchVerse(bare, data, 'sentence') : null) ?? copiedVerse(bare, data);
     if (!key) return s;
     changed = true;
-    return `[[verse:${key}]]${/\s$/u.test(s) ? ' ' : ''}`;
+    // A sentence about the verses it names, in another verse's words, shows those it names, never another.
+    const named = keysNamed(bare).filter((k) => data.known.verse(k));
+    return `${(named.length > 0 ? named : [key]).map((k) => `[[verse:${k}]]`).join(' ')}${/\s$/u.test(s) ? ' ' : ''}`;
   });
   return { text: out.join(''), changed };
 }
