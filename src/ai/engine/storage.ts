@@ -3,10 +3,10 @@
  * in the Cache API under three caches: "webllm/model" (tensor-cache.json, the weight shards and the
  * tokenizer), "webllm/config" and "webllm/wasm". What is stored is read straight from those caches,
  * so looking costs nothing to download; deleting goes through WebLLM's deleteModelAllInfoInCache,
- * imported only then. Every call is guarded: storage can be blocked (private windows, Shields).
+ * run in the model's worker (./webllm.ts: the page never imports WebLLM), then a sweep of what it
+ * left. Every call is guarded: storage can be blocked (private windows, Shields).
  */
 import type { ModelSpec } from '../types';
-import { buildAppConfig } from './catalogue';
 
 /** A model with files in this browser's storage. */
 export interface StoredModel {
@@ -75,13 +75,13 @@ export async function storedModels(models: readonly ModelSpec[]): Promise<Stored
 }
 
 /**
- * Deletes a model's weights, tokenizer, library and configuration: WebLLM's own deletion, then
- * whatever it could not find (a download that stopped before tensor-cache.json was stored).
+ * Deletes a model's weights, tokenizer, library and configuration: WebLLM's own deletion (`own`,
+ * in its worker), then whatever it could not find (a download that stopped before
+ * tensor-cache.json was stored).
  */
-export async function removeModel(model: ModelSpec): Promise<void> {
+export async function removeModel(model: ModelSpec, own: (model: ModelSpec) => Promise<void>): Promise<void> {
   try {
-    const { deleteModelAllInfoInCache } = await import('@mlc-ai/web-llm');
-    await deleteModelAllInfoInCache(model.id, buildAppConfig([model]));
+    await own(model);
   } catch {
     // Already gone, or WebLLM could not read its manifest: the sweep below still clears it.
   }

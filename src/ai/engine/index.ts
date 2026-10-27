@@ -1,8 +1,9 @@
 /*
  * The engine host (docs/AI-INTELLIGENCE.md §3, src/ai/types.ts EngineHost): what this device can
  * run, the pinned catalogue it may download from, loading a model (WebLLM in a worker, or the
- * browser's own), and what is stored. Lazy: the shell never imports it, and WebLLM's runtime is a
- * further chunk fetched only by load().
+ * browser's own), and what is stored. Lazy: the shell never imports it, and WebLLM's runtime is in
+ * the model's worker alone (./webllm-worker.ts), fetched only by load() (or by remove(), to delete
+ * a model already stored).
  */
 import messages from '../../i18n/en.ai.engine.json';
 import type { App } from '../../core/types';
@@ -13,7 +14,7 @@ import { detectCapabilities } from './detect';
 import { engineError } from './errors';
 import { createPacer, type Pacer } from './pacing';
 import { persistStorage, removeModel, storedModels, type StoredModel } from './storage';
-import { loadWebLLM } from './webllm';
+import { deleteModelInWorker, loadWebLLM } from './webllm';
 
 export { buildAppConfig, EVAL_CANDIDATES, VISITOR_MODELS } from './catalogue';
 export { chooseTier } from './detect';
@@ -63,7 +64,7 @@ export function createEngineHost(app: App): KfEngineHost {
     },
     async remove(id: string) {
       const model = findModel(id);
-      if (model) await removeModel(model);
+      if (model) await removeModel(model, deleteModelInWorker);
     },
     persist: persistStorage,
   };

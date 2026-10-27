@@ -6,10 +6,14 @@
  * 'aborted', with the page still rendering and no crash marker left; and the render budget caps the
  * picture's scale while it is held.
  *
- * Nothing in the shell imports the engine yet (the assistant's interface will, lazily), so the
- * engine is built here on its own with the project's vite.config.ts and served beside the app under
- * /__ai-engine/, same origin, so its workers start as they will in the app. Chromium also resolves
- * every model host to nothing, so even a request that escaped the routes could not download a model.
+ * WebLLM is in the model's worker alone (src/ai/engine/webllm-worker.ts): the build has its runtime
+ * in that one file, detection never fetches it, a load does, and the worker answers our own protocol
+ * (src/ai/engine/protocol.ts) with failures as EngineError data even with no model loaded.
+ *
+ * The engine is built here on its own with the project's vite.config.ts (the app reaches it only
+ * through src/ai/boot.ts) and served beside the app under /__ai-engine/, same origin, so its workers
+ * start as they will in the app. Chromium also resolves every model host to nothing, so even a
+ * request that escaped the routes could not download a model.
  */
 import { existsSync } from 'node:fs';
 import type { Page } from '@playwright/test';
@@ -37,13 +41,32 @@ const PREFIX = '/__ai-engine/';
 const ROOT = decodeURIComponent(new URL('../', import.meta.url).pathname);
 let outDir = '';
 let entry = '';
+/** The page's side of the model (src/ai/engine/webllm.ts), built as its own entry for the protocol test. */
+let clientEntry = '';
+/** Built files that hold WebLLM's runtime (its engine class, its TVM runtime). */
+let withRuntime: string[] = [];
+const WEBLLM_MARKERS = [/\bMLCEngine\b/u, /\btvmjs\b/u];
+const isModelWorker = (url: string): boolean => /\/webllm-worker-[\w-]+\.js$/u.test(new URL(url).pathname);
 
 const TYPES: Readonly<Record<string, string>> = { js: 'text/javascript', json: 'application/json', wasm: 'application/wasm', map: 'application/json' };
 
 interface BuiltChunk {
   type: string;
   fileName: string;
+  name?: string;
   isEntry?: boolean;
+  /** A chunk's code. */
+  code?: string;
+  /** An asset's contents (a worker is emitted as one). */
+  source?: string | Uint8Array;
+}
+
+/** The model's worker, as the protocol test drives it (src/ai/engine/webllm.ts ModelWorker). */
+interface ClientModule {
+  startModelWorker(): {
+    call(request: Record<string, unknown>): Promise<{ type: string; value?: boolean; done?: boolean }>;
+    terminate(): void;
+  };
 }
 
 /** The built engine module as the page imports it. */
@@ -72,16 +95,25 @@ test.beforeAll(async ({}, workerInfo) => {
       sourcemap: false,
       manifest: false,
       copyPublicDir: false,
-      rollupOptions: { input: { 'ai-engine': `${ROOT}src/ai/engine/index.ts` }, preserveEntrySignatures: 'exports-only' },
+      rollupOptions: { input: { 'ai-engine': `${ROOT}src/ai/engine/index.ts`, 'ai-webllm': `${ROOT}src/ai/engine/webllm.ts` }, preserveEntrySignatures: 'exports-only' },
     },
   });
   const outputs = Array.isArray(result) ? result.flatMap((r) => r.output) : result.output;
-  entry = outputs.find((c) => c.type === 'chunk' && c.isEntry === true)?.fileName ?? '';
+  entry = outputs.find((c) => c.type === 'chunk' && c.isEntry === true && c.name === 'ai-engine')?.fileName ?? '';
+  clientEntry = outputs.find((c) => c.type === 'chunk' && c.isEntry === true && c.name === 'ai-webllm')?.fileName ?? '';
   expect(entry).not.toBe('');
+  expect(clientEntry).not.toBe('');
+  const text = (c: BuiltChunk): string => c.code ?? (typeof c.source === 'string' ? c.source : new TextDecoder().decode(c.source ?? new Uint8Array()));
+  withRuntime = outputs.filter((c) => c.fileName.endsWith('.js') && WEBLLM_MARKERS.some((m) => m.test(text(c)))).map((c) => c.fileName);
 });
 
-/** Serves the engine build under PREFIX and counts what the page asks of the GPU and the model hosts. */
-async function prepare(page: Page): Promise<{ modelUrls: string[] }> {
+test('WebLLM is built into the model worker alone: no page chunk holds its runtime', () => {
+  expect(withRuntime).toHaveLength(1);
+  expect(withRuntime[0]).toMatch(/^assets\/webllm-worker-[\w-]+\.js$/u);
+});
+
+/** Serves the engine build under PREFIX and counts what the page asks of the GPU, the model hosts and the model's worker. */
+async function prepare(page: Page): Promise<{ modelUrls: string[]; workerFetches: string[] }> {
   await page.route(`**${PREFIX}**`, async (route) => {
     const path = new URL(route.request().url()).pathname.slice(PREFIX.length);
     const file = `${outDir}/${path}`;
@@ -116,10 +148,12 @@ async function prepare(page: Page): Promise<{ modelUrls: string[] }> {
     }
   });
   const modelUrls: string[] = [];
+  const workerFetches: string[] = [];
   page.on('request', (request) => {
     if (isModelHost(new URL(request.url()).hostname)) modelUrls.push(request.url());
+    if (isModelWorker(request.url())) workerFetches.push(request.url());
   });
-  return { modelUrls };
+  return { modelUrls, workerFetches };
 }
 
 const gpuCounts = (page: Page): Promise<{ devices: number; adapters: number }> =>
@@ -139,7 +173,7 @@ async function framesOver(page: Page, ms: number): Promise<number> {
 const unexpected = (errors: readonly string[]): string[] => errors.filter((e) => !/Failed to load resource|net::ERR_NAME_NOT_RESOLVED|ERR_FAILED/u.test(e));
 
 test('detection runs on the real page: WebGPU from a worker, no model host asked, no GPUDevice created', async ({ page, kf, pageErrors }) => {
-  const { modelUrls } = await prepare(page);
+  const { modelUrls, workerFetches } = await prepare(page);
   await kf.open('/', { query: { tier: 'high' } });
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 * SLOW });
   const before = await gpuCounts(page);
@@ -165,6 +199,8 @@ test('detection runs on the real page: WebGPU from a worker, no model host asked
   expect(after.adapters - before.adapters).toBe(0);
   expect(modelUrls).toEqual([]);
   expect(modelHits(page)).toBe(0);
+  // WebLLM's worker (and so its runtime) is not fetched to detect.
+  expect(workerFetches).toEqual([]);
   if (report.fallbackAdapter) {
     // GPU-less CI: SwiftShader's adapter is software, so the guide is offered and nothing to download.
     expect(report.recommended).toBe('none');
@@ -177,7 +213,7 @@ test('detection runs on the real page: WebGPU from a worker, no model host asked
 
 test('a load against the mocked model hosts fails cleanly as a network error; an aborted one as aborted; the page keeps rendering', async ({ page, kf, pageErrors }) => {
   test.setTimeout(120_000 * SLOW);
-  await prepare(page);
+  const { workerFetches } = await prepare(page);
   await kf.open('/', { query: { tier: 'high' } });
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 * SLOW });
   const failed = await page.evaluate(async (url) => {
@@ -200,6 +236,8 @@ test('a load against the mocked model hosts fails cleanly as a network error; an
   expect(failed.messageKey).toBe('ai.engine.error.network');
   expect(failed.name).toBe('EngineError');
   expect(failed.marker).toBeNull();
+  // The load fetched the model's worker (WebLLM's runtime is there, not in the page's code).
+  expect(workerFetches).toHaveLength(1);
   // The mocked hosts were asked (routes reach the model's worker), and answered 404.
   expect(modelHits(page)).toBeGreaterThan(0);
   expect(await framesOver(page, 1000)).toBeGreaterThan(5);
@@ -233,6 +271,44 @@ test('a load against the mocked model hosts fails cleanly as a network error; an
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   expect(await framesOver(page, 1000)).toBeGreaterThan(5);
   expect(await page.locator('html').getAttribute('data-ready')).toBe('true');
+  expect(unexpected(pageErrors)).toEqual([]);
+});
+
+test('the model worker answers our protocol: failures as EngineError data, a pull of no stream is done, nothing downloaded to read or clear the cache', async ({ page, kf, pageErrors }) => {
+  const { modelUrls } = await prepare(page);
+  await kf.open('/', { query: { tier: 'high' } });
+  await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 * SLOW });
+  const result = await page.evaluate(
+    async ({ clientUrl, engineUrl }) => {
+      const client = (await import(clientUrl)) as ClientModule;
+      const engine = (await import(engineUrl)) as { buildAppConfig(models: readonly ModelSpec[]): unknown; VISITOR_MODELS: readonly ModelSpec[] };
+      const pocket = engine.VISITOR_MODELS[0] as ModelSpec;
+      const appConfig = engine.buildAppConfig([pocket]);
+      const worker = client.startModelWorker();
+      const failure = (err: unknown): Record<string, unknown> => {
+        const e = err as { name?: string; code?: string; messageKey?: string };
+        return { name: e.name, code: e.code, messageKey: e.messageKey };
+      };
+      const generate = await worker.call({ type: 'generate', request: { messages: [{ role: 'user', content: 'Hello' }], stream: true } }).then((a) => a, failure);
+      const pull = await worker.call({ type: 'pull', stream: 12_345 });
+      const has = await worker.call({ type: 'hasModelInCache', appConfig, model: pocket.id });
+      const removed = await worker.call({ type: 'deleteModelAllInfoInCache', appConfig, model: pocket.id });
+      const unloaded = await worker.call({ type: 'unload' });
+      worker.terminate();
+      const afterEnd = await worker.call({ type: 'unload' }).then((a) => a, failure);
+      return { generate, pull, has, removed, unloaded, afterEnd };
+    },
+    { clientUrl: `${PREFIX}${clientEntry}`, engineUrl: `${PREFIX}${entry}` },
+  );
+  // Asked to generate with no model: the worker's failure arrives as data, read as an EngineError.
+  expect(result.generate).toEqual({ name: 'EngineError', code: 'unknown', messageKey: 'ai.engine.error.unknown' });
+  expect(result.pull).toMatchObject({ type: 'piece', done: true });
+  expect(result.has).toMatchObject({ type: 'result', value: false });
+  // Nothing stored: WebLLM is not asked to delete (it would download the manifest to find the files).
+  expect(result.removed).toMatchObject({ type: 'result', value: false });
+  expect(result.unloaded).toMatchObject({ type: 'result', value: true });
+  expect(result.afterEnd).toMatchObject({ code: 'aborted' });
+  expect(modelUrls).toEqual([]);
   expect(unexpected(pageErrors)).toEqual([]);
 });
 
@@ -270,7 +346,7 @@ test('the render budget caps the picture while it is held and gives it back on r
 });
 
 test('what is stored is read from the Cache API and removed from it, without a download', async ({ page, kf, pageErrors }) => {
-  await prepare(page);
+  const { modelUrls, workerFetches } = await prepare(page);
   await kf.open('/', { query: { tier: 'high' } });
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 * SLOW });
   const result = await page.evaluate(async (url) => {
@@ -306,6 +382,9 @@ test('what is stored is read from the Cache API and removed from it, without a d
   expect(result.after).toEqual([]);
   expect(result.left).toEqual([]);
   expect(result.persisted).toBe('boolean');
+  // WebLLM's own deletion ran in its worker, and nothing was asked of a model host.
+  expect(workerFetches).toHaveLength(1);
+  expect(modelUrls).toEqual([]);
   expect(unexpected(pageErrors)).toEqual([]);
 });
 
