@@ -9,10 +9,14 @@
  *   explorer's way back, readout or navigator, the page never scrolls sideways and no text is cut off;
  *   the explorer frames its world beside the column; the header fits a 390 px phone;
  * - the guide through the interface: "Fly to Mars" (and Undo), "What if the Sun were twice as
- *   massive?" (a card: Cancel changes nothing, Confirm does, Undo puts it back), "Show verse 21:30"
- *   (from data, no transliteration), "Escape speed of Mars" (a table with its source);
+ *   massive?" (a card: Cancel changes nothing, Confirm does, with the test engine attached while it
+ *   waits named on the answer; Undo refused with its reason while a later edit sits on top, then
+ *   putting it back), "Show verse 21:30" (from data, no transliteration), "Escape speed of Mars" (a
+ *   table with its source);
+ * - what Ask fetches: no Arabic typeface until a verse is shown;
  * - the scripted test engine (labelled as such) and the guards' notes;
- * - the settings: the explanation level, opt-in memory, clearing the conversation;
+ * - the settings: the explanation level, opt-in memory (the conversation back after a reload),
+ *   clearing the conversation;
  * - axe: no serious or critical violations in the open panel.
  * The model on this device has its own spec (tests/ai-panel-model.spec.ts, with model hosts that
  * resolve nowhere), and so has the phone (tests/ai-panel-mobile.spec.ts, the mobile project).
@@ -221,17 +225,61 @@ test('"What if the Sun were twice as massive?": a card that waits; Cancel change
 
   const again = await ask(page, 'What if the Sun were twice as massive?', 'awaiting-confirmation');
   const card2 = again.getByTestId('ai-action');
+  // A model attached while the card waits writes the answer after Confirm, and is the one named on it.
+  await page.evaluate(async () => {
+    await (window as unknown as KfHook).__kf.ai.useScripted([{ format: 'text', match: 'massive', reply: 'The laboratory now shows the Sun at twice its mass.' }]);
+  });
   await card2.getByTestId('ai-confirm').dblclick();
   await expect(again).toHaveAttribute('data-state', 'done', LIVE);
   await expect(card2).toHaveAttribute('data-status', 'done');
+  await expect(again.locator('[data-block="text"]').getByTestId('ai-author')).toHaveText(s('ai.ui.by.scripted'));
   // Once: twice the mass, not four times.
   await expect.poll(async () => ((await sunMass(page)) ?? 0) / mass, LIVE).toBeCloseTo(2, 6);
   await page.waitForTimeout(800);
   expect(((await sunMass(page)) ?? 0) / mass).toBeCloseTo(2, 6);
 
+  // An edit by hand on top (as the laboratory's panel sends it): the card's Undo is refused, with why, and changes nothing.
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeLab({ kind: 'remove', id: 'jupiter' });
+  });
+  const hasJupiter = (): Promise<boolean> => page.evaluate(() => (window as unknown as KfHook).__kf.app.universe()?.lab?.bodies.some((b) => b.id === 'jupiter') ?? false);
+  await expect.poll(hasJupiter, LIVE).toBe(false);
+  await card2.getByTestId('ai-undo').click();
+  await expect(card2.getByTestId('ai-undo-refused')).toContainText('changed since', LIVE);
+  await page.waitForTimeout(800);
+  expect(((await sunMass(page)) ?? 0) / mass).toBeCloseTo(2, 6);
+  expect(await hasJupiter()).toBe(false);
+  await expect(again.locator('[data-block="notice"]', { hasText: 'Put back as it was' })).toHaveCount(0);
+  // That edit undone in the laboratory, the card's Undo puts the Sun back.
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeLab({ kind: 'undo' });
+  });
+  await expect.poll(hasJupiter, LIVE).toBe(true);
+  await expect(card2.getByTestId('ai-undo')).toBeEnabled();
   await card2.getByTestId('ai-undo').click();
   await expect.poll(async () => Math.abs(((await sunMass(page)) ?? 0) / mass - 1), LIVE).toBeLessThan(1e-9);
   await expect(again.locator('[data-block="notice"]').last()).toContainText('Put back as it was');
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
+test('Ask fetches what the panel needs and no more: the Arabic typeface only once a verse is shown', async ({ page, kf, pageErrors }, testInfo) => {
+  await kf.open('/');
+  await ready(page);
+  await page.waitForTimeout(500);
+  const fetched: { path: string; bytes: Promise<number> }[] = [];
+  page.on('requestfinished', (r) => {
+    fetched.push({ path: new URL(r.url()).pathname, bytes: r.sizes().then((sz) => sz.responseBodySize, () => 0) });
+  });
+  await openPanel(page);
+  await page.waitForTimeout(1500);
+  const onOpen = await Promise.all(fetched.map(async (f) => ({ path: f.path, bytes: await f.bytes })));
+  const total = onOpen.reduce((n, f) => n + f.bytes, 0);
+  testInfo.annotations.push({ type: 'ask-bytes', description: `${total} bytes on open: ${onOpen.map((f) => `${f.path.split('/').pop() ?? ''} ${f.bytes}`).join(', ')}` });
+  expect(onOpen.filter((f) => f.path.endsWith('.woff2'))).toEqual([]);
+  // About 113 KB as served (gzip): the code, the scripture catalogue's two data files and the plain words (docs/AI-INTELLIGENCE.md §2).
+  expect(total).toBeLessThan(130_000);
+  await ask(page, 'Show verse 21:30');
+  await expect.poll(() => fetched.some((f) => f.path.endsWith('/fonts/AmiriQuran.woff2')), LIVE).toBe(true);
   expect(realErrors(pageErrors)).toEqual([]);
 });
 
@@ -312,7 +360,32 @@ test('the scripted engine is labelled "Test engine", and the guards’ changes a
 /* Settings                                                             */
 /* ------------------------------------------------------------------ */
 
-test('settings: the explanation level reaches the assistant and is remembered; memory is off until chosen; Clear empties the conversation', async ({ page, kf, pageErrors }) => {
+/** How many turns the opt-in memory holds in this browser (none when its database was never made). */
+const keptTurns = (page: Page): Promise<number> =>
+  page.evaluate(async () => {
+    if (!(await indexedDB.databases()).some((d) => d.name === 'kf-ai')) return 0;
+    return new Promise<number>((resolve) => {
+      const open = indexedDB.open('kf-ai');
+      open.onsuccess = () => {
+        const db = open.result;
+        if (!db.objectStoreNames.contains('turns')) {
+          db.close();
+          resolve(0);
+          return;
+        }
+        const count = db.transaction('turns').objectStore('turns').count();
+        count.onsuccess = () => {
+          db.close();
+          resolve(count.result);
+        };
+      };
+      open.onerror = () => {
+        resolve(0);
+      };
+    });
+  });
+
+test('settings: the explanation level reaches the assistant and is remembered; memory is off until chosen, then brings the conversation back; Clear empties it', async ({ page, kf, pageErrors }) => {
   await kf.open('/');
   await ready(page);
   await openPanel(page);
@@ -322,18 +395,34 @@ test('settings: the explanation level reaches the assistant and is remembered; m
   await expect(settings.getByTestId('ai-level-standard')).toBeChecked();
   await expect(settings.getByTestId('ai-memory')).not.toBeChecked();
   await expect(settings).toContainText('kept in this browser’s storage on this device, and nowhere else');
+  await expect(settings).toContainText('shown again when you come back');
   await settings.getByTestId('ai-level-deeper').check();
   expect(await page.evaluate(async () => ((await (window as unknown as KfHook).__kf.ai.start()) as unknown as { level(): string }).level())).toBe('deeper');
+  expect(await keptTurns(page)).toBe(0);
   await settings.getByTestId('ai-memory').check();
   expect(await page.evaluate(() => localStorage.getItem('kf.ui.aiMemory'))).toBe('1');
-  await settings.getByTestId('ai-memory').uncheck();
-  expect(await page.evaluate(() => localStorage.getItem('kf.ui.aiMemory'))).toBeNull();
-  await settings.getByTestId('ai-clear').click();
-  await expect(turns(page)).toHaveCount(0);
-  // Remembered for the next visit.
+  // On: what is asked now is kept, and comes back after a reload, marked as kept.
+  await ask(page, 'Escape speed of Mars');
+  await expect.poll(() => keptTurns(page), LIVE).toBe(1);
   await page.reload();
   await ready(page);
   await openPanel(page);
+  await expect(turns(page)).toHaveCount(1);
+  await expect(turns(page).first().locator('.kf-ai-question')).toHaveText('Escape speed of Mars');
+  await expect(turns(page).first().locator('[data-block="notice"][data-key="ai.mind.notice.kept"]')).toBeVisible();
+  await expect(turns(page).first().getByTestId('ai-author')).toHaveText(s('ai.ui.by.guide'));
+  // Off deletes what was kept; Clear empties the conversation; nothing comes back.
+  await page.getByTestId('ai-settings').locator('summary').click();
+  await page.getByTestId('ai-memory').uncheck();
+  expect(await page.evaluate(() => localStorage.getItem('kf.ui.aiMemory'))).toBeNull();
+  await expect.poll(() => keptTurns(page), LIVE).toBe(0);
+  await page.getByTestId('ai-clear').click();
+  await expect(turns(page)).toHaveCount(0);
+  // The level is remembered for the next visit.
+  await page.reload();
+  await ready(page);
+  await openPanel(page);
+  await expect(turns(page)).toHaveCount(0);
   await page.getByTestId('ai-settings').locator('summary').click();
   await expect(page.getByTestId('ai-level-deeper')).toBeChecked();
   expect(realErrors(pageErrors)).toEqual([]);

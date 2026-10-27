@@ -6,7 +6,9 @@
  * report only what the app's state shows (the explorer on Mars, the date set, a date out of the
  * data's span refused with the span named); a verse is a block shown from data; numbers are facts
  * with their sources; an experiment waits for the visitor, changes the laboratory only once
- * confirmed and is undone; a comparison runs in the real background worker and can be cancelled.
+ * confirmed and is undone (and Stop pressed straight after Confirm, or while it runs, never leaves
+ * a change without its card and its Undo); a comparison runs in the real background worker, can be
+ * cancelled, and in the laboratory shows no share link and changes no status line.
  *
  * With the scripted engine (src/ai/engine/scripted.ts, replies written here): a model's JSON plan is
  * validated and run, and its answer's citation markers become verse and fact blocks; Arabic script,
@@ -278,6 +280,83 @@ test('"what if the Sun were twice as massive": a card that waits, nothing change
   expect(undone?.blocks.at(-1)).toMatchObject({ type: 'notice', key: 'ai.mind.notice.undone' });
   await expect.poll(async () => Math.abs(((await sunMass(page)) ?? 0) / (mass ?? 1) - 1)).toBeLessThan(1e-9);
   expectNoModel(page, w);
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
+/** Opens the laboratory on a copy of the solar system, through the assistant. */
+async function openLab(page: Page): Promise<number> {
+  await ask(page, 'open the lab');
+  await expect.poll(() => page.evaluate(() => (window as unknown as KfHook).__kf.app.universe()?.lab?.bodies.length ?? 0), { timeout: 60_000 * SLOW }).toBe(10);
+  return (await sunMass(page)) ?? 0;
+}
+
+test('Stop straight after Confirm sends nothing; Stop while the experiment runs keeps its card and its Undo', async ({ page, kf, pageErrors }) => {
+  const w = watch(page);
+  await kf.open('/universe/earth');
+  await waitForUniverse(page);
+  const mass = await openLab(page);
+  expect(mass).toBeGreaterThan(1e30);
+
+  // Confirm, then Stop in the same task: the run never begins, and the card says it was cancelled.
+  const first = await ask(page, 'What if the Sun were twice as massive?');
+  const stopped = await page.evaluate(async (turnId) => {
+    const ai = await (window as unknown as KfHook).__kf.ai.start();
+    const confirming = ai.confirm(turnId, 'c1', true);
+    ai.cancel();
+    await confirming;
+    return ai.turns().find((t) => t.id === turnId);
+  }, first.id);
+  expect(stopped?.state).toBe('cancelled');
+  expect(stopped && blocksOf(stopped, 'action')).toMatchObject([{ status: 'cancelled', undoable: false }]);
+  await page.waitForTimeout(1000);
+  expect(await sunMass(page)).toBe(mass);
+
+  // Stop once the command has gone: the laboratory shows the change, and its card can undo it.
+  const second = await ask(page, 'What if the Sun were twice as massive?');
+  const kept = await page.evaluate(async (turnId) => {
+    const ai = await (window as unknown as KfHook).__kf.ai.start();
+    const off = ai.events.on('turn', ({ turn }) => {
+      if (turn.id !== turnId || turn.running.length === 0) return;
+      off();
+      // The tool has started and sent its command by the next task.
+      setTimeout(() => {
+        ai.cancel();
+      }, 0);
+    });
+    await ai.confirm(turnId, 'c1', true);
+    return ai.turns().find((t) => t.id === turnId);
+  }, second.id);
+  expect(kept?.state).toBe('cancelled');
+  const [card] = kept ? blocksOf(kept, 'action') : [];
+  expect(card?.status === 'done' || card?.status === 'not-confirmed', JSON.stringify(card)).toBe(true);
+  expect(card?.undoable).toBe(true);
+  await expect.poll(async () => ((await sunMass(page)) ?? 0) / mass, { timeout: 30_000 * SLOW }).toBeCloseTo(2, 6);
+  const undone = await page.evaluate(async (turnId) => {
+    const ai = await (window as unknown as KfHook).__kf.ai.start();
+    await ai.undo(turnId, 'c1');
+    return ai.turns().find((t) => t.id === turnId);
+  }, second.id);
+  expect(undone?.blocks.at(-1)).toMatchObject({ type: 'notice', key: 'ai.mind.notice.undone' });
+  await expect.poll(async () => Math.abs(((await sunMass(page)) ?? 0) / mass - 1)).toBeLessThan(1e-9);
+  expectNoModel(page, w);
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
+test('a comparison in the laboratory changes nothing on screen: no share link, no status line', async ({ page, kf, pageErrors }) => {
+  await kf.open('/universe/earth');
+  await waitForUniverse(page);
+  await openLab(page);
+  const shown = (): Promise<{ status: unknown; share: unknown }> => page.evaluate(() => {
+    const lab = (window as unknown as KfHook).__kf.app.universe()?.lab;
+    return { status: lab?.status ?? null, share: lab?.share ?? null };
+  });
+  const before = await shown();
+  const turn = await ask(page, 'compare the solar system with and without jupiter over 1 year');
+  expect(turn.state).toBe('done');
+  expect(turn.plan?.calls).toEqual([{ tool: 'lab.compare', args: { experiment: 'remove-body', body: 'jupiter', horizonDays: 365.25 } }]);
+  expect(blocksOf(turn, 'comparison')[0]?.comparison.rows.length ?? 0).toBeGreaterThan(0);
+  expect(await shown()).toEqual(before);
+  await expect(page.getByTestId('lab-share-url')).toBeHidden();
   expect(realErrors(pageErrors)).toEqual([]);
 });
 

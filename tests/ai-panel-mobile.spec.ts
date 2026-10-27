@@ -7,6 +7,8 @@
  *   nothing scrolls sideways and no text is cut off.
  * - "Fly to Mars": while the flight runs the sheet minimises to a bar that is not modal, so the scene
  *   is in sight; the bar shows the conversation again, and Undo returns.
+ * - "What if the Sun were twice as massive?": the card waits in the open sheet (Confirm in sight),
+ *   and the sheet minimises when the confirmed experiment runs.
  * - Esc closes it, and focus goes back to Ask.
  * - axe: no serious or critical violations in the open sheet.
  */
@@ -101,6 +103,30 @@ test('"Fly to Mars": the sheet minimises while the flight runs, comes back from 
   await page.keyboard.press('Escape');
   await expect(panel(page)).toHaveCount(0);
   await expect(page.getByTestId('ask')).toBeFocused();
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
+test('an experiment’s card waits in the open sheet; the sheet minimises when the confirmed experiment runs', async ({ page, kf, pageErrors }) => {
+  await kf.open('/universe/earth');
+  await waitForUniverse(page);
+  await page.evaluate(async () => {
+    await (await (window as unknown as KfHook).__kf.ai.start()).ask('open the lab');
+  });
+  await expect.poll(() => page.evaluate(() => (window as unknown as KfHook).__kf.app.universe()?.lab?.bodies.length ?? 0), LIVE).toBe(10);
+  await openPanel(page);
+  const turn = await ask(page, 'What if the Sun were twice as massive?', 'awaiting-confirmation');
+  await page.waitForTimeout(500);
+  await expect(panel(page)).not.toHaveClass(/is-minimised/u);
+  expect(await isModal(page)).toBe(true);
+  const confirm = turn.getByTestId('ai-confirm');
+  await expect(confirm).toBeVisible();
+  await confirm.tap();
+  await expect(panel(page)).toHaveClass(/is-minimised/u, LIVE);
+  expect(await isModal(page)).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as unknown as KfHook).__kf.app.universe()?.lab?.bodies.find((b) => b.id === 'sun')?.massKg ?? 0), LIVE).toBeGreaterThan(3e30);
+  await page.getByTestId('ai-minimise').tap();
+  await expect(turn).toHaveAttribute('data-state', 'done', LIVE);
+  await expect(turn.getByTestId('ai-action')).toHaveAttribute('data-status', 'done');
   expect(realErrors(pageErrors)).toEqual([]);
 });
 
