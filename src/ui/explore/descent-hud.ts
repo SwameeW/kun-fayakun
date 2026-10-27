@@ -108,7 +108,10 @@ export function createDescentHud(app: App, f: Formatters, host: () => HTMLElemen
   const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'descent-credit', 'data-photo-credit': '' });
   const readout = h('details', { class: 'kf-walk-suit' }, title, place, height, withHelp(app, state, 'descentAir', i18n.t('ui.help.label.descentAir')), cloud, wind, withHelp(app, probe, 'descentProbe', i18n.t('ui.help.label.descentProbe')), h('div', { class: 'kf-living-group' }, depthLabel, depth), credit);
   readout.open = !window.matchMedia(NARROW).matches;
-  const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.descent.label'), 'data-testid': 'descent-hud', hidden: true }, readout, notice, keys, touch, h('div', { class: 'kf-walk-controls' }, pad, back));
+  // In the walk's dock at the lower left (../styles/living.css: the HUD spans the view, only its parts take the pointer):
+  // a notice, the readout, the keys (on a touch screen, the pad) in a card, then the pad and the way back to orbit.
+  // "Back to the start" stays at the top left, clear of it.
+  const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.descent.label'), 'data-testid': 'descent-hud', hidden: true }, h('div', { class: 'kf-walk-dock' }, notice, readout, h('div', { class: 'kf-walk-help is-shown' }, keys, touch), h('div', { class: 'kf-walk-controls' }, pad, back)));
 
   const date = (iso: string): string => new Date(`${iso}T00:00:00Z`).toLocaleDateString(i18n.locale, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const signed = (c: number): string => {

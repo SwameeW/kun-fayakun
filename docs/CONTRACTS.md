@@ -748,6 +748,11 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
     back to orbit stands in for `universe-back`, which waits), and `is-walking` once landed, which
     hides the readout from orbit, the notes and the hint on every screen. Landing folds the
     navigator (it opens again after, if it was open); the notes say nothing on foot.
+  - The HUD (`kf-walk`) spans the view without taking its pointer: the way back at the top left
+    (`kf-walk-top`), and a dock at the lower left (`kf-walk-dock`) whose parts take the pointer. The
+    descent's HUD (`descent-hud`, `src/ui/explore/descent-hud.ts`) shares it: its notice, readout,
+    keys (`kf-walk-help`) and its pad with Back to orbit (`kf-walk-controls`) in the dock, "Back to
+    the start" staying at the top left.
   - Messages: `ui.universe.walk.*`.
 - **Rules:**
   - No walk begins within `MAKKAH_FRAME.radiusKm` (25 km) of the Kaaba, and no step enters it.

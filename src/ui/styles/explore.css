@@ -1595,6 +1595,12 @@
     inline-size: min(24rem, 52vw);
   }
 
+  /* Pulled up, the sheet has the right of the screen: the column keeps to the left of it, as the readout
+     does (a trip can be under way with the sheet up: an experiment's own star flown to, the way back from one). */
+  .kf-universe.is-sheet-open :is(.kf-note-slot, .kf-trip) {
+    inline-size: min(24rem, calc(100vw - min(30rem, 64vw) - 3 * var(--kf-space-2)));
+  }
+
   .kf-universe .kf-note {
     inset-block: 0 auto;
     max-block-size: calc(100vh - var(--kf-header-h) - 2.75rem - var(--kf-readout-h, 3rem) - 2.5rem);
