@@ -34,8 +34,8 @@ interface Frame {
   t: number;
   /** The effects' own clock (s): how far they were advanced, frame by frame. */
   fx: number;
-  /** Each fireball drawn: its key and light (after the guard). */
-  fire: Array<[string, number]>;
+  /** Each fireball drawn: its key, its own light (after the guard, before its body's limb hides any) and how much of it shows past the limb. */
+  fire: Array<[string, number, number]>;
   /** The canvas's tiles' mean relative luminance. */
   tiles: number[];
   events: number;
@@ -109,7 +109,7 @@ const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
         const tick = (now: number): void => {
           if (start < 0) start = now;
           const t = (now - start) / 1000;
-          const r = kf.universe.labDraw?.() as { fireballs: Array<{ key: string; luminance: number }>; camera: { x: number; y: number; z: number } | null; clock: { shownS: number; fxS: number } } | null;
+          const r = kf.universe.labDraw?.() as { fireballs: Array<{ key: string; emitted: number; seen: number }>; camera: { x: number; y: number; z: number } | null; clock: { shownS: number; fxS: number } } | null;
           const v = kf.universe.state();
           const l = v?.lab;
           const tiles = new Array<number>(cols * rows).fill(0);
@@ -128,7 +128,7 @@ const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
           }
           const events = l?.events.filter((e) => e.kind === 'fragment' || e.kind === 'merge').length ?? 0;
           if (events > 0 && hit < 0) hit = t;
-          const fire = (r?.fireballs ?? []).map((f): [string, number] => [f.key, f.luminance]);
+          const fire = (r?.fireballs ?? []).map((f): [string, number, number] => [f.key, f.emitted, f.seen]);
           frames.push({ t, fx: r?.clock.fxS ?? 0, fire, tiles, events, shown: r?.clock.shownS ?? 0, slow: l?.slow.active?.rate ?? null, inS: l?.slow.active?.inS ?? null, cam: r?.camera ? [r.camera.x, r.camera.y, r.camera.z] : null, trip: v?.trip !== null && v?.trip !== undefined, extra: pending !== null });
           if (pending === null && hit >= 0 && t - hit > after) pending = new Set(frames.flatMap((f) => f.fire.map((x) => x[0])));
           const waiting = pending !== null && fire.some(([key]) => pending?.has(key) === true);
@@ -144,7 +144,8 @@ const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
  * Every fireball's light by frame: never more than a thirtieth of its peak a 60th of a second (coming, going,
  * held back or let go by the guard), by the time the effects were advanced between two samples (their own
  * clock: a sample a frame late or early is not a frame of change). Each fireball begun in the window is
- * watched whole (watch goes on for it), so its peak is its own, not the part of its rise the window saw
+ * watched whole (watch goes on for it), so its peak is its own, not the part of its rise the window saw; and
+ * how much of it shows past its body's limb, apart, never changing faster than all of it over half a second
  * (tests/support/fireball-light).
  */
 function expectSmooth(frames: readonly Frame[]): number {
@@ -154,6 +155,7 @@ function expectSmooth(frames: readonly Frame[]): number {
     if (!s.whole) continue;
     worst = Math.max(worst, s.worst);
     expect(s.worst, `${s.key} at ${s.t.toFixed(3)} s: ${s.before} to ${s.now} (peak ${s.peak})`).toBeLessThanOrEqual(1 + 1e-6);
+    expect(s.seenWorst, `${s.key} at ${s.seenT.toFixed(3)} s: how much shows past the limb`).toBeLessThanOrEqual(1 + 1e-6);
   }
   return worst;
 }
@@ -233,7 +235,8 @@ test.describe('impacts as a visitor sees them (motion on, slowing on)', () => {
     expect(((last?.shown ?? 0) - (first?.shown ?? 0)) / ((last?.t ?? 1) - (first?.t ?? 0))).toBeLessThanOrEqual(40);
     // The fireball, frame by frame; the canvas's tiles; fireballs rising.
     expectSmooth(frames);
-    expect(Math.max(0, ...frames.flatMap((f) => f.fire.map((x) => x[1])))).toBeGreaterThan(0.05);
+    // Drawn: its own light where it shows past the limb.
+    expect(Math.max(0, ...frames.flatMap((f) => f.fire.map((x) => x[1] * x[2])))).toBeGreaterThan(0.05);
     expect(worstFlashTurns(frames)).toBeLessThanOrEqual(6);
     expect(worstRises(frames)).toBeLessThanOrEqual(3);
     // The Earth drawn at the experiment's radius (within half a per cent, its ease done).

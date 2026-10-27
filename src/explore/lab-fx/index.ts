@@ -129,7 +129,8 @@ export interface FxReport {
   dust: { drawn: number; particles: number; medianSizePx: number; color: [number, number, number]; shadowed: number; brightest: number };
   annuli: Array<{ id: string; weight: number; coverageDeg: number }>;
   /** Per fireball: as drawn (after the flash guard), where on screen and the share of its flash tile it covers. */
-  fireballs: Array<{ key: string; strength: number; luminance: number; kelvin: number; radiusKm: number; radiusPx: number; screen: { x: number; y: number } | null; share: number }>;
+  /** Each fireball drawn: `emitted`, its own light (under the ceiling, as eased); `seen`, how much of it shows past its body's limb (eased on its own); `luminance`, the two together, as drawn. */
+  fireballs: Array<{ key: string; strength: number; emitted: number; seen: number; luminance: number; kelvin: number; radiusKm: number; radiusPx: number; screen: { x: number; y: number } | null; share: number }>;
   /** The light the laboratory's own drawing sends this frame (colour times opacity times area, CSS px^2; display terms). */
   light: number;
 }
@@ -641,7 +642,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         fireTiles[lit] = tile;
         fireAsked[lit] = seen;
         fireKeys[lit] = ball;
-        report.fireballs.push({ key: ball.key, strength: 0, luminance: 0, kelvin: ball.kelvin, radiusKm, radiusPx, screen, share });
+        report.fireballs.push({ key: ball.key, strength: 0, emitted: 0, seen, luminance: 0, kelvin: ball.kelvin, radiusKm, radiusPx, screen, share });
         lit += 1;
       }
       for (let k = 0; k < lit; k += 1) {
@@ -656,6 +657,7 @@ export function createLabFx(tier: ExploreTier | undefined): LabFx {
         s.g = ball.rgb[1] * luminance;
         s.b = ball.rgb[2] * luminance;
         r.strength = ball.strength;
+        r.emitted = ball.luminance;
         r.luminance = luminance;
         report.light += (luminance / Math.max(f.compensation, 1e-6)) * area(r.radiusPx);
       }

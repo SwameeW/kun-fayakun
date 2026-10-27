@@ -606,15 +606,20 @@ clock, read back through `window.__kf.universe.labDraw()`:
 - **Fireballs** (`fireball.ts`, `incandescence.ts`). On every merger or breakup, at the contact, turning
   with a world that turns: its radius 0.002 E^(1/3) m (Collins, Melosh and Marcus 2005), between the
   impactor's radius and half the target's; its first temperature v² / 2c (c = 1,200 J/kg/K) between 1,800 and
-  4,000 K; its brightness and colour by Planck's law weighed by the eye (Wyman, Sloan and Shirley's fits to
-  the CIE 1931 observer), held no brighter than sunlit white ground. Slowed for safety: it rises over
+  4,000 K; its colour by Planck's law weighed by the eye (Wyman, Sloan and Shirley's fits to the CIE 1931
+  observer), and its brightness too, held no brighter than sunlit white ground; a slow impact's, cooling
+  below that ceiling (from about 1,670 K), dims no faster than its fade's steepest a frame, so it follows
+  Planck's law only as closely as that ease allows (its light never more than a fiftieth of its peak a
+  frame at 60 frames a second as it fades). Slowed for safety: it rises over
   0.8 s (never more than a thirtieth of its peak a frame), holds, fades over 2.5 s, cooling; impacts within
   a third of a second join one (a larger one joining grows it and heats it over half a second, never a
   thirtieth of the change a frame), never more than three rise a second. With reduced motion it does not
   grow and fades in and out more slowly. It is drawn a little toward the camera from its site (its own
   body's ground never cuts it) and depth tested (a nearer body hides it; the star's glare is not), its
-  part past its body's limb eased over half a second, and on a body gone (merged away) where it was while
-  it fades. Every easing is timed by the frames' own clock (the explorer's frame step), so each frame's
+  part past its body's limb eased over half a second (on its own: that follows the body's turning and the
+  camera, which no fireball knows ahead, so the tests judge a fireball's own light against its peak and the
+  part shown apart, and what reaches the screen, each tile's light, is the flash guard's), and on a body
+  gone (merged away) where it was while it fades. Every easing is timed by the frames' own clock (the explorer's frame step), so each frame's
   change is what its time allows.
 - **Heat** (`heat.ts`). Melt glows at its surface's temperature as a crust forms over it:
   εσT⁴ = k(T_m − T) / √(πκt) (Turcotte and Schubert 2014; k = 2 W/m/K, κ = 10⁻⁶ m²/s, ε = 0.9), its

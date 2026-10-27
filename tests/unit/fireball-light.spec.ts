@@ -84,3 +84,30 @@ test('the measure still catches a fireball that comes in already lit, one that s
   // Drawn on the watch's first frame: its beginning unseen, not whole either.
   expect(steps(fs.slice(20), 'a')?.whole).toBe(false);
 });
+
+test('a fireball turning behind its body’s limb: its own light judged against its own peak, how much shows judged apart against its half-second ease, and a jump in it caught', () => {
+  // As the run that failed: a stone's fireball near the limb, how much shows falling from 0.45 to 0.3 as its body turns.
+  const f = new Fireballs();
+  const out: LightFrame[] = [];
+  let fx = 0;
+  f.add(event('limb'), 0);
+  for (let n = 0; n < LIFE; n += 1) {
+    fx += 1 / 60;
+    f.update(fx, 1 / 60, false);
+    out.push({ t: fx, fx, fire: f.live.map((b): [string, number, number] => [b.key, b.luminance, f.seenToward(b, 0.45 - (0.15 * n) / LIFE, 1 / 60)]) });
+  }
+  out.push({ t: fx + 1 / 60, fx: fx + 1 / 60, fire: [] });
+  const s = fireballSteps([{ t: 0, fx: 0, fire: [] }, ...out]).find((x) => x.key === 'limb');
+  expect(s?.whole).toBe(true);
+  expect(s?.peak ?? 0).toBeGreaterThan(0.9);
+  expect(s?.worst ?? 2).toBeLessThanOrEqual(1);
+  expect(s?.seenWorst ?? 2).toBeLessThanOrEqual(1);
+  // A jump in how much shows (all of it in one frame, as an unhidden site turning out from behind the limb at once) is caught.
+  const jump: LightFrame[] = [
+    { t: 0, fx: 0, fire: [] },
+    { t: 1 / 60, fx: 1 / 60, fire: [['j', 0.5, 0]] },
+    { t: 2 / 60, fx: 2 / 60, fire: [['j', 0.5, 1]] },
+    { t: 3 / 60, fx: 3 / 60, fire: [] },
+  ];
+  expect(fireballSteps(jump).find((x) => x.key === 'j')?.seenWorst ?? 0).toBeGreaterThan(10);
+});

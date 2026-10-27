@@ -14,8 +14,10 @@ import { incandescence } from './incandescence';
  *   hundreds of times brighter, for a moment). Below the ceiling Planck's law dims it steeply as it cools
  *   (a slow impact's, starting near 1,800 K, falls below it at about 1,670 K, its light then halving for
  *   every few per cent it cools), so its brightness a unit of strength is eased: never more than its fade's
- *   steepest a frame (of the ceiling), and its light so never more than a thirtieth of its peak a frame at
- *   60 frames a second going as coming. Its colour cools as Planck's law has it.
+ *   steepest a frame (of the ceiling), and its own light so never more than a thirtieth of its peak a frame
+ *   at 60 frames a second going as coming, where the flash guard lets its rise through as it comes (one held
+ *   back and let go late rises at its own pace toward a lower peak). How much shows past its body's limb is
+ *   eased apart (seenToward). Its colour cools as Planck's law has it.
  * - Time: slowed for safety, the same at every rate. A real crater-scale flash lasts a fraction of a
  *   second; this rises over 0.8 s (never more than a thirtieth of its peak a frame at 60 frames a
  *   second), holds, and fades over 2.5 s. Impacts within a third of a second of the last make no new
