@@ -118,6 +118,9 @@ test('on Auto, frames that run slow cost internal resolution first, then a tier'
   const start = (await view(page))?.detail;
   expect(start?.choice).toBe('auto');
   expect(start?.renderScale).toBe(1);
+  // The engine learns the display's rate from half a second of frames (src/core/cadence.ts): a burden
+  // that starts before it has would be taken for a 30 Hz display, which nothing should be lowered for.
+  await expect.poll(async () => (await stats(page)).seconds).toBeGreaterThan(1);
   // A device that cannot keep up: 30 ms of main-thread work in every frame.
   await page.evaluate(() => {
     const burn = (): void => {

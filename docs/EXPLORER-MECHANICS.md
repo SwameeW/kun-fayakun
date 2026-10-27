@@ -74,7 +74,9 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   are the Bright Star Catalogue's 9,096 naked-eye stars at their real places, colours (from B-V) and
   brightness, so the planets stand in their real constellations. Switches in the navigator show the
   constellation figures and names, the brightest stars' IAU names, the IAU boundaries, and a grid
-  with the celestial equator and the ecliptic. The Milky Way's glow waits for an all-sky map with a
+  with the celestial equator and the ecliptic. Behind them, the Milky Way's glow and the zodiacal
+  light, drawn from models (the Galaxy's discs, bulge and dust; the zodiacal cloud's dust, as seen
+  from wherever the camera is) and said to be models: an all-sky photograph waits for one with a
   clear licence.
 - **The qibla and the new moon** (`docs/ISLAMIC-ASTRONOMY.md`). The qibla from any place, drawn as a
   great circle on the globe; the four moments a year the Sun stands over the Kaaba or the point
@@ -104,6 +106,24 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   look). Going back to one sets its date, travels to its world if the camera is elsewhere, glides
   over its place, and on foot begins the walk again (`src/ui/explore/saved-views.ts`).
 
+- **More worlds** (ledger EX-10 to EX-12; `src/explore/worlds`, its own chunk). Half a million asteroids
+  from JPL's Small-Body Database, as many as the detail level draws (20,000 at Low, 250,000 at High,
+  500,000 at Ultra), each on its own orbit for the date, solved on the GPU: from far out the main belt,
+  the Hildas and Jupiter's two Trojan clouds come out of the data, and the clock moves them. Seen from
+  near the Earth they are as faint as they are; in wide views their light is raised so they show where
+  they are, which the readout says. The periodic comets near the Sun grow their tails, pointing away
+  from it (their lengths illustrative). The major moons of Mars, Jupiter, Saturn, Uranus, Neptune and
+  Pluto, the dwarf planets and notable asteroids and comets can be flown to (the navigator's "Small
+  worlds" section, its search, a double click, or the tools' `world` command): at their measured
+  sizes and shapes (Haumea's elongation, Vesta's flattening), turning as they do, thirteen of them
+  with the USGS's mosaics from Dawn, Galileo, Voyager, Cassini and New Horizons, the rest plain (said
+  so). Pluto and Charon go round their barycentre. Uranus's and Neptune's narrow, dark rings are
+  drawn from NASA's tables (brightened, and said so), and one body's shadow falls on another: the
+  Earth's on the Moon in a lunar eclipse (a copper Moon), the Moon's on the Earth in a solar one, the
+  moons' on their planets, the planets' on their moons. Moons' places: JPL's mean elements fitted to
+  Horizons (within a few degrees over the decade); asteroids' and comets': two-body orbits (within a
+  degree for the asteroids over the decade, more for comets that pass Jupiter).
+
 - **Sound where there is air** (ledger CR-6; `src/explore/sound.ts`). Space is silent, and so is the
   explorer there. On foot on a world with air, and on the way down through Venus's or Jupiter's, the
   wind: noise as loud as the air's dynamic pressure (half its density times the wind's speed squared;
@@ -119,8 +139,8 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
 
 ## Planned, in this order (each from cited data)
 
-1. **More worlds.** The major moons (JPL's satellite mean elements; NASA and USGS maps), Pluto and
-   Charon, Ceres and Vesta, the asteroid belt as points from JPL's small-body database, and comets.
+1. **More worlds.** In (above). Still to come: an orbit integrated for the comets that pass Jupiter,
+   maps for the moons without one, and the rings' arcs and Saturn's small moons.
 2. **Beyond the Sun.** Flights to the nearest stars (catalogue parallaxes), systems with known
    exoplanets (NASA Exoplanet Archive), out of the Milky Way (the film's model), the Local Group,
    the SDSS cosmic web (Chapter 5's 420,000 galaxies) and the Planck CMB (Chapter 1): from a street

@@ -98,6 +98,8 @@ interface WorldsFile {
 const FADE_SECONDS = 0.4;
 const MARKED_SPAN_KM = [4.5e6, 1.5e8] as const;
 const CROWD = { fromKm: 9e8, power: 1.1 } as const;
+/** Asteroids decoded a frame (each slice a few milliseconds' work). */
+const DECODE_SLICE = 12_000;
 /** The glows' sphere, as a share of the far plane (just inside the stars' 0.98), and the stars' light as ../index gives it (STARS). */
 const GLOW_SHARE = 0.97;
 const STAR_LIGHT = { light: 0.85, follow: 0.2 } as const;
@@ -181,12 +183,18 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
       while (beltFiles < files) {
         const tier = manifest.tiers[beltFiles];
         if (!tier) break;
-        const view = new DataView(await ctx.assets.binary(`${SMALL_BODIES_URL}${tier.file}`));
-        const start = b.loaded;
-        b.append(view, tier.count);
-        for (let j = 0; j < tier.count; j += 1) groups[start + j] = BELT_GROUPS.indexOf(GROUP_OF[manifest.classes[view.getUint16(j * 16 + 14, true) & 15] ?? 'AST']);
+        const buffer = await ctx.assets.binary(`${SMALL_BODIES_URL}${tier.file}`);
+        // Decoded in slices, a frame apart, so no frame is held up long.
+        for (let from = 0; from < tier.count; from += DECODE_SLICE) {
+          const n = Math.min(DECODE_SLICE, tier.count - from);
+          const view = new DataView(buffer, from * 16, n * 16);
+          const start = b.loaded;
+          b.append(view, n);
+          for (let j = 0; j < n; j += 1) groups[start + j] = BELT_GROUPS.indexOf(GROUP_OF[manifest.classes[view.getUint16(j * 16 + 14, true) & 15] ?? 'AST']);
+          b.setCount(wantCount);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
         beltFiles += 1;
-        b.setCount(wantCount);
       }
     } finally {
       loading = false;

@@ -762,6 +762,52 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
   per tile, terrarium tiles of any height field over the world (`routeTerrain`: a cliff, a hill, the
   sea), the same at every zoom.
 
+## More worlds (explorer)
+
+- **Chunk.** `src/explore/worlds/` (its own chunk, `scripts/check-bundle.ts` WORLDS_SOURCES, 30,000 B
+  with `src/ui/explore/worlds-panel.ts` and `src/i18n/en.worlds.json`), asked for 2 s into a visit, at
+  once by a `world` or `smallBodies` command, again 30 s after a failure. `createWorlds(ctx, system,
+  obliquity, detail)` returns `Worlds`: `advance(jdTdb)` after the ten bodies are placed and before the
+  camera moves; `nearestKm(camera)` joins the depth range's nearest surface; `update(frame)` with the
+  camera, lens, the ten bodies as placed, the exposure's adaptation and whether the real sky's worlds
+  show (not in an experiment, on foot or on the way down); `labels(out)`; `nav(id)`, `navList()`,
+  `host(id)`, `find(name)`, `pick(x, y)`, `setDetail`, `setLayer`, `setGrouped`, `view(focus)`,
+  `illustrative(out)`, `dispose`. Its parts: `orbits.ts` (pure: the files' decoding, Kepler's
+  equation as the GPU solves it and to convergence, heliocentric and moon positions, the H, G law),
+  `belt.ts` (the asteroids on the GPU), `comets.ts`, `bodies.ts` (the worlds to fly to, their maps),
+  `rings.ts`, `eclipses.ts`, `glow.ts` (the Milky Way's and the zodiacal light's models).
+- **Data.** `public/assets/smallbodies/` from `scripts/smallbodies/build.py <download dir>` (stdlib
+  Python; `fixtures` writes `tests/support/astro/horizons-smallbodies.json`) and `maps.py` (Pillow and
+  numpy in `.cache/venv-worlds`): `manifest.json` (common epoch, classes, counts, tiers with sha256,
+  every query and its reply's sha256), `asteroids-0..3.bin` (16 bytes an object, brightest first,
+  cumulative: 20,000, 80,000, 250,000, 500,000), `comets.json`, `worlds.json` (66 worlds and the
+  rings), `maps.json` and `maps/<world>.jpg` (2048 x 1024, east longitude 0 in the middle, mean
+  linear brightness 0.4).
+- **Detail.** `ExploreDetail.smallBodies`: 20,000 (Low), 80,000 (Medium), 250,000 (High), 500,000
+  (Ultra) asteroids; the files are fetched as far as the level needs.
+- **Focus.** `FocusId = BodyId | WorldId` (`WorldId = \`w:${string}\``, the catalogue's name:
+  `w:Ceres`, `w:Io`, `w:1P/Halley`). The navigator, trips, `UniverseView.focus` and `from`, and
+  `UniversePose.body` take either. A world has no place beneath the camera (no saved view, no walk),
+  no notes and none of the ten bodies' illustrative items; its host (`Worlds.host`: a moon's planet,
+  the Sun for the rest) is what the ten bodies' code reads. Entering an experiment from a world flies
+  to the Sun.
+- **Commands.** `app.earthCommand({ kind: 'world', name })` flies to a world by its name or
+  designation in any case ("Ceres", "io", "Halley", "67P", "433"; a name contained in one name is
+  enough); asked before the chunk has come it is flown to when it does; a name that matches nothing
+  does nothing. `{ kind: 'smallBodies', on }` shows or hides the small bodies' layer (the asteroids,
+  the comets, and the dwarf planets', asteroids' and comets' points and names; the moons always
+  show); `{ kind: 'smallBodiesGrouped', on }` colours the asteroids by group (illustrative).
+- **View.** `UniverseView.worlds` (null until loaded): `layer`, `grouped`, `asteroids` (drawn; 0
+  with the layer off), `asteroidsLoaded`, `groups` (main, near, trojans, hildas, centaurs, kuiper,
+  other), `comets`, `tails`, `list` (id, name, kind, host), `focus` (the world in view's facts: kind,
+  host, radius, axes, albedo, rotation, sizeFromH, sunAu, eclipsed, its map's credit), `eclipses`
+  (receiver, occluder, depth) and `epochJdTdb`. Illustrative items: `small-body-light`,
+  `comet-tails`, `world-shape`, `eclipse-red`, `ring-light`, `sky-glow`.
+- **Test ids.** `universe-worlds` (the navigator's section), `worlds-intro`, `worlds-layer`,
+  `worlds-grouped`, `worlds-groups`, `worlds-group-<group>`, `worlds-search`, `worlds-results`,
+  `worlds-go-<name>`, `worlds-none`; the About section's `about-size`, `about-albedo`, `about-day`,
+  `about-now` for a world.
+
 ## Browsers and local testing (measured on this machine)
 
 - **The user browses with Brave** (installed: `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,
@@ -807,7 +853,7 @@ Mercury and Mars reuse the regolith renderer with their own texture slots, true 
 flattening and phase-dependent solar angular size; neither gets the Moon's earthshine
 or synthetic microcraters. Mars has an explicitly labelled schematic dust haze.
 Venus and the ice giants use cloud-deck shading and uniform illustrative colour maps.
-Optional Uranus/Neptune rings and additional moons are not drawn.
+Uranus's and Neptune's rings and the moons are drawn by the small worlds' chunk (below).
 
 The pipeline registers USGS GeoTIFFs using their metadata, including Mercury's DEM
 central meridian, and preserves source pins, landmark probes and decoded-file checks.

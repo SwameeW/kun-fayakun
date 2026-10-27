@@ -49,6 +49,8 @@ const TAILS = {
   visible: 0.003,
 } as const;
 const STRAIGHT: Km = { x: 0, y: 0, z: 0 };
+/** The comets are placed again once the clock has moved this many days (about 90 s): a few thousand km at most, out of sight. */
+const MOVED_DAYS = 1e-3;
 /** The coma (a point of light): the sky's magnitude mapping as seen, a marked light in wide views, its size range (CSS px) and colour (C2's green in the coma, illustrative). */
 const COMA = { mag: 6.5, light: 0.05, power: 0.45, marked: 0.14, minPx: 5, maxPx: 22, colour: [0.78, 1, 0.86] } as const;
 
@@ -125,6 +127,7 @@ export function createComets(rows: readonly CometRow[], auKm: number): Comets {
   const after = [0, 0, 0];
   let shown = 0;
   let tails = 0;
+  let placedAt = Number.NaN;
 
   /** Writes one ribbon: from `head` (camera-relative km) along a + b s^2 (unit-ish km directions times length), facing the camera. */
   const ribbon = (slot: number, head: Km, dir: Km, bend: Km, lengthKm: number, widths: readonly [number, number], colour: readonly number[], light: number, k: number): void => {
@@ -179,19 +182,24 @@ export function createComets(rows: readonly CometRow[], auKm: number): Comets {
     update(frame) {
       shown = 0;
       order.length = 0;
+      // The comets move on only when the clock has (by more than MOVED_DAYS: at real time, every minute and a half).
+      const moved = !(Math.abs(frame.jd - placedAt) <= MOVED_DAYS);
+      if (moved) placedAt = frame.jd;
       rows.forEach((row, i) => {
         const dot = dotList[i];
         const p = placedHeads[i];
         if (!dot || !p) return;
         const el = elements[i];
         if (!el) return;
-        heliocentric(el, frame.jd, helio);
-        ecl.x = (helio[0] ?? 0) * auKm;
-        ecl.y = (helio[1] ?? 0) * auKm;
-        ecl.z = (helio[2] ?? 0) * auKm;
-        eclipticToRender(ecl, p);
-        const sunAu = Math.hypot(p.x, p.y, p.z) / auKm;
-        r[i] = sunAu;
+        if (moved) {
+          heliocentric(el, frame.jd, helio);
+          ecl.x = (helio[0] ?? 0) * auKm;
+          ecl.y = (helio[1] ?? 0) * auKm;
+          ecl.z = (helio[2] ?? 0) * auKm;
+          eclipticToRender(ecl, p);
+          r[i] = Math.hypot(p.x, p.y, p.z) / auKm;
+        }
+        const sunAu = r[i] ?? 0;
         dot.opacity = 0;
         if (sunAu > SHOWN_AU || frame.fade <= 1e-3) return;
         const rx = p.x - frame.camera.x;

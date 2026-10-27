@@ -27,7 +27,7 @@
  */
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, InstancedBufferAttribute, PointsNodeMaterial, Sprite, Vector3, type Node } from 'three/webgpu';
-import { acos, clamp, cos, dot, exp, float, floor, instancedBufferAttribute, length, log, max, min, mix, pow, screenDPR, select, sign, sin, tan, tanh, uniform, uv, vec3 } from 'three/tsl';
+import { acos, clamp, cos, dot, exp, float, floor, instancedBufferAttribute, length, log, max, min, mix, pow, screenDPR, select, sign, sin, tan, tanh, uniform, uv, varying, vec3 } from 'three/tsl';
 import { SCALED } from '../space/scaled-space';
 import { BELT_GROUPS, decodeRecord, GAUSS_K, GROUP_OF, perifocal, type BeltClass, type BeltGroup, type BeltRecord } from './orbits';
 
@@ -37,7 +37,9 @@ type Vec3Node = Node<'vec3'>;
 /** Days in a block of the split date (see above). */
 export const BLOCK_DAYS = 1024;
 /** The point's light spread: a Gaussian of this many device pixels, over a sprite this many device pixels across. */
-const PSF = { sigma: 0.7, footprint: 5 } as const;
+const PSF = { sigma: 0.7, footprint: 4 } as const;
+/** A point fainter than this on screen (display terms, its whole light) is not drawn at all: its sprite collapses to nothing. */
+const UNSEEN = 2e-4;
 /**
  * The sky's mapping of magnitude to light (../sky.ts: V 6.5 at 0.05 at a star's centre, rising as the
  * flux to the 0.45th power), as a point's whole light (its centre pixel holds 0.276 of it).
@@ -150,7 +152,6 @@ export function createBelt(capacity: number, classes: readonly BeltClass[]): Bel
 
   const material = new PointsNodeMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest: true, sizeAttenuation: false, fog: false });
   material.positionNode = relAu.mul(uAuKm).mul(k);
-  material.sizeNode = float(PSF.footprint).div(screenDPR);
 
   // As seen: V from H with G = 0.15 at r and delta, and the phase angle between the Sun and the camera seen from the point.
   const cosAlpha = clamp(dot(position, relAu).div(rAu.mul(deltaAu)), -1, 1);
@@ -159,15 +160,18 @@ export function createBelt(capacity: number, classes: readonly BeltClass[]): Bel
   const v = nAttr.z.add(log(rAu.mul(deltaAu)).mul(5 / Math.LN10)).sub(log(max(phi, 1e-9)).mul(2.5 / Math.LN10));
   const seen = exp(v.sub(SEEN.mag).mul(-0.4 * SEEN.power * Math.LN10)).mul(SEEN.light);
   const size = clamp(exp(float(12).sub(nAttr.z).mul(MARKED.perMag * Math.LN10)), MARKED.floor, MARKED.ceiling);
-  const light = min(max(seen, size.mul(MARKED.light).mul(uMarked)), CEILING);
-  const tint = mix(vec3(...ROCK), groupColour(nAttr.w), uGrouped);
+  // Worked out once a point, in the vertex stage, and handed to its pixels (not solved again for each).
+  const light = varying(min(max(seen, size.mul(MARKED.light).mul(uMarked)), CEILING).mul(uFade).div(uCompensation));
+  const tint = varying(mix(vec3(...ROCK), groupColour(nAttr.w), uGrouped));
+  // A point too faint to see costs no pixels: its sprite has no size.
+  material.sizeNode = select(light.greaterThan(UNSEEN), float(PSF.footprint), float(0)).div(screenDPR);
 
   // The pixel-integrated Gaussian about the point's true place (uv 0.5).
   const offset = uv().sub(0.5).mul(PSF.footprint);
   const w = 1 / (Math.SQRT2 * PSF.sigma);
   const ix = erf(offset.x.add(0.5).mul(w)).sub(erf(offset.x.sub(0.5).mul(w))).mul(0.5);
   const iy = erf(offset.y.add(0.5).mul(w)).sub(erf(offset.y.sub(0.5).mul(w))).mul(0.5);
-  material.colorNode = tint.mul(light.mul(ix).mul(iy).mul(uFade).div(uCompensation));
+  material.colorNode = tint.mul(light.mul(ix).mul(iy));
   material.opacityNode = float(1);
 
   const geometry = new BufferGeometry();

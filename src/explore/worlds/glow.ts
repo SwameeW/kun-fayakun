@@ -28,6 +28,8 @@ import { abs, acos, asin, atan, clamp, dot, exp, float, max, normalize, position
 /** The textures' resolution (galactic longitude by latitude; elongation in longitude by ecliptic latitude). */
 const MILKY = { width: 192, height: 96, steps: 72, reachKpc: 30 } as const;
 const ZODI = { width: 64, height: 32, steps: 96, reachAu: 6 } as const;
+/** Rows of the tables worked out a frame (about a millisecond's work). */
+const ROWS_PER_FRAME = 4;
 /** log10 of S10 is stored in eight bits over this range. */
 const LOG_RANGE = [0, 4.2] as const;
 /** The Galaxy (kpc): the Sun's place, the discs, the bulge (bar 27 degrees from the Sun-centre line), the dust. */
@@ -155,33 +157,41 @@ export interface SkyGlow {
 
 export function createSkyGlow(obliquity: number): SkyGlow {
   // The Milky Way's table, galactic longitude -180..180 by latitude -90..90.
+  // The tables are filled a few rows a frame (update), so working them out never holds a frame up;
+  // the glow shows, eased in, once both are done.
   const milky = new Uint8Array(MILKY.width * MILKY.height * 4);
-  const pole = (milkyWayAlong(0, Math.PI / 2) + milkyWayAlong(0, -Math.PI / 2)) / 2;
-  for (let j = 0; j < MILKY.height; j += 1) {
-    const b = ((j + 0.5) / MILKY.height - 0.5) * Math.PI;
-    for (let i = 0; i < MILKY.width; i += 1) {
-      const l = ((i + 0.5) / MILKY.width - 0.5) * 2 * Math.PI;
-      const v = encode((milkyWayAlong(l, b) / pole) * POLES_S10);
-      milky.set([v, v, v, 255], (j * MILKY.width + i) * 4);
-    }
-  }
-  // The zodiacal light's, elongation in longitude 0..180 by |ecliptic latitude| 0..90.
   const zodi = new Uint8Array(ZODI.width * ZODI.height * 4);
-  const at90 = zodiacalAlong(Math.PI / 2, 0);
-  for (let j = 0; j < ZODI.height; j += 1) {
-    const beta = ((j + 0.5) / ZODI.height) * (Math.PI / 2);
-    for (let i = 0; i < ZODI.width; i += 1) {
-      const dl = ((i + 0.5) / ZODI.width) * Math.PI;
-      const v = encode((zodiacalAlong(dl, beta) / at90) * ZODI_90_S10);
-      zodi.set([v, v, v, 255], (j * ZODI.width + i) * 4);
+  let pole = 0;
+  let at90 = 0;
+  let filled = 0;
+  const rows = MILKY.height + ZODI.height;
+  const fillRow = (): void => {
+    const row = filled;
+    if (row < MILKY.height) {
+      if (row === 0) pole = (milkyWayAlong(0, Math.PI / 2) + milkyWayAlong(0, -Math.PI / 2)) / 2;
+      const b = ((row + 0.5) / MILKY.height - 0.5) * Math.PI;
+      for (let i = 0; i < MILKY.width; i += 1) {
+        const v = encode((milkyWayAlong(((i + 0.5) / MILKY.width - 0.5) * 2 * Math.PI, b) / pole) * POLES_S10);
+        milky.set([v, v, v, 255], (row * MILKY.width + i) * 4);
+      }
+    } else {
+      // The zodiacal light's, elongation in longitude 0..180 by |ecliptic latitude| 0..90.
+      const j = row - MILKY.height;
+      if (j === 0) at90 = zodiacalAlong(Math.PI / 2, 0);
+      const beta = ((j + 0.5) / ZODI.height) * (Math.PI / 2);
+      for (let i = 0; i < ZODI.width; i += 1) {
+        const v = encode((zodiacalAlong(((i + 0.5) / ZODI.width) * Math.PI, beta) / at90) * ZODI_90_S10);
+        zodi.set([v, v, v, 255], (j * ZODI.width + i) * 4);
+      }
     }
-  }
+    filled += 1;
+  };
+  let ready = 0;
   const table = (data: Uint8Array, width: number, height: number, wrap: boolean): DataTexture => {
     const t = new DataTexture(data, width, height, RGBAFormat);
     t.magFilter = LinearFilter;
     t.minFilter = LinearFilter;
     if (wrap) t.wrapS = RepeatWrapping;
-    t.needsUpdate = true;
     return t;
   };
   const milkyTexture = table(milky, MILKY.width, MILKY.height, true);
@@ -230,12 +240,19 @@ export function createSkyGlow(obliquity: number): SkyGlow {
   return {
     object: mesh,
     update(radius, cameraKm, au, pixelDeg2, light, shown) {
+      if (filled < rows) {
+        for (let k = 0; k < ROWS_PER_FRAME && filled < rows; k += 1) fillRow();
+        if (filled >= rows) {
+          milkyTexture.needsUpdate = true;
+          zodiTexture.needsUpdate = true;
+        }
+      } else ready = Math.min(1, ready + 0.05);
       mesh.scale.setScalar(radius);
-      mesh.visible = shown > 1e-3;
+      mesh.visible = shown * ready > 1e-3;
       const d = Math.hypot(cameraKm.x, cameraKm.y, cameraKm.z) || 1;
       uSun.value.set(-cameraKm.x / d, -cameraKm.y / d, -cameraKm.z / d);
       uZodi.value = Math.max(au, 0.1) ** -ZODI_POWER;
-      uLight.value = S10_LIGHT * pixelDeg2 * light * shown;
+      uLight.value = S10_LIGHT * pixelDeg2 * light * shown * ready;
     },
     dispose() {
       geometry.dispose();

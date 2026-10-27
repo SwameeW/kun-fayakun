@@ -464,11 +464,12 @@ export default function create(): UniverseModule {
   let hoodLoading = false;
   /**
    * More worlds (./worlds, its own chunk: the small bodies, the moons, Uranus's and Neptune's rings,
-   * eclipses): asked for WORLDS_AFTER_S into a visit (at once for a world asked for by name, which is
-   * flown to when it comes; again BEYOND_RETRY_S after a failure), and the layer's choice meanwhile.
+   * eclipses): asked for 6 s into a visit, once the entry's push-in has settled and the first maps have
+   * come (at once for a world asked for by name, flown to when it comes, or for the layer; again
+   * BEYOND_RETRY_S after a failure), and the layer's choice meanwhile.
    */
   let worlds: Worlds | null = null;
-  let worldsAt = 2;
+  let worldsAt = 6;
   let worldsLoading = false;
   let worldWanted: string | null = null;
   let worldsLayer = true;
