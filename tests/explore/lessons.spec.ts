@@ -2,14 +2,17 @@
  * Lessons in the orbital laboratory (ledger CR-4), in the browser: Kepler's third law (a year 2.828
  * times as long at twice the distance), escape speed (an orbit opened by a push past it), and a
  * Hohmann transfer (its first burn planned and run, the orbit's far side reaching geostationary
- * height, the autopilot's second burn planned), each set up from the start. Steps wait for their
- * experiment and go in order, each once (presses in bursts change nothing more); the first figures
- * are kept once the first edit is made, so a torn Moon's lesson never shows an empty step; the steps
- * are a numbered list beside their buttons; and the torn Moon's pieces' names never overlap.
+ * height, the autopilot's second burn planned and made), each set up from the start. Steps wait for
+ * their experiment and go in order, each once (presses in bursts change nothing more), the next only
+ * once the experiment shows the one before; each step's words are kept as they were once the next is
+ * taken (so the transfer's figures stay once its orbit is round), and a torn Moon's lesson never shows
+ * an empty step; a set-up overtaken (the laboratory left, another experiment chosen) ends the lesson,
+ * and its button begins it again at once; the steps are a numbered list beside their buttons at every
+ * window size; and the torn Moon's pieces' names never overlap.
  */
 import type { Page } from '@playwright/test';
 import type { UniverseLab } from '../../src/core/types';
-import { expect, test } from '../support/fixtures';
+import { expect, test, type KfHook } from '../support/fixtures';
 import { SLOW } from '../support/env';
 import { spam } from '../support/layout';
 import { JD, view, waitForUniverse } from '../support/universe';
@@ -63,8 +66,23 @@ test('lessons: Kepler’s third law, escape speed and a Hohmann transfer, each f
   expect(apo / 42_164).toBeGreaterThan(0.98);
   expect(apo / 42_164).toBeLessThan(1.02);
   await page.getByTestId('lab-lesson-step-3').click();
+  // The transfer's figures, kept as they were when the autopilot was asked to round the orbit.
+  const transfer = await page.getByTestId('lab-lesson-text-2').textContent();
+  expect(transfer).toMatch(/Once round it takes 1\d\.\d\shours/u);
   await expect.poll(async () => (await lab(page))?.bodies.find((b) => b.ship !== null)?.ship?.burns.length ?? 0, LIVE).toBe(1);
   await expect(page.getByTestId('lab-lesson-text-3')).toContainText('The autopilot’s burn');
+  // On to the far side and round: once the orbit is round (its burn made), the steps taken still say what they did.
+  await page.getByTestId('lab-lesson-step-4').click();
+  const planned = await page.getByTestId('lab-lesson-text-3').textContent();
+  expect(planned).toContain('The autopilot’s burn:');
+  await expect.poll(async () => {
+    const b = (await lab(page))?.bodies.find((x) => x.ship !== null);
+    return b?.ship ? b.ship.burns.length === 0 && (b.orbit?.e ?? 1) < 0.01 : false;
+  }, { timeout: 120_000 * SLOW }).toBe(true);
+  await expect(page.getByTestId('lab-lesson-text-4')).toContainText('Its orbit now');
+  await expect(page.getByTestId('lab-lesson-text-2')).toHaveText(transfer ?? '');
+  await expect(page.getByTestId('lab-lesson-text-3')).toHaveText(planned ?? '');
+  expect(await shownTexts(page)).not.toContain('');
   await page.getByTestId('lab-lesson-end').click();
   await expect(page.getByTestId('lab-lesson')).toBeHidden();
   expect(pageErrors).toEqual([]);
@@ -112,6 +130,87 @@ test('a lesson’s steps wait for its experiment, go in order and once each, and
   await spam(page.getByTestId('lab-lesson-restart'), 10);
   await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
   await expect.poll(async () => (await lab(page))?.logLength, LIVE).toBe(1);
+  expect(await shownTexts(page)).not.toContain('');
+  expect(pageErrors).toEqual([]);
+});
+
+test('a set-up overtaken (the laboratory left and entered, another experiment chosen) ends the lesson, and its button sets it up again at once', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLessons(page);
+  const begin = (then: 'leave' | 'solar'): Promise<void> =>
+    page.evaluate((how) => {
+      const kf = (window as unknown as KfHook).__kf;
+      document.querySelector<HTMLElement>('[data-testid="lab-lesson-kepler"]')?.click();
+      // In the same task as the lesson's set-up, before its experiment can come.
+      if (how === 'leave') kf.app.closeLab();
+      else kf.app.universeLab({ kind: 'start', seed: 'solar' });
+    }, then);
+  const setUp = async (): Promise<void> => {
+    await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
+    await expect(page.getByTestId('lab-lesson-text-0')).toContainText('1 AU from its star');
+    expect((await lab(page))?.bodies.map((b) => b.id).join()).toBe('star,planet');
+  };
+  // Left during its set-up, then entered again: the lesson has ended (its experiment went with the laboratory).
+  await begin('leave');
+  await expect.poll(async () => lab(page), LIVE).toBeNull();
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.openLab();
+  });
+  await expect.poll(async () => (await lab(page))?.bodies.length ?? 0, LIVE).toBe(10);
+  await expect(page.getByTestId('lab-lesson')).toBeHidden();
+  // Its button sets it up at once (pressed in a burst, once).
+  await spam(page.getByTestId('lab-lesson-kepler'), 5);
+  await setUp();
+  // Another experiment chosen during its set-up: that choice stands, and the lesson ends.
+  await begin('solar');
+  await expect(page.getByTestId('lab-lesson')).toBeHidden(LIVE);
+  await expect.poll(async () => (await lab(page))?.bodies.length ?? 0, LIVE).toBe(10);
+  await page.getByTestId('lab-lesson-kepler').click();
+  await setUp();
+  // Started again twice by hand while it is being set up, it is set up anew, once.
+  await page.getByTestId('lab-lesson-restart').click();
+  await page.getByTestId('lab-lesson-restart').click();
+  await setUp();
+  expect((await lab(page))?.logLength).toBe(0);
+  expect(await shownTexts(page)).not.toContain('');
+  expect(pageErrors).toEqual([]);
+});
+
+test('the autopilot’s burn made while the clock runs on says it is done, and the transfer’s figures stay', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLessons(page);
+  await page.getByTestId('lab-lesson-hohmann').click();
+  await page.getByTestId('lab-lesson-step-1').click();
+  // Pressed at once after the first burn's: the clock runs through it, and rounding the orbit waits until it has ended.
+  await page.getByTestId('lab-lesson-step-2').click();
+  await expect(page.getByTestId('lab-lesson-step-3')).toBeDisabled();
+  await expect.poll(async () => (await lab(page))?.bodies.find((b) => b.ship !== null)?.ship?.burns.length ?? 1, LIVE).toBe(0);
+  await expect(page.getByTestId('lab-lesson-step-3')).toBeEnabled();
+  // By the keyboard: the next step takes the focus once it can be taken.
+  await page.getByTestId('lab-lesson-step-3').focus();
+  await page.keyboard.press('Enter');
+  const transfer = await page.getByTestId('lab-lesson-text-2').textContent();
+  expect(transfer).toMatch(/Once round it takes 1\d\.\d\shours/u);
+  await expect(page.getByTestId('lab-lesson-step-4')).toBeFocused(LIVE);
+  await expect(page.getByTestId('lab-lesson-text-3')).toContainText('The autopilot’s burn:', LIVE);
+  // The clock left running (not the last step): the burn at the far side is made, and its step says so.
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeTime({ kind: 'rate', rate: 3600 });
+  });
+  await expect.poll(async () => {
+    const b = (await lab(page))?.bodies.find((x) => x.ship !== null);
+    return b?.ship ? b.ship.burns.length === 0 && (b.orbit?.e ?? 1) < 0.01 : false;
+  }, { timeout: 120_000 * SLOW }).toBe(true);
+  await expect(page.getByTestId('lab-lesson-text-3')).toContainText('The autopilot’s burn of', LIVE);
+  await expect(page.getByTestId('lab-lesson-text-3')).toContainText('is done');
+  await expect(page.getByTestId('lab-lesson-text-2')).toHaveText(transfer ?? '');
+  await page.getByTestId('lab-lesson-step-4').click();
+  await expect(page.getByTestId('lab-lesson-text-4')).toContainText('Its orbit now');
+  await expect(page.getByTestId('lab-lesson-text-2')).toHaveText(transfer ?? '');
   expect(await shownTexts(page)).not.toContain('');
   expect(pageErrors).toEqual([]);
 });
@@ -181,3 +280,61 @@ test('the Roche limit: the Moon’s first figures stay once it is torn apart, th
   expect(await shownTexts(page)).not.toContain('');
   expect(pageErrors).toEqual([]);
 });
+
+for (const size of [
+  { width: 1280, height: 800, touch: false },
+  { width: 2000, height: 1300, touch: false },
+  { width: 390, height: 844, touch: true },
+]) {
+  const at = `${String(size.width)}x${String(size.height)}${size.touch ? ' (touch)' : ''}`;
+  test.describe(at, () => {
+    test.use({ viewport: { width: size.width, height: size.height }, hasTouch: size.touch, isMobile: size.touch });
+
+    test(`at ${at} the lessons' list and steps keep their layout, and the steps wait, go in order and once each`, async ({ page, kf, pageErrors }) => {
+      test.setTimeout(180_000 * SLOW);
+      await kf.open('/universe/earth', { query: { jd: JD } });
+      await waitForUniverse(page);
+      // A phone's sheet starts folded: pulled up, the way into the laboratory.
+      const toggle = page.getByTestId('universe-nav-toggle');
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+      await openLessons(page);
+      // Each lesson's title on one line, what it is about beneath it.
+      for (const id of ['kepler', 'escape', 'hohmann', 'roche']) {
+        const b = page.getByTestId(`lab-lesson-${id}`);
+        await b.scrollIntoViewIfNeeded();
+        const [name, what] = await Promise.all([b.locator('.kf-living-place-name').boundingBox(), b.locator('.kf-living-place-where').boundingBox()]);
+        expect(name && what && name.y + name.height <= what.y + 1, id).toBe(true);
+        expect(name?.height ?? 99, id).toBeLessThan(24);
+      }
+      // Begun in a burst: every step waits for its experiment, then the first opens.
+      await spam(page.getByTestId('lab-lesson-kepler'), 9);
+      for (const k of [1, 2]) await expect(page.getByTestId(`lab-lesson-step-${String(k)}`)).toBeDisabled();
+      expect(await shownTexts(page)).not.toContain('');
+      await expect(page.getByTestId('lab-lesson-step-1')).toBeEnabled(LIVE);
+      // A numbered list: a small indent, a gap between steps, each step's words under its button.
+      const layout = await steps(page).evaluate((ol) => {
+        const items = [...ol.querySelectorAll(':scope > li')].filter((li) => !(li as HTMLElement).hidden);
+        const gaps = items.slice(1).map((li, k) => li.getBoundingClientRect().top - (items[k]?.getBoundingClientRect().bottom ?? 0));
+        const aligned = items.map((li) => {
+          const b = li.querySelector('button')?.getBoundingClientRect();
+          const p = li.querySelector('p')?.getBoundingClientRect();
+          return b && p && p.height > 0 ? Math.abs(b.left - p.left) : 0;
+        });
+        return { indent: getComputedStyle(ol).paddingInlineStart, gaps, aligned };
+      });
+      expect(layout.indent).not.toBe('40px');
+      for (const gap of layout.gaps) expect(gap).toBeGreaterThanOrEqual(8);
+      for (const d of layout.aligned) expect(d).toBeLessThanOrEqual(4);
+      // In order and once each: pressed in bursts, one edit; the next opens once the experiment has it.
+      await spam(page.getByTestId('lab-lesson-step-2'), 5);
+      await spam(page.getByTestId('lab-lesson-step-1'), 9);
+      await expect.poll(async () => (await lab(page))?.logLength, LIVE).toBe(1);
+      await expect(page.getByTestId('lab-lesson-step-1')).toBeDisabled();
+      await expect(page.getByTestId('lab-lesson-step-2')).toBeEnabled(LIVE);
+      await expect(page.getByTestId('lab-lesson-text-1')).toContainText('2.828 times as long', LIVE);
+      await expect(page.getByTestId('lab-lesson-text-0')).toContainText('1 AU from its star');
+      expect(await shownTexts(page)).not.toContain('');
+      expect(pageErrors).toEqual([]);
+    });
+  });
+}

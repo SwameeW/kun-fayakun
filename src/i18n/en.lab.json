@@ -254,6 +254,7 @@
   "ui.universe.lab.lesson.hohmann.act4": "Round the orbit at its far side (the autopilot)",
   "ui.universe.lab.lesson.hohmann.4none": "The second burn waits for an orbit with a far side to round.",
   "ui.universe.lab.lesson.hohmann.4": "The autopilot’s burn: {dv} at the far side, which comes in {when}.",
+  "ui.universe.lab.lesson.hohmann.4done": "The autopilot’s burn of {dv} at the far side is done.",
   "ui.universe.lab.lesson.hohmann.act5": "Run the clock to the far side and on",
   "ui.universe.lab.lesson.hohmann.5": "Its orbit now: {a} across the middle, eccentricity {e}, once round in {period}.",
   "ui.universe.lab.lesson.roche.title": "The Roche limit",

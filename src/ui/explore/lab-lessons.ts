@@ -12,15 +12,18 @@ import type { Formatters } from './format';
  *
  * The steps are taken in order, each once, and only once the experiment is set up (its first step
  * reads it): a step's button is disabled until then and after it is taken (the lesson starts again
- * from its own button). A step says what it will do before it is taken (where it has words for that)
- * and what happened once it is; what the experiment looked like at the start is kept as it was once
- * the first edit is made, and words once shown are never blanked (a moon torn apart no longer has
- * the distance they gave).
+ * from its own button), and the next waits until the experiment shows the edit (and a burn the clock
+ * runs through has ended). A step says what it will do before it is taken (where it has words for
+ * that) and what happened once it is; each step's words are kept as they were once the next is taken
+ * (the start's figures, then what each edit did), and words once shown are never blanked (a moon torn
+ * apart no longer has the distance they gave). Its experiment replaced while it is set up (another
+ * chosen, a saved one loaded) or gone (the laboratory left), the lesson ends; its button begins it again.
  */
 
 export interface Lessons {
   readonly element: HTMLElement;
-  update(lab: UniverseLab): void;
+  /** null: no experiment (the laboratory left), and a lesson on one ends with it. */
+  update(lab: UniverseLab | null): void;
 }
 
 type LessonId = 'kepler' | 'escape' | 'hohmann' | 'roche';
@@ -31,7 +34,7 @@ const GEO_KM = 42_164;
 const LESSON_SHIP = { dryKg: 2000, fuelKg: 18_000, thrustN: 400_000, ispS: 320, distanceKm: 7000 } as const;
 
 interface Step {
-  /** What to look for, from the experiment now and what was noted when the step was taken. */
+  /** What to look for, from the experiment now and what was noted when the step was taken (or as it went: what is gone once done). */
   text: (lab: UniverseLab, noted: Record<string, number>) => string;
   /** The step's edit, and what to note beforehand: false when the experiment lacks what it needs (nothing sent). */
   act?: { label: string; run: (lab: UniverseLab, noted: Record<string, number>) => boolean };
@@ -193,9 +196,15 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
             return s !== undefined;
           },
         },
-        text: (lab) => {
-          const r = ship(lab)?.ship?.circularise;
-          return r ? i18n.t('ui.universe.lab.lesson.hohmann.4', { dv: ms(r.deltaVMs), when: hours(r.inS) }) : i18n.t('ui.universe.lab.lesson.hohmann.4none');
+        text: (lab, noted) => {
+          const s = ship(lab)?.ship;
+          // The burn the autopilot planned, while it is to come (noted, so that once made its words say so,
+          // whatever small rounding the autopilot would offer next); before it is planned, what it offers.
+          const planned = s?.burns[0];
+          if (planned) noted.round = planned.deltaVMs;
+          const r = planned ?? (noted.round ? undefined : s?.circularise);
+          if (r) return i18n.t('ui.universe.lab.lesson.hohmann.4', { dv: ms(r.deltaVMs), when: hours(Math.max(0, r.inS)) });
+          return noted.round ? i18n.t('ui.universe.lab.lesson.hohmann.4done', { dv: ms(noted.round) }) : i18n.t('ui.universe.lab.lesson.hohmann.4none');
         },
       },
       {
@@ -249,14 +258,22 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
   const current = h('section', { class: 'kf-lab-lesson', 'data-testid': 'lab-lesson', hidden: true });
   const lessonTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'lab-lesson-title' });
   const lessonIntro = h('p', { class: 'kf-living-hint' });
-  const stepList = h('ol', { class: 'kf-lab-lesson-steps', 'data-testid': 'lab-lesson-steps' });
+  // (It holds the keyboard's focus while the next step waits for the experiment.)
+  const stepList = h('ol', { class: 'kf-lab-lesson-steps', 'data-testid': 'lab-lesson-steps', tabindex: '-1' });
   const restart = h('button', { type: 'button', class: 'kf-btn', 'data-testid': 'lab-lesson-restart' }, i18n.t('ui.universe.lab.lesson.restart'));
   const leave = h('button', { type: 'button', class: 'kf-btn', 'data-testid': 'lab-lesson-end' }, i18n.t('ui.universe.lab.lesson.end'));
   current.append(lessonTitle, lessonIntro, stepList, h('div', { class: 'kf-lab-row' }, restart, leave));
   let active: LessonId | null = null;
   let noted: Record<string, number> = {};
-  /** Set-up waiting for the experiment to be there (the seed loads in its worker). */
+  /** Set-up waiting for the experiment to be there (the seed loads in its worker); `asked` until a view has come since. */
   let pending: { ready: (lab: UniverseLab) => boolean; then: (lab: UniverseLab) => void } | null = null;
+  let asked = false;
+  /**
+   * The step just taken, until the experiment shows its edit (the next one waits for it, and its words
+   * for what happened wait too); and whether the keyboard goes on to the next once it can.
+   */
+  let catching: number | null = null;
+  let focusNext = false;
   /** Each step's item, words and button; whether it has been taken; the last words it showed (kept, never blanked); and whether they are kept as they are. */
   let stepParts: Array<{ li: HTMLElement; text: HTMLElement; button: HTMLButtonElement | null }> = [];
   let taken: boolean[] = [];
@@ -264,16 +281,25 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
   let kept: boolean[] = [];
   let latest: UniverseLab | null = null;
 
-  /** Which steps can be taken: once set up (the first step has read the experiment), in order, each once. */
+  /**
+   * Which steps can be taken: once set up (the first step has read the experiment), in order, each once,
+   * and each after the one before has reached the experiment (its edit there, a burn it ran the clock
+   * through ended: rounding an orbit half raised would round the wrong one).
+   */
   const refresh = (): void => {
     if (!active) return;
-    let open = pending === null && shown[0] !== '';
+    let open = pending === null && shown[0] !== '' && catching === null && !(latest?.thrusting === true && !latest.paused);
     steps[active].forEach((step, k) => {
       const button = stepParts[k]?.button;
       const disabled = !open || (taken[k] ?? false);
       if (button && button.disabled !== disabled) button.disabled = disabled;
       if (step.act && !taken[k]) open = false;
     });
+    const next = focusNext ? stepParts.find((p) => p.button && !p.button.disabled)?.button : undefined;
+    if (next) {
+      focusNext = false;
+      if (document.activeElement === stepList) next.focus();
+    }
   };
 
   const take = (k: number): void => {
@@ -282,19 +308,28 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
     if (!act || !latest || !button || button.disabled || pending !== null || taken[k]) return;
     if (!act.run(latest, noted)) return;
     taken[k] = true;
-    // What the experiment looked like before the first edit stays as it was (its live figures would now be the edit's).
-    for (let j = 0; j < k; j += 1) if (!active || !steps[active][j]?.act) kept[j] = true;
+    catching = k;
+    // What each step before said stays as it was (the start's figures, and what each edit did): their live figures would now be this edit's.
+    for (let j = 0; j < k; j += 1) kept[j] = true;
     const hadFocus = document.activeElement === button;
     refresh();
-    // The keyboard goes on to the next step (the one taken is done), or to starting again at the end.
-    if (hadFocus) (stepParts.find((p) => p.button && !p.button.disabled)?.button ?? restart).focus();
+    // The keyboard goes on to the next step once it can be taken (the list of steps holds it meanwhile), or to starting again at the end.
+    if (!hadFocus) return;
+    if (stepParts.some((p, j) => j > k && p.button)) {
+      stepList.focus({ preventScroll: true });
+      focusNext = true;
+    } else restart.focus();
   };
 
-  const begin = (id: LessonId): void => {
-    // Already being set up: once is enough (a button pressed again and again starts it once).
-    if (active === id && pending !== null) return;
+  /** `again`: Start the lesson again, which sets it up anew unless that has only just been asked (a burst of presses). */
+  const begin = (id: LessonId, again = false): void => {
+    // Being set up: once is enough (its button pressed again and again starts it once). A set-up that cannot
+    // come (another experiment came instead, or none) has ended the lesson, so its button begins it again.
+    if (active === id && pending !== null && (!again || asked)) return;
     active = id;
     noted = {};
+    catching = null;
+    focusNext = false;
     current.hidden = false;
     lessonTitle.textContent = i18n.t(`ui.universe.lab.lesson.${id}.title`);
     lessonIntro.textContent = i18n.t(`ui.universe.lab.lesson.${id}.intro`);
@@ -319,7 +354,9 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
     const seed = id === 'kepler' || id === 'escape' ? 'two' : 'solar';
     const focus = id === 'roche' ? 'moon' : 'planet';
     send({ kind: 'start', seed });
-    // (Any view after the start is the new experiment's: the old one's snapshot is dropped as it loads.)
+    // (Any view after the start is the new experiment's: the old one's snapshot is dropped as it loads, and
+    // until the seed's first snapshot it has no bodies.)
+    asked = true;
     pending = {
       ready: (lab) => lab.logLength === 0 && (seed === 'two' ? lab.bodies.map((x) => x.id).join() === 'star,planet' : lab.bodies.length >= 10),
       then: (lab) => {
@@ -339,8 +376,8 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
     steps[active].forEach((step, k) => {
       const part = stepParts[k];
       if (!part) return;
-      if (lab && !kept[k]) {
-        // Before a step is taken, what it will do (where it says); once taken, what happened.
+      if (lab && !kept[k] && catching !== k) {
+        // Before a step is taken, what it will do (where it says); once taken (and in the experiment), what happened.
         const now = step.act && !taken[k] ? (step.before ? i18n.t(step.before) : '') : step.text(lab, noted);
         if (now !== '') shown[k] = now;
       }
@@ -351,14 +388,21 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
     });
     refresh();
   };
-  restart.addEventListener('click', () => {
-    if (active) begin(active);
-  });
-  leave.addEventListener('click', () => {
+  /** The lesson left (by its button, or its experiment replaced or gone): focus in it goes back to its button in the list. */
+  const end = (): void => {
+    const was = active;
+    const hadFocus = current.contains(document.activeElement);
     active = null;
     pending = null;
+    catching = null;
+    focusNext = false;
     current.hidden = true;
+    if (hadFocus && was) list.querySelector<HTMLElement>(`[data-testid="lab-lesson-${was}"]`)?.focus();
+  };
+  restart.addEventListener('click', () => {
+    if (active) begin(active, true);
   });
+  leave.addEventListener('click', end);
   list.append(
     ...LESSONS.map((id) => {
       const b = h('button', { type: 'button', class: 'kf-living-place', 'data-testid': `lab-lesson-${id}` }, h('span', { class: 'kf-living-place-name' }, i18n.t(`ui.universe.lab.lesson.${id}.title`)), h('span', { class: 'kf-living-place-where' }, i18n.t(`ui.universe.lab.lesson.${id}.what`)));
@@ -378,12 +422,23 @@ export function createLabLessons(app: App, f: Formatters): Lessons {
   return {
     element,
     update(lab) {
+      if (!lab) {
+        if (active) end();
+        return;
+      }
       latest = lab;
       if (pending?.ready(lab)) {
         const p = pending;
         pending = null;
         p.then(lab);
+      } else if (pending && !asked && lab.bodies.length > 0) {
+        // Another experiment came instead of the lesson's (one chosen, loaded or shared meanwhile): the visitor's choice stands.
+        end();
+        return;
       }
+      asked = false;
+      // The step just taken has reached the experiment: the next can be taken.
+      if (catching !== null && lab.unapplied === 0) catching = null;
       write();
     },
   };

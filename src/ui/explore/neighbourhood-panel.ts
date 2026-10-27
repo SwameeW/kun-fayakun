@@ -6,7 +6,11 @@ import starsMessages from '../../i18n/en.stars.json';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { helpButton, withHelp } from './help';
-import '../styles/stars.css';
+import { styles } from './lazy';
+import css from '../styles/stars.css?inline';
+
+// Its styles come with its code (./lazy).
+styles(css);
 
 /**
  * Among the stars (ledger IS-3, IS-4, IS-7; its own chunk, loaded with the first visit): the star in

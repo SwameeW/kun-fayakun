@@ -1,4 +1,4 @@
-/* Photo mode's controls (src/ui/explore/photo-bar.ts): its own chunk's styles, loaded with it (the bar, and what hides for it, are in explore.css). */
+/* Photo mode's controls (src/ui/explore/photo-bar.ts): its own chunk's styles, carried in its code (src/ui/explore/lazy.ts styles: they come with it, a second try too). The bar, and what hides for it, are in explore.css. */
 .kf-universe-photo-controls {
   display: contents;
 }

@@ -2,12 +2,14 @@
  * The explorer's interface under stress, at every window size it is built for (tests/support/layout):
  * desktop windows of 1280x800, 1440x900 and 2000x1300, and a touch phone held upright (390x844) and
  * sideways (844x390). At each, every section of the navigator opened and closed again and again (by
- * bursts of presses faster than a hand, then by hand), the navigator folded and unfolded in bursts,
- * bursts of random presses over its controls, photo mode, the orbital laboratory (its sections, a
- * lesson, folded) and the stars (their diagram, folded); after each, every control is inside the window
- * (or its own scroller), nothing is wider than the window, no two controls overlap, no text is cut off,
- * and nothing was logged as an error. On foot and going down through clouds, the HUDs fit as well.
- * Reduced motion, so trips land at once and nothing is caught halfway through a transition.
+ * bursts of presses faster than a hand, then by hand; the field notes within the Living Earth and the
+ * imagery's credits too), the navigator folded and unfolded in bursts, bursts of random presses over its
+ * controls (the time machine's among them), photo mode, the orbital laboratory (its sections, a lesson,
+ * folded) and the stars (their diagram, folded); after each, every control is inside the window (or its
+ * own scroller), nothing is wider than the window, no two controls overlap, no text is cut off, and
+ * nothing was logged as an error. On foot and going down through clouds, the HUDs fit as well, their
+ * readouts opened and closed, the navigator folded and unfolded over them. Reduced motion, so trips land
+ * at once and nothing is caught halfway through a transition.
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
@@ -60,6 +62,8 @@ async function loaded(page: Page): Promise<void> {
 async function section(page: Page, details: ReturnType<Page['locator']>, label: string): Promise<void> {
   const summary = details.locator(':scope > summary');
   await summary.scrollIntoViewIfNeeded();
+  // (From closed: one that starts open, as a wide screen's walk readout does, is closed first.)
+  if (await details.evaluate((d) => (d as HTMLDetailsElement).open)) await summary.click();
   await spam(summary, 7);
   await expect(details).toHaveAttribute('open', '');
   await loaded(page);
@@ -86,6 +90,15 @@ for (const size of SIZES) {
       // Every section, opened and closed again and again; the detail menu and the keys too.
       for (const id of ['universe-about', 'universe-sky', 'saved-views', 'living-earth', 'universe-islamic', 'universe-seen']) await section(page, page.getByTestId(id), id);
       await section(page, page.locator('.kf-nav-keys'), 'keys');
+      // A section within a section: the Living Earth's field notes on the prophets.
+      const living = page.getByTestId('living-earth').locator(':scope > summary');
+      await living.click();
+      await loaded(page);
+      await section(page, page.getByTestId('field-prophets'), 'field notes: the prophets');
+      await living.click();
+      await expect(page.getByTestId('living-earth')).not.toHaveAttribute('open', '');
+      // The imagery's credits, which open from the readout over the view.
+      await section(page, page.getByTestId('universe-credits'), 'the imagery’s credits');
       // The detail menu opens over the list (on a phone's sheet) or beside the panel: a menu, closed by a
       // press elsewhere, so what it covers is not checked under it; it fits, and nothing in it overlaps.
       const detail = page.getByTestId('universe-detail');
@@ -123,7 +136,8 @@ for (const size of SIZES) {
       expect(await expanded(page)).toBe(true);
 
       // Bursts of random presses within a frame over the navigator's own controls (its sections, the
-      // fold, the sky's switches, the "?"s): whatever state that leaves is a whole one.
+      // fold, the sky's switches, the "?"s, the time machine's buttons but photo mode's, which hides the
+      // navigator): whatever state that leaves is a whole one.
       await page.getByTestId('universe-sky').locator(':scope > summary').click();
       await loaded(page);
       for (const seed of [1, 2, 3]) {
@@ -134,7 +148,8 @@ for (const size of SIZES) {
               x = (x * 1664525 + 1013904223) % 4294967296;
               return x / 4294967296;
             };
-            const pool = [...document.querySelectorAll<HTMLElement>('[data-testid="universe-bodies"] :is(summary, .kf-living-switch, .kf-help, [data-testid="universe-nav-toggle"])')];
+            const pool = [...document.querySelectorAll<HTMLElement>('[data-testid="universe-bodies"] :is(summary, .kf-living-switch, .kf-help, [data-testid="universe-nav-toggle"], [data-testid="universe-time"] button:not([data-testid="universe-photo"]))')];
+            if (!pool.some((el) => el.closest('[data-testid="universe-time"]'))) throw new Error('the time machine is not in the pool');
             for (let i = 0; i < n && pool.length > 0; i += 1) pool[Math.floor(random() * pool.length)]?.click();
           },
           [seed, 120] as const,
@@ -268,6 +283,19 @@ for (const size of SIZES) {
   });
 }
 
+/** A HUD's readout opened and closed (in bursts), then the navigator folded and unfolded over it (in bursts): it fits each way. */
+async function hud(page: Page, element: ReturnType<Page['locator']>, label: string): Promise<void> {
+  await section(page, element.locator('details').first(), `${label}: its readout`);
+  const toggle = page.getByTestId('universe-nav-toggle');
+  const was = await expanded(page);
+  await spam(toggle, 25);
+  expect(await expanded(page)).toBe(!was);
+  await expectLayout(page, `${label}, the navigator ${was ? 'folded' : 'pulled up'}`);
+  await spam(toggle, 25);
+  expect(await expanded(page)).toBe(was);
+  await expectLayout(page, `${label}, the navigator back as it was`);
+}
+
 test.describe('on foot and going down', () => {
   for (const group of [
     { name: 'desktop', sizes: DESKTOP, touch: false },
@@ -290,6 +318,7 @@ test.describe('on foot and going down', () => {
         for (const size of group.sizes) {
           await page.setViewportSize(size);
           await expectLayout(page, `on foot at ${String(size.width)}x${String(size.height)}`);
+          await hud(page, page.getByTestId('walk-hud'), `on foot at ${String(size.width)}x${String(size.height)}`);
         }
         await page.keyboard.press('Escape');
         await expect.poll(async () => (await view(page))?.walk ?? null, LIVE).toBeNull();
@@ -307,6 +336,7 @@ test.describe('on foot and going down', () => {
         for (const size of group.sizes) {
           await page.setViewportSize(size);
           await expectLayout(page, `going down at ${String(size.width)}x${String(size.height)}`);
+          await hud(page, page.getByTestId('descent-hud'), `going down at ${String(size.width)}x${String(size.height)}`);
         }
         expect(pageErrors).toEqual([]);
       });

@@ -8,7 +8,8 @@ import { h } from '../dom';
  * and forgets a failure, so asking again tries again. `waiting` is the line in the part's place
  * meanwhile: it says the part is coming, or that it did not come (offline, or a new version published
  * under an open page) with a button to try again; a polite status. Nothing is thrown and no section is
- * left empty.
+ * left empty. A part's styles travel in its code (`styles`), so a part that comes on a second try is
+ * styled as on the first.
  */
 
 export function once<T>(load: () => Promise<T>): () => Promise<T> {
@@ -18,6 +19,15 @@ export function once<T>(load: () => Promise<T>): () => Promise<T> {
       loading = null;
       throw error;
     }));
+}
+
+/**
+ * Puts a part's styles in the page as its code first runs (`import css from '…css?inline'`): they come
+ * with it, or with it on a second try. (A stylesheet of its own would not: the bundler's loader asks
+ * for each stylesheet once, so after a failure the part would come again without its styles.)
+ */
+export function styles(css: string): void {
+  document.head.append(h('style', {}, css));
 }
 
 export interface Waiting {

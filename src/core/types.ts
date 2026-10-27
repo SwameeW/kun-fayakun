@@ -1143,6 +1143,8 @@ export interface UniverseLab {
   climateView: boolean;
   co2DoublingWm2: number | null;
   logLength: number;
+  /** Edits (undoing and redoing too) sent to the run that its latest snapshot does not have yet: the next ones will. */
+  unapplied: number;
   discarded: number;
   prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null; encounters: ReadonlyArray<{ with: string; t: number; distanceKm: number }> } | null;
   horizonS: number;

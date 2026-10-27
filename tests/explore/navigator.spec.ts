@@ -5,9 +5,12 @@
  * numbers from cited data and name their sources; the log lists what was seen; and axe finds
  * nothing to fix on the navigator or the heads-up readout. Folded in an experiment or among the
  * stars, only their worlds stay, within the window however short; the body fades where it scrolls on;
- * a panel entered from the foot shows from its top; names keep clear of the interface over the view;
- * and the parts that are chunks of their own load once, and say so (with a way to try again) when
- * their code does not come.
+ * a panel entered from the foot shows from its top; names and their pointers keep clear of the
+ * interface over the view, on a desktop and on a phone held either way; the laboratory's names and
+ * marks, the chosen body's too, keep off the worlds' discs, the interface and one another; and the
+ * parts that are chunks of their own load once, and say so (with a way to try again) when their code
+ * does not come, styled when it does (the laboratory's, the qibla's, the stars' panels; an explanation's
+ * popover, whose failure the toast reports).
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
@@ -396,6 +399,37 @@ test('narrowed to a phone’s width in an experiment the sheet folds small, and 
   expect(pageErrors).toEqual([]);
 });
 
+/**
+ * The worlds' names on show (above a fifth of their opacity, or a tenth for `all`) that run under the
+ * way back, the readout or the navigator, or (`all`) over one another: each as its text and place.
+ */
+const namesInTheWay = (page: Page, all = false): Promise<string[]> =>
+  page.evaluate((each) => {
+    const covers = ['universe-back', 'universe-readout', 'universe-bodies']
+      .map((id) => ({ id, r: document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect() }))
+      .filter((c): c is { id: string; r: DOMRect } => c.r !== undefined && c.r.width > 0);
+    const meet = (a: DOMRect, b: DOMRect): boolean => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
+    const tags = [...document.querySelectorAll<HTMLElement>('.kf-hud-tag')].filter((t) => Number(t.style.opacity || '1') > (each ? 0.1 : 0.2)).map((t) => ({ text: t.textContent, r: t.getBoundingClientRect() }));
+    const out: string[] = [];
+    for (const [k, t] of tags.entries()) {
+      const where = `${t.text} ${String(Math.round(t.r.left))},${String(Math.round(t.r.top))}`;
+      for (const c of covers) if (meet(t.r, c.r)) out.push(`${where} under ${c.id}`);
+      if (each) for (const u of tags.slice(k + 1)) if (meet(t.r, u.r)) out.push(`${where} over ${u.text}`);
+    }
+    return out;
+  }, all);
+
+/** Round the Earth at 30,000 km (16 ways round, from below and above): no name or pointer under the interface over the view. */
+async function namesClear(page: Page, at: string): Promise<void> {
+  for (let az = 0; az < 360; az += 22.5) {
+    for (const el of [-20, 25]) {
+      await place(page, { body: 'earth', distanceKm: 30_000, azimuthDeg: az, elevationDeg: el });
+      await step(page, 25);
+      expect(await namesInTheWay(page), `${at} azimuth ${String(az)} elevation ${String(el)}`).toEqual([]);
+    }
+  }
+}
+
 test('names beside the worlds, and their pointers at the edge, keep clear of the way back, the readout and the navigator', async ({ page, kf, pageErrors }) => {
   test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
@@ -408,23 +442,88 @@ test('names beside the worlds, and their pointers at the edge, keep clear of the
     await page.setViewportSize(size);
     // The renderer takes the new size on its next frame (before the manual clock is stepped at it).
     await frames(page, 3);
-    for (let az = 0; az < 360; az += 22.5) {
-      for (const el of [-20, 25]) {
-        await place(page, { body: 'earth', distanceKm: 30_000, azimuthDeg: az, elevationDeg: el });
-        await step(page, 25);
-        const under = await page.evaluate(() => {
-          const covers = ['universe-back', 'universe-readout', 'universe-bodies']
-            .map((id) => document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect())
-            .filter((r): r is DOMRect => r !== undefined && r.width > 0);
-          return [...document.querySelectorAll<HTMLElement>('.kf-hud-tag')]
-            .filter((t) => Number(t.style.opacity || '1') > 0.2)
-            .map((t) => ({ text: t.textContent, r: t.getBoundingClientRect() }))
-            .filter(({ r }) => covers.some((c) => Math.min(r.right, c.right) - Math.max(r.left, c.left) > 2 && Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top) > 2))
-            .map(({ text, r }) => `${text} ${String(Math.round(r.left))},${String(Math.round(r.top))}`);
-        });
-        expect(under, `${String(size.width)}x${String(size.height)} azimuth ${String(az)} elevation ${String(el)}`).toEqual([]);
+    await namesClear(page, `${String(size.width)}x${String(size.height)}`);
+  }
+  expect(pageErrors).toEqual([]);
+});
+
+test.describe('on a touch phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('names and their pointers keep clear of the readout and the sheet, held upright and sideways (folded and pulled up)', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(240_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await step(page, 1);
+    for (const size of [
+      { width: 390, height: 844 },
+      { width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(size);
+      await frames(page, 3);
+      for (const open of [false, true]) {
+        const toggle = page.getByTestId('universe-nav-toggle');
+        if ((await toggle.getAttribute('aria-expanded')) !== String(open)) await toggle.click();
+        await frames(page, 3);
+        await namesClear(page, `${String(size.width)}x${String(size.height)} ${open ? 'pulled up' : 'folded'}`);
       }
     }
+    expect(pageErrors).toEqual([]);
+  });
+});
+
+test('the laboratory’s names and marks, the chosen body’s too, keep off the worlds’ discs, the interface and one another', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('lab-open').click();
+  await expect.poll(async () => (await lab(page))?.bodies.length ?? 0, LIVE).toBe(10);
+  // The experiment held still, the Moon chosen with its Lagrange points shown, and a probe at its L2 (beyond the Moon).
+  await page.evaluate(() => {
+    const kf = (window as unknown as KfHook).__kf;
+    if (kf.universe.state()?.lab?.paused === false) kf.app.universeTime({ kind: 'toggle' });
+    kf.app.universeLab({ kind: 'select', id: 'moon' });
+    kf.app.universeLab({ kind: 'lagrange', on: true });
+  });
+  await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeLab({ kind: 'addLagrange', point: 'L2', massKg: 0, radiusKm: 1, name: 'Probe at L2' });
+  });
+  await expect.poll(async () => (await lab(page))?.selected ?? '', LIVE).not.toBe('moon');
+  const probe = (await lab(page))?.bodies.find((b) => b.name === 'Probe at L2');
+  expect(probe).toBeDefined();
+  const shown = (text: string): Promise<number> => page.evaluate((t) => Math.max(0, ...[...document.querySelectorAll<HTMLElement>('.kf-hud-tag')].filter((g) => g.textContent === t).map((g) => Number(g.style.opacity || '1'))), text);
+  // Beyond the Moon, looking back past it: the probe (the chosen body now) shows, with its marks.
+  await place(page, { body: 'moon', distanceKm: 150_000, from: 'earth' });
+  await step(page, 60);
+  expect(await shown('Probe at L2')).toBeGreaterThan(0.5);
+  // From the far side of the Earth from the Moon the probe is behind the Earth, and so are its L1 and L2
+  // (a massless probe's, where it is): neither its name nor those marks show over the Earth's disc.
+  await place(page, { body: 'earth', distanceKm: 40_000, from: 'moon' });
+  await step(page, 60);
+  for (const text of ['Probe at L2', 'L1', 'L2']) expect(await shown(text), text).toBeLessThan(0.05);
+  // The Moon chosen again, its marks round the Earth from far out: none under the interface, none over another name.
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeLab({ kind: 'select', id: 'moon' });
+  });
+  await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe('moon');
+  for (const size of [
+    { width: 1280, height: 800 },
+    { width: 2000, height: 1300 },
+  ]) {
+    await page.setViewportSize(size);
+    await frames(page, 3);
+    let marks = 0;
+    for (let az = 0; az < 360; az += 30) {
+      for (const el of [-30, 35]) {
+        await place(page, { body: 'earth', distanceKm: 600_000, azimuthDeg: az, elevationDeg: el });
+        await step(page, 120);
+        expect(await namesInTheWay(page, true), `${String(size.width)}x${String(size.height)} azimuth ${String(az)} elevation ${String(el)}`).toEqual([]);
+        marks += await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.kf-hud-tag')].filter((t) => /^L[1-5]$/u.test(t.textContent) && Number(t.style.opacity || '1') > 0.5).length);
+      }
+    }
+    // (The marks are there to be seen: they give way, they are not gone.)
+    expect(marks, `${String(size.width)}x${String(size.height)}`).toBeGreaterThan(24);
   }
   expect(pageErrors).toEqual([]);
 });
@@ -475,6 +574,11 @@ test('a part whose code does not come says so and offers to try again; it comes 
   await page.unroute(parts);
   await slot.getByTestId('part-retry').click();
   await expect(page.getByTestId('lab-panel')).toBeVisible(LIVE);
+  // Styled as on a first try (its styles come with its code, not as a stylesheet asked for once).
+  expect(await page.getByTestId('lab-panel').evaluate((el) => {
+    const c = getComputedStyle(el);
+    return [c.display, c.borderTopWidth, c.paddingTop];
+  })).toEqual(['grid', '1px', '12px']);
   await page.getByTestId('lab-back').click();
   await expect.poll(async () => lab(page), LIVE).toBeNull();
   for (const [id, part] of [
@@ -485,6 +589,45 @@ test('a part whose code does not come says so and offers to try again; it comes 
     await expect(page.getByTestId(part)).toBeVisible(LIVE);
     await expect(page.getByTestId(id).getByTestId('part-waiting')).toHaveCount(0);
   }
+  expect(await page.getByTestId('islamic-panel').evaluate((el) => [getComputedStyle(el).display, getComputedStyle(el).paddingBottom])).toEqual(['grid', '8px']);
   // Only the refused requests themselves were reported (the browser's own line for each); nothing was thrown.
+  expect(pageErrors.filter((e) => !/Failed to load resource/u.test(e))).toEqual([]);
+});
+
+test('the stars’ panel and an explanation whose code does not come say so; asked again, they come styled, and nothing is thrown', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  const parts = /\/assets\/(neighbourhood-panel|help-popover)-[\w-]+\.(js|css)$/u;
+  await page.route(parts, (route) => route.abort());
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // An explanation: pressed (in a burst too), the toast says it did not load, once; the "?" stays closed and asks again next time.
+  const help = page.getByTestId('help-orrery');
+  await help.click();
+  await expect(page.getByTestId('universe-toast')).toContainText('did not load', LIVE);
+  await spam(help, 5);
+  await expect(help).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('help-popover')).toHaveCount(0);
+  // Among the stars: the explorer goes there, with a way back beside the way to try again.
+  await page.getByTestId('stars-open').click();
+  await expect.poll(async () => (await view(page))?.neighbourhood !== null, LIVE).toBe(true);
+  const slot = page.locator('.kf-nav-lab-slot').nth(1);
+  await expect(slot.getByTestId('part-waiting').getByRole('status')).toContainText('did not load', LIVE);
+  await expect(page.getByTestId('stars-leave')).toBeVisible();
+  await page.unroute(parts);
+  await slot.getByTestId('part-retry').click();
+  const panel = page.getByTestId('stars-panel');
+  await expect(panel).toBeVisible(LIVE);
+  expect(await panel.evaluate((el) => [getComputedStyle(el).marginLeft, getComputedStyle(el).fontSize])).toEqual(['12px', '13px']);
+  await page.getByTestId('stars-end').click();
+  await expect.poll(async () => (await view(page))?.neighbourhood ?? null, LIVE).toBeNull();
+  // The explanation comes on the next press, as a card beside its "?" (its styles with it).
+  await help.click();
+  const pop = page.getByTestId('help-popover');
+  await expect(pop).toBeVisible(LIVE);
+  await expect(help).toHaveAttribute('aria-expanded', 'true');
+  expect(await pop.evaluate((el) => [getComputedStyle(el).position, getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)'])).toEqual(['fixed', true]);
+  await page.keyboard.press('Escape');
+  await expect(pop).toBeHidden();
+  await expect(help).toBeFocused();
   expect(pageErrors.filter((e) => !/Failed to load resource/u.test(e))).toEqual([]);
 });

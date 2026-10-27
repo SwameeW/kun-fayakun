@@ -6,7 +6,11 @@ import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { createLabLessons } from './lab-lessons';
 import { helpButton, withHelp } from './help';
-import '../styles/lab.css';
+import { styles } from './lazy';
+import css from '../styles/lab.css?inline';
+
+// Its styles come with its code (./lazy).
+styles(css);
 
 /**
  * The orbital laboratory's panel (heading the navigator while an experiment runs): what it is (an
@@ -858,7 +862,11 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     update(view, slow) {
       lab = view.lab;
       element.hidden = !lab;
-      if (!lab) return;
+      if (!lab) {
+        // Out of the experiment: a lesson on it ends with it.
+        lessons.update(null);
+        return;
+      }
       const l = lab;
       write(note, i18n.t('ui.universe.lab.note', { seed: l.seedNote }));
       lessons.update(l);

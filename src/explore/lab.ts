@@ -1827,6 +1827,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         climateView,
         co2DoublingWm2: figure('climate.forcing.co2Doubling'),
         logLength: s?.logLength ?? 0,
+        unapplied: Math.max(0, sentEdits - (s?.applied ?? 0)),
         discarded: s?.discarded ?? 0,
         prediction:
           prediction && prediction.id === selected

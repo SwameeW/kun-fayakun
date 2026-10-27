@@ -12,6 +12,7 @@ import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
 import { createTimeControl } from './time-control';
 import { createToast } from './toast';
+import { TOAST_EVENT } from './help';
 import type { PhotoBar } from './photo-bar';
 
 /**
@@ -74,6 +75,11 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
 
   // A quiet toast marks what joins the log of what was seen, and a detail level applied.
   const toast = createToast('universe-toast');
+  // A part that did not load says so here too (an explanation's "?": ./help).
+  window.addEventListener(TOAST_EVENT, (event) => {
+    const line = (event as CustomEvent<unknown>).detail;
+    if (typeof line === 'string') toast.show(line);
+  });
   const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
   const walkHud = createWalkHud(app, f, () => element);
   const descentHud = createDescentHud(app, f, () => element);

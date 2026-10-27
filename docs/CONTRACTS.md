@@ -383,7 +383,9 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   panels are chunks of their own (`src/ui/explore/lazy.ts`): each loads once however often it is
   asked for on the way, with a line while it comes (`part-waiting`) and, if its code does not
   arrive, a status saying so with `part-retry` (and in the laboratory `lab-leave`, among the stars
-  `stars-leave`); nothing is thrown. The world in view is marked `aria-current`.
+  `stars-leave`); nothing is thrown. Their styles travel in their code, so a part that comes on a
+  second try is styled as on the first. A "?" whose explanation does not load says so in the toast,
+  and its next press tries again. The world in view is marked `aria-current`.
   Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
   the view (the same width) and never show at once: a trip takes the note out first, and a note comes
   back only after the indicator has gone. A note's title folds it; on a phone it folds by itself after
@@ -394,10 +396,12 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   up with the picture, never over a black screen. Inside the clear view they keep off what stands
   over it (the way back; on a wide screen the readout's card), which the interface reports on the
   window as `kf-universe-avoid`: a pointer at the edge slides along the edge past it, a tag gives way.
+  A pointer's tag is inside the clear view whole, not only its point (it hangs toward the clear
+  view's middle; where there is no room for one, above a phone's sheet held sideways, it gives way).
   The laboratory's names take part (`SceneLabel.rank`: the larger first): none behind a world's disc
   or outside the clear view, each trying the four corners about its body, and two never show over
   each other; the chosen body's name and its marks (burn directions, Lagrange points, encounters: no
-  rank) always show while in front of the camera, the others giving way to them. Notes near a body give numbers derived
+  rank) keep those rules too, but come first: the others and the worlds' names give way to them. Notes near a body give numbers derived
   from cited data only (`src/explore/discoveries.ts`: IAU rotation rates, JPL elements, the Cassini
   ring profile, and `light.speed`, `earth.atmosphere.scaleHeight`, `sun.effectiveTemperature` in
   data/constants.json). Exploration shows no scripture.

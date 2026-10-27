@@ -1,4 +1,4 @@
-/* The orbital laboratory's panel (src/ui/explore/lab-panel.ts, with its lessons): its own chunk's styles, loaded with it. */
+/* The orbital laboratory's panel (src/ui/explore/lab-panel.ts, with its lessons): its own chunk's styles, carried in its code (src/ui/explore/lazy.ts styles: they come with it, a second try too). */
 .kf-nav-lab {
   display: grid;
   /* One column no wider than the panel, whatever a child's own width (a list of long choices). */

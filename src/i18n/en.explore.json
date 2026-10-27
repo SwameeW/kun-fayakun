@@ -22,6 +22,7 @@
   "ui.universe.time.edgeStart": "Time stops here: the Moon’s table begins",
   "ui.universe.photo": "Photo mode: only the view (H)",
   "ui.help.ask": "Explain: {label}",
+  "ui.help.failed": "The explanation did not load. Check the connection, then press its “?” again.",
   "ui.help.label.hijri": "The Islamic date",
   "ui.help.label.orrery": "The map",
   "ui.help.label.distance": "Distance",
