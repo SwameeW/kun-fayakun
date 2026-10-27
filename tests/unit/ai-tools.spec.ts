@@ -473,3 +473,45 @@ test('an experiment is applied, confirmed by reading the laboratory back, and un
   expect(lab.bodies[0]?.massKg).toBe(1.989e30);
   expect(lab.undoable).toBe(0);
 });
+
+/* ----- In the background (no worker in Node: the same job in this thread) ----- */
+
+test('a comparison outside the laboratory runs against the solar system as seeded, changing nothing', async () => {
+  const fake = fakeApp();
+  const out = await run('lab.compare', { experiment: 'scale-mass', body: 'sun', factor: 2, horizonDays: 30 }, BASE, fake.app);
+  expect(out.status, JSON.stringify(out.problem)).toBe('done');
+  expect(fake.sent).toEqual([]);
+  const block = out.blocks?.find((b) => b.type === 'comparison');
+  if (block?.type !== 'comparison') throw new Error('no comparison');
+  expect(block.comparison.experiment).toBe('scale-mass');
+  expect(block.comparison.horizonDays).toBe(30);
+  expect(block.comparison.rows[0]?.label).toBe('Sun: closest approach to any body');
+  expect(out.facts?.every((f) => f.knowledge === 'simulation')).toBe(true);
+  expect(out.blocks?.some((b) => b.type === 'notice' && b.key === 'ai.tool.lab.compare.note')).toBe(true);
+  // Numbers the laboratory would refuse are refused before anything runs.
+  const slow = await run('lab.compare', { experiment: 'impact', target: 'earth', diameterKm: 1, speedKmS: 3, angleDeg: 45 }, BASE, fake.app);
+  expect(slow.problem?.messageKey).toBe('ai.tool.experiment.slow');
+});
+
+test('a search outside the laboratory: the Sun’s mass for a year of 300 days', async () => {
+  const out = await run('lab.optimise', { goal: 'year', body: 'earth', targetDays: 300 });
+  expect(out.status, JSON.stringify(out.problem)).toBe('done');
+  const factor = factNumber(out, 'optimise.value');
+  // Kepler's third law with the Earth's speed kept, T = T0 / sqrt(f (2 - 1/f)^3), gives f of about 1.11.
+  expect(factor).toBeGreaterThan(1.09);
+  expect(factor).toBeLessThan(1.13);
+  expect(factNumber(out, 'optimise.runs')).toBeLessThanOrEqual(24);
+});
+
+test('a background job stops when the turn is cancelled', async () => {
+  const fake = fakeApp();
+  const control = new AbortController();
+  const env = { ...envFor(fake.app), signal: control.signal };
+  const pending = tool('lab.compare').run({ experiment: 'scale-mass', body: 'sun', factor: 2, horizonDays: 36_500 }, env);
+  setTimeout(() => {
+    control.abort();
+  }, 50);
+  const out = await pending;
+  expect(out.status).toBe('failed');
+  expect(out.problem?.messageKey).toBe('ai.tool.problem.cancelled');
+});
