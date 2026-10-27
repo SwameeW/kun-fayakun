@@ -66,12 +66,12 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 | `src/ai/tools/` | The registry, a JSON-schema-subset validator, and the tools (§4) |
 | `src/ai/planner/` | Experiment templates → lab commands, the background comparison worker, the optimiser |
 | `src/ai/engine/` | Capability detection, the pinned model catalogue, the model worker (`webllm-worker.ts`, the only importer of WebLLM), its message protocol (`protocol.ts`) and its client (`webllm.ts`), the browser-model adapter, the scripted test engine, storage, GPU pacing |
-| `src/ai/ui/` | To come: Ask button, panel, download dialog, storage manager, answer blocks, confirmation cards |
-| `src/i18n/en.ai.engine.json`, `en.ai.tools.json`, `en.ai.mind.json` | Every string: the engines', the tools' and the orchestrator's (lazy, added with `app.i18n.extend` by `boot.ts`, registered with the validator) |
+| `src/ai/ui/` | The panel the header's Ask button (or /) opens: `index.ts` (a column beside the scene on a wide window, a modal bottom sheet on a phone), `layout.ts` (where it may stand: clear of every piece of chrome on screen), `blocks.ts` (the answer blocks and confirmation cards), `model.ts` (the model on this device: detection, download, progress, errors, stored models), `settings.ts` (explanation level, opt-in memory, clearing), `ai.css` |
+| `src/i18n/en.ai.engine.json`, `en.ai.tools.json`, `en.ai.mind.json`, `en.ai.json` | Every string: the engines', the tools', the orchestrator's and the panel's (lazy, added with `app.i18n.extend` by `boot.ts` and `src/ai/ui`, registered with the validator) |
 
 **Loading, in order.**
-1. First visit: nothing of the assistant. The shell holds only a starter (a dynamic import of `src/ai/boot.ts`), and `scripts/check-bundle.ts` keeps every file with `src/ai` code out of the shell.
-2. Start: the assistant's chunks (measured on their own: about 80 KB gzip, budget 120 KB).
+1. First visit: nothing of the assistant. The shell holds only the Ask button, the / shortcut and a starter for the test hook (dynamic imports of `src/ai/ui` and `src/ai/boot.ts`), and `scripts/check-bundle.ts` keeps every file with `src/ai` code out of the shell.
+2. Start (Ask pressed): the assistant's chunks with its panel (measured on their own: about 94 KB gzip, budget 120 KB).
 3. First question: the knowledge index, `assets/ai/index.json` (about 120 KB gzip, budget 150 KB).
 4. A comparison or a search: the batch worker (about 31 KB gzip, budget 50 KB).
 5. Only when a visitor chooses a model: the model worker with WebLLM's runtime (about 2.16 MB gzip, budget 2.4 MB), then the model's files from Hugging Face. The worker is the only built file that holds WebLLM's runtime; the bundle check fails otherwise.
