@@ -402,8 +402,11 @@ function checkNeighbourhood(ctx: ValidationContext, log: RuleLog): void {
   const problems = checkFields(file, { fields: 'array', stars: 'array', systems: 'array', sources: 'object' }, path);
   const stars: unknown[] = isRecord(file) && Array.isArray(file.stars) ? file.stars : [];
   stars.forEach((row, i) => {
-    const ok = Array.isArray(row) && row.length === 10 && Number.isInteger(row[0]) && isFiniteNumber(row[3]) && isFiniteNumber(row[4]) && isFiniteNumber(row[5]) && isFiniteNumber(row[6]) && row[6] > 0 && isFiniteNumber(row[7]);
-    if (!ok) problems.push(`${path}: stars[${i}] must be [hip, hr, name, ra, dec, parallax, its error (> 0), V, B-V, type]`);
+    const ok = Array.isArray(row) && row.length === 11 && Number.isInteger(row[0]) && isFiniteNumber(row[3]) && isFiniteNumber(row[4]) && isFiniteNumber(row[5]) && isFiniteNumber(row[6]) && row[6] > 0 && isFiniteNumber(row[7]) && (row[10] === null || typeof row[10] === 'string');
+    if (!ok) problems.push(`${path}: stars[${i}] must be [hip, hr, name, ra, dec, parallax, its error (> 0), V, B-V, type, where the parallax is from or null]`);
+    // A parallax not the star's own: a close companion's (HIP n) or a cited source's, credited.
+    const from: unknown = Array.isArray(row) ? row[10] : null;
+    if (typeof from === 'string' && !/^HIP \d+$/u.test(from) && ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((x) => x.id === from)) problems.push(`data/sources.json: no "${from}" entry for ${path} stars[${i}]'s parallax`);
   });
   const systems: unknown[] = isRecord(file) && Array.isArray(file.systems) ? file.systems : [];
   systems.forEach((s, i) => {
@@ -417,6 +420,118 @@ function checkNeighbourhood(ctx: ValidationContext, log: RuleLog): void {
   if (stars.length < 9000) problems.push(`${path}: ${stars.length} stars, expected the bright stars and those within 25 parsecs`);
   if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${STARS_OWNER})`);
   else log.pass(`${path}: ${stars.length} stars and ${systems.length} planetary systems, every source credited`);
+}
+
+const CATALOGUE_OWNER = 'stars builder, python3 -I scripts/stars/catalogue.py';
+
+/**
+ * The deep star catalogue (Hipparcos's other stars and Tycho-2's, as binary packs): every pack whole
+ * (its count times its record), its sha256 the manifest's, brightest first, no Hipparcos star twice
+ * and none of the neighbourhood's bright stars among the packs, the band's map its size; every
+ * source credited.
+ */
+function checkCatalogue(ctx: ValidationContext, log: RuleLog): void {
+  const dir = rootPath('public', 'assets', 'stars');
+  const loaded = loadJson<unknown>(join(dir, 'catalogue.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${CATALOGUE_OWNER})`);
+    return;
+  }
+  const file = loaded.value;
+  const problems = checkFields(file, { packs: 'array', band: 'object', counts: 'object', sources: 'object' }, path);
+  const packs: unknown[] = isRecord(file) && Array.isArray(file.packs) ? file.packs : [];
+  let stars = 0;
+  const hips = new Set<number>();
+  for (const pack of packs) {
+    if (!isRecord(pack) || typeof pack.file !== 'string' || !isFiniteNumber(pack.count) || !isFiniteNumber(pack.record) || typeof pack.sha256 !== 'string') {
+      problems.push(`${path}: every pack needs its file, count, record size and sha256`);
+      continue;
+    }
+    const bytes = readBytes(join(dir, pack.file));
+    if (!bytes) {
+      problems.push(`${path}: ${pack.file} is missing`);
+      continue;
+    }
+    if (bytes.length !== pack.count * pack.record) problems.push(`${path}: ${pack.file} is ${bytes.length} bytes, not ${pack.count} records of ${pack.record}`);
+    if (sha256Hex(bytes) !== pack.sha256) problems.push(`${path}: ${pack.file}'s sha256 is not the manifest's`);
+    stars += pack.count;
+    // The V magnitude's byte: never brighter than the record before (brightest first).
+    const vAt = pack.record === 16 ? 14 : 4;
+    for (let k = 1; k < pack.count; k += 1) {
+      if ((bytes[k * pack.record + vAt] ?? 0) < (bytes[(k - 1) * pack.record + vAt] ?? 0)) {
+        problems.push(`${path}: ${pack.file} is out of magnitude order at record ${k}`);
+        break;
+      }
+    }
+    if (pack.record === 16) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      for (let k = 0; k < pack.count; k += 1) {
+        const hip = view.getUint32(k * 16, true);
+        if (hips.has(hip)) problems.push(`${path}: HIP ${hip} is in ${pack.file} twice`);
+        hips.add(hip);
+      }
+    }
+  }
+  // None of the neighbourhood's Bright Star Catalogue stars (drawn from its own file) among the packs.
+  const hood = loadJson<unknown>(join(dir, 'neighbourhood.json'));
+  if (hood.status === 'ok' && isRecord(hood.value) && Array.isArray(hood.value.stars)) {
+    const bright = (hood.value.stars as unknown[]).filter((r): r is unknown[] => Array.isArray(r) && r[1] !== null).map((r) => r[0]);
+    const twice = bright.filter((hip) => typeof hip === 'number' && hips.has(hip));
+    if (twice.length > 0) problems.push(`${path}: ${twice.length} of the bright stars (HIP ${twice.slice(0, 5).join(', ')}) are in the packs as well`);
+  }
+  const band: unknown = isRecord(file) ? file.band : null;
+  if (isRecord(band) && typeof band.file === 'string' && isFiniteNumber(band.width) && isFiniteNumber(band.height)) {
+    const bytes = readBytes(join(dir, band.file));
+    if (!bytes || bytes.length !== band.width * band.height * 2) problems.push(`${path}: ${band.file} must be ${band.width} by ${band.height}, density then colour`);
+    else if (sha256Hex(bytes) !== band.sha256) problems.push(`${path}: ${band.file}'s sha256 is not the manifest's`);
+  } else problems.push(`${path}: the band needs its file and size`);
+  const sources = isRecord(file) && isRecord(file.sources) ? Object.values(file.sources) : [];
+  for (const source of sources) {
+    const ids: unknown = isRecord(source) ? source.ids : undefined;
+    if (!Array.isArray(ids) || ids.length === 0) problems.push(`${path}: every source needs its ids`);
+    for (const id of Array.isArray(ids) ? ids : []) if (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((x) => x.id === id)) problems.push(`data/sources.json: no "${String(id)}" entry for ${path}`);
+  }
+  if (stars < 2_400_000) problems.push(`${path}: ${stars} stars in the packs, expected Hipparcos's and Tycho-2's (about 2.5 million)`);
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${CATALOGUE_OWNER})`);
+  else log.pass(`${path}: ${stars.toLocaleString('en-US')} stars in ${packs.length} packs, whole, brightest first, none twice; the band's map; every source credited`);
+}
+
+const BLACK_HOLES_OWNER = 'stars builder, python3 -I scripts/stars/black_holes.py';
+
+/** The black holes one can fly to: each with its place, a positive mass and distance and their sources, a light model; every source credited. */
+function checkBlackHoles(ctx: ValidationContext, log: RuleLog): void {
+  const loaded = loadJson<unknown>(rootPath('public', 'assets', 'stars', 'black-holes.json'));
+  const path = relPath(loaded.path);
+  if (loaded.status !== 'ok') {
+    log.fail(`${path} ${loaded.status === 'missing' ? 'is missing' : `is invalid: ${loaded.error}`} (owner: ${BLACK_HOLES_OWNER})`);
+    return;
+  }
+  const file = loaded.value;
+  const problems = checkFields(file, { blackHoles: 'array', sources: 'object' }, path);
+  const holes: unknown[] = isRecord(file) && Array.isArray(file.blackHoles) ? file.blackHoles : [];
+  const credited = (id: unknown, what: string): void => {
+    if (typeof id !== 'string' || (ctx.sources.status === 'ok' && !ctx.sources.value.sources.some((x) => x.id === id))) problems.push(`data/sources.json: no "${String(id)}" entry for ${path} ${what}`);
+  };
+  holes.forEach((h, i) => {
+    const label = `blackHoles[${i}]`;
+    problems.push(...checkFields(h, { id: 'nonempty', name: 'nonempty', kind: 'nonempty', model: 'nonempty', raDeg: 'number', decDeg: 'number', mass: 'object', 'mass.value': 'number', distance: 'object', 'distance.pc': 'number', schwarzschildKm: 'number' }, `${path} ${label}`));
+    if (!isRecord(h) || !isRecord(h.mass) || !isRecord(h.distance)) return;
+    if (!(Number(h.mass.value) > 0) || !(Number(h.distance.pc) > 0)) problems.push(`${path} ${label}: its mass and distance must be positive`);
+    if (!['thin-disc', 'hot-ring', 'dormant'].includes(String(h.model))) problems.push(`${path} ${label}: unknown light model "${String(h.model)}"`);
+    credited(h.mass.source, `${label}'s mass`);
+    credited(h.distance.source, `${label}'s distance`);
+    if (isRecord(h.observation)) credited(h.observation.source, `${label}'s observation`);
+  });
+  const sources = isRecord(file) && isRecord(file.sources) ? Object.values(file.sources) : [];
+  for (const source of sources) {
+    const ids: unknown = isRecord(source) ? source.ids : undefined;
+    if (!isRecord(source) || typeof source.sha256 !== 'string' || !SHA256.test(source.sha256) || !Array.isArray(ids) || ids.length === 0) problems.push(`${path}: every source needs its ids and its result's sha256`);
+    for (const id of Array.isArray(ids) ? ids : []) credited(id, 'sources');
+  }
+  if (holes.length < 7) problems.push(`${path}: ${holes.length} black holes, expected the seven the explorer offers`);
+  if (problems.length > 0) for (const p of problems.slice(0, 20)) log.fail(`${p} (owner: ${BLACK_HOLES_OWNER})`);
+  else log.pass(`${path}: ${holes.length} black holes, each with its place, mass, distance and light model, every value credited`);
 }
 
 const LOCAL_GROUP_OWNER = 'stars builder, python3 -I scripts/stars/beyond.py';
@@ -721,6 +836,8 @@ export function checkAssets(ctx: ValidationContext, log: RuleLog): void {
   checkWalkHeights(ctx, log);
   checkDescents(ctx, log);
   checkNeighbourhood(ctx, log);
+  checkCatalogue(ctx, log);
+  checkBlackHoles(ctx, log);
   checkLocalGroup(ctx, log);
   checkSky(ctx, log);
   checkAnalyses(ctx, log);

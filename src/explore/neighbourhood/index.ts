@@ -168,7 +168,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       })
     : null;
   /** A stand-in star for a place beyond the stars, so the camera's orbit and flights treat it as one. */
-  const standIn = (at: V3, name: string): Star => ({ index: -2, hip: null, hr: null, name, raDeg: 0, decDeg: 0, plxMas: Number.POSITIVE_INFINITY, ePlxMas: 0, vmag: Number.NaN, bv: null, spType: null, distPc: Math.hypot(...at), position: at, absoluteV: null, system: null });
+  const standIn = (at: V3, name: string): Star => ({ index: -2, hip: null, hr: null, name, raDeg: 0, decDeg: 0, plxMas: Number.POSITIVE_INFINITY, ePlxMas: 0, plxFrom: null, vmag: Number.NaN, bv: null, spType: null, distPc: Math.hypot(...at), position: at, absoluteV: null, system: null });
   /** Flies to a star, arriving `toDistance` (pc) from it, turning to look from `toward` when given. */
   const fly = (star: Star, toDistance: number, toward: V3 | null): void => {
     const from: V3 = [...centre];
