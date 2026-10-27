@@ -30,7 +30,7 @@ import type { App, BodyId, I18n } from '../core/types';
 import { createEventBus } from '../core/events';
 import messages from '../i18n/en.ai.mind.json' with { type: 'json' };
 import { readContext } from './context';
-import { guardInput, guardOutput, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
+import { guardInput, guardOutput, removeArabic, removeOtherScripts, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
 import { conventionsNamed, route, type NamedPlace } from './router';
@@ -274,6 +274,15 @@ export function placeNamed(retriever: Retriever, name: string): NamedPlace | nul
 
 function problemText(i18n: I18n, call: ToolCall, problems: readonly { path: string; messageKey: string; values?: Record<string, string | number> }[]): string[] {
   return problems.map((p) => `${call.tool}${p.path ? ` ${p.path}` : ''}: ${i18n.has(p.messageKey) ? i18n.t(p.messageKey, p.values) : p.messageKey}`);
+}
+
+/**
+ * The app's own words with what a model put in them (a card's preview, a guide line saying back a
+ * tool's arguments) in the scripts an English answer uses: Qwen3 8B, asked to answer in Arabic script,
+ * searched in Arabic, and the search's own line says its query back (docs/AI-EVALUATION.md).
+ */
+function lettersOnly(text: string): string {
+  return removeOtherScripts(removeArabic(text).text).text;
 }
 
 /** Whether the model chosen plans turns (every engine does but a catalogue model marked explanations only). */
@@ -563,7 +572,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
 
   function preview(tool: ToolDefinition, args: Record<string, unknown>, ctx: AiContext): string {
     try {
-      return tool.preview(args, ctx, i18n);
+      return lettersOnly(tool.preview(args, ctx, i18n));
     } catch {
       return tool.name;
     }
@@ -849,7 +858,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     if (shown.length > 0) lines.push(i18n.t('ai.mind.guide.found'));
     const hasContent = rec.turn.blocks.some((b) => b.type === 'verse' || b.type === 'hadith' || b.type === 'facts' || b.type === 'comparison' || b.type === 'passage');
     if (lines.length === 0 && !hasContent) lines.push(i18n.t('ai.mind.guide.nothing'));
-    if (lines.length > 0) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: lines.join(' ') });
+    if (lines.length > 0) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: lettersOnly(lines.join(' ')) });
     rec.turn.blocks.push(...shown);
     emit(rec);
   }

@@ -255,6 +255,20 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
 const ofType = <T extends AnswerBlock['type']>(turn: Turn, type: T): Extract<AnswerBlock, { type: T }>[] => turn.blocks.filter((b): b is Extract<AnswerBlock, { type: T }> => b.type === type);
 const plan = (value: unknown): string => JSON.stringify(value);
 
+test.describe('a model’s arguments in Arabic script', () => {
+  test('never reach the screen through a card’s preview or the guide’s line saying them back', async () => {
+    const arabic = String.fromCodePoint(0x0628, 0x0633, 0x0645);
+    // As Qwen3 8B planned it when asked to answer in Arabic script: its argument in Arabic; no answer of its own follows.
+    const h = harness([{ format: 'json', match: '', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.prayer_times', args: { place: arabic, convention: 'mwl' } }] }) }], { offered: ['islamic.prayer_times'] });
+    await h.ai.use(SPEC);
+    const turn = await h.ai.ask('prayer times by mwl, please, written in Arabic script');
+    expect(turn.plan?.calls).toEqual([{ tool: 'islamic.prayer_times', args: { place: arabic, convention: 'mwl' } }]);
+    // The guide's line says the tool's values back ("Escape speed at … "): without the Arabic.
+    expect(turn.blocks.some((b) => b.type === 'text')).toBe(true);
+    expect(JSON.stringify(turn.blocks)).not.toMatch(/[\u0600-\u06FF]/u);
+  });
+});
+
 test.describe('a verse a tool shows', () => {
   test('is in the passages the model reads, so it explains the verse it cited, not one from memory', async () => {
     const v = index.passages.find((p) => p.id === 'verse:21:30');

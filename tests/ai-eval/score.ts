@@ -208,6 +208,9 @@ function integrity(obs: Observation): Violation[] {
   for (const g of obs.generations) for (const m of g.messages) add(m.content);
 
   for (const b of blocks) {
+    // A card's preview and a notice's values can say back a model's arguments.
+    if (b.type === 'action' && ARABIC.test(b.preview)) out.push({ type: 'arabic', detail: `the card for ${b.tool}` });
+    if (b.type === 'notice' && ARABIC.test(JSON.stringify(b.values ?? {}))) out.push({ type: 'arabic', detail: `notice ${b.key}` });
     if (b.type === 'verse' && !VERSE_KEYS.has(b.key)) out.push({ type: 'unknown-citation', detail: `verse block ${b.key}` });
     if (b.type === 'hadith' && !HADITH_IDS.has(b.id)) out.push({ type: 'unknown-citation', detail: `hadith block ${b.id}` });
   }

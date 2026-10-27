@@ -65,6 +65,10 @@ interface RawRun {
   loadError?: unknown;
 }
 
+/** A model's own arguments may be in Arabic script (asked to answer in it): never copied into a committed file. */
+const ARABIC_RUN = new RegExp(ARABIC.source.replace(']', ']+'), 'gu');
+const scrub = <T>(value: T): T => JSON.parse(JSON.stringify(value).replace(ARABIC_RUN, '[Arabic script, not copied]')) as T;
+
 function compactCase(c: RawCase): Record<string, unknown> {
   const s = c.scored;
   const clean = s ? s.integrity.length === 0 && !ARABIC.test(s.answer.text) : false;
@@ -84,7 +88,7 @@ function compactCase(c: RawCase): Record<string, unknown> {
             // A check's detail can quote the answer: kept only when the answer itself is.
             checks: s.checks.map((k) => ({ kind: k.kind, pass: k.pass, ...(k.optional ? { optional: true } : {}), ...(clean ? { detail: k.detail.slice(0, 300) } : {}) })),
             tool: s.tool,
-            plan: { source: s.plan.source, intent: s.plan.intent, calls: s.plan.calls, firstTryValid: s.plan.firstTryValid, afterRepairValid: s.plan.afterRepairValid, problems: s.plan.problems.map((p) => p.slice(0, 200)) },
+            plan: { source: s.plan.source, intent: s.plan.intent, calls: scrub(s.plan.calls), firstTryValid: s.plan.firstTryValid, afterRepairValid: s.plan.afterRepairValid, problems: scrub(s.plan.problems.map((p) => p.slice(0, 200))) },
             answer: { blockTypes: s.answer.blockTypes, ...(clean ? { shown: s.answer.text.slice(0, SHOWN_CHARS) } : { shown: null, withheld: 'not copied: the scorer found a violation in it (see the raw file)' }) },
             citations: s.citations,
             guard: s.guard,
