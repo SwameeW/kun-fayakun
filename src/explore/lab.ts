@@ -1386,7 +1386,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         // Now and a date: that moment of the experiment (its clock is TDB), from the fork on. Now runs on at real
         // time; a date before the fork stops there (the experiment has no history before it), as at the explorer's ends.
         const epoch = seedScenario?.epochJdTdb ?? 0;
-        const utc = command.kind === 'now' ? Date.now() / 86_400_000 + 2_440_587.5 : command.jdUtc;
+        let utc = command.kind === 'now' ? Date.now() / 86_400_000 + 2_440_587.5 : command.jdUtc;
+        // A date lands on that day (UTC, as the field shows it). The worker stops on the last whole step at or
+        // before the moment asked, up to a step earlier: one asked for within a step (and a half, for a step that
+        // grows) of the day's start is aimed that far into the day, so it never lands on the day before.
+        const reach = (1.5 * (snap?.dt ?? 0)) / 86_400;
+        if (command.kind === 'date' && reach > 0 && reach < 1) {
+          const dayStart = Math.floor(utc - 0.5) + 0.5;
+          utc = Math.max(utc, dayStart + reach);
+        }
         const t = (utcToTdb(utc, physical.time) - epoch) * 86_400;
         rate = next.rate;
         paused = next.paused || t < 0;
