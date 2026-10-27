@@ -386,15 +386,24 @@ test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, 
   test.setTimeout(450_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
+  // What the page says to a screen reader, kept as it is said.
+  await page.evaluate(() => {
+    const said: string[] = [];
+    (window as unknown as { said: string[] }).said = said;
+    const live = document.querySelector('.kf-sr-only[aria-live="polite"]');
+    if (live) new MutationObserver(() => said.push(live.textContent)).observe(live, { childList: true, characterData: true, subtree: true });
+  });
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', lat: 23.4, lon: 25 });
   });
   await expect.poll(async () => (await view(page))?.walk?.state, { timeout: 60_000 * SLOW }).toBe('walking');
   const hud = page.getByTestId('walk-hud');
   await expect(hud).toBeVisible();
-  // A touch screen is told about the pad, not the keys.
+  // A touch screen is told about the pad, not the keys (shown, and said to a screen reader).
   await expect(hud.locator('.kf-walk-touch')).toBeVisible();
   await expect(hud.locator('.kf-walk-keys')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { said: string[] }).said.some((t) => t.includes('The pad walks and jumps'))), { timeout: 30_000 * SLOW }).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { said: string[] }).said.some((t) => t.includes('W A S D')))).toBe(false);
   const cdp = await page.context().newCDPSession(page);
   const centre = async (testId: string): Promise<Point> => {
     const box = await page.getByTestId(testId).boundingBox();

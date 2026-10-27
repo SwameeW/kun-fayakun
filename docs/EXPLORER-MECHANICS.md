@@ -86,8 +86,9 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   walking, running and jumping at the Earth's gravity, on the Terrain Tiles' heights out to the
   horizon under the streamed imagery, with the day's sky (the explorer's own air, scattered from the
   walker's eye), its twilight and the stars at night, the terrain's own shadows, and an eye that
-  adapts to the light where it stands. W A S D, Shift, Space and a drag (or mouse-look) as in any
-  first-person view; a pad on touch screens; Back to orbit (Esc) top left. The suit reads out the
+  adapts to the light where it stands and meters the ground it looks at. W A S D, Shift, Space and a
+  drag (or mouse-look) as in any first-person view, V for a rover, the wheel or a pinch to zoom; a pad
+  on every screen (its 44 px targets made for touch); Back to orbit (Esc) top left. The suit reads out the
   ground's height, gravity, the air's pressure at the feet and the Sun's height. Makkah's 25 km rule
   holds on foot.
 

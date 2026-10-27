@@ -2,9 +2,9 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Group, Matrix4, Mesh, Mesh
 import { abs, acos, asin, atan, attribute, clamp, cos, Discard, dot, exp, float, Fn, fwidth, If, length, max, min, mix, modelWorldMatrix, normalize, normalWorldGeometry, positionView, positionWorld, pow, smoothstep, step, uniform, vec3, vec4, viewZToLogarithmicDepth } from 'three/tsl';
 import { bumpGradient, tiltNormal } from '../bodies/shading';
 import { sunTransmittance, type AirModel } from '../render/air';
-import { AIRLESS_FILL, MARS_DUST, NIGHT_SKY, VENUS_FILL, venusDay, type LightKind } from './light';
+import { AIRLESS_FILL, horizonRise, MARS_DUST, NIGHT_SKY, REGOLITH, VENUS_FILL, venusDay, type LightKind } from './light';
 import { scatter } from './scatter';
-import { MARS_SKY, VENUS_SKY } from './sky';
+import { heldUnderBloom, MARS_SKY, VENUS_SKY } from './sky';
 import { EARTH_SURFACE, earthGround, sunInFrame, surfaceDetail, type SurfaceStyle } from './surface';
 import { localFrame } from './walker';
 import { zoomFor, type Heights } from './terrain';
@@ -12,8 +12,9 @@ import { zoomFor, type Heights } from './terrain';
 type Vec3Node = Node<'vec3'>;
 type FloatNode = Node<'float'>;
 
-/** Steps along each ground pixel's ray through the Earth's air (its aerial perspective). */
+/** Steps along each ground pixel's ray through the Earth's air (its aerial perspective), and the distances (km) over which the land comes to be held as the sky is. */
 const AIR_STEPS = 5;
+const HELD_KM = [0.2, 2] as const;
 
 /**
  * The ground under a walker (on the Earth, the Moon, Mars, Mercury or Venus): nested square rings of real terrain (a geometry clipmap),
@@ -40,8 +41,9 @@ const AIR_STEPS = 5;
  * material only (the renderer keeps standard depth; see ../space/lens): standing on the ground, the
  * near plane is a decimetre away and the far one past the horizon.
  *
- * Land below sea level, and the sea, are drawn at sea level for now: the tiles hold the sea floor,
- * and there is no land-and-water mask on the CPU yet (docs/WALKING.md).
+ * On the Earth the sea is drawn at sea level as water (WATER), where the tiles hold ground below sea
+ * level (they hold the sea floor): so is land below sea level for now, as there is no land-and-water
+ * mask on the CPU yet (docs/WALKING.md).
  */
 
 export const GROUND = {
@@ -69,16 +71,26 @@ export const GROUND = {
 /**
  * The terrain's own shadows and the sky it hides (horizon mapping, Max 1988): from every other point of
  * each ring, the highest angle the ground rises to in eight directions, marched out over the rings'
- * heights to `reachKm` in steps growing by `growth` (the world's curve counted), and shared with the
- * points between. A point is in the ground's shadow while the Sun is below its horizon in the Sun's
+ * heights (./light horizonRise, the world's curve counted), and shared with the points between. A point is in the ground's shadow while the Sun is below its horizon in the Sun's
  * direction (between the eight, interpolated), softened over `penumbraRad` (the Sun's disc, a little
  * more for the interpolation); and the sky's light on it is the share of the sky its horizons leave
  * open (the mean of cos^2 of their angles: a valley floor gets less of the sky than a summit).
  */
-export const HORIZON = { directions: 8, reachKm: 60, growth: 1.45, penumbraRad: 0.012 } as const;
+export const HORIZON = { directions: 8, penumbraRad: 0.012 } as const;
 
-/** The fine detail's brightness (its grain's share of the albedo), and the steepest it tilts the ground (the slope's tangent). */
-const DETAIL = { brightness: 0.55, maxSlope: 1.5 } as const;
+/**
+ * The sea on the Earth (illustrative), where the tiles hold ground below sea level: drawn at sea level
+ * as water, its own colour the imagery's darkened by `body`, the sky seen in it by Fresnel's law (water's
+ * reflectance `f0` straight down, rising to all at a grazing view), and the Sun's glint spread by waves
+ * of this roughness (a GGX distribution's alpha) into a path of light toward a low Sun.
+ */
+const WATER = { body: 0.35, roughness: 0.18, f0: 0.02 } as const;
+
+/**
+ * The fine detail's brightness (its grain's share of the albedo), the steepest it tilts the ground (the
+ * slope's tangent), and the view's angle to the ground (its sine) below which its tilt fades out.
+ */
+const DETAIL = { brightness: 0.55, maxSlope: 1.5, grazing: [0.01, 0.05] } as const;
 
 export interface GroundFrame {
   /** The world's centre relative to the camera (render frame, km) and its frame's axes (9 numbers: columns x, y, z). */
@@ -88,13 +100,16 @@ export interface GroundFrame {
   /** Unit direction to the Sun (render frame) and the sunlight's strength (1 at 1 au). */
   sun: { x: number; y: number; z: number };
   light: number;
-  /** The depth range this material maps logarithmically (km). */
+  /** The depth range this material maps logarithmically (km), and the picture's exposure now (the air between is held as the sky is). */
   near: number;
   far: number;
+  exposure: number;
 }
 
 export interface Ground {
   readonly object: Group;
+  /** The rings again (their geometry and materials shared), placed as they are: what the eye's meter draws (./meter). */
+  readonly copy: Group;
   /** Starts over at a place (a new anchor; every ring refilled). */
   reset(lat: number, lon: number): void;
   /** Re-centres on the walker and refills what moved or sharpened; then places the rings for this frame. */
@@ -126,6 +141,8 @@ interface Ring {
   /** Its points' heights (m), for the horizons' march, and as an attribute for the shading. */
   metres: Float32Array;
   above: BufferAttribute;
+  /** Per point: 1 on a skirt's lower edge (0 on the ring), and on the Earth 1 where the tiles hold the sea (ground below sea level), drawn as water. */
+  flags: BufferAttribute;
   /** Where the ring inside lies (centre x, y and half-width, km; w 1 once it is filled). */
   inner: { value: Vector4 };
 }
@@ -179,14 +196,6 @@ export const VENUS_HAZE = { colour: [VENUS_SKY.horizon[0] * VENUS_SKY.scale, VEN
 export const MARS_HAZE = { colour: [MARS_SKY.horizon[0] * MARS_SKY.scale, MARS_SKY.horizon[1] * MARS_SKY.scale, MARS_SKY.horizon[2] * MARS_SKY.scale], km: 12 } as const;
 
 /**
- * The regolith's photometry on the Moon and Mercury: McEwen's lunar-Lambert law (1991), Lommel and
- * Seeliger's 2 mu0 / (mu0 + mu) blended with Lambert's mu0 by a share falling with the phase angle (its
- * cubic in degrees), so the ground looks flat-lit and bright down-Sun and shades like Lambert's toward
- * the Sun; and an opposition surge at the shadow point (illustrative strength and width).
- */
-const REGOLITH = { l: [1, -0.019, 2.42e-4, -1.46e-6], surge: 0.4, surgeDeg: 6 } as const;
-
-/**
  * The ground for a world: its colour at a direction from its centre, its light, whether ground below
  * sea level is drawn at sea level (the Earth's, whose sea is not drawn; elsewhere the heights are the
  * ground's own), and its illustrative surface (./surface).
@@ -198,6 +207,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
   const object = new Group();
   object.name = 'explore-walk-ground';
   object.visible = false;
+  const copy = new Group();
   const uSun = uniform(new Vector3(0, 1, 0));
   /** The Sun's direction in the anchor's frame (east, north, up), for the detail's shadows; and 1 to draw the stones. */
   const uSunLocal = uniform(new Vector3(0, 0, 1));
@@ -205,6 +215,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
   const uLight = uniform(1);
   const uNear = uniform(1e-4);
   const uFar = uniform(2000);
+  const uExposure = uniform(1);
   /** The world's centre relative to the camera (render frame, km), its radius, and Mars's and Venus's day (1 by day, 0 at night). */
   const uCentre = uniform(new Vector3());
   const uRadius = uniform(1);
@@ -233,7 +244,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
     if (light.kind === 'venus') return vec3(...VENUS_FILL).mul(uDay);
     return vec3(AIRLESS_FILL.floor, AIRLESS_FILL.floor, AIRLESS_FILL.floor).add(max(mu, 0).mul(AIRLESS_FILL.bounce));
   };
-  /** How the ground returns the sunlight: Lambert's mu0, or on the Moon and Mercury the regolith's law (REGOLITH). */
+  /** How the ground returns the sunlight: Lambert's mu0, or on the Moon and Mercury the regolith's law (./light REGOLITH, lunarLambert its twin). */
   const regolith = (n: Vec3Node, mu0: FloatNode): FloatNode => {
     if (light.kind !== 'airless') return mu0;
     const toEye = normalize(positionWorld).negate();
@@ -281,8 +292,10 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
     const horizonB = new BufferAttribute(new Float32Array(count * 4), 4);
     // The ground's height above the datum (m), for the illustrative detail that follows it.
     const above = new BufferAttribute(new Float32Array(count), 1);
-    // 1 on the skirt's lower edge (0 on the ring), so a skirt's fragments are known.
-    const skirt = new BufferAttribute(new Float32Array(count).fill(1, GRID), 1);
+    // 1 on the skirt's lower edge (0 on the ring), so a skirt's fragments are known; and the sea. (One
+    // attribute for both: a pipeline takes at most eight vertex buffers.)
+    const flags = new BufferAttribute(new Float32Array(count * 2), 2);
+    for (let k = GRID; k < count; k += 1) flags.array[k * 2] = 1;
     geometry.setAttribute('position', position);
     geometry.setAttribute('normal', normal);
     geometry.setAttribute('direction', direction);
@@ -290,7 +303,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
     geometry.setAttribute('horizonA', horizonA);
     geometry.setAttribute('horizonB', horizonB);
     geometry.setAttribute('above', above);
-    geometry.setAttribute('skirt', skirt);
+    geometry.setAttribute('flags', flags);
     geometry.setIndex(index);
     const inner = uniform(new Vector4(0, 0, 0, 0));
     const material = new MeshBasicNodeMaterial({ side: DoubleSide, fog: false });
@@ -308,12 +321,15 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       const smooth = normalize(normalWorldGeometry);
       const up = normalize(modelWorldMatrix.mul(vec4(dir, 0)).xyz);
       // The Earth's ground up close: rock on the steep, plants where the imagery is green (illustrative).
-      const ground = surface === EARTH_SURFACE ? earthGround(colour(dir), smoothstep(0.03, 0.2, float(1).sub(dot(smooth, up))), attribute<'float'>('above', 'float'), metres, span) : { colour: colour(dir), stony: float(1) };
-      const detail = surfaceDetail(metres, span, uSunLocal, surface, uStones.mul(ground.stony));
-      const albedo = ground.colour.mul(detail.grain.mul(DETAIL.brightness).add(1)).mul(detail.shade);
-      // Its relief (km, as the positions are) tilts the shading: not on a skirt, and never past maxSlope.
-      const onRing = float(1).sub(step(1e-4, attribute<'float'>('skirt', 'float')));
-      const gradient = bumpGradient(positionWorld, smooth, detail.relief.div(1000)).mul(onRing);
+      const base = surface === EARTH_SURFACE ? earthGround(colour(dir), smoothstep(0.03, 0.2, float(1).sub(dot(smooth, up))), attribute<'float'>('above', 'float'), metres, span) : colour(dir);
+      const detail = surfaceDetail(metres, span, uSunLocal, surface, uStones);
+      const albedo = base.mul(detail.grain.mul(DETAIL.brightness).add(1)).mul(detail.shade);
+      // Its relief (km, as the positions are) tilts the shading: not on a skirt, never past maxSlope, and
+      // not along the ground toward the horizon (seen at a grazing angle a pixel's change across the
+      // ground is no measure of a slope, and the tilted ground glittered there in the low Sun).
+      const onRing = float(1).sub(step(1e-4, attribute<'vec2'>('flags', 'vec2').x));
+      const facing = smoothstep(DETAIL.grazing[0], DETAIL.grazing[1], abs(dot(normalize(positionWorld), smooth)));
+      const gradient = bumpGradient(positionWorld, smooth, detail.relief.div(1000)).mul(onRing.mul(facing));
       const steep = length(gradient);
       const n = tiltNormal(smooth, gradient.mul(min(1, float(DETAIL.maxSlope).div(max(steep, 1e-6)))), 1);
       const mu = dot(up, uSun);
@@ -323,18 +339,32 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       const sunlit = sunlight(mu).mul(uLight).mul(regolith(n, nl)).mul(detail.sunlit).mul(shadow);
       // The sky's light from above, as much as the open sky over a slope lets in.
       const sky = skyLight(mu).mul(uLight).mul(dot(n, up).mul(0.5).add(0.5)).mul(open);
-      const lit = albedo.mul(sunlit.add(sky));
+      const land = albedo.mul(sunlit.add(sky));
       const air = light.air;
       if (light.kind === 'earth' && air) {
+        // The sea: water's own dark colour, the sky in it, and the Sun's glint (WATER).
+        const toEye = normalize(positionWorld).negate();
+        const nv = max(dot(up, toEye), 0.02);
+        const fresnel = float(1).sub(nv).pow(5).mul(1 - WATER.f0).add(WATER.f0);
+        const nh = max(dot(up, normalize(toEye.add(uSun))), 0);
+        const a2 = WATER.roughness * WATER.roughness;
+        const spread = float(a2).div(nh.mul(nh).mul(a2 - 1).add(1).pow(2).mul(Math.PI));
+        const glint = sunlight(mu).mul(uLight).mul(spread).mul(fresnel).div(nv.mul(4)).mul(shadow);
+        const water = base.mul(WATER.body).mul(sunlight(mu).mul(uLight).mul(max(mu, 0)).add(sky)).add(skyLight(mu).mul(uLight).mul(fresnel)).add(glint);
+        const lit = mix(land, water, attribute<'vec2'>('flags', 'vec2').y);
         // The air between: the ground dimmed by it, and its own light added (the same light as the sky's).
+        // Beyond a few hundred metres the land is held as the sky is (./sky heldUnderBloom: what is seen
+        // there is mostly the air's light, and the ground lit at a grazing angle), so at the horizon it
+        // never stands as a bright line under the sky above it.
         const { light: between, transmittance } = scatter(air.model, air.table, uCentre.negate().div(uRadius), normalize(positionWorld), uSun, AIR_STEPS, length(positionWorld).div(uRadius));
-        return vec4(lit.mul(transmittance).add(between.mul(uLight)), 1);
+        const seen = lit.mul(transmittance).add(between.mul(uLight));
+        return vec4(mix(seen, heldUnderBloom(seen, uExposure), smoothstep(HELD_KM[0], HELD_KM[1], length(positionWorld))), 1);
       }
       const haze = light.haze;
-      if (!haze) return vec4(lit, 1);
+      if (!haze) return vec4(land, 1);
       // The air between: a fade with distance into its colour, by day bright, by night dark.
       const fade = float(1).sub(exp(length(positionView).div(haze.km).negate()));
-      return vec4(mix(lit, vec3(...haze.colour).mul(uDay).mul(uLight), fade), 1);
+      return vec4(mix(land, vec3(...haze.colour).mul(uDay).mul(uLight), fade), 1);
     })();
     material.depthNode = viewZToLogarithmicDepth(positionView.z, uNear, uFar);
     const mesh = new Mesh(geometry, material);
@@ -342,7 +372,10 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
     mesh.name = `explore-walk-ring-${level}`;
     mesh.renderOrder = -1;
     object.add(mesh);
-    return { spacingKm, halfKm: (N / 2) * spacingKm, centre: [0, 0], placedFor: '', revision: -1, filledAt: 0, mesh, geometry, position, normal, direction, tangent, horizonA, horizonB, above, metres: new Float32Array(GRID), inner };
+    const again = new Mesh(geometry, material);
+    again.frustumCulled = false;
+    copy.add(again);
+    return { spacingKm, halfKm: (N / 2) * spacingKm, centre: [0, 0], placedFor: '', revision: -1, filledAt: 0, mesh, geometry, position, normal, direction, tangent, horizonA, horizonB, above, flags, metres: new Float32Array(GRID), inner };
   });
 
   // The anchor: a place on the sphere, its local frame, and where the walker is in its tangent plane.
@@ -386,11 +419,9 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         heights.want(la, lo, zoom);
         if (outer !== zoom) heights.want(la, lo, outer);
       }
-    const height = (lat: number, lon: number, z: number): number => {
-      const read = heights.read(lat, lon, z)?.metres ?? 0;
-      // On the Earth the sea and land below it at sea level for now (the tiles hold the sea floor).
-      return seaLevel ? Math.max(0, read) : read;
-    };
+    // On the Earth the sea (and land below it) at sea level, drawn as water (the tiles hold the sea floor).
+    const height = (lat: number, lon: number, z: number): number => heights.read(lat, lon, z)?.metres ?? 0;
+    const flags = ring.flags.array as Float32Array;
     const pos = ring.position.array as Float32Array;
     const nor = ring.normal.array as Float32Array;
     const dirs = ring.direction.array as Float32Array;
@@ -406,7 +437,9 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         const lon = (Math.atan2(-(point[2] ?? 0), point[0] ?? 1) * 180) / Math.PI;
         const fromEdge = Math.min(i, j, N - i, N - j);
         const toOuter = outer === zoom ? 0 : Math.max(0, Math.min(1, (GROUND.transitionCells - fromEdge) / GROUND.transitionCells));
-        const h = toOuter > 0 ? height(lat, lon, zoom) * (1 - toOuter) + height(lat, lon, outer) * toOuter : height(lat, lon, zoom);
+        const read = toOuter > 0 ? height(lat, lon, zoom) * (1 - toOuter) + height(lat, lon, outer) * toOuter : height(lat, lon, zoom);
+        const h = seaLevel ? Math.max(0, read) : read;
+        flags[v * 2 + 1] = seaLevel && read < 0 ? 1 : 0;
         ring.metres[v] = h;
         const r = radiusKm + h / 1000;
         for (let k = 0; k < 3; k += 1) {
@@ -445,6 +478,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
     edge.forEach((g, k) => {
       const s = GRID + k;
       above[s] = ring.metres[g] ?? 0;
+      flags[s * 2 + 1] = flags[g * 2 + 1] ?? 0;
       for (let c = 0; c < 3; c += 1) {
         pos[s * 3 + c] = (pos[g * 3 + c] ?? 0) - (dirs[g * 3 + c] ?? 0) * drop;
         nor[s * 3 + c] = nor[g * 3 + c] ?? 0;
@@ -453,7 +487,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       tan[s * 2] = tan[g * 2] ?? 0;
       tan[s * 2 + 1] = tan[g * 2 + 1] ?? 0;
     });
-    for (const a of [ring.position, ring.normal, ring.direction, ring.tangent, ring.above]) a.needsUpdate = true;
+    for (const a of [ring.position, ring.normal, ring.direction, ring.tangent, ring.above, ring.flags]) a.needsUpdate = true;
     stats.refills += 1;
   };
 
@@ -494,14 +528,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         const n0 = tan[v * 2 + 1] ?? 0;
         const h0 = ring.metres[v] ?? 0;
         BEARINGS.forEach(([de, dn], k) => {
-          let rise = -1;
-          for (let x = ring.spacingKm; x < HORIZON.reachKm; x *= HORIZON.growth) {
-            const h = heightAt(e0 + de * x, n0 + dn * x, level);
-            if (h === null) break;
-            // The world's curve: the ground x km away has dropped x^2 / 2R below the level.
-            rise = Math.max(rise, (h - h0 - ((x * x) / (2 * radiusKm)) * 1000) / (x * 1000));
-          }
-          write(v, k, rise);
+          write(v, k, horizonRise((e, n) => heightAt(e, n, level), e0, n0, h0, de, dn, ring.spacingKm, radiusKm));
         });
       }
     // The points between: the mean of their marched neighbours.
@@ -527,6 +554,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
 
   return {
     object,
+    copy,
     stats,
     setFine(fine) {
       uStones.value = fine ? 1 : 0;
@@ -588,6 +616,11 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       );
       basisMatrix.set(m[0] ?? 1, m[3] ?? 0, m[6] ?? 0, 0, m[1] ?? 0, m[4] ?? 1, m[7] ?? 0, 0, m[2] ?? 0, m[5] ?? 0, m[8] ?? 1, 0, 0, 0, 0, 1);
       object.quaternion.copy(placeQuat.setFromRotationMatrix(basisMatrix));
+      copy.position.copy(object.position);
+      copy.quaternion.copy(object.quaternion);
+      copy.children.forEach((again, level) => {
+        again.visible = rings[level]?.mesh.visible ?? false;
+      });
       uSun.value.set(frame.sun.x, frame.sun.y, frame.sun.z);
       const sunWorld: [number, number, number] = [
         frame.sun.x * (m[0] ?? 1) + frame.sun.y * (m[1] ?? 0) + frame.sun.z * (m[2] ?? 0),
@@ -598,6 +631,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       uLight.value = frame.light;
       uNear.value = frame.near;
       uFar.value = frame.far;
+      uExposure.value = frame.exposure;
       uCentre.value.set(frame.centre.x, frame.centre.y, frame.centre.z);
       uRadius.value = frame.radiusKm;
       // Mars's and Venus's day at the walker (their skies' own): full from 6 degrees up, gone 12 down.

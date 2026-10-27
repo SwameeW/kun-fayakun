@@ -531,6 +531,8 @@ export interface UniverseView {
   walk: UniverseWalk | null;
   /** The last walk asked for was refused (a forbidden place: Makkah, by its framing rule), until another starts. */
   walkRefused: boolean;
+  /** A walk asked for and waiting (for a trip's arrival, or its own code) before `walk` reports it: the way back to orbit shows meanwhile. */
+  walkWaiting: boolean;
   /**
    * Where a walk without a place would begin: the point beneath the camera (degrees) on the world in
    * view when there is ground to walk on there and it is drawn at its true size; else null (and in
@@ -1018,6 +1020,12 @@ export interface UniverseWalk {
   groundZoom: number | null;
   tiles: { ready: number; loading: number; failed: number };
   rings: number;
+  /** Readings of the ground in view the eye's meter has taken (src/explore/walk/meter), and the last one: its luminance (scene units, before the exposure; null before one). */
+  metered: number;
+  groundLuminance: number | null;
+  /** The field of view on foot (degrees, top to bottom: the wheel or a pinch narrows and widens it), and whether the time machine's rate is held down to the most it runs on foot. */
+  fovDeg: number;
+  timeCapped: boolean;
 }
 
 /** Commands for the qibla and the new moon. */
@@ -1308,8 +1316,10 @@ export type EarthCommand =
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }
-  /** On-screen walking (the pad): Forward or Back held (1, -1, or 0), a step left or right held (-1, 1, or 0), running, Jump held. */
-  | { kind: 'walkPad'; forward: number; right?: number; run?: boolean; jump: boolean }
+  /** On-screen walking (the pad): Forward or Back held (1, -1, or 0), a step left or right held (-1, 1, or 0), running, riding the rover, Jump held. */
+  | { kind: 'walkPad'; forward: number; right?: number; run?: boolean; rover?: boolean; jump: boolean }
+  /** The look's sense on foot: a drag turns the view the way the hand moves (false, the default), or moves the scene with it (true). */
+  | { kind: 'walkLook'; scene: boolean }
   /** Asks again at once for the ground's heights that could not be loaded (a walk waiting on them). */
   | { kind: 'walkRetry' };
 

@@ -266,7 +266,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
-    if (!walkHud && !walkHudLoading && (view.walk !== null || view.walkRefused)) {
+    if (!walkHud && !walkHudLoading && (view.walk !== null || view.walkRefused || view.walkWaiting)) {
       walkHudLoading = true;
       // Its code not arriving leaves the walk without its readout (Esc still goes back); the next walk asks again.
       void import('./walk-hud')
@@ -279,7 +279,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
           walkHudFailed = true;
         });
     }
-    if (walkHudFailed && view.walk === null && !view.walkRefused) walkHudFailed = walkHudLoading = false;
+    if (walkHudFailed && view.walk === null && !view.walkRefused && !view.walkWaiting) walkHudFailed = walkHudLoading = false;
     walkHud?.update(view);
     // Landed: the navigator folds, leaving the view to the world, and focus is the explorer's (so the
     // keys walk); back in orbit it opens again if it was open.

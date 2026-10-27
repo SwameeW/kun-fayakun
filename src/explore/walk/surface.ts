@@ -8,7 +8,7 @@
  *   direction lines up, in brightness and in relief.
  * - **The Earth's ground** (earthGround), by its slope and the imagery's own colour: rock on the steep,
  *   paler, banded by height as cliffs of layered rock are; plants in tufts where the imagery is green;
- *   soil and gravel on the rest.
+ *   soil in patches on the rest.
  * - **Craters** on the Moon and Mars: one at most to a cell, in octaves of cells four times larger each
  *   time, so there are sixteen times fewer craters four times wider (the -2 power law of an old surface
  *   battered to equilibrium: Gault 1970). Each is a parabolic bowl a third of its radius deep inside a
@@ -39,8 +39,12 @@ export interface SurfaceStyle {
   rocks: { cellsM: readonly number[]; chance: number; brightness: number; spread: number; height: number } | null;
 }
 
-/** The Earth's ground: grain, and gravel and stones (fewer among plants: ./ground earthGround), from a few centimetres to 40 cm across. */
-export const EARTH_SURFACE: SurfaceStyle = { craters: null, rocks: { cellsM: [0.1, 0.4, 1.2], chance: 0.28, brightness: 1.04, spread: 0.6, height: 0.45 } };
+/**
+ * The Earth's ground: grain only (with ./ground earthGround's rock, plants and soil). No stones: drawn
+ * as shading on a flat ground, a low Sun stretched their shadows into dark streaks that read as spikes,
+ * and a high one turned their domes into a pitted, lunar ground (not the Earth's look).
+ */
+export const EARTH_SURFACE: SurfaceStyle = { craters: null, rocks: null };
 /** The Moon's: craters from half a metre to about 160 m across, about half the cells holding one, fresh ones a third brighter; a scattering of grey stones. */
 export const MOON_SURFACE: SurfaceStyle = { craters: { cellsM: [4, 16, 64, 256], chance: 0.55, freshBright: 0.35 }, rocks: { cellsM: [1, 4], chance: 0.15, brightness: 0.9, spread: 0.3, height: 0.7 } };
 /** Mercury's: battered as the Moon is, its fresh craters a little less bright against its darker ground. */
@@ -217,9 +221,9 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
  * metres per pixel. Rock on the steep, a little paler and greyer than the imagery, banded by height
  * (layers a few metres and a few tens of metres thick, wavering along the cliff, as the Grand Canyon's
  * walls are); plants in tufts where the imagery is green (an excess of green over red and blue); soil
- * elsewhere. Returns the colour, and how stony the ground is (no gravel among the plants).
+ * elsewhere.
  */
-export function earthGround(base: Vec3Node, steep: FloatNode, heightM: FloatNode, metres: Vec2Node, span: FloatNode): { colour: Vec3Node; stony: FloatNode } {
+export function earthGround(base: Vec3Node, steep: FloatNode, heightM: FloatNode, metres: Vec2Node, span: FloatNode): Vec3Node {
   const grey = dot(base, vec3(0.2126, 0.7152, 0.0722));
   const green = base.y.sub(base.x.add(base.z).mul(0.5)).div(max(grey, 0.02));
   const plants = smoothstep(0.02, 0.35, green).mul(float(1).sub(steep));
@@ -234,8 +238,7 @@ export function earthGround(base: Vec3Node, steep: FloatNode, heightM: FloatNode
   // The soil's own patches, warmer and cooler, a couple of metres across.
   const patch = mx_noise_float(metres.div(1.7)).mul(float(1).sub(smoothstep(0.15, 0.6, span)));
   const soil = base.mul(mix(vec3(0.93, 0.97, 1.03), vec3(1.07, 1.01, 0.94), patch.mul(0.5).add(0.5)));
-  const colour = mix(mix(soil, soil.mul(leafy), plants), rock, steep);
-  return { colour, stony: float(1).sub(plants) };
+  return mix(mix(soil, soil.mul(leafy), plants), rock, steep);
 }
 
 /** The Sun's direction in a local frame (its east, north and up: unit vectors in the same frame as `sun`). */

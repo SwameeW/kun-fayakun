@@ -14,9 +14,12 @@
  * in a field, inside a dialog or in a widget that owns them (data-kf-keys="own"), and with Ctrl, Cmd
  * or Alt held.
  *
- * On foot (the target's onFoot): Space jumps (the page's play key is left alone then, except on a
- * focused button or link, which Space presses), and a click on the view (a mouse's, without a drag)
- * locks the pointer for mouse-look until Esc (the browser's own key for it) lets it go.
+ * On foot (the target's onFoot, from what is shown: not while the camera still waits in orbit for the
+ * ground): on the ground Space jumps (the page's play key is left alone then, except on a focused
+ * button or link, which Space presses); there and on the way down through an air, a click on the view
+ * (a mouse's, without a drag) locks the pointer for mouse-look until Esc (the browser's own key for
+ * it) lets it go. On the way down Space stays the page's play key (a descent has no jump). On the
+ * ground V held rides the rover.
  *
  * Keyboard table (the film's shortcuts in the explorer): Space, the arrows' chapter steps, P and E
  * do nothing here (the film's handler finds no chapter), so E can roll and the arrows orbit; Esc is
@@ -64,6 +67,8 @@ const ZOOM_KEYS: Readonly<Record<string, number>> = {
   PageDown: 1,
 };
 const BOOST_KEYS = new Set(['ShiftLeft', 'ShiftRight']);
+/** On foot, V held rides the rover. */
+const RIDE_KEY = 'KeyV';
 
 /** What the input steers (the explorer wires these to its navigator). */
 export interface InputTarget {
@@ -74,11 +79,12 @@ export interface InputTarget {
   /** Natural-log units of height, positive away. */
   zoom(dLn: number): void;
   orbitKeys(azimuth: number, elevation: number, zoom: number): void;
-  flightKeys(move: Km, roll: number, boost: boolean): void;
+  /** Moves (W A S D, R F, Space), roll (Q E), Shift's boost, and on foot V's ride. */
+  flightKeys(move: Km, roll: number, boost: boolean, ride?: boolean): void;
   /** Esc: true when it stopped a trip (then nothing else hears it). */
   stop(): boolean;
-  /** On foot (walking or descending): Space jumps, and a click locks the pointer for mouse-look. */
-  onFoot?(): boolean;
+  /** The eye shown on the ground (Space jumps) or going down through an air, where a click locks the pointer for mouse-look; null otherwise (landing still waits in orbit). */
+  onFoot?(): 'ground' | 'air' | null;
   /** O: orbit the body the camera is near. */
   orbit(): void;
   /** The body under a point of the canvas (client px), or null. */
@@ -165,7 +171,7 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     move.x = Math.sign(x);
     move.y = Math.sign(y);
     move.z = Math.sign(z);
-    target.flightKeys(move, Math.sign(roll), [...held].some((code) => BOOST_KEYS.has(code)));
+    target.flightKeys(move, Math.sign(roll), [...held].some((code) => BOOST_KEYS.has(code)), held.has(RIDE_KEY));
     target.orbitKeys(Math.sign(azimuth), Math.sign(elevation), Math.sign(zoom));
   };
 
@@ -283,11 +289,11 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     e.preventDefault();
   };
 
-  const known = (code: string): boolean => code in MOVE_KEYS || code in ROLL_KEYS || code in TURN_KEYS || code in ZOOM_KEYS || BOOST_KEYS.has(code);
+  const known = (code: string): boolean => code in MOVE_KEYS || code in ROLL_KEYS || code in TURN_KEYS || code in ZOOM_KEYS || BOOST_KEYS.has(code) || (code === RIDE_KEY && target.onFoot?.() === 'ground');
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || ownedElsewhere(e.target)) return;
-    if (e.code === 'Space' && (!target.onFoot?.() || pressable(e.target))) return;
+    if (e.code === 'Space' && (target.onFoot?.() !== 'ground' || pressable(e.target))) return;
     if (e.code === 'KeyO' && !e.repeat) {
       target.orbit();
       e.preventDefault();
@@ -310,7 +316,7 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
    * interface, and a held Esc's repeats never do.
    */
   const onEscape = (e: KeyboardEvent): void => {
-    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey && !ownedElsewhere(e.target) && !pressable(e.target) && target.onFoot?.()) {
+    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey && !ownedElsewhere(e.target) && !pressable(e.target) && target.onFoot?.() === 'ground') {
       e.preventDefault();
       return;
     }

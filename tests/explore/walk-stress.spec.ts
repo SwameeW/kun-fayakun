@@ -257,7 +257,7 @@ test('the controls: a drag turns the way the hand moves, Space jumps (time runs 
   expect(pageErrors).toEqual([]);
 });
 
-test('mouse-look: a click on the view takes the pointer, the mouse turns the look, Esc lets go, and the next Esc goes back to orbit', async ({ page, kf, pageErrors, browserName }) => {
+test('mouse-look: a click on the view takes the pointer, the mouse turns the look, and leaving the walk lets it go (the browser’s own first Esc, which lets it go, is not modelled headless)', async ({ page, kf, pageErrors, browserName }) => {
   test.setTimeout(240_000 * SLOW);
   test.skip(browserName !== 'chromium', 'pointer lock as Chromium grants it after a click');
   await kf.open('/universe/earth', { query: { jd: JD } });
@@ -279,23 +279,33 @@ test('mouse-look: a click on the view takes the pointer, the mouse turns the loo
   expect(pageErrors).toEqual([]);
 });
 
-for (const size of [
-  { width: 1280, height: 800 },
-  { width: 1440, height: 900 },
-  { width: 2000, height: 1300 },
-]) {
-  test.describe(`at ${String(size.width)} x ${String(size.height)}`, () => {
-    test.use({ viewport: size });
+for (const [size, scale] of [
+  [{ width: 1280, height: 800 }, 1],
+  [{ width: 1440, height: 900 }, 1],
+  [{ width: 2000, height: 1300 }, 1],
+  // A 2000 x 1300 Retina window: 1000 x 650 CSS px at two device pixels each.
+  [{ width: 1000, height: 650 }, 2],
+] as const) {
+  test.describe(`at ${String(size.width)} x ${String(size.height)}${scale > 1 ? ` (device pixel ratio ${String(scale)})` : ''}`, () => {
+    test.use({ viewport: size, deviceScaleFactor: scale });
     test('on foot the view is the world’s: the way back to orbit in reach, every control inside the window and none covered, the view taking the pointer, the navigator folded (and open again after)', async ({ page, kf, pageErrors }) => {
       test.setTimeout(240_000 * SLOW);
       await kf.open('/universe/earth', { query: { jd: JD } });
       await waitForUniverse(page);
       const navOpen = await page.getByTestId('universe-nav-toggle').getAttribute('aria-expanded');
+      // What the page says to a screen reader, kept as it is said.
+      await page.evaluate(() => {
+        const said: string[] = [];
+        (window as unknown as { said: string[] }).said = said;
+        const live = document.querySelector('.kf-sr-only[aria-live="polite"]');
+        if (live) new MutationObserver(() => said.push(live.textContent)).observe(live, { childList: true, characterData: true, subtree: true });
+      });
       await walkAt(page);
       await expect(page.getByTestId('walk-end')).toBeVisible();
       await expect(page.getByTestId('universe-nav-toggle')).toHaveAttribute('aria-expanded', 'false');
-      // The controls' card on landing, said once.
+      // The controls' card on landing, said once (the keys, with a mouse and keyboard).
       await expect(page.getByTestId('walk-help')).toBeVisible();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { said: string[] }).said.some((t) => t.includes('W A S D'))), LIVE).toBe(true);
       await fits(page, 'landed');
       // The view itself takes a drag anywhere the interface does not cover.
       const free = await page.evaluate(() => {
@@ -318,11 +328,15 @@ for (const size of [
         return area / (innerWidth * innerHeight);
       });
       expect(covered).toBeLessThan(0.25);
-      // The figures opened: still all inside, the pad and the way back still there.
+      // The figures opened: still all inside, the pad (the rover with it) and the way back still there.
       await page.getByTestId('walk-title').click();
       await expect(page.getByTestId('walk-gravity')).toBeVisible();
       await fits(page, 'figures open');
       await expect(page.getByTestId('walk-forward')).toBeVisible();
+      await expect(page.getByTestId('walk-rover')).toBeVisible();
+      // Opened and folded twenty times, a frame apart: still fits.
+      for (let i = 0; i < 20; i += 1) await page.getByTestId('walk-title').click();
+      await fits(page, 'figures folded and opened');
       await page.getByTestId('walk-title').click();
       // Back in orbit, the navigator as it was.
       await page.getByTestId('walk-end').click();
@@ -383,7 +397,7 @@ test('only the coarse ground loading: the walk lands on it after a while, and sa
   expect(pageErrors.filter((e) => !e.includes('net::ERR') && !e.includes('Failed to load resource'))).toEqual([]);
 });
 
-test('a walk asked for during a trip waits for the arrival, then lands', async ({ page, kf, pageErrors }) => {
+test('a walk asked for during a trip waits for the arrival (the way back shown meanwhile), then lands', async ({ page, kf, pageErrors }) => {
   test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -392,9 +406,81 @@ test('a walk asked for during a trip waits for the arrival, then lands', async (
     app.focusBody('mars');
     app.earthCommand({ kind: 'walk', world: 'mars', lat: 18.4447, lon: 77.4508 });
   });
+  // Waiting: Back to orbit (not Back to the start) from the moment it is asked for.
+  await expect(page.getByTestId('walk-end')).toBeVisible();
+  await expect(page.getByTestId('universe-back')).toBeHidden();
   await expect.poll(async () => (await walkView(page))?.state, { timeout: 90_000 * SLOW }).toBe('walking');
   expect((await walkView(page))?.world).toBe('mars');
   expect(pageErrors).toEqual([]);
+});
+
+test('a walk waiting for a trip goes where the trip goes: Esc drops it with the trip, and another world chosen drops it', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const ask = (): Promise<void> =>
+    page.evaluate(() => {
+      const app = (window as unknown as KfHook).__kf.app;
+      app.focusBody('mars');
+      app.earthCommand({ kind: 'walk', world: 'mars', lat: 18.4447, lon: 77.4508 });
+    });
+  // Esc during the trip: the trip stops and the walk is dropped (it never lands on Mars with the navigator at the Earth).
+  await ask();
+  expect((await view(page))?.walkWaiting).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await view(page))?.travelling, LIVE).toBe(false);
+  await page.waitForTimeout(4000);
+  expect(await walkView(page)).toBeNull();
+  expect((await view(page))?.walkWaiting).toBe(false);
+  expect((await view(page))?.focus).toBe('earth');
+  await expect(page.getByTestId('walk-end')).toBeHidden();
+  await expect(page.getByTestId('universe-back')).toBeVisible();
+  // Another world chosen during the trip: no walk on the first, the navigator at the second.
+  await ask();
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.focusBody('jupiter');
+  });
+  await expect.poll(async () => (await view(page))?.focus, { timeout: 90_000 * SLOW }).toBe('jupiter');
+  await expect.poll(async () => (await view(page))?.travelling, LIVE).toBe(false);
+  await page.waitForTimeout(3000);
+  expect(await walkView(page)).toBeNull();
+  expect((await view(page))?.walkWaiting).toBe(false);
+  expect(pageErrors).toEqual([]);
+});
+
+test('landing (and a landing that never comes): a click on the view takes no pointer, Space stays the play key, Retry takes a click', async ({ page, kf, pageErrors, browserName }) => {
+  test.setTimeout(240_000 * SLOW);
+  test.skip(browserName !== 'chromium', 'pointer lock as Chromium grants it after a click');
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.route(/s3\.amazonaws\.com/u, async (route) => {
+    await route.abort('connectionrefused');
+  });
+  await page.evaluate((a) => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', ...a });
+  }, HERE);
+  await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('landing');
+  const box = await page.locator('canvas').first().boundingBox();
+  if (!box) throw new Error('no canvas');
+  const centre = { x: box.x + box.width / 2, y: box.y + box.height / 3 };
+  const lock = (): Promise<string | null> => page.evaluate(() => document.pointerLockElement?.tagName ?? null);
+  await page.mouse.click(centre.x, centre.y);
+  await page.waitForTimeout(300);
+  expect(await lock()).toBeNull();
+  // Space is still the play key while the camera waits in orbit.
+  const paused = (await view(page))?.time.paused;
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Space');
+  await expect.poll(async () => (await view(page))?.time.paused, LIVE).toBe(!paused);
+  await expect.poll(async () => (await walkView(page))?.state, { timeout: 40_000 * SLOW }).toBe('unavailable');
+  await page.mouse.click(centre.x, centre.y);
+  await page.waitForTimeout(300);
+  expect(await lock()).toBeNull();
+  await page.getByTestId('walk-retry').click();
+  expect(await lock()).toBeNull();
+  await page.getByTestId('walk-end').click();
+  await expect.poll(async () => walkView(page), LIVE).toBeNull();
+  expect(pageErrors.filter((e) => !e.includes('net::ERR') && !e.includes('Failed to load resource'))).toEqual([]);
 });
 
 /** The camera's tilt about its view (degrees): its right against the local vertical where the walker stands. */
@@ -447,5 +533,237 @@ test('the horizon level on foot, looking up or down, the navigator open or folde
     }
   }
   expect(worst).toBeLessThan(0.06);
+  expect(pageErrors).toEqual([]);
+});
+
+test('on the way down through Venus’s clouds: Space stays the play key (a descent has no jump), and Esc pressed again and again goes back to orbit and no further', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/venus', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const route = await hash(page);
+  await page.getByTestId('world-descent').click();
+  await expect.poll(async () => (await view(page))?.descent?.world ?? null, LIVE).toBe('venus');
+  // Shown: the eye on the way down (its 70 degree view in place of the navigator's).
+  await expect.poll(() => page.evaluate(() => (window as unknown as KfHook).__kf.camera().fov), LIVE).toBe(70);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const paused = (await view(page))?.time.paused;
+  await page.keyboard.press('Space');
+  await expect.poll(async () => (await view(page))?.time.paused, LIVE).toBe(!paused);
+  await page.keyboard.press('Space');
+  await expect.poll(async () => (await view(page))?.time.paused, LIVE).toBe(paused);
+  for (let i = 0; i < 8; i += 1) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+  }
+  await expect.poll(async () => (await view(page))?.descent ?? null, LIVE).toBeNull();
+  expect(await hash(page)).toBe(route);
+  expect(await experience(page)).toBe('universe');
+  expect(pageErrors).toEqual([]);
+});
+
+test.describe('with motion, the climb back', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  test('Esc during the climb back to orbit stops it where it is (and goes no further)', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_REAL_FRAMES);
+    test.setTimeout(240_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    const route = await hash(page);
+    // Once the explorer's own approach has settled; then from orbit over the place (a descent first), so
+    // there is a climb back to make.
+    await expect
+      .poll(async () => {
+        const a = (await view(page))?.altitudeKm ?? 0;
+        await page.waitForTimeout(300);
+        return Math.abs(((await view(page))?.altitudeKm ?? 0) - a) / Math.max(a, 1);
+      }, LIVE)
+      .toBeLessThan(0.002);
+    await page.evaluate((a) => {
+      (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', ...a });
+    }, HERE);
+    await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('walking');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('Escape');
+    // The dip out, then the climb: rising.
+    await expect.poll(async () => walkView(page), LIVE).toBeNull();
+    await expect.poll(async () => (await view(page))?.altitudeKm ?? 0, LIVE).toBeGreaterThan(20);
+    const rising = (await view(page))?.altitudeKm ?? 0;
+    await page.keyboard.press('Escape');
+    const stopped = (await view(page))?.altitudeKm ?? 0;
+    expect(stopped).toBeGreaterThanOrEqual(rising);
+    await page.waitForTimeout(800);
+    expect(Math.abs(((await view(page))?.altitudeKm ?? 0) - stopped)).toBeLessThan(Math.max(1, stopped * 0.02));
+    expect(await hash(page)).toBe(route);
+    expect(await experience(page)).toBe('universe');
+    expect(pageErrors).toEqual([]);
+  });
+});
+
+test.describe('landing and leaving, small', () => {
+  test.use({ viewport: { width: 640, height: 400 } });
+  test('landing and leaving ten times: never more than three flashes in any second (WCAG 2.3.1)', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(400_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await walkAt(page);
+    // On the stepped clock: two frames (a thirtieth of a second) between pictures, each picture's mean luma.
+    const sample = async (): Promise<number> => {
+      await page.evaluate(() => {
+        (window as unknown as KfHook).__kf.step(2, 1 / 60);
+      });
+      const png = (await page.locator('#scene').screenshot({ style: 'body > :not(#scene), body > :not(#scene) * { visibility: hidden !important; transition: none !important; }' })) as Uint8Array;
+      let binary = '';
+      for (let i = 0; i < png.length; i += 0x8000) binary += String.fromCharCode(...png.subarray(i, i + 0x8000));
+      return page.evaluate(async (b64) => {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const g = canvas.getContext('2d');
+        if (!g) return 0;
+        g.drawImage(bitmap, 0, 0);
+        const { data } = g.getImageData(0, 0, bitmap.width, bitmap.height);
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 4) sum += 0.2126 * (data[i] ?? 0) + 0.7152 * (data[i + 1] ?? 0) + 0.0722 * (data[i + 2] ?? 0);
+        return sum / (data.length / 4);
+      }, btoa(binary));
+    };
+    const lumas: number[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      await page.evaluate(() => {
+        (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walkEnd' });
+      });
+      for (let f = 0; f < 30 && (await walkView(page)) !== null; f += 1) lumas.push(await sample());
+      await page.evaluate((a) => {
+        (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', ...a });
+      }, HERE);
+      for (let f = 0; f < 60 && (await walkView(page))?.state !== 'walking'; f += 1) lumas.push(await sample());
+      for (let f = 0; f < 12; f += 1) lumas.push(await sample());
+    }
+    // WCAG's general flash: a pair of opposing changes of a tenth or more in relative luminance, the darker
+    // below 0.8. Each change counted where the picture turns back by a tenth from its last extreme.
+    const relative = lumas.map((l) => (l / 255) ** 2.2);
+    const turns: number[] = [];
+    let extreme = relative[0] ?? 0;
+    let direction = 0;
+    relative.forEach((v, i) => {
+      if (direction === 0) {
+        if (Math.abs(v - extreme) >= 0.1) {
+          direction = Math.sign(v - extreme);
+          turns.push(i);
+          extreme = v;
+        }
+      } else if (direction * (v - extreme) > 0) extreme = v;
+      else if (Math.abs(v - extreme) >= 0.1 && Math.min(v, extreme) < 0.8) {
+        direction = -direction;
+        turns.push(i);
+        extreme = v;
+      }
+    });
+    // A flash is two turns; in any second (30 pictures) at most three flashes, six turns.
+    let worst = 0;
+    for (let i = 0; i < turns.length; i += 1) worst = Math.max(worst, turns.filter((t) => t >= (turns[i] ?? 0) && t < (turns[i] ?? 0) + 30).length);
+    test.info().annotations.push({ type: 'flash', description: JSON.stringify({ pictures: lumas.length, turns: turns.length, worst }) });
+    expect(lumas.length).toBeGreaterThan(200);
+    // The dips are seen (the picture does go dark and back: one flash each), never more than three a second.
+    expect(turns.length).toBeGreaterThanOrEqual(10);
+    expect(worst).toBeLessThanOrEqual(6);
+    expect(pageErrors).toEqual([]);
+  });
+});
+
+test('the rover, the zoom and the look’s sense: V rides at 30 m/s, the wheel narrows the view (to 20 degrees, never under Makkah’s framing), a drag can move the scene instead', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await walkAt(page, { ...HERE, headingDeg: 0, pitchDeg: 0 });
+  // A second of W with V held covers 25 m or more (walking covers 1.4, running 5).
+  const before = (await walkView(page))?.walkedM ?? 0;
+  await page.keyboard.down('KeyV');
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(1000);
+  await page.keyboard.up('KeyW');
+  await page.keyboard.up('KeyV');
+  expect(((await walkView(page))?.walkedM ?? 0) - before).toBeGreaterThan(25);
+  // The pad's Rover, pressed and let go.
+  await page.getByTestId('walk-rover').click();
+  await expect(page.getByTestId('walk-rover')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('walk-rover').click();
+  await expect(page.getByTestId('walk-rover')).toHaveAttribute('aria-pressed', 'false');
+  // The wheel: in to 20 degrees and no further, out to 90 and no further.
+  const box = await page.locator('canvas').first().boundingBox();
+  if (!box) throw new Error('no canvas');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+  const fov = async (): Promise<number> => (await walkView(page))?.fovDeg ?? 0;
+  expect(await fov()).toBeCloseTo(70, 3);
+  await page.mouse.wheel(0, -400);
+  await expect.poll(fov, LIVE).toBeLessThan(70);
+  for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, -400);
+  await expect.poll(fov, LIVE).toBeCloseTo(20, 3);
+  for (let i = 0; i < 30; i += 1) await page.mouse.wheel(0, 400);
+  await expect.poll(fov, LIVE).toBeCloseTo(90, 3);
+  // The look's sense: a drag to the right turns right; chosen to move the scene, it turns left (and the choice is kept).
+  const drag = async (): Promise<number> => {
+    const h0 = (await walkView(page))?.headingDeg ?? 0;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 3, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    return ((((await walkView(page))?.headingDeg ?? 0) - h0 + 540) % 360) - 180;
+  };
+  expect(await drag()).toBeGreaterThan(10);
+  await page.getByTestId('walk-title').click();
+  await page.getByTestId('walk-drag-scene').check();
+  await page.getByTestId('walk-title').click();
+  expect(await drag()).toBeLessThan(-10);
+  expect(await page.evaluate(() => localStorage.getItem('kf-walk-drag-scene'))).toBe('1');
+  await page.getByTestId('walk-title').click();
+  await page.getByTestId('walk-drag-scene').uncheck();
+  await page.getByTestId('walk-title').click();
+  expect(await drag()).toBeGreaterThan(10);
+  // 25.05 km north of the Kaaba (a degree of latitude 111.32 km on the explorer's Earth), facing it: the rover
+  // is refused at 25 km, and the view never narrows below 30 km across there.
+  const KM_PER_DEG = (6378.137 * Math.PI) / 180;
+  await walkAt(page, { lat: 21.4225 + 25.05 / KM_PER_DEG, lon: 39.8261, headingDeg: 180, pitchDeg: 0 });
+  await page.keyboard.down('KeyV');
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(3000);
+  await page.keyboard.up('KeyW');
+  await page.keyboard.up('KeyV');
+  expect((await walkView(page))?.lat ?? 0).toBeGreaterThan(21.4225 + 24.99 / KM_PER_DEG);
+  await expect(page.getByTestId('walk-notice')).toContainText('Makkah');
+  for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, -400);
+  await page.waitForTimeout(300);
+  const kaabaKm = (((await walkView(page))?.lat ?? 0) - 21.4225) * KM_PER_DEG;
+  expect(await fov()).toBeGreaterThanOrEqual(((2 * Math.atan(15 / kaabaKm)) * 180) / Math.PI - 0.5);
+  expect(pageErrors).toEqual([]);
+});
+
+test('on foot the time machine runs at most an hour a second (never a strobe of day and night), and says so; back in orbit it runs as chosen', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await walkAt(page);
+  await page.evaluate(() => {
+    const app = (window as unknown as KfHook).__kf.app;
+    app.universeTime({ kind: 'rate', rate: 30 * 86_400 });
+  });
+  const advance = (): Promise<number> =>
+    page.evaluate(() => {
+      const kf = (window as unknown as KfHook).__kf;
+      const t0 = kf.universe.state()?.unixMs ?? 0;
+      kf.step(60, 1 / 60);
+      return ((kf.universe.state()?.unixMs ?? 0) - t0) / 1000;
+    });
+  // A second of frames on foot: an hour of the clock at most.
+  expect(await advance()).toBeLessThanOrEqual(3600 * 1.02);
+  await expect(page.getByTestId('walk-notice')).toContainText('an hour a second');
+  expect((await view(page))?.time.rate).toBe(30 * 86_400);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walkEnd' });
+    (window as unknown as KfHook).__kf.step(120, 1 / 60);
+  });
+  await expect.poll(async () => walkView(page), LIVE).toBeNull();
+  expect(await advance()).toBeGreaterThan(20 * 86_400);
   expect(pageErrors).toEqual([]);
 });

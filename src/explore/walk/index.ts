@@ -1,4 +1,4 @@
-import type { Node, Object3D, WebGPURenderer } from 'three/webgpu';
+import type { Camera, Node, Object3D, WebGPURenderer } from 'three/webgpu';
 import type { UniverseWalk, WalkableWorld } from '../../core/types';
 import { vec3 } from 'three/tsl';
 import { qiblaBearing } from '../islamic/kaaba';
@@ -6,7 +6,8 @@ import { createTransmittanceTable, type AirModel } from '../render/air';
 import { createGround, MARS_HAZE, VENUS_HAZE } from './ground';
 import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFACE, type SurfaceStyle } from './surface';
 import { starlight } from './daylight';
-import { clearDayAir, groundIlluminance, luminance, marsSunlight, sunThroughAir, walkExposure, type LightKind } from './light';
+import { clearDayAir, groundIlluminance, marsSunlight, sunDiscTint, sunThroughAir, walkExposure, type LightKind } from './light';
+import { createMeter } from './meter';
 import { createWalkSky, type SkyKind } from './sky';
 import { createHeights, TERRAIN, zoomFor, type TileLoader } from './terrain';
 import { createWalker, look, pressureKpa, solarTimeHours, stepWalker, sunAzimuthDeg, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkerState } from './walker';
@@ -46,7 +47,8 @@ export interface WalkSetup {
   /**
    * The world's colour map's mean luminance and its measured Bond albedo (NASA's fact sheets): the map,
    * a picture made for the eye, is scaled so its mean is the world's albedo (the Moon is as dark as
-   * worn asphalt, Mars twice as bright), and the eye meters for it (./light walkExposure).
+   * worn asphalt, Mars twice as bright); the eye meters the world's albedo until it has read the
+   * ground in view (./meter, ./light walkExposure).
    */
   albedo?: { map: number; bond: number };
   /** Decoded terrain tiles (./terrain terrariumLoader for the Earth, ./equirect equirectLoader for the Moon and Mars), and the finest zoom they hold (the Earth's tiles' when not said). */
@@ -74,18 +76,21 @@ export interface Walk {
   /**
    * Places the ground and sky for this frame, the camera at the origin: the world's centre relative to
    * the camera and its frame's axes (render frame), the Sun's direction from it (render frame, and in
-   * the world's own frame), the sunlight's strength (1 at 1 au), the longitude beneath the Sun, and the
-   * depth range.
+   * the world's own frame), the sunlight's strength (1 at 1 au), the longitude beneath the Sun, the
+   * depth range, and the camera (and whether it is the walker's eye now: the eye's meter reads only then).
    */
-  place(frame: { centre: V3; basis: readonly number[]; sun: V3; sunWorld: readonly [number, number, number]; light: number; subSolarLon: number; near: number; far: number; exposure: number; renderer: WebGPURenderer }): void;
+  place(frame: { centre: V3; basis: readonly number[]; sun: V3; sunWorld: readonly [number, number, number]; light: number; subSolarLon: number; near: number; far: number; exposure: number; renderer: WebGPURenderer; camera: Camera; eye: boolean }): void;
   view(): UniverseWalk | null;
-  /** The exposure the walker's eye adapts to (./light walkExposure), from the light on level ground where it stands; null until landed. */
+  /**
+   * The exposure the walker's eye adapts to (./light walkExposure), from the light on level ground where
+   * it stands and the ground in view (./meter: read while the camera is the walker's eye, `eye` in
+   * place's frame); null until landed.
+   */
   exposure(): number | null;
   /**
    * The Sun's colour as the walker sees it (into `out`): its light through the air on the way (the
-   * Earth's slant path from the eye's height, Mars's dust), as a colour scaled to its brightest channel
-   * and dimmed with its luminance (softly, floored: the disc still the brightest thing in view); white
-   * where there is no air.
+   * Earth's slant path from the eye's height, Mars's dust), as sunDiscTint makes it (dimmed with its
+   * luminance, but always far brighter than the sky round it); white where there is no air.
    */
   sunColour(out: [number, number, number]): void;
   /** The explorer's detail: all of the ground's illustrative detail, or all but its stones (./surface). */
@@ -109,8 +114,6 @@ const LOOKS: Record<WalkableWorld, { sky: SkyKind; light: LightKind; surface: Su
   // Venus: no sunlight reaches the ground as a beam (all of it is the overcast's), and its ground is dark basalt (illustrative).
   venus: { sky: 'venus', light: 'venus', surface: VENUS_SURFACE, haze: VENUS_HAZE, seaLevel: false, ground: [0.1, 0.09, 0.08] },
 };
-/** The Sun's disc dims with its light's luminance to this power, never below this share (illustrative: still the brightest thing in view). */
-const SUN_DIM = { power: 0.35, floor: 0.05 } as const;
 
 /** On an airless world by day, how much of the stars' light shows past the sunlit ground's glare (illustrative). */
 const AIRLESS_DAY_STARS = 0.35;
@@ -137,6 +140,7 @@ export function createWalk(setup: WalkSetup): Walk {
   const ground = createGround((d) => (setup.groundColour ? setup.groundColour(d).mul(calibrate) : vec3(...(looks.ground ?? [0.2, 0.2, 0.2]))), { light: { kind: looks.light, air: airTable, haze: looks.haze ?? null }, seaLevel, surface: looks.surface });
   const skyKind = looks.sky;
   const sky = createWalkSky(skyKind, airTable);
+  const meter = createMeter(ground.copy);
   const world = setup.world;
   // Landed once the ground under the feet is this fine (or as fine as the world's heights go).
   const landedZoom = Math.min(LANDED_ZOOM, maxZoom);
@@ -176,6 +180,7 @@ export function createWalk(setup: WalkSetup): Walk {
       waited = 0;
       coarse = false;
       ground.reset(walker.lat, walker.lon);
+      meter.reset();
       return 'started';
     },
     stop() {
@@ -227,7 +232,7 @@ export function createWalk(setup: WalkSetup): Walk {
       sky.mesh.visible = show;
       if (!s || !show) return;
       if (table && !table.baked) table.bake(frame.renderer);
-      ground.update(s, heights, { centre: frame.centre, basis: frame.basis, radiusKm: world.radiusKm, sun: frame.sun, light: frame.light, near: frame.near, far: frame.far });
+      ground.update(s, heights, { centre: frame.centre, basis: frame.basis, radiusKm: world.radiusKm, sun: frame.sun, light: frame.light, near: frame.near, far: frame.far, exposure: frame.exposure });
       // The local vertical in the render frame, for the sky.
       const p = walkerPose(s, world.radiusKm).position;
       const m = frame.basis;
@@ -236,13 +241,13 @@ export function createWalk(setup: WalkSetup): Walk {
       const eyeRadii = l / world.radiusKm;
       sky.update({ up, sun: frame.sun, radiusKm: frame.far * 0.9, light: frame.light, exposure: frame.exposure, eyeRadii });
       lastSun = { elevation: sunElevationDeg(s.lat, s.lon, frame.sunWorld), azimuth: sunAzimuthDeg(s.lat, s.lon, frame.sunWorld), solar: solarTimeHours(s.lon, frame.subSolarLon) };
-      // What the eye adapts to, and the Sun's colour through the air on the way.
-      metered = walkExposure(groundIlluminance(looks.light, lastSun.elevation, frame.light, air, eyeRadii - 1), setup.albedo?.bond ?? null);
+      // What the eye adapts to (the ground in view as the meter last read it, the world's albedo till then), and the Sun's colour through the air on the way.
+      if (frame.eye) meter.read(frame.renderer, frame.camera);
+      const e = groundIlluminance(looks.light, lastSun.elevation, frame.light, air, eyeRadii - 1);
+      metered = walkExposure(e, frame.light, meter.luminance !== null && e > 0 ? meter.luminance / e : (setup.albedo?.bond ?? null));
       const sin = Math.sin((lastSun.elevation * Math.PI) / 180);
       const through: [number, number, number] = looks.light === 'earth' && air ? sunThroughAir(air, eyeRadii - 1, sin, 32) : looks.light === 'mars' ? marsSunlight(sin) : [1, 1, 1];
-      const peak = Math.max(...through, 1e-6);
-      const dim = Math.max(luminance(through), SUN_DIM.floor) ** SUN_DIM.power;
-      for (let k = 0; k < 3; k += 1) sunTint[k] = ((through[k] ?? 0) / peak) * dim;
+      sunDiscTint(through, sunTint);
     },
     view() {
       const s = walker;
@@ -274,6 +279,11 @@ export function createWalk(setup: WalkSetup): Walk {
         groundZoom: under?.zoom ?? null,
         tiles: { ready: t.ready, loading: t.loading, failed: t.failed },
         rings: ground.stats.filled,
+        metered: meter.readings,
+        groundLuminance: meter.luminance,
+        // The explorer's own (its lens and its clock).
+        fovDeg: 70,
+        timeCapped: false,
       };
     },
     exposure() {
@@ -293,6 +303,7 @@ export function createWalk(setup: WalkSetup): Walk {
     },
     dispose() {
       ground.dispose();
+      meter.dispose();
       sky.dispose();
       table?.dispose();
       heights.clear();

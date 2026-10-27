@@ -9,9 +9,10 @@
 export const WALK = {
   /** Eye height above the feet (m). */
   eyeM: 1.7,
-  /** Walking and running speeds (m/s). */
+  /** Walking and running speeds, and the rover's (m/s: to cross a landscape, illustrative). */
   walkMps: 1.4,
   runMps: 5,
+  roverMps: 30,
   /** Take-off speed (m/s): about half a metre on the Earth, six times higher on the Moon. */
   jumpMps: 3.1,
   /** Radians of turn per CSS pixel dragged, and the furthest the look tips up or down. */
@@ -45,6 +46,8 @@ export interface WalkInput {
   forward: number;
   right: number;
   run: boolean;
+  /** Riding the rover (faster than running). */
+  rover?: boolean;
   jump: boolean;
   /** Arrow keys: turn (-1 left, 1 right) and tip the look (1 up). */
   turn: number;
@@ -82,7 +85,7 @@ export function stepWalker(s: WalkerState, input: WalkInput, dt: number, world: 
   const along = Math.hypot(input.forward, input.right);
   s.blocked = false;
   if (along > 0) {
-    const speed = (input.run ? WALK.runMps : WALK.walkMps) * dt;
+    const speed = (input.rover ? WALK.roverMps : input.run ? WALK.runMps : WALK.walkMps) * dt;
     const f = input.forward / along;
     const r = input.right / along;
     const north = (Math.cos(s.heading) * f - Math.sin(s.heading) * r) * speed;

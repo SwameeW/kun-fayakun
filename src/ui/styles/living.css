@@ -827,9 +827,23 @@
 
 .kf-walk-pad {
   display: grid;
-  grid-template-columns: repeat(3, 2.75rem);
+  grid-template-columns: repeat(4, 2.75rem);
   gap: var(--kf-space-1);
   flex: none;
+}
+
+/* The rover stands beside the arrows, the height of both rows. */
+.kf-walk-rover {
+  grid-row: span 2;
+}
+
+/* The look's sense, among the figures: a 44 px row to tap. */
+.kf-walk-option {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  min-block-size: 2.75rem;
+  cursor: pointer;
 }
 
 .kf-walk-pad[hidden] {

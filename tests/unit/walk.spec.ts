@@ -7,17 +7,19 @@
  * for again after a back-off, and the walker: its frame, a jump's height under a world's own gravity
  * (v^2 / 2g), walking speed, the look's first-person sense, a place it may not enter, the suit's
  * figures; and the light on foot (src/explore/walk/light): the setting Sun reddening through the
- * Earth's air, the sky's colours and its glow round the Sun held under the bloom, the eye's adapted
- * exposure, the Sun's true size, and the stars' fade.
+ * Earth's air, its disc always far brighter than the sky round it, the sky's colours and its glow round
+ * the Sun held under the bloom (and graded, not a plateau), the eye's adapted exposure and its meter for
+ * dark ground, the regolith's lunar-Lambert law, the terrain's horizons (a ridge's and a cliff's, to half a
+ * degree), the Sun's true size, and the stars' fade.
  */
 import { readFileSync } from 'node:fs';
-import { deflateSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
+import { pngOf } from '../support/terrain';
 import { createHeights, decodeTerrarium, despike, mercatorPixel, TERRAIN, zoomFor, type TileLoader } from '../../src/explore/walk/terrain';
 import { decodePng } from '../../src/explore/walk/png';
 import { createWalker, localFrame, look, pressureKpa, solarTimeHours, stepWalker, sunAzimuthDeg, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkWorld } from '../../src/explore/walk/walker';
 import { DAYLIGHT, starlight } from '../../src/explore/walk/daylight';
-import { ALBEDO_KEY, clearDayAir, EXPOSURE, groundIlluminance, luminance, skyCompression, SKY_KNEE, skyRadiance, sunThroughAir, walkExposure } from '../../src/explore/walk/light';
+import { clearDayAir, EXPOSURE, groundIlluminance, horizonRise, luminance, lunarLambert, METER, skyCompression, SKY_KNEE, skyRadiance, SUN_DISC, sunDiscTint, sunThroughAir, walkExposure } from '../../src/explore/walk/light';
 import { earthAir } from '../../src/explore/render/air';
 import { equirectMaxZoom } from '../../src/explore/walk/equirect';
 import type { DataStore } from '../../src/core/types';
@@ -228,18 +230,23 @@ test('the sky from the ground: blue overhead, paler at the horizon, a glow round
   expect(luminance(skyRadiance(AIR, h, sinDeg(-18), [0, 0, 1]))).toBeLessThan(1e-3);
 });
 
-test('the sky held under the bloom: never above its ceiling on screen, unchanged below its knee, smooth and rising', () => {
+test('the sky held under the bloom: never above its ceiling on screen, unchanged below its knee, smooth and rising, a brighter glow still brighter', () => {
   expect(skyCompression(0.2)).toBe(1);
   expect(skyCompression(SKY_KNEE.knee)).toBe(1);
+  expect(skyCompression(Number.NaN)).toBe(1);
   let last = 0;
   for (let l = 0.01; l < 500; l *= 1.05) {
     const shown = l * skyCompression(l);
     expect(shown).toBeLessThanOrEqual(SKY_KNEE.ceiling + 1e-9);
-    expect(shown).toBeGreaterThanOrEqual(last - 1e-12);
+    expect(shown).toBeGreaterThan(last);
     last = shown;
   }
-  // Continuous at the knee.
-  expect(Math.abs((SKY_KNEE.knee + 1e-6) * skyCompression(SKY_KNEE.knee + 1e-6) - SKY_KNEE.knee)).toBeLessThan(1e-5);
+  // Continuous at the knee, and so is its slope (no crease in a sky's gradient there).
+  const held = (l: number): number => l * skyCompression(l);
+  expect(Math.abs(held(SKY_KNEE.knee + 1e-6) - SKY_KNEE.knee)).toBeLessThan(1e-5);
+  expect((held(SKY_KNEE.knee + 2e-4) - held(SKY_KNEE.knee + 1e-4)) / 1e-4).toBeGreaterThan(0.99);
+  // No plateau: a sunset glow ten times brighter on screen still shows brighter (by more than a 1% step in luminance).
+  for (const l of [1, 3, 10]) expect(held(10 * l) / held(l)).toBeGreaterThan(1.01);
   // With the walk's own exposure, no sky pixel 3 degrees or more from the Sun reaches the bloom's threshold (0.75 on screen), at any Sun height.
   const h = 2 / 6371;
   for (let sun = -6; sun <= 90; sun += 6) {
@@ -256,8 +263,9 @@ test('the eye’s adaptation on foot: opening as the light fails, continuous thr
   const h = 2 / 6371;
   for (const kind of ['earth', 'mars', 'airless'] as const) {
     let last = 0;
+    const light = kind === 'mars' ? 0.43 : 1;
     for (let e = 90; e >= -20; e -= 0.05) {
-      const x = walkExposure(groundIlluminance(kind, e, kind === 'mars' ? 0.43 : 1, AIR, h));
+      const x = walkExposure(groundIlluminance(kind, e, light, AIR, h), light);
       expect(x, `${kind} at ${String(e)} degrees`).toBeGreaterThanOrEqual(last - 1e-9);
       expect(x).toBeGreaterThanOrEqual(EXPOSURE.min);
       expect(x).toBeLessThanOrEqual(EXPOSURE.max);
@@ -272,18 +280,77 @@ test('the eye’s adaptation on foot: opening as the light fails, continuous thr
   const noon = walkExposure(groundIlluminance('earth', 60, 1, AIR, h));
   expect(noon).toBeGreaterThan(0.9);
   expect(noon).toBeLessThan(1.5);
-  // Mars (0.43 of the Earth's sunlight, through its dust) opens wider than the Earth at the same Sun height; Mercury (6.7) far less.
-  expect(walkExposure(groundIlluminance('mars', 40, 0.43, null))).toBeGreaterThan(walkExposure(groundIlluminance('earth', 40, 1, AIR, h)) * (1 / 0.43) ** EXPOSURE.adapt * 0.7);
-  expect(walkExposure(groundIlluminance('airless', 40, 6.7, null))).toBeLessThan(walkExposure(groundIlluminance('airless', 40, 1, null)) / 4);
+  // The eye adapts wholly to its world's sunlight: Mars (0.43 of the Earth's, through its dust) opens at least
+  // 1 / 0.43 wider than the Earth at the same Sun height; Mercury (6.7) closes at least that much.
+  expect(walkExposure(groundIlluminance('mars', 40, 0.43, null), 0.43)).toBeGreaterThan(walkExposure(groundIlluminance('earth', 40, 1, AIR, h)) / 0.43);
+  expect(walkExposure(groundIlluminance('airless', 40, 6.7, null), 6.7)).toBeCloseTo(walkExposure(groundIlluminance('airless', 40, 1, null)) / 6.7, 9);
   // Non-numbers never make an exposure that is not one.
   expect(Number.isFinite(walkExposure(Number.NaN))).toBe(true);
-  // A dark world's ground (the Moon's albedo 0.11, Mercury's 0.068) opened up as a camera metering it would,
-  // a bright one (Mars's 0.25) not dimmed, and never more than ALBEDO_KEY.most.
+  expect(Number.isFinite(walkExposure(0.5, Number.NaN))).toBe(true);
+  // Ground seen darker than the meter's grey (Apollo 11's mare, Jezero's floor) opened up as a camera
+  // metering it would, never more than METER.most; bright level ground left (sand stays bright); and a
+  // darker ground still shown a little darker than a brighter one.
   const e = groundIlluminance('airless', 30, 1, null);
-  expect(walkExposure(e, 0.11) / walkExposure(e)).toBeCloseTo((ALBEDO_KEY.reference / 0.11) ** ALBEDO_KEY.power, 9);
-  expect(walkExposure(e, 0.25)).toBe(walkExposure(e));
-  expect(walkExposure(e, 0.001) / walkExposure(e)).toBeCloseTo(ALBEDO_KEY.most, 9);
-  expect(walkExposure(e, 0.068)).toBeGreaterThan(walkExposure(e, 0.11));
+  expect(walkExposure(e, 1, 0.05) / walkExposure(e)).toBeCloseTo((METER.reference / 0.05) ** METER.power, 9);
+  expect(walkExposure(e, 1, 0.45)).toBe(walkExposure(e));
+  expect(walkExposure(e, 1, 1e-4) / walkExposure(e)).toBeCloseTo(METER.most, 9);
+  // A slope turned to a low Sun, seen brighter than any level ground: stopped down, at most METER.most.
+  expect(walkExposure(e, 1, 2) / walkExposure(e)).toBeCloseTo((METER.bright / 2) ** METER.power, 9);
+  expect(walkExposure(e, 1, 1e4) / walkExposure(e)).toBeCloseTo(1 / METER.most, 9);
+  expect(walkExposure(e, 1, 0.03) * 0.03).toBeLessThan(walkExposure(e, 1, 0.08) * 0.08);
+  expect(walkExposure(e, 1, 0)).toBe(walkExposure(e));
+});
+
+test('the Sun’s disc on foot: the air’s colour, dimmed as the light fails, but never as dim as the sky round it', () => {
+  const h = 2 / 6371;
+  for (let deg = 90; deg >= 0; deg -= 0.5) {
+    const tint = sunDiscTint(sunThroughAir(AIR, h, sinDeg(deg)));
+    // On screen the explorer's disc of 5 times this: always several times the sky's ceiling (four at least), no channel past the disc's own ceiling.
+    expect(5 * luminance(tint), `Sun ${String(deg)}`).toBeGreaterThanOrEqual(4 * SKY_KNEE.ceiling);
+    for (const c of tint) expect(c).toBeLessThanOrEqual(SUN_DISC.most + 1e-9);
+    // Still the air's colour: red over green over blue.
+    expect(tint[0]).toBeGreaterThanOrEqual(tint[1] - 1e-9);
+    expect(tint[1]).toBeGreaterThanOrEqual(tint[2] - 1e-9);
+  }
+  // High, white as it was; low, deep orange (its core paler than its light, as an overexposed sunset's).
+  const noon = sunDiscTint(sunThroughAir(AIR, h, sinDeg(60)));
+  expect(noon[2] / noon[0]).toBeGreaterThan(0.75);
+  const low = sunDiscTint(sunThroughAir(AIR, h, sinDeg(1.5)));
+  expect(low[2] / low[0]).toBeLessThan(0.5);
+  // Set: none.
+  expect(sunDiscTint([0, 0, 0])).toEqual([0, 0, 0]);
+});
+
+test('the regolith’s lunar-Lambert law: Lambert’s straight down, flat-lit and brighter at a low Sun seen down-Sun, Lambert’s toward the Sun', () => {
+  // Lit and seen from overhead (phase 0): Lambert's 1, times the opposition surge (1.4 at the shadow point).
+  expect(lunarLambert(1, 1, 0)).toBeCloseTo(1.4, 9);
+  // A low Sun (60 degrees from the normal) seen from near it (small phase): brighter than Lambert's mu0.
+  expect(lunarLambert(0.5, 0.45, 5)).toBeGreaterThan(0.5 * 1.3);
+  // Seen at a large phase angle the law is Lambert's (and no surge).
+  expect(lunarLambert(0.5, 0.9, 140)).toBeCloseTo(0.5, 2);
+  // No light from behind the ground.
+  expect(lunarLambert(-0.2, 0.5, 30)).toBe(0);
+});
+
+test('the terrain’s horizons: a ridge and a cliff seen to within half a degree, none over flat ground, the world’s curve counted', () => {
+  const R = 6371;
+  const deg = (t: number): number => (Math.atan(t) * 180) / Math.PI;
+  // A ridge 1,000 m high, a Gaussian 300 m wide, 2 km east; and a cliff 1,000 m high from 2 km east on.
+  const ridge = (e: number): number => 1000 * Math.exp(-((e - 2) ** 2) / (2 * 0.3 ** 2));
+  const cliff = (e: number): number => (e >= 2 ? 1000 : 0);
+  for (const [name, h] of [['ridge', ridge], ['cliff', cliff]] as const) {
+    // The truth: every metre marched.
+    let truth = -1;
+    for (let x = 0.008; x < 60; x += 0.001) truth = Math.max(truth, (h(x) - (x * x * 1000) / (2 * R)) / (x * 1000));
+    const got = horizonRise((e) => h(e), 0, 0, 0, 1, 0, 0.008, R);
+    expect(Math.abs(deg(got) - deg(truth)), name).toBeLessThan(0.5);
+    expect(Math.abs(deg(got) - deg(0.5)), `${name}: about atan(1000 / 2000)`).toBeLessThan(name === 'cliff' ? 0.5 : 3);
+    // Looking the other way, nothing rises.
+    expect(horizonRise((e) => h(e), 0, 0, 0, -1, 0, 0.008, R)).toBeLessThan(0);
+  }
+  // Flat ground: the world's curve takes it below the level; the march stops where the heights are not known.
+  expect(horizonRise(() => 0, 0, 0, 0, 0, 1, 0.008, R)).toBeLessThan(0);
+  expect(horizonRise((e) => (e < 1 ? 0 : null), 0, 0, 0, 1, 0, 0.008, R)).toBeLessThan(0);
 });
 
 test('the Sun at its true size: about 0.53 degrees across from the Earth, so a few pixels on foot', () => {
@@ -302,52 +369,6 @@ test('the Sun’s azimuth: clockwise from north', () => {
   expect(sunAzimuthDeg(10, 20, f.north.map((v) => -v) as [number, number, number])).toBeCloseTo(180, 9);
   expect(sunAzimuthDeg(10, 20, f.east.map((v) => -v) as [number, number, number])).toBeCloseTo(270, 9);
 });
-
-/** A PNG of 8-bit RGB rows, each row filtered with the given filter type (PNG section 9), from Node's zlib. */
-function pngOf(width: number, height: number, pixel: (x: number, y: number) => [number, number, number], filters: readonly number[]): Uint8Array {
-  const bpp = 3;
-  const stride = width * bpp;
-  const raw = new Uint8Array(height * stride);
-  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) raw.set(pixel(x, y), y * stride + x * bpp);
-  const out = new Uint8Array(height * (stride + 1));
-  const paeth = (a: number, b: number, c: number): number => {
-    const p = a + b - c;
-    const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
-    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-  };
-  for (let y = 0; y < height; y += 1) {
-    const type = filters[y % filters.length] ?? 0;
-    out[y * (stride + 1)] = type;
-    for (let x = 0; x < stride; x += 1) {
-      const v = raw[y * stride + x] ?? 0;
-      const a = x >= bpp ? (raw[y * stride + x - bpp] ?? 0) : 0;
-      const b = y > 0 ? (raw[(y - 1) * stride + x] ?? 0) : 0;
-      const c = x >= bpp && y > 0 ? (raw[(y - 1) * stride + x - bpp] ?? 0) : 0;
-      const predicted = [0, a, b, (a + b) >> 1, paeth(a, b, c)][type] ?? 0;
-      out[y * (stride + 1) + 1 + x] = (v - predicted) & 0xff;
-    }
-  }
-  const chunk = (name: string, body: Uint8Array): Uint8Array => {
-    const c = new Uint8Array(12 + body.length);
-    const view = new DataView(c.buffer);
-    view.setUint32(0, body.length);
-    for (let i = 0; i < 4; i += 1) c[4 + i] = name.charCodeAt(i);
-    c.set(body, 8);
-    return c;
-  };
-  const header = new Uint8Array(13);
-  new DataView(header.buffer).setUint32(0, width);
-  new DataView(header.buffer).setUint32(4, height);
-  header.set([8, 2, 0, 0, 0], 8);
-  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', new Uint8Array(deflateSync(out))), chunk('IEND', new Uint8Array(0))];
-  const file = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let at = 0;
-  for (const p of parts) {
-    file.set(p, at);
-    at += p.length;
-  }
-  return file;
-}
 
 test('PNG decoded in script (no canvas a browser may tamper with): exact on the mocked terrain tile and through every row filter', async () => {
   // The browser specs' terrain tile: flat at 1,000 m everywhere, to the bit.

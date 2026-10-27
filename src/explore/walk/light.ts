@@ -15,14 +15,18 @@
  * - **The Moon and Mercury**: no air. Sunlight unfiltered (setting over the Sun's disc), no sky's light;
  *   only a faint fill from the sunlit ground around (illustrative).
  *
- * The eye's adaptation: the exposure is the illuminance on level ground (Sun and sky together) to the
- * power -EXPOSURE.adapt, between EXPOSURE.min and EXPOSURE.max (2^-3 and 2^6): a day's ground sits
- * near middle grey at any Sun height, a little darker as it sinks (the eye adapts almost, not wholly),
+ * The eye's adaptation (walkExposure): wholly to its world's sunlight (Mars's 0.43, Mercury's 6.7),
+ * and to the illuminance on level ground there (Sun and sky together, as a share of that sunlight) to
+ * the power -EXPOSURE.adapt (less through the twilight), between EXPOSURE.min and EXPOSURE.max (2^-3 and
+ * 2^6): a day's ground sits near middle grey at any Sun height, a little darker as it sinks (the eye
+ * adapts almost, not wholly), the picture darkening through the whole twilight,
  * the sky keeps its brightness about the ground's, and night stays night (the exposure stops opening,
- * so the stars and the dark land show as dark); a world darker than middle grey is opened up by its
- * albedo (ALBEDO_KEY), as a camera metering its ground would. Units are the explorer's: sunlight on a
- * white surface facing the Sun at 1 au is 1. The ground's albedo is its globe's colour (the Moon's,
- * Mars's and Mercury's scaled to their measured Bond albedos: ./index).
+ * so the stars and the dark land show as dark). Then, as a camera's meter does, it opens up for ground
+ * darker than grey (METER: what the eye sees of it, ./meter, the world's albedo until then), so a dark
+ * plain is seen and not lost in shadow, and stops down only for ground brighter than any level ground is
+ * (a slope turned to a low Sun), so sand stays bright.
+ * Units are the explorer's: sunlight on a white surface facing the Sun at 1 au is 1. The ground's albedo
+ * is its globe's colour (the Moon's, Mars's and Mercury's scaled to their measured Bond albedos: ./index).
  */
 
 import type { AirModel } from '../render/air';
@@ -40,10 +44,12 @@ const smoothstep = (a: number, b: number, x: number): number => {
 
 /**
  * The eye's adaptation: exposure = E^-adapt for illuminance E on level ground (sunlight 1 at 1 au on a
- * surface facing it), between `min` and `max` (2^-3 and 2^6). E never counts below `floorE` (a
- * moonless night's ground under the stars and the airglow, illustrative).
+ * surface facing it) by day (from `dayE`, the Sun about 5 degrees up on the Earth), the power easing to
+ * `night` as the light fails to `floorE` (a moonless night's ground under the stars and the airglow,
+ * illustrative; E never counts below it), so the picture darkens through the whole twilight and not all
+ * at once after sunset; between `min` and `max` (2^-3 and 2^6).
  */
-export const EXPOSURE = { adapt: 0.85, min: 0.125, max: 64, floorE: 0.002 } as const;
+export const EXPOSURE = { adapt: 0.85, night: 0.68, dayE: 0.1, min: 0.125, max: 64, floorE: 0.002 } as const;
 
 /** Mars's dust (illustrative): vertical optical depth in red, green and blue, the sky's colour, and the sunlight's own tint. */
 export const MARS_DUST = { tau: [0.5, 0.62, 0.82], sky: [1, 0.72, 0.48], sun: [1, 0.93, 0.85] } as const;
@@ -124,19 +130,89 @@ export function groundIlluminance(kind: LightKind, sunDeg: number, light: number
 }
 
 /**
- * The eye's exposure for an illuminance on level ground (EXPOSURE), and the ground's albedo where it is
- * known (a world's colour map's mean: its darker ground opened up, as a camera metering the scene
- * would, but only partly (ALBEDO_KEY), so a dark world still looks darker than a bright one).
+ * The eye's exposure (EXPOSURE) for an illuminance on level ground under the world's sunlight `light`
+ * (1 at 1 au), and the ground's reflectance as the eye sees it, where known (`seen`: the ground in view's
+ * luminance over that illuminance, from ./meter, or the world's albedo until it has read): ground darker
+ * than grey opened up, as a camera metering it would, and ground brighter than any level ground stopped
+ * down (METER).
  */
-export function walkExposure(illuminance: number, albedo: number | null = null): number {
-  if (Number.isNaN(illuminance)) return 1;
-  const e = Math.max(illuminance, EXPOSURE.floorE);
-  const key = albedo && albedo > 0 ? Math.min(ALBEDO_KEY.most, Math.max(1, (ALBEDO_KEY.reference / albedo) ** ALBEDO_KEY.power)) : 1;
-  return Math.min(EXPOSURE.max * key, Math.max(EXPOSURE.min, e ** -EXPOSURE.adapt * key));
+export function walkExposure(illuminance: number, light = 1, seen: number | null = null): number {
+  if (Number.isNaN(illuminance) || !(light > 0)) return 1;
+  const e = Math.max(illuminance / light, EXPOSURE.floorE);
+  const adapt = EXPOSURE.night + (EXPOSURE.adapt - EXPOSURE.night) * smoothstep(Math.log(EXPOSURE.floorE), Math.log(EXPOSURE.dayE), Math.log(e));
+  // Opened for ground darker than grey, stopped down for ground brighter than level ground can be, else left.
+  const key = seen !== null && seen > 0 ? Math.min(METER.most, Math.max(1 / METER.most, Math.min(Math.max(1, (METER.reference / seen) ** METER.power), (METER.bright / seen) ** METER.power))) : 1;
+  return Math.min(EXPOSURE.max * key, Math.max(EXPOSURE.min, (e ** -adapt * key) / light));
 }
 
-/** A camera's metering for a dark world: grey of this reflectance taken as the reference, and the most it opens for a darker ground, to this power of the ratio. */
-export const ALBEDO_KEY = { reference: 0.18, power: 1, most: 3 } as const;
+/**
+ * A camera's meter: ground seen darker than grey of `reference` opened up (the ratio followed to `power`,
+ * so a darker plain still shows a little darker), and ground seen brighter than `bright` (half a white
+ * level ground's: a slope turned to a low Sun) stopped down the same way, never sand or snow on the
+ * level; at most `most` either way (about two and a half stops).
+ */
+export const METER = { reference: 0.25, bright: 0.5, power: 0.85, most: 6 } as const;
+
+/**
+ * The regolith's photometry on the Moon and Mercury (./ground draws it per pixel): McEwen's lunar-Lambert
+ * law (1991), Lommel and Seeliger's 2 mu0 / (mu0 + mu) blended with Lambert's mu0 by a share `l` falling
+ * with the phase angle (its cubic in degrees), so the ground looks flat-lit and bright down-Sun and shades
+ * like Lambert's toward the Sun; and an opposition surge at the shadow point (illustrative strength and
+ * width).
+ */
+export const REGOLITH = { l: [1, -0.019, 2.42e-4, -1.46e-6], surge: 0.4, surgeDeg: 6 } as const;
+/** The regolith's light for the cosines of the Sun's and the eye's angles from the ground's normal and the phase angle (degrees), surge included; Lambert's is mu0. */
+export function lunarLambert(mu0: number, mu: number, phaseDeg: number): number {
+  const [l0, l1, l2, l3] = REGOLITH.l;
+  const g = phaseDeg;
+  const share = Math.min(1, Math.max(0, ((l3 * g + l2) * g + l1) * g + l0));
+  const surge = 1 + REGOLITH.surge * Math.exp(-g / REGOLITH.surgeDeg);
+  const m0 = Math.max(mu0, 0);
+  return (share * ((2 * m0) / Math.max(m0 + Math.max(mu, 0.02), 1e-4)) + (1 - share) * m0) * surge;
+}
+
+/**
+ * The terrain's horizon from a point (horizon mapping, Max 1988; ./ground draws its shadows and the sky it
+ * hides): the tangent of the highest angle the ground rises to along a bearing (`de`, `dn`: east and north,
+ * a unit step), marched from `fromKm` out to `reachKm` in steps growing by `growth`, the world's curve
+ * counted (the ground x km away has dropped x^2 / 2R below the level), then sought between the best
+ * step's neighbours in `refine` golden-section steps (a crest or a cliff's foot falls between steps); -1
+ * when nothing rises. `heightAt` reads the ground's height (m) at a place (km east and north), null beyond
+ * what is known.
+ */
+export const HORIZON_MARCH = { reachKm: 60, growth: 1.45, refine: 7 } as const;
+export function horizonRise(heightAt: (e: number, n: number) => number | null, e0: number, n0: number, h0: number, de: number, dn: number, fromKm: number, radiusKm: number): number {
+  const rise = (x: number): number => {
+    const h = heightAt(e0 + de * x, n0 + dn * x);
+    return h === null ? -1 : (h - h0 - ((x * x) / (2 * radiusKm)) * 1000) / (x * 1000);
+  };
+  let best = -1;
+  let at = 0;
+  let last = fromKm;
+  for (let x = fromKm; x < HORIZON_MARCH.reachKm; x *= HORIZON_MARCH.growth) {
+    if (heightAt(e0 + de * x, n0 + dn * x) === null) break;
+    last = x;
+    const r = rise(x);
+    if (r > best) {
+      best = r;
+      at = x;
+    }
+  }
+  if (at === 0) return best;
+  let lo = Math.max(fromKm, at / HORIZON_MARCH.growth);
+  let hi = Math.min(last, at * HORIZON_MARCH.growth);
+  const k = (Math.sqrt(5) - 1) / 2;
+  for (let i = 0; i < HORIZON_MARCH.refine; i += 1) {
+    const a = hi - (hi - lo) * k;
+    const b = lo + (hi - lo) * k;
+    const ra = rise(a);
+    const rb = rise(b);
+    best = Math.max(best, ra, rb);
+    if (ra > rb) hi = b;
+    else lo = a;
+  }
+  return best;
+}
 
 /**
  * Light scattered toward an eye inside the Earth's air along a ray (the CPU twin of ./sky's and
@@ -216,14 +292,40 @@ export function clearDayAir(air: AirModel): AirModel {
 }
 
 /**
- * The sky's brightness held under the bloom's threshold on screen (display terms after the exposure):
- * above `knee` it rises ever more slowly toward `ceiling`, hue kept. Only the Sun's disc and its glare
- * then bloom; the sky round it never blows out to white. Returns the factor to scale the colour by.
+ * The Sun's disc on foot: its light's colour through the air, dimmed with its luminance to `power`
+ * (illustrative), but never below `least` in luminance (the disc's tint: on screen the explorer's disc
+ * of 5 times it, several times the sky's ceiling, SKY_KNEE), so the setting Sun stays far
+ * the brightest thing in view, as a camera shows it. A channel goes no higher than `most` (../bodies/sun's
+ * ceiling of 6 over that 5): a deep red too bright for it gives the rest to the other channels, its core
+ * yellowing toward white as an overexposed sunset's does.
  */
-export const SKY_KNEE = { knee: 0.42, ceiling: 0.68 } as const;
+export const SUN_DISC = { power: 0.35, least: 0.6, most: 1.2 } as const;
+export function sunDiscTint(through: readonly [number, number, number], out: [number, number, number] = [1, 1, 1]): [number, number, number] {
+  const peak = Math.max(through[0], through[1], through[2]);
+  if (!(peak > 0)) {
+    out[0] = out[1] = out[2] = 0;
+    return out;
+  }
+  const c: [number, number, number] = [through[0] / peak, through[1] / peak, through[2] / peak];
+  const own = luminance(c);
+  const k = Math.min(SUN_DISC.most, Math.max(luminance(through) ** SUN_DISC.power, SUN_DISC.least / own));
+  // Too red to reach `least` within `most`: whitened just enough.
+  const w = Math.max(0, (SUN_DISC.least / SUN_DISC.most - own) / (1 - own));
+  for (let i = 0; i < 3; i += 1) out[i] = ((c[i] ?? 0) + (1 - (c[i] ?? 0)) * w) * k;
+  return out;
+}
+
+/**
+ * The sky's brightness held under the bloom's threshold on screen (display terms after the exposure),
+ * and below the Sun's own disc (SUN_DISC): above `knee` it rises ever more slowly toward `ceiling` (a
+ * pale grey on screen, never white), smoothly (its slope 1 at the knee) and with a long tail (the
+ * power `tail`), so a glow ten times brighter still shows a little brighter; hue kept. Only the Sun's
+ * disc and its glare are brighter, and bloom. Returns the factor to scale the colour by.
+ */
+export const SKY_KNEE = { knee: 0.3, ceiling: 0.5, tail: 0.3 } as const;
 export function skyCompression(displayLuminance: number): number {
   const l = displayLuminance;
-  if (l <= SKY_KNEE.knee) return 1;
+  if (!(l > SKY_KNEE.knee)) return 1;
   const span = SKY_KNEE.ceiling - SKY_KNEE.knee;
-  return (SKY_KNEE.knee + span * (1 - Math.exp(-(l - SKY_KNEE.knee) / span))) / l;
+  return (SKY_KNEE.knee + span * (1 - (1 + (l - SKY_KNEE.knee) / (SKY_KNEE.tail * span)) ** -SKY_KNEE.tail)) / l;
 }

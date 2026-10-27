@@ -19,10 +19,14 @@ import { withHelp } from './help';
  *   the keys, and where the ground comes from.
  * - **The controls' card**, for a few seconds after landing (and said to a screen reader once): the
  *   keys, or on a touch screen the pad and the look.
- * - **The pad**: walk forward and back, step left and right (held down, as the keys are; a keyboard's
- *   press on one takes a short step), run (a toggle) and jump.
- * - **Notices**: a walk refused at Makkah, a step refused there, heights that came only coarse, and
- *   heights that could not be loaded at all (with Retry beside the way back).
+ * - **The pad** (on every screen: a mouse or a keyboard can walk with it too): walk forward and back,
+ *   step left and right (held down, as the keys are; a keyboard's press on one takes a short step), run
+ *   and ride the rover (toggles), and jump.
+ * - **The look's sense**, among the figures: a drag turns the view the way the hand moves, or (the
+ *   visitor's choice, kept in this browser) moves the scene with it.
+ * - **Notices**: a walk refused at Makkah, a step refused there, heights that came only coarse,
+ *   heights that could not be loaded at all (with Retry beside the way back), and the time machine held
+ *   to an hour a second on foot.
  */
 
 /** Each world's title, height line and credit. */
@@ -37,6 +41,8 @@ const WORLD: Record<WalkableWorld, { title: I18nKey; ground: I18nKey; credit: I1
 /** How long a keyboard press on a pad button walks (ms); the controls' card after landing: at least this long, then until the visitor moves, at most this long (ms). */
 const PAD_STEP_MS = 600;
 const HELP = { minMs: 5000, maxMs: 20_000 } as const;
+/** Where this browser keeps the visitor's choice of the look's sense (a drag moves the scene: '1'). */
+const SCENE_KEY = 'kf-walk-drag-scene';
 
 export interface WalkHud {
   readonly element: HTMLElement;
@@ -70,7 +76,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
   // The controls: the keys, or on a touch screen the pad and the look (shown after landing, and with the figures).
   const help = h('div', { class: 'kf-walk-help', 'data-testid': 'walk-help' }, h('p', { class: 'kf-walk-keys' }, i18n.t('ui.universe.walk.keys')), h('p', { class: 'kf-walk-touch' }, i18n.t('ui.universe.walk.touch')));
 
-  const held = { forward: 0, right: 0, run: false, jump: false };
+  const held = { forward: 0, right: 0, run: false, rover: false, jump: false };
   const pressed = new Set<string>();
   const send = (): void => {
     let forward = 0;
@@ -83,7 +89,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
     held.forward = forward;
     held.right = right;
     held.jump = pressed.has('jump');
-    app.earthCommand({ kind: 'walkPad', forward: held.forward, right: held.right, run: held.run, jump: held.jump });
+    app.earthCommand({ kind: 'walkPad', forward: held.forward, right: held.right, run: held.run, rover: held.rover, jump: held.jump });
   };
   /** A button held while pressed (the pointer captured, so a finger sliding off still lets go here); a keyboard's press takes a short step. */
   const holdButton = (which: string, label: string, content: Node): HTMLElement => {
@@ -132,14 +138,20 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
   };
   const [left, forward, right, backward] = PAD.map((p) => holdButton(p.which, i18n.t(p.label), arrow(p.turn)));
   const jump = holdButton('jump', i18n.t('ui.universe.walk.jump'), h('span', {}, i18n.t('ui.universe.walk.jump')));
-  const run = h('button', { type: 'button', class: 'kf-btn kf-walk-pad-btn', 'aria-pressed': 'false', 'data-testid': 'walk-run' }, i18n.t('ui.universe.walk.run'));
-  run.addEventListener('click', () => {
-    held.run = !held.run;
-    run.setAttribute('aria-pressed', String(held.run));
-    send();
-  });
-  // Run and jump above, the arrows below: a thumb's reach on a phone.
-  const pad = h('div', { class: 'kf-walk-pad', role: 'group', 'aria-label': i18n.t('ui.universe.walk.pad') }, run, forward, jump, left, backward, right);
+  /** A toggle on the pad (Run, Rover): pressed or not. */
+  const toggle = (which: 'run' | 'rover', label: string): HTMLElement => {
+    const b = h('button', { type: 'button', class: `kf-btn kf-walk-pad-btn kf-walk-${which}`, 'aria-pressed': 'false', 'data-testid': `walk-${which}` }, label);
+    b.addEventListener('click', () => {
+      held[which] = !held[which];
+      b.setAttribute('aria-pressed', String(held[which]));
+      send();
+    });
+    return b;
+  };
+  const run = toggle('run', i18n.t('ui.universe.walk.run'));
+  const rover = toggle('rover', i18n.t('ui.universe.walk.rover'));
+  // Run and jump above, the arrows below (a thumb's reach on a phone), the rover beside them.
+  const pad = h('div', { class: 'kf-walk-pad', role: 'group', 'aria-label': i18n.t('ui.universe.walk.pad') }, run, forward, jump, rover, left, backward, right);
 
   const back = h('button', { type: 'button', class: 'kf-btn kf-walk-back', 'aria-keyshortcuts': 'Escape', 'data-testid': 'walk-end' }, icon('back'), h('span', {}, i18n.t('ui.universe.walk.back')), h('kbd', { class: 'kf-walk-esc', 'aria-hidden': 'true' }, 'Esc'));
   back.addEventListener('click', () => {
@@ -151,6 +163,23 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
     app.earthCommand({ kind: 'walkRetry' });
   });
   const credit = h('p', { class: 'kf-walk-credit', 'data-testid': 'walk-credit', 'data-photo-credit': '' });
+  // The look's sense: the visitor's choice, kept in this browser (where it may be).
+  const scene = h('input', { type: 'checkbox', 'data-testid': 'walk-drag-scene' });
+  try {
+    scene.checked = localStorage.getItem(SCENE_KEY) === '1';
+  } catch {
+    scene.checked = false;
+  }
+  scene.addEventListener('change', () => {
+    try {
+      localStorage.setItem(SCENE_KEY, scene.checked ? '1' : '0');
+    } catch {
+      /* Not kept (a private window): it still holds for this visit. */
+    }
+    app.earthCommand({ kind: 'walkLook', scene: scene.checked });
+  });
+  if (scene.checked) app.earthCommand({ kind: 'walkLook', scene: true });
+  const sense = h('label', { class: 'kf-walk-option' }, scene, h('span', {}, i18n.t('ui.universe.walk.dragScene')));
   // The figures a newcomer may not know, each with its "?" (a row hides with its line).
   const groundRow = withHelp(app, ground, 'walkGround', i18n.t('ui.help.label.walkGround'));
   const gravityRow = withHelp(app, gravity, 'walkGravity', i18n.t('ui.help.label.walkGravity'));
@@ -159,8 +188,8 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
   const qiblaRow = withHelp(app, qibla, 'walkQibla', i18n.t('ui.help.label.walkQibla'));
   qiblaRow.hidden = true;
   // Folded to its one line on every screen: the view is the world's.
-  const suit = h('details', { class: 'kf-walk-suit' }, title, place, groundRow, gravityRow, airRow, sunRow, qiblaRow, credit);
-  const figures = [place, groundRow, gravityRow, airRow, sunRow];
+  const suit = h('details', { class: 'kf-walk-suit' }, title, place, groundRow, gravityRow, airRow, sunRow, qiblaRow, sense, credit);
+  const figures = [place, groundRow, gravityRow, airRow, sunRow, sense];
   const dock = h('div', { class: 'kf-walk-dock' }, notice, help, suit, pad);
   const top = h('div', { class: 'kf-walk-top' }, back);
   const element = h('aside', { class: 'kf-walk', 'aria-label': i18n.t('ui.universe.walk.label'), 'data-testid': 'walk-hud', hidden: true }, top, dock);
@@ -195,23 +224,28 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
     element,
     update(view) {
       const w = view.walk;
-      element.hidden = w === null && !view.walkRefused;
+      // A walk asked for and waiting (for a trip's arrival, or its code) is landing as far as the visitor can tell.
+      const waiting = w === null && view.walkWaiting;
+      element.hidden = w === null && !view.walkRefused && !waiting;
       const root = host();
       root.classList.toggle('is-walking', w !== null && w.state === 'walking');
-      // On foot (landing included): the way back to orbit stands in for the way back to the start.
-      root.classList.toggle('is-on-foot', w !== null);
+      // On foot (landing and waiting included): the way back to orbit stands in for the way back to the start.
+      root.classList.toggle('is-on-foot', w !== null || waiting);
       if (!w) {
-        write(titleText, view.walkRefused ? i18n.t('ui.universe.walk.refusedTitle') : '');
+        write(titleText, waiting ? i18n.t('ui.universe.walk.landing') : view.walkRefused ? i18n.t('ui.universe.walk.refusedTitle') : '');
         write(brief, '');
         notice.hidden = !view.walkRefused;
         write(notice, view.walkRefused ? i18n.t('ui.universe.walk.refused') : '');
         for (const el of [back, pad, ...figures, credit]) el.hidden = true;
+        back.hidden = !waiting;
         retry.remove();
         qiblaRow.hidden = true;
-        if (pressed.size > 0 || held.run) {
+        if (pressed.size > 0 || held.run || held.rover) {
           pressed.clear();
           held.run = false;
+          held.rover = false;
           run.setAttribute('aria-pressed', 'false');
+          rover.setAttribute('aria-pressed', 'false');
           send();
         }
         landed = false;
@@ -233,7 +267,7 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
       write(credit, i18n.t(on.credit));
       write(sun, i18n.t(w.sunElevationDeg < 0 ? 'ui.universe.walk.sunDown' : w.sunSeen ? 'ui.universe.walk.sunUp' : 'ui.universe.walk.sunClouded', { degrees: f.number(Math.abs(w.sunElevationDeg), 0), time: clock(w.solarTimeH) }));
       // The one notice that matters most: a step refused, heights that never came, or heights only coarse.
-      const say = w.blocked ? 'ui.universe.walk.blocked' : w.state === 'unavailable' ? 'ui.universe.walk.unavailable' : w.coarse ? 'ui.universe.walk.coarse' : null;
+      const say = w.blocked ? 'ui.universe.walk.blocked' : w.state === 'unavailable' ? 'ui.universe.walk.unavailable' : w.coarse ? 'ui.universe.walk.coarse' : walking && w.timeCapped ? 'ui.universe.walk.timeCap' : null;
       notice.hidden = say === null;
       write(notice, say ? i18n.t(say) : '');
       if (w.state !== 'unavailable') retry.remove();
@@ -252,7 +286,8 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
       if (walking && !landed) {
         helpSince = now;
         helpFrom = { walked: w.walkedM, heading: w.headingDeg };
-        announce(i18n.t('ui.universe.walk.landed', { title: i18n.t(on.title) }));
+        // Said as the visitor walks: the keys, or on a touch screen the pad and the look.
+        announce(i18n.t(window.matchMedia('(pointer: coarse)').matches ? 'ui.universe.walk.landedTouch' : 'ui.universe.walk.landed', { title: i18n.t(on.title) }));
       }
       landed = walking;
       if (helpSince > 0) {

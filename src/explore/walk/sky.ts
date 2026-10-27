@@ -74,7 +74,7 @@ function elevation(up: { x: number; y: number; z: number }, sun: { x: number; y:
 export function heldUnderBloom(colour: Vec3Node, exposure: FloatNode): Vec3Node {
   const l = dot(colour.mul(exposure), vec3(0.2126, 0.7152, 0.0722));
   const span = SKY_KNEE.ceiling - SKY_KNEE.knee;
-  const held = float(SKY_KNEE.knee).add(float(span).mul(float(1).sub(exp(l.sub(SKY_KNEE.knee).div(-span))))).div(max(l, 1e-6));
+  const held = float(SKY_KNEE.knee).add(float(span).mul(float(1).sub(pow(l.sub(SKY_KNEE.knee).div(SKY_KNEE.tail * span).add(1), -SKY_KNEE.tail)))).div(max(l, 1e-6));
   return colour.mul(select(l.greaterThan(SKY_KNEE.knee), held, float(1)));
 }
 

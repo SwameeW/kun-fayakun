@@ -21,3 +21,8 @@ declare module 'node:zlib' {
   /** A zlib stream of bytes (the walk's PNG decoder is checked on files made with it). */
   export function deflateSync(data: Uint8Array): Uint8Array;
 }
+
+declare module 'node:buffer' {
+  /** Node's Buffer, as route.fulfill takes a binary body (the walk's generated terrain tiles). */
+  export const Buffer: { from(data: Uint8Array): Uint8Array };
+}

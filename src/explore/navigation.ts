@@ -270,6 +270,13 @@ export class Navigator {
     return this.glide !== null;
   }
 
+  /** Stops a glide where it is (Esc during the climb back from a walk); true when there was one. */
+  stopGlide(): boolean {
+    const was = this.glide !== null;
+    this.glide = null;
+    return was;
+  }
+
   /** The narrowest lens the imagery supports (degrees); a lens narrower than that widens to it. */
   setLensMin(deg: number): void {
     this.lensMinDeg = deg;

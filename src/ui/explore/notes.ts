@@ -91,6 +91,7 @@ export function createNotes(app: App, f: Formatters, announce: (text: string) =>
   const slot = createFadeSlot(element, 900, 300);
   let shownKey = '';
   let currentId: string | null = null;
+  let quiet = false;
   let card: HTMLElement | null = null;
   let foldTimer = 0;
 
@@ -126,6 +127,8 @@ export function createNotes(app: App, f: Formatters, announce: (text: string) =>
   return {
     element,
     update(view) {
+      // On foot (landing included) the notes step aside, and say nothing over the walk's own words.
+      quiet = view.walk !== null || view.walkWaiting;
       const d = view.discovery;
       if (!d) {
         if (currentId !== null) slot.want(null);
@@ -147,7 +150,7 @@ export function createNotes(app: App, f: Formatters, announce: (text: string) =>
             return card;
           },
           onShow: () => {
-            announce(`${i18n.t(TITLES[id] ?? '')}. ${lines(id, values)[0] ?? ''}`);
+            if (!quiet) announce(`${i18n.t(TITLES[id] ?? '')}. ${lines(id, values)[0] ?? ''}`);
             // On a phone the note gives the world its screen back after a while.
             if (compact()) {
               const shown = card;
