@@ -18,7 +18,8 @@
  *   just before; and a quotation that matches a verse's translation (over 40 characters sharing at
  *   least 60% of the verse's words). Where the verse can be told, its marker takes the place of what
  *   was removed, so the verse is shown from data instead. An unquoted sentence that repeats a verse
- *   (most of its words, or seven of its translation's words in a row) is treated the same way;
+ *   (most of its words, or seven of its translation's words in a row) is treated the same way, and a
+ *   sentence telling what a hadith says ("the hadith states that…"): only its sourced summary is shown;
  * - unknown-citation: a citation marker whose id is not in the data, or of a kind the app does not
  *   cite by ("[[action:…]]"), is dropped; a sentence that
  *   names a verse by a key the data does not hold ("In 2:255 Allah says…"), or names a narration the
@@ -409,6 +410,32 @@ function unquotedVerses(text: string, data: OutputGuardData): { text: string; ch
   return { text: out.join(''), changed };
 }
 
+/** A hadith, a narration or the Prophet spoken of (what makes "it states that…" a hadith's content). */
+const HADITH_SOURCE = /\b(?:hadiths?|narrations?|narrated|narrator|sunnah|the\s+prophet|messenger\s+of\s+allah|sahih|bukhari|muslim|tirmidhi|abu\s+dawud|nasa['’]?i|ibn\s+majah)\b/iu;
+/** A sentence reporting what something says ("… states that the Sun…", "it tells how…"). */
+const REPORTS = /\b(?:says?|said|states?|stated|tells?|told|mentions?|mentioned|describes?|described|reports?|reported|teaches|taught|relates?|related|records?|recorded|narrates?|explains?|informs?)\s+(?:us\s+)?(?:that|how|of\s+how)\b/iu;
+
+/**
+ * What a hadith says is never the model's to tell: only data/hadith.json's sourced summary is shown,
+ * with the reference, narrator and grading. A sentence reporting a hadith's content ("The hadith states
+ * that…", or "It states that…" after one naming a hadith) is removed, whether or not it quotes: Qwen3.5
+ * 4B said a hadith the data holds "states that the sun has a 'resting place' beneath the Throne", which
+ * is another hadith's content (docs/AI-EVALUATION.md).
+ */
+function hadithContent(text: string): { text: string; changed: boolean } {
+  let changed = false;
+  let previous = '';
+  const out = sentences(text).map((s) => {
+    const bare = s.replace(MARKER, (m) => (m.startsWith('[[hadith:') ? ' hadith ' : ' '));
+    const about = HADITH_SOURCE.test(bare) || (/^\s*(?:it|this|that|the\s+report)\b/iu.test(bare) && HADITH_SOURCE.test(previous));
+    previous = bare;
+    if (!about || !REPORTS.test(bare)) return s;
+    changed = true;
+    return '';
+  });
+  return { text: out.join(''), changed };
+}
+
 /**
  * While a reply streams: where to stop showing it, so nothing is shown before it can be judged
  * whole (the text's length when all of it can be).
@@ -741,7 +768,9 @@ export function guardOutput(text: string, data: OutputGuardData): OutputGuardRes
   t = quoted.text;
   const repeated = unquotedVerses(t, data);
   t = repeated.text;
-  flag('scripture-quote', presented.changed || quoted.changed || repeated.changed);
+  const told = hadithContent(t);
+  t = told.text;
+  flag('scripture-quote', presented.changed || quoted.changed || repeated.changed || told.changed);
   const markers = citationMarkers(t, data);
   t = markers.text;
   const references = plainReferences(t, data);

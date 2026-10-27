@@ -817,6 +817,21 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     });
   }
 
+  /**
+   * The verses and hadith a tool put on screen this turn, as the passages that hold them (a verse's
+   * translation, a hadith's sourced summary), so a model explaining one reads it. Without them a model
+   * asked about a verse it had cited by key said what the verse says from memory, and wrongly ("verse
+   * 36:38 states that Allah creates whatever He wills", Qwen3.5 4B, docs/AI-EVALUATION.md).
+   */
+  function shownScripture(rec: TurnRecord, retriever: Retriever, searched: readonly Passage[]): Passage[] {
+    const out: Passage[] = [];
+    for (const b of rec.turn.blocks) {
+      const p = b.type === 'verse' ? retriever.get(`verse:${b.key}`) : b.type === 'hadith' ? retriever.get(`hadith:${b.id}`) : null;
+      if (p && !out.some((x) => x.id === p.id) && !searched.some((x) => x.id === p.id)) out.push(p);
+    }
+    return out.slice(0, MODEL_PASSAGES);
+  }
+
   function guideAnswer(rec: TurnRecord, passages: readonly Passage[]): void {
     const lines: string[] = [];
     for (const d of rec.done) {
@@ -940,7 +955,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     rec.passages = passages;
     const onlyViews = rec.done.length > 0 && rec.done.every((d) => d.tool.kind === 'view');
     let answered = false;
-    if (engine && !rec.guideOnly && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, passages, retriever);
+    if (engine && !rec.guideOnly && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, [...shownScripture(rec, retriever, passages), ...passages], retriever);
     checkpoint(rec);
     if (!answered) guideAnswer(rec, passages);
     rec.turn.timings.answerMs += now() - started;

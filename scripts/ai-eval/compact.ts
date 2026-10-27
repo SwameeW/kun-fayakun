@@ -15,10 +15,10 @@
  *   node --import tsx scripts/ai-eval/compact.ts <raw run.json> [...] --out docs/ai-eval
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDF9\uFDFB-\uFDFF\uFE70-\uFEFF]/u;
-const SHOWN_CHARS = 600;
+const SHOWN_CHARS = 400;
 
 interface RawCase {
   id: string;
@@ -100,9 +100,9 @@ function compactCase(c: RawCase): Record<string, unknown> {
   };
 }
 
-function compact(run: RawRun): Record<string, unknown> {
+function compact(run: RawRun, file: string): Record<string, unknown> {
   return {
-    compactOf: `.work/ai-eval/results/${run.model}-${run.mode}${run.tag ? `-${run.tag}` : ''}.json`,
+    compactOf: relative(process.cwd(), file),
     model: run.model,
     name: run.name,
     mode: run.mode,
@@ -134,7 +134,10 @@ mkdirSync(outDir, { recursive: true });
 for (const file of inputs) {
   const run = JSON.parse(readFileSync(file, 'utf8')) as RawRun;
   const target = join(outDir, basename(file));
-  const text = `${JSON.stringify(compact(run), null, 1)}\n`;
+  // One line for the run, one for each case: small, and a change to a case is one line of a diff.
+  const { cases, ...head } = compact(run, file) as { cases: unknown[] } & Record<string, unknown>;
+  const text = `${JSON.stringify(head).slice(0, -1)},"cases":[\n${cases.map((c) => JSON.stringify(c)).join(',\n')}\n]}\n`;
+  JSON.parse(text);
   if (ARABIC.test(text)) throw new Error(`${file}: the compact copy would hold Arabic script`);
   writeFileSync(target, text);
   process.stdout.write(`${target}: ${run.cases.length} cases, ${(text.length / 1024).toFixed(0)} KB\n`);

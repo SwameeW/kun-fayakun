@@ -55,13 +55,30 @@ const EXPERIMENT_ARGS = { type: 'object', properties: paramSchema(), required: [
 const labBodyIds = (ctx: AiContext): string[] => (ctx.lab ? ctx.lab.bodies.map((b) => b.id) : [...BODY_IDS]);
 const labBody = (ctx: AiContext): JsonSchema => ({ type: 'string', enum: labBodyIds(ctx), description: 'A laboratory body, by id' });
 
+/**
+ * What each number means, shown beside it in the plan's prompt. Without them three models made "the
+ * Sun 10% heavier" an orbit 1.1 times as wide (change-orbit's aFactor, not scale-mass's factor).
+ */
+const PARAM_NOTES: Readonly<Record<string, string>> = {
+  factor: "multiply the body's mass by this",
+  dvKmS: 'km/s added to its speed',
+  diameterKm: "the impactor's size, km",
+  speedKmS: 'km/s',
+  angleDeg: 'degrees above the horizon',
+  distanceKm: 'km from the host',
+  massKg: 'kg; a large number as a power of ten: 1e22',
+  massSun: 'solar masses',
+  distanceAu: 'au from the Sun',
+  aFactor: "multiply the orbit's size by this",
+  e: 'eccentricity: 0 a circle',
+};
+
 function experimentForms(ctx: AiContext): JsonSchema {
   return {
     anyOf: EXPERIMENT_IDS.map((id): JsonSchema => {
       const spec = EXPERIMENT_PARAMS[id];
       const properties: Record<string, JsonSchema> = { experiment: { type: 'string', const: id } };
-      // A large number as a power of ten: Qwen3 4B, asked for 1e22 kg, wrote 27 digits (about 1e26).
-      for (const [name, p] of Object.entries(spec)) properties[name] = p.kind === 'body' ? labBody(ctx) : p.kind === 'number' ? { type: 'number', minimum: p.min, maximum: p.max, ...(p.max >= 1e9 ? { description: 'Write a large number as a power of ten: 1e22' } : {}) } : { type: 'string', enum: p.of };
+      for (const [name, p] of Object.entries(spec)) properties[name] = p.kind === 'body' ? labBody(ctx) : p.kind === 'number' ? { type: 'number', minimum: p.min, maximum: p.max, ...(PARAM_NOTES[name] ? { description: PARAM_NOTES[name] } : {}) } : { type: 'string', enum: p.of };
       properties.horizonDays = { type: 'number', minimum: HORIZON_DAYS.min, maximum: HORIZON_DAYS.max, description: 'Days to integrate ahead' };
       return { type: 'object', properties, required: ['experiment', ...Object.keys(spec)], additionalProperties: false };
     }),

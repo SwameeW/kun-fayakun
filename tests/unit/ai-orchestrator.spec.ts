@@ -255,6 +255,20 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
 const ofType = <T extends AnswerBlock['type']>(turn: Turn, type: T): Extract<AnswerBlock, { type: T }>[] => turn.blocks.filter((b): b is Extract<AnswerBlock, { type: T }> => b.type === type);
 const plan = (value: unknown): string => JSON.stringify(value);
 
+test.describe('a verse a tool shows', () => {
+  test('is in the passages the model reads, so it explains the verse it cited, not one from memory', async () => {
+    const v = index.passages.find((p) => p.id === 'verse:21:30');
+    if (!v) throw new Error('no 21:30');
+    // "act": nothing is searched for, so the verse's text can reach the model only as the verse shown.
+    const h = harness([{ format: 'json', match: '', reply: plan({ intent: 'act', calls: [{ tool: 'cite.verse', args: { key: '21:30' } }] }) }, { format: 'text', match: '', reply: 'The verse speaks of the heavens and the earth [[verse:21:30]].' }], { offered: ['cite.verse'] });
+    await h.ai.use(SPEC);
+    await h.ai.ask('tell me what that verse about the heavens means');
+    const answer = h.engine.requests.find((r) => r.format.kind === 'text');
+    expect(answer?.messages[0]?.content).toContain('[[verse:21:30]]');
+    expect(answer?.messages[0]?.content).toContain(v.text.slice(0, 60));
+  });
+});
+
 test.describe('a model that writes explanations only', () => {
   test('is never asked to plan: the router chooses, retrieval finds, the model explains; the evaluation can still ask it', async () => {
     const explainer: ModelSpec = { ...SPEC, id: 'Test-0B', plans: false };

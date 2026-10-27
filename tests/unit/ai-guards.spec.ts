@@ -221,6 +221,20 @@ test.describe('output', () => {
     expect(guardOutput('The heavens and the earth took shape over billions of years.', data({ facts: [] })).flags).not.toContain('scripture-quote');
   });
 
+  test('what a hadith says is never the model’s to tell: such sentences go, the reference stays', () => {
+    // As Qwen3.5 4B wrote it.
+    const out = guardOutput('Yes. A Sahih hadith from Sahih al-Bukhari 3191, narrated by Imran ibn Husain, is cited. It states that the sun has a "resting place" beneath the Throne. Commentators give two views.', data({ facts: [], given: ['Sahih al-Bukhari 3191'] }));
+    expect(out.text).toBe('Yes. A Sahih hadith from Sahih al-Bukhari 3191, narrated by Imran ibn Husain, is cited. Commentators give two views.');
+    expect(out.flags).toContain('scripture-quote');
+    for (const told of ['The hadith says that before creation there was nothing.', 'The Prophet said that the Sun prostrates.', 'This narration tells how the pen was created first.', 'Sahih Muslim records that the stars are guardians.', '[[hadith:bukhari-3191]] explains that Allah wrote everything.']) {
+      expect(guardOutput(told, data({ facts: [] })).text, told).toBe('');
+    }
+    // A hadith named, placed or graded is not its content; nor is a verse explained from its passage.
+    for (const kept of ['The chapter shows a hadith about the beginning of creation.', 'The hadith is recorded by al-Bukhari and graded sahih.', 'The verse says that the heavens and the earth were joined, as the passage explains.']) {
+      expect(guardOutput(kept, data({ facts: [] })).text, kept).toBe(kept);
+    }
+  });
+
   test('a chapter and verse number read from a verse key are not unchecked numbers', () => {
     const out = guardOutput('That verse is chapter 57, verse 25 of the Quran.', data({ facts: [], passages: [{ id: 'verse:57:25', kind: 'verse', ref: '57:25', title: '57:25', text: 'iron', knowledge: 'scripture' } as unknown as Passage] }));
     expect(out.flags).not.toContain('unchecked-number');

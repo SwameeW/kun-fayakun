@@ -310,8 +310,9 @@ test('the laboratory’s tools are offered its bodies by id and one form per exp
   expect(registry.validate({ tool: 'lab.compare', args: { experiment: 'scale-mass', body: 'sun', factor: 1.1 } }, BASE).ok).toBe(true);
   // The prompt shows the forms.
   const lines = buildPlanMessages('Double the Sun', LAB, [registry.get('lab.experiment') as ToolDefinition], [])[0]?.content ?? '';
-  expect(lines).toContain('{experiment: scale-mass, body: sun|earth|moon, factor: number, horizonDays?: number (Days to integrate ahead)} or {experiment: remove-body');
-  expect(lines).toContain('massKg: number (Write a large number as a power of ten: 1e22)');
+  expect(lines).toContain("{experiment: scale-mass, body: sun|earth|moon, factor: number (multiply the body's mass by this), horizonDays?: number (Days to integrate ahead)} or {experiment: remove-body");
+  expect(lines).toContain("aFactor: number (multiply the orbit's size by this)");
+  expect(lines).toContain('massKg: number (kg; a large number as a power of ten: 1e22)');
 });
 
 test('a place is offered by its name or by degrees, flat; the tool’s own check says which go together', () => {
