@@ -10,8 +10,16 @@
  * Keys, by physical code so other layouts work: W A S D fly forward, left, back and right, R and F
  * up and down, Q and E roll, Shift for five times the speed, arrows orbit (or look), + and - zoom,
  * O orbits the nearest body again, Esc stops a trip (a second Esc, with nothing to stop, goes on to
- * the interface and back to the film). Keys are ignored while typing in a field, inside a dialog
- * or in a widget that owns them (data-kf-keys="own"), and with Ctrl, Cmd or Alt held.
+ * the interface and back to the film; a held Esc's repeats go nowhere). Keys are ignored while typing
+ * in a field, inside a dialog or in a widget that owns them (data-kf-keys="own"), and with Ctrl, Cmd
+ * or Alt held.
+ *
+ * On foot (the target's onFoot, from what is shown: not while the camera still waits in orbit for the
+ * ground): on the ground Space jumps (the page's play key is left alone then, except on a focused
+ * button or link, which Space presses); there and on the way down through an air, a click on the view
+ * (a mouse's, without a drag) locks the pointer for mouse-look until Esc (the browser's own key for
+ * it) lets it go. On the way down Space stays the page's play key (a descent has no jump). On the
+ * ground V held rides the rover.
  *
  * Keyboard table (the film's shortcuts in the explorer): Space, the arrows' chapter steps, P and E
  * do nothing here (the film's handler finds no chapter), so E can roll and the arrows orbit; Esc is
@@ -38,7 +46,11 @@ const MOVE_KEYS: Readonly<Record<string, readonly [number, number, number]>> = {
   KeyD: [1, 0, 0],
   KeyR: [0, 1, 0],
   KeyF: [0, -1, 0],
+  // Up on foot only: a jump (elsewhere Space is the page's play key).
+  Space: [0, 1, 0],
 };
+/** Mouse-look's turn per pixel moved, as a share of a drag's (a locked pointer reports raw movement). */
+const LOCKED_LOOK = 0.7;
 const ROLL_KEYS: Readonly<Record<string, number>> = { KeyQ: -1, KeyE: 1 };
 const TURN_KEYS: Readonly<Record<string, readonly [number, number]>> = {
   ArrowLeft: [1, 0],
@@ -55,6 +67,8 @@ const ZOOM_KEYS: Readonly<Record<string, number>> = {
   PageDown: 1,
 };
 const BOOST_KEYS = new Set(['ShiftLeft', 'ShiftRight']);
+/** On foot, V held rides the rover. */
+const RIDE_KEY = 'KeyV';
 
 /** What the input steers (the explorer wires these to its navigator). */
 export interface InputTarget {
@@ -65,9 +79,12 @@ export interface InputTarget {
   /** Natural-log units of height, positive away. */
   zoom(dLn: number): void;
   orbitKeys(azimuth: number, elevation: number, zoom: number): void;
-  flightKeys(move: Km, roll: number, boost: boolean): void;
+  /** Moves (W A S D, R F, Space), roll (Q E), Shift's boost, and on foot V's ride. */
+  flightKeys(move: Km, roll: number, boost: boolean, ride?: boolean): void;
   /** Esc: true when it stopped a trip (then nothing else hears it). */
   stop(): boolean;
+  /** The eye shown on the ground (Space jumps) or going down through an air, where a click locks the pointer for mouse-look; null otherwise (landing still waits in orbit). */
+  onFoot?(): 'ground' | 'air' | null;
   /** O: orbit the body the camera is near. */
   orbit(): void;
   /** The body under a point of the canvas (client px), or null. */
@@ -89,6 +106,9 @@ export interface ExploreInput {
   attach(): void;
   detach(): void;
 }
+
+/** A focused control Space presses (a button, a link, a summary): Space is its own there. */
+const pressable = (target: EventTarget | null): boolean => target instanceof HTMLElement && target.closest('button, a[href], summary, [role="button"]') !== null;
 
 function ownedElsewhere(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -151,7 +171,7 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     move.x = Math.sign(x);
     move.y = Math.sign(y);
     move.z = Math.sign(z);
-    target.flightKeys(move, Math.sign(roll), [...held].some((code) => BOOST_KEYS.has(code)));
+    target.flightKeys(move, Math.sign(roll), [...held].some((code) => BOOST_KEYS.has(code)), held.has(RIDE_KEY));
     target.orbitKeys(Math.sign(azimuth), Math.sign(elevation), Math.sign(zoom));
   };
 
@@ -175,6 +195,11 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
   };
 
   const onPointerMove = (e: PointerEvent): void => {
+    // Mouse-look: a locked pointer turns the view by how far the mouse moves, no button held.
+    if (document.pointerLockElement === element) {
+      if (target.onFoot?.()) target.drag(e.movementX * LOCKED_LOOK, e.movementY * LOCKED_LOOK);
+      return;
+    }
     const p = pointers.get(e.pointerId);
     if (!p) {
       if (e.pointerType === 'mouse' && pointers.size === 0) target.hover?.(e.clientX, e.clientY);
@@ -224,6 +249,21 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
       lastTap = null;
       return;
     }
+    // On foot a mouse's click takes the pointer for mouse-look (where the browser allows it); clicks
+    // while it is taken do nothing else (its place on screen is wherever it was taken).
+    if (document.pointerLockElement === element) {
+      lastTap = null;
+      return;
+    }
+    if (p.type === 'mouse' && target.onFoot?.()) {
+      lastTap = null;
+      try {
+        void Promise.resolve(element.requestPointerLock()).catch(() => undefined);
+      } catch {
+        /* Refused (an embedded page, a browser without it): dragging still looks. */
+      }
+      return;
+    }
     if (target.tap?.(e.clientX, e.clientY)) {
       lastTap = null;
       return;
@@ -249,10 +289,11 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     e.preventDefault();
   };
 
-  const known = (code: string): boolean => code in MOVE_KEYS || code in ROLL_KEYS || code in TURN_KEYS || code in ZOOM_KEYS || BOOST_KEYS.has(code);
+  const known = (code: string): boolean => code in MOVE_KEYS || code in ROLL_KEYS || code in TURN_KEYS || code in ZOOM_KEYS || BOOST_KEYS.has(code) || (code === RIDE_KEY && target.onFoot?.() === 'ground');
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || ownedElsewhere(e.target)) return;
+    if (e.code === 'Space' && (target.onFoot?.() !== 'ground' || pressable(e.target))) return;
     if (e.code === 'KeyO' && !e.repeat) {
       target.orbit();
       e.preventDefault();
@@ -269,9 +310,22 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     if (held.delete(e.code)) syncKeys();
   };
 
-  /** Esc first lets go of a grabbed thing, then stops a trip; only when there is neither does it go on to the interface. */
+  /**
+   * Before the page hears a key: on foot Space is the walk's (the page's play key waits); Esc first
+   * lets go of a grabbed thing, then stops a trip; only when there is neither does it go on to the
+   * interface, and a held Esc's repeats never do.
+   */
   const onEscape = (e: KeyboardEvent): void => {
+    if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey && !ownedElsewhere(e.target) && !pressable(e.target) && target.onFoot?.() === 'ground') {
+      e.preventDefault();
+      return;
+    }
     if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey || ownedElsewhere(e.target)) return;
+    if (e.repeat) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const grabbed = [...pointers.values()].find((p) => p.grab);
     if (grabbed) {
       grabbed.grab = false;

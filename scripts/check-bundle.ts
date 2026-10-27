@@ -69,8 +69,8 @@ const LAB_BUDGET_BYTES = 250_000;
 const ISLAMIC_SOURCES = ['src/explore/islamic/index.ts', 'src/ui/explore/islamic-panel.ts'] as const;
 /** What that section may add beyond the shell and the explorer, gzipped. */
 const ISLAMIC_BUDGET_BYTES = 40_000;
-/** Walking on a world's ground's lazy entry points (loaded with the first walk): the walk (walker, ground, sky), its terrain tiles' reader, and the Moon's and Mars's grids' reader. */
-const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts', 'src/explore/walk/equirect.ts'] as const;
+/** Walking on a world's ground's lazy entry points (loaded with the first walk): the walk (walker, ground, sky), its terrain tiles' reader, the Moon's and Mars's grids' reader, and the suit's readout. */
+const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts', 'src/explore/walk/equirect.ts', 'src/ui/explore/walk-hud.ts'] as const;
 /** What walking may add beyond the shell and the explorer, gzipped. */
 const WALK_BUDGET_BYTES = 30_000;
 /** Photo mode's controls (loaded the first time it opens): the picture, a video, the lens, the exposure, tracking. */

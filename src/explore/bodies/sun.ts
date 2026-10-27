@@ -95,6 +95,8 @@ export interface SunFrame {
   /** The filter's colour (white for none), and how far it is on (0 to 1). */
   filter: readonly [number, number, number];
   filtered: number;
+  /** The air's colour on the way (on foot: the Sun reddening and dimming as it sets), white when not given. */
+  tint?: readonly [number, number, number];
   /** The disc's radius on screen, CSS px. */
   radiusPx: number;
   /** The camera's right and up (render frame, unit), for the limb sprite. */
@@ -284,7 +286,8 @@ export function createSun(noise: Data3DTexture, limb: SunLimb, initial: ExploreD
       uTime.value = frame.time;
       uLight.value = frame.light;
       uCeiling.value = SUN_CEILING / Math.max(frame.exposure, 1e-6);
-      uFilter.value.set(frame.filter[0], frame.filter[1], frame.filter[2]);
+      const [tr, tg, tb] = frame.tint ?? [1, 1, 1];
+      uFilter.value.set(frame.filter[0] * tr, frame.filter[1] * tg, frame.filter[2] * tb);
       uFiltered.value = frame.filtered;
       if (frame.kelvin !== kelvin) {
         kelvin = frame.kelvin;

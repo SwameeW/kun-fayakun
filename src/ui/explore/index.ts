@@ -7,7 +7,7 @@ import { createFlightHud } from './flight-hud';
 import { formatters } from './format';
 import { createNavigator } from './navigator';
 import { createDescentHud } from './descent-hud';
-import { createWalkHud } from './walk-hud';
+import type { WalkHud } from './walk-hud';
 import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
 import { createTimeControl } from './time-control';
@@ -81,7 +81,14 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     if (typeof line === 'string') toast.show(line);
   });
   const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
-  const walkHud = createWalkHud(app, f, () => element);
+  // The suit's readout comes with its own chunk, the first time a walk is asked for (or refused).
+  const walkSlot = h('div', { hidden: true });
+  let walkHud: WalkHud | null = null;
+  let walkHudLoading = false;
+  let walkHudFailed = false;
+  /** On foot last frame, and whether the navigator was open before the walk landed (it folds, and opens again after). */
+  let wasOnFoot = false;
+  let navBeforeWalk = false;
   const descentHud = createDescentHud(app, f, () => element);
   // The time machine heads the navigator, with photo mode's button at the end of its line.
   const time = createTimeControl(app, announce);
@@ -152,7 +159,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     hud.trip,
     notes.element,
     hud.readout,
-    walkHud.element,
+    walkSlot,
     descentHud.element,
     toast.element,
     navigator.element,
@@ -271,7 +278,33 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
-    walkHud.update(view);
+    if (!walkHud && !walkHudLoading && (view.walk !== null || view.walkRefused || view.walkWaiting)) {
+      walkHudLoading = true;
+      // Its code not arriving leaves the walk without its readout (Esc still goes back); the next walk asks again.
+      void import('./walk-hud')
+        .then(({ createWalkHud }) => {
+          if (walkHud) return;
+          walkHud = createWalkHud(app, f, () => element, announce);
+          walkSlot.replaceWith(walkHud.element);
+        })
+        .catch(() => {
+          walkHudFailed = true;
+        });
+    }
+    if (walkHudFailed && view.walk === null && !view.walkRefused && !view.walkWaiting) walkHudFailed = walkHudLoading = false;
+    walkHud?.update(view);
+    // Landed: the navigator folds, leaving the view to the world, and focus is the explorer's (so the
+    // keys walk); back in orbit it opens again if it was open.
+    const onFoot = view.walk?.state === 'walking';
+    if (onFoot !== wasOnFoot) {
+      wasOnFoot = onFoot;
+      if (onFoot) {
+        navBeforeWalk = navigator.expanded;
+        navigator.setExpanded(false);
+        if (focusLost() || navigator.element.contains(document.activeElement)) element.focus({ preventScroll: true });
+      } else if (navBeforeWalk) navigator.setExpanded(true);
+      requestAnimationFrame(reportInsets);
+    }
     descentHud.update(view);
     // Among the stars the solar system's readout and notes step aside.
     element.classList.toggle('is-among-stars', view.neighbourhood !== null);

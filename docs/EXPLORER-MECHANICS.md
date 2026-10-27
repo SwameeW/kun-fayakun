@@ -85,9 +85,13 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
 - **On foot on the Earth** (SpaceEngine's surface view, and the brief's space suit, ledger GR-5;
   `docs/WALKING.md`). "Walk here" stands the visitor on the ground below: first person at 1.7 m,
   walking, running and jumping at the Earth's gravity, on the Terrain Tiles' heights out to the
-  horizon under the streamed imagery, with the day's sky, its twilight and the stars at night. The
-  suit reads out the ground's height, gravity, the air's pressure at the feet and the Sun's height.
-  Makkah's 25 km rule holds on foot.
+  horizon under the streamed imagery, with the day's sky (the explorer's own air, scattered from the
+  walker's eye), its twilight and the stars at night, the terrain's own shadows, and an eye that
+  adapts to the light where it stands and meters the ground it looks at. W A S D, Shift, Space and a
+  drag (or mouse-look) as in any first-person view, V for a rover, the wheel or a pinch to zoom; a pad
+  on every screen (its 44 px targets made for touch); Back to orbit (Esc) top left. The suit reads out the
+  ground's height, gravity, the air's pressure at the feet and the Sun's height. Makkah's 25 km rule
+  holds on foot.
 
 - **Saved views** (ledger GR-4): the navigator keeps views under a name in this browser: the world,
   the place beneath the camera, the height and the date, or on foot the walk (its place, heading and

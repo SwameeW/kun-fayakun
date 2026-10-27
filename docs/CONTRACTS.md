@@ -331,7 +331,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   the picture is dim, with neither bank nor lens. Esc stops a trip (the camera coasts to rest in free
   flight; a reduced-motion cut not yet made is called off, the light easing back where the visitor
   was, and one already made finishes) or folds a pulled-up navigator sheet; with neither to do, Esc
-  goes back to the film. Entering, the camera pushes in on the first world from 2.4 times its framing
+  goes back to the film. On foot (or going down through an atmosphere) Esc is the walk's from the
+  moment one is asked for until a second after the climb back to orbit ends, each press within it
+  holding it a second longer, and a held Esc's repeats go nowhere: Esc never leaves the explorer from
+  the ground. Esc during that climb stops it where it is; a walk waiting for a trip is dropped with
+  the trip. Entering, the camera pushes in on the first world from 2.4 times its framing
   distance over 5.5 s (it fills much of the view from the first frame; none with reduced motion), and
   the hint waits until the camera has settled.
 - **Flight** (`src/explore/flight.ts`, `src/explore/input.ts`). Exact critically damped springs on
@@ -641,46 +645,87 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
 `docs/WALKING.md`.
 
 - **Modules** (`src/explore/walk/`, its own lazy chunk, loaded with the first walk):
-  - `terrain.ts`: `TERRAIN`, `decodeTerrarium`, `mercatorPixel`, `zoomFor`, and
-    `createHeights(loader)`, which has `at`, `want`, `stats` and `revision(zoom)`. `revision(zoom)`
-    counts the tiles returned at that zoom or coarser. Also `terrariumLoader(url)`.
-  - `walker.ts`: `WALK`, `createWalker`, `look`, `stepWalker`, `localFrame`, `walkerPose`,
-    `pressureKpa`, `sunElevationDeg`, `solarTimeHours`.
-  - `ground.ts`: `GROUND`, and `createGround(colour, sunlight, noise)`, the clipmap.
-  - `sky.ts`: `createWalkSky`.
-  - `daylight.ts`: `DAYLIGHT`, `starlight`, `skyGain`, `ambient`, `haze`, `twilight`,
-    `preethamSunIntensity`.
+  - `terrain.ts`: `TERRAIN` (with `retryS`, the waits before a failed tile is asked for again),
+    `decodeTerrarium`, `despike`, `mercatorPixel`, `zoomFor`, and `createHeights(loader, maxZoom,
+    now)`, which has `at`, `read` (without asking), `want`, `stats`, `retry` and `revision(zoom)`.
+    `revision(zoom)` counts the tiles returned at that zoom or coarser. Also `terrariumImage(url)`
+    and `terrariumLoader(url)`.
+  - `png.ts`: `decodePng(bytes)` and `unfilter`: PNG pixels in script (no canvas read-back).
+  - `walker.ts`: `WALK` (walking, running and the rover's speeds), `createWalker`, `look`
+    (first-person sense), `stepWalker`, `localFrame`, `walkerPose`, `pressureKpa`, `sunElevationDeg`,
+    `sunAzimuthDeg`, `solarTimeHours`.
+  - `ground.ts`: `GROUND`, `HORIZON`, `VENUS_HAZE`, `MARS_HAZE`, and `createGround(colour, { light,
+    seaLevel, surface })`, the clipmap with its horizon maps (its `copy`, the rings again, is what
+    the eye's meter draws), and on the Earth the sea as water.
+  - `light.ts`: `EXPOSURE`, `METER`, `MARS_DUST`, `VENUS_FILL`, `AIRLESS_FILL`, `NIGHT_SKY`,
+    `GROUND_ALBEDO`, `MULTIPLE`, `CLEAR_DAY_AEROSOLS`, `SKY_KNEE`, `SUN_DISC`, `REGOLITH`,
+    `HORIZON_MARCH`, `luminance`, `airMass`, `sunThroughAir`, `earthSkyLight`, `marsSunlight`,
+    `marsSkyLight`, `venusDay`, `groundIlluminance`, `walkExposure(illuminance, light, seen)`,
+    `skyRadiance` (the CPU twin of the sky), `clearDayAir`, `sunDiscTint`, `lunarLambert`,
+    `horizonRise`, `skyCompression`.
+  - `meter.ts`: `createMeter(ground)`: the eye's meter, the ground in view drawn small and read back
+    from the GPU without waiting (its `luminance`, `readings`).
+  - `scatter.ts`: `scatter(air, table, eye, ray, sun, steps, limit)`, the Earth's air along a ray
+    (TSL), for the sky and the ground's aerial perspective.
+  - `sky.ts`: `createWalkSky(kind, air)`, `heldUnderBloom`, `MARS_SKY`, `VENUS_SKY`.
+  - `daylight.ts`: `DAYLIGHT`, `starlight`.
   - `index.ts`: `createWalk(setup)`, which returns `start`, `stop`, `where`, `starlight`, `look`,
-    `step`, `place`, `view` and `dispose`.
-- **App, module and view.** `app.earthCommand` takes three walk commands:
-  - `{ kind: 'walk', lat?, lon? }`: at the place, or at the point below the view;
+    `step`, `place`, `view`, `exposure`, `sunColour`, `setDetail`, `retry` and `dispose`.
+- **App, module and view.** `app.earthCommand` takes five walk commands:
+  - `{ kind: 'walk', world?, lat?, lon?, headingDeg?, pitchDeg? }`: at the place, or at the point
+    below the view (during a trip it waits for the arrival);
   - `{ kind: 'walkEnd' }`;
-  - `{ kind: 'walkPad', forward, jump }`: the on-screen pad.
+  - `{ kind: 'walkPad', forward, right?, run?, rover?, jump }`: the on-screen pad (values that are
+    not numbers count as 0);
+  - `{ kind: 'walkLook', scene }`: the look's sense on foot (a drag moves the scene with it when
+    true; the default turns the view the way the hand moves);
+  - `{ kind: 'walkRetry' }`: ask again at once for heights that could not be loaded.
 
-  `UniverseView.walk` is a `UniverseWalk` or null. It holds the state (`landing`, `walking`), the
-  place, the ground's height and the feet's, the heading and pitch, `airborne`, `blocked`,
-  `walkedM`, `gravity`, `pressureKpa`, `meanTempC`, `sunElevationDeg`, `solarTimeH`, `groundZoom`,
-  the tiles, and the rings filled. `UniverseView.walkRefused` says a walk was refused at Makkah.
+  `UniverseView.walk` is a `UniverseWalk` or null. It holds the state (`landing`, `walking`, or
+  `unavailable` when no heights for the place have come after 15 s), `coarse` (landed on coarser
+  heights than asked for), the place, the ground's height and the feet's, the heading and pitch,
+  `airborne`, `blocked`, `walkedM`, `gravity`, `pressureKpa`, `meanTempC`, `sunElevationDeg`,
+  `sunAzimuthDeg`, `solarTimeH`, `groundZoom`, the tiles, the rings filled, the eye's meter's
+  readings (`metered`) and its last (`groundLuminance`), the field of view (`fovDeg`), and whether
+  the time machine is held down on foot (`timeCapped`). `UniverseView.walkRefused` says a walk was
+  refused at Makkah; `UniverseView.walkWaiting` that one asked for waits (for a trip's arrival, or
+  its code). While walking the explorer's exposure is the walk's (`exposure()`), the Sun's disc and
+  glare take its colour (`sunColour`), the camera is not turned to frame the clear part of the view
+  (the horizon stays level), the worlds' names show only as the stars come out (never the Sun's),
+  and the time machine runs at most an hour a second (on the way down through an atmosphere too).
+  The input's `onFoot` is what is shown, not what is asked for: `'ground'` once the walker's eye is
+  the camera (Space jumps; a mouse's click takes the pointer), `'air'` on the way down (a click takes
+  the pointer; Space stays the play key), null while landing waits in orbit.
 - **Constants used:**
   - `earth.atmosphere.surfacePressure` (101.4 kPa);
   - `earth.atmosphere.scaleHeight`;
   - `earth.atmosphere.averageTemperature` (15 °C);
   - gravity from the Earth's GM (DE440) at the mean of `physical.bodies.Earth.radiiKm`.
 - **Interface:**
-  - `src/ui/explore/walk-hud.ts`. Test ids: `walk-hud`, `walk-title`, `walk-place`, `walk-ground`,
-    `walk-gravity`, `walk-air`, `walk-sun`, `walk-notice`, `walk-forward`, `walk-backward`,
-    `walk-jump` and `walk-end`.
+  - `src/ui/explore/walk-hud.ts`, loaded with the first walk (or refusal). Test ids: `walk-hud`,
+    `walk-title`, `walk-brief`, `walk-place`, `walk-ground`, `walk-gravity`, `walk-air`, `walk-sun`,
+    `walk-qibla`, `walk-notice`, `walk-help`, `walk-forward`, `walk-backward`, `walk-left`,
+    `walk-right`, `walk-run` and `walk-rover` (`aria-pressed`), `walk-jump`, `walk-drag-scene` (the
+    look's sense, kept in localStorage as `kf-walk-drag-scene`), `walk-end` (with
+    `aria-keyshortcuts` Escape) and `walk-retry` (only while the heights could not be loaded).
   - The Living Earth panel's `living-walk` button.
-  - The explorer section gets `is-walking`, which hides the readout from orbit, and the notes and
-    the hint on a narrow screen.
+  - The explorer section gets `is-on-foot` while a walk is asked for (waiting included), landing or under way (the way
+    back to orbit stands in for `universe-back`, which waits), and `is-walking` once landed, which
+    hides the readout from orbit, the notes and the hint on every screen. Landing folds the
+    navigator (it opens again after, if it was open); the notes say nothing on foot.
   - Messages: `ui.universe.walk.*`.
 - **Rules:**
   - No walk begins within `MAKKAH_FRAME.radiusKm` (25 km) of the Kaaba, and no step enters it.
-  - The fixed 70° field of view spans at least 35 km there.
-  - A trip (`nav.travelling`) ends a walk.
-- **Budget.** `scripts/check-bundle.ts` holds walking's lazy files to 30,000 bytes gzipped.
+  - The field of view on foot (70°, the wheel or a pinch narrowing it to 20° or widening it to 90°)
+    never narrows there below `MAKKAH_FRAME.minWidthKm` (30 km) across.
+  - A trip (`nav.travelling`) ends a walk; a walk asked for during a trip goes where the trip goes
+    (dropped if the trip turns elsewhere, is stopped, or ends at another world).
+- **Budget.** `scripts/check-bundle.ts` holds walking's lazy files (the suit's readout included) to
+  30,000 bytes gzipped.
 - **Tests** (mocked terrain): `tests/support/live.ts` serves `tests/support/terrain-1000m.png`, flat
-  at `MOCK_GROUND_M` (1,000 m), for every terrain tile.
+  at `MOCK_GROUND_M` (1,000 m), for every terrain tile; `tests/support/terrain.ts` makes PNGs and,
+  per tile, terrarium tiles of any height field over the world (`routeTerrain`: a cliff, a hill, the
+  sea), the same at every zoom.
 
 ## Browsers and local testing (measured on this machine)
 

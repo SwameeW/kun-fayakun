@@ -533,6 +533,8 @@ export interface UniverseView {
   walk: UniverseWalk | null;
   /** The last walk asked for was refused (a forbidden place: Makkah, by its framing rule), until another starts. */
   walkRefused: boolean;
+  /** A walk asked for and waiting (for a trip's arrival, or its own code) before `walk` reports it: the way back to orbit shows meanwhile. */
+  walkWaiting: boolean;
   /**
    * Where a walk without a place would begin: the point beneath the camera (degrees) on the world in
    * view when there is ground to walk on there and it is drawn at its true size; else null (and in
@@ -980,8 +982,14 @@ export type WalkableWorld = 'earth' | 'moon' | 'mars' | 'mercury' | 'venus';
 
 /** On foot (src/explore/walk) as the view reports it. */
 export interface UniverseWalk {
-  /** 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking'. */
-  state: 'landing' | 'walking';
+  /**
+   * 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking';
+   * 'unavailable' when no heights for the place have loaded after a while (still asked for, with a
+   * back-off: the walk lands as soon as some arrive).
+   */
+  state: 'landing' | 'walking' | 'unavailable';
+  /** Landed on coarser heights than the walk asks for (the finer ones did not load in time; they still may). */
+  coarse: boolean;
   world: WalkableWorld;
   lat: number;
   lon: number;
@@ -1003,8 +1011,9 @@ export interface UniverseWalk {
   pressureKpa: number | null;
   meanTempC: number | null;
   dayRangeC: { min: number; max: number } | null;
-  /** The Sun's elevation (degrees), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
+  /** The Sun's elevation and azimuth (degrees; azimuth clockwise from north), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
   sunElevationDeg: number;
+  sunAzimuthDeg: number;
   sunSeen: boolean;
   solarTimeH: number;
   /** On the Earth, the qibla's great-circle bearing from where the walker stands (degrees from true north); null elsewhere. */
@@ -1013,6 +1022,12 @@ export interface UniverseWalk {
   groundZoom: number | null;
   tiles: { ready: number; loading: number; failed: number };
   rings: number;
+  /** Readings of the ground in view the eye's meter has taken (src/explore/walk/meter), and the last one: its luminance (scene units, before the exposure; null before one). */
+  metered: number;
+  groundLuminance: number | null;
+  /** The field of view on foot (degrees, top to bottom: the wheel or a pinch narrows and widens it), and whether the time machine's rate is held down to the most it runs on foot. */
+  fovDeg: number;
+  timeCapped: boolean;
 }
 
 /** Commands for the qibla and the new moon. */
@@ -1305,8 +1320,12 @@ export type EarthCommand =
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }
-  /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
-  | { kind: 'walkPad'; forward: number; jump: boolean };
+  /** On-screen walking (the pad): Forward or Back held (1, -1, or 0), a step left or right held (-1, 1, or 0), running, riding the rover, Jump held. */
+  | { kind: 'walkPad'; forward: number; right?: number; run?: boolean; rover?: boolean; jump: boolean }
+  /** The look's sense on foot: a drag turns the view the way the hand moves (false, the default), or moves the scene with it (true). */
+  | { kind: 'walkLook'; scene: boolean }
+  /** Asks again at once for the ground's heights that could not be loaded (a walk waiting on them). */
+  | { kind: 'walkRetry' };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';

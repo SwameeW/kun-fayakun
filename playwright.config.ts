@@ -97,7 +97,7 @@ export default defineConfig<KfOptions>({
       ? [
           {
             name: 'brave',
-            testMatch: /smoke\.spec\.ts|explore\/five-planets\.spec\.ts|explore\/lab\.spec\.ts|perf\//,
+            testMatch: /smoke\.spec\.ts|explore\/five-planets\.spec\.ts|explore\/lab\.spec\.ts|explore\/walk-light\.spec\.ts|perf\//,
             use: { ...desktopChromium, channel: undefined, launchOptions: { executablePath: BRAVE_PATH, args: WEBGPU_ARGS } },
           },
         ]
