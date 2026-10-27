@@ -3,7 +3,8 @@
  * and WCAG 2.2 SC 2.3.1, read back every requestAnimationFrame (docs/SANDBOX-ROADMAP.md W1.11, W1.13,
  * W1.14, W1.7):
  * - every fireball's light (src/explore/lab-fx: after the flash guard) changes by at most a thirtieth of
- *   its peak a frame at 60 frames a second (by its frame's time), coming and going;
+ *   its peak a frame at 60 frames a second (by its frame's time), coming and going; its peak over its
+ *   whole life (one begun as the watch would end is watched on until it has gone);
  * - the canvas itself, read back each frame (downsampled), flashes no more than three times a second in
  *   any tile of 10 degrees of the field (341 x 256 CSS px at 1024 wide, scaled); fireballs rise at most
  *   three a second;
@@ -18,6 +19,7 @@ import type { Page } from '@playwright/test';
 import type { LabCommand, LabEditResult, UniverseLab } from '../../src/core/types';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
+import { fireballSteps } from '../support/fireball-light';
 import { JD, view, waitForUniverse } from '../support/universe';
 
 const LIVE = { timeout: 90_000 * SLOW };
@@ -43,6 +45,8 @@ interface Frame {
   inS: number | null;
   cam: [number, number, number] | null;
   trip: boolean;
+  /** Past the window asked for: watched on only to see every fireball begun in it through to its end. */
+  extra: boolean;
 }
 
 const lab = async (page: Page): Promise<UniverseLab | null> => (await view(page))?.lab ?? null;
@@ -72,7 +76,9 @@ async function fork(page: Page): Promise<void> {
 
 /**
  * Every frame for up to `seconds` (or `after` seconds past the first impact): the fireballs' light, the
- * canvas's tiles (read back downsampled), the laboratory's rate and slowing, the camera's direction.
+ * canvas's tiles (read back downsampled), the laboratory's rate and slowing, the camera's direction. Then on
+ * (at most `seconds` in all), the frames `extra`, until every fireball drawn by the end of that window has
+ * gone: its whole light seen, its peak known (one begun in the window's last frames is still rising then).
  */
 const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
   page.evaluate(
@@ -98,6 +104,8 @@ const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
         const frames: Frame[] = [];
         let start = -1;
         let hit = -1;
+        /** The fireballs drawn by the end of the window asked for (null until it ends). */
+        let pending: Set<string> | null = null;
         const tick = (now: number): void => {
           if (start < 0) start = now;
           const t = (now - start) / 1000;
@@ -120,8 +128,11 @@ const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
           }
           const events = l?.events.filter((e) => e.kind === 'fragment' || e.kind === 'merge').length ?? 0;
           if (events > 0 && hit < 0) hit = t;
-          frames.push({ t, fx: r?.clock.fxS ?? 0, fire: (r?.fireballs ?? []).map((f) => [f.key, f.luminance]), tiles, events, shown: r?.clock.shownS ?? 0, slow: l?.slow.active?.rate ?? null, inS: l?.slow.active?.inS ?? null, cam: r?.camera ? [r.camera.x, r.camera.y, r.camera.z] : null, trip: v?.trip !== null && v?.trip !== undefined });
-          if ((hit >= 0 && t - hit > after) || t > seconds) resolve(frames);
+          const fire = (r?.fireballs ?? []).map((f): [string, number] => [f.key, f.luminance]);
+          frames.push({ t, fx: r?.clock.fxS ?? 0, fire, tiles, events, shown: r?.clock.shownS ?? 0, slow: l?.slow.active?.rate ?? null, inS: l?.slow.active?.inS ?? null, cam: r?.camera ? [r.camera.x, r.camera.y, r.camera.z] : null, trip: v?.trip !== null && v?.trip !== undefined, extra: pending !== null });
+          if (pending === null && hit >= 0 && t - hit > after) pending = new Set(frames.flatMap((f) => f.fire.map((x) => x[0])));
+          const waiting = pending !== null && fire.some(([key]) => pending?.has(key) === true);
+          if ((pending !== null && !waiting) || t > seconds) resolve(frames);
           else requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -132,25 +143,17 @@ const watch = (page: Page, seconds: number, after: number): Promise<Frame[]> =>
 /**
  * Every fireball's light by frame: never more than a thirtieth of its peak a 60th of a second (coming, going,
  * held back or let go by the guard), by the time the effects were advanced between two samples (their own
- * clock: a sample a frame late or early is not a frame of change).
+ * clock: a sample a frame late or early is not a frame of change). Each fireball begun in the window is
+ * watched whole (watch goes on for it), so its peak is its own, not the part of its rise the window saw
+ * (tests/support/fireball-light).
  */
 function expectSmooth(frames: readonly Frame[]): number {
-  const peak = new Map<string, number>();
-  for (const f of frames) for (const [key, lum] of f.fire) peak.set(key, Math.max(peak.get(key) ?? 0, lum));
   let worst = 0;
-  for (let k = 1; k < frames.length; k += 1) {
-    const a = frames[k - 1];
-    const b = frames[k];
-    if (!a || !b || b.fx === a.fx) continue;
-    const dt = Math.max(b.fx - a.fx, 1 / 60);
-    for (const [key, p] of peak) {
-      if (!(p > 0)) continue;
-      const before = a.fire.find((x) => x[0] === key)?.[1] ?? 0;
-      const now = b.fire.find((x) => x[0] === key)?.[1] ?? 0;
-      const share = Math.abs(now - before) / (p * dt * 2);
-      worst = Math.max(worst, share);
-      expect(share, `${key} at ${b.t.toFixed(3)} s: ${before} to ${now} (peak ${p})`).toBeLessThanOrEqual(1 + 1e-6);
-    }
+  for (const s of fireballSteps(frames)) {
+    if (!s.extra) expect(s.whole, `${s.key}: watched from before it was drawn until it had gone`).toBe(true);
+    if (!s.whole) continue;
+    worst = Math.max(worst, s.worst);
+    expect(s.worst, `${s.key} at ${s.t.toFixed(3)} s: ${s.before} to ${s.now} (peak ${s.peak})`).toBeLessThanOrEqual(1 + 1e-6);
   }
   return worst;
 }
