@@ -9,7 +9,8 @@
  * clock: played backwards to the fork through the run's own states, Reset paused at the fork, a drawn
  * clock that never turns back and keeps an even pace at every rate (slow ones too, and rings of
  * thousands of particles at thirty days a second either way), a rate change seen at once, Now and a
- * date (and beyond the experiment's century, saying so), a goto that ends drawn at the worker's
+ * date (and beyond the experiment's century, saying so), a date on the day asked either side of
+ * midnight with short steps and with long ones, a goto that ends drawn at the worker's
  * moment, every time button during a goto (Pause stops it there), paused at slow rates drawn at the
  * run's own step so an edit is made at the moment drawn, a checkpoint gone back to paused, a seek
  * checked at the boundary, five hundred presses inside single frames, the Earth held (not strobing)
@@ -626,6 +627,46 @@ test('Now and a date in an experiment, a checkpoint gone back to (paused), and h
   const before = l?.requestedRate ?? 0;
   await page.getByTestId('universe-time-reverse').click();
   expect((await lab(page))?.requestedRate).toBe(-before);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a date lands on the day asked half a minute and a second either side of midnight: the solar system’s short steps and the two-body laboratory’s long ones', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  /**
+   * Paused, a date sent as an interface would (a moment, not only a day): the day it ends on, as the date field
+   * shows it, once it has ended (each moment asked is on another day than the one before, so the day is this goto's).
+   */
+  const goes = async (ms: number): Promise<number> => {
+    await timeCommand(page, { kind: 'date', jdUtc: ms / DAY_MS + 2_440_587.5 });
+    const ended = async (): Promise<string | null> => {
+      const v = await view(page);
+      return v?.lab && v.lab.seekingS === null && v.lab.paused && v.lab.elapsedS === v.lab.t ? dayOf(v.unixMs) : null;
+    };
+    await expect.poll(ended, { ...LIVE, message: `${new Date(ms).toISOString()} asked` }).toBe(dayOf(ms));
+    const v = await view(page);
+    const shown = v?.unixMs ?? 0;
+    const dtS = v?.lab?.dtS ?? 0;
+    // On the first step at or past the moment; short of it only on the day's last step (the next is the next day's).
+    if (shown < ms) expect(shown + dtS * 1000, `${new Date(shown).toISOString()} reached`).toBeGreaterThanOrEqual((Math.floor(ms / DAY_MS) + 1) * DAY_MS - 1);
+    return dtS;
+  };
+  const pause = async (): Promise<void> => {
+    if (!(await lab(page))?.paused) await page.getByTestId('universe-time-pause').click();
+    await expect.poll(async () => (await lab(page))?.paused, LIVE).toBe(true);
+  };
+  const MOMENTS = (y: number, m: number, d: number): number[] => [Date.UTC(y, m, d, 23, 59, 30), Date.UTC(y, m, d + 1, 0, 0, 30), Date.UTC(y, m, d + 2, 23, 59, 59), Date.UTC(y, m, d + 3, 0, 0, 1)];
+  // The solar system forked at the explorer's date (23 October 2026): steps of minutes, the Moon's.
+  await pause();
+  for (const ms of [...MOMENTS(2026, 9, 25), ...MOMENTS(2027, 2, 9)]) expect(await goes(ms)).toBeLessThan(2 * 3600);
+  // The two-body laboratory (from J2000): steps of 14 hours.
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  await pause();
+  for (const ms of [...MOMENTS(2010, 5, 15), ...MOMENTS(2000, 2, 5)]) expect(await goes(ms)).toBeGreaterThan(13.5 * 3600);
   expect(pageErrors).toEqual([]);
 });
 

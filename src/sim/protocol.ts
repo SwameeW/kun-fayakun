@@ -2,6 +2,7 @@ import type { ThrowPlan, ThrowRequest } from './aim';
 import type { Approach } from './approach';
 import type { ClimateSpec } from './climate';
 import type { Command, Encounter, Scenario } from './engine';
+import type { Within } from './goto';
 import type { BodyOrigin, Look } from './looks';
 import type { MergeEvent } from './nbody';
 import type { SwarmPlaces } from './rewind';
@@ -25,8 +26,12 @@ export type LabRequest =
    * at or past it (back to one, going backwards), so an edit is made on what is drawn.
    */
   | { type: 'run'; generation: number; control: number; rate: number; paused: boolean; landAt?: number }
-  /** Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a tick; the clock then runs (or not) as `run` last said. */
-  | { type: 'goto'; generation: number; control: number; t: number }
+  /**
+   * Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a
+   * tick, to the first whole step at or past it, but never out of `within` (a date's day: ./goto) when it holds
+   * `t`; the clock then runs (or not) as `run` last said.
+   */
+  | { type: 'goto'; generation: number; control: number; t: number; within?: Within }
   /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt; `exact`: made there or refused); `editSeq` numbers it, and the worker's 'ack' answers with it. */
   | { type: 'command'; generation: number; command: Command; atStep?: number; exact?: boolean; editSeq?: number }
   /** A throw worked out (./aim) from the run as it stands, not yet made: answered with 'aimed'. */

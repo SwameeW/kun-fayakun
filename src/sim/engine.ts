@@ -632,6 +632,15 @@ export class Engine {
     return taken;
   }
 
+  /**
+   * How long the next step (stepOnce) will be: the edits due at this step applied first, as stepOnce
+   * applies them (an edit retimes the step), then the step size, shortened for a ship's burn.
+   */
+  nextStepS(): number {
+    this.applyDue();
+    return burnStep(this.state, this.dt);
+  }
+
   stepOnce(): void {
     this.applyDue();
     const before = this.events.length;
