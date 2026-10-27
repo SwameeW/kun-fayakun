@@ -79,13 +79,23 @@ function rewindChecking(e: Engine, kept: Map<number, Seen>, start: number): numb
   return passed;
 }
 
+/** The sourced constants: each world's J2 and moment of inertia, as the explorer seeds an experiment with them. */
+const constants = (readJson('data/constants.json') as { constants: Array<{ id: string; value: number }> }).constants;
+const figure = (id: string): number | null => constants.find((c) => c.id === id)?.value ?? null;
+const SOLAR_IDS = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+
+/** The solar system as an experiment forks it: with each world's J2 about its spin's axis, so the pull and the spins are coupled. */
 function solar(): Scenario {
   const eph = createEphemeris(readJson('public/assets/jpl/planets.json') as PlanetsFile, readJson('public/assets/jpl/moon.json') as MoonFile, physical);
-  return seedSolarSystem(eph, physical, 2_461_336.75, {});
+  const shapes = Object.fromEntries(SOLAR_IDS.map((id) => [id, { j2: figure(`${id}.j2`), inertia: figure(`${id}.momentOfInertia`) }]));
+  return seedSolarSystem(eph, physical, 2_461_336.75, {}, shapes);
 }
 
 test('the solar system played backwards: every moment is the run’s own, bit for bit, back to the fork', () => {
   const e = new Engine(solar());
+  // Oblate, as an experiment's worlds are: the Earth's and Jupiter's J2s, so a replay that worked the pull out afresh would drift in the last bits.
+  expect(e.state.j2[e.state.ids.indexOf('earth')]).toBeGreaterThan(1e-3);
+  expect(e.state.j2[e.state.ids.indexOf('jupiter')]).toBeGreaterThan(1e-2);
   const kept = run(e, 5000, 100);
   rewindChecking(e, kept, 5000);
   // The run itself was never touched while its history was replayed.

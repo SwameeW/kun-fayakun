@@ -194,6 +194,13 @@ export interface Checkpoint {
   dt: number;
   /** Log entries already applied when it was taken. */
   logIndex: number;
+  /**
+   * The accelerations and torques the next step starts from, as the run had them (empty: worked out
+   * afresh, as at the start or after an edit). They are worked out within a step, before the spins'
+   * second half-kick, so worked out again from the state alone they differ in the last bits wherever
+   * a J2 ties the pull to a spin's axis: a replay from here without them would not be the run's own.
+   */
+  acc: readonly number[];
 }
 
 export interface PredictionResult {
@@ -273,6 +280,7 @@ export class Engine {
     if (from) {
       this.state = cloneState(from.state);
       this.dt = from.dt;
+      this.acc = [...from.acc];
       this.logIndex = from.logIndex;
       this.lastPeriodic = from.step;
       this.reference = diagnostics(this.state);
@@ -292,7 +300,7 @@ export class Engine {
 
   /** The state now as a checkpoint (a deep copy; without the rings' particles when `withSwarms` is false). */
   snapshotNow(withSwarms = true): Checkpoint {
-    return { step: this.state.step, t: this.state.t, state: cloneState(this.state, withSwarms), dt: this.dt, logIndex: this.logIndex };
+    return { step: this.state.step, t: this.state.t, state: cloneState(this.state, withSwarms), dt: this.dt, logIndex: this.logIndex, acc: [...this.acc] };
   }
 
   /** The step size the state calls for now (or for a timescale already found). */
@@ -622,7 +630,8 @@ export class Engine {
     // The history as it stood then (the replay adds back what it passes again): interventions mirror the log entries applied, collisions their steps.
     this.interventions.length = Math.min(this.interventions.length, c.logIndex);
     for (let k = this.events.length - 1; k >= 0; k -= 1) if ((this.events[k]?.step ?? 0) >= c.step) this.events.splice(k, 1);
-    this.acc.length = 0;
+    // The step from here starts from the accelerations the run had here, as the run's own did.
+    this.acc = [...c.acc];
     this.reference = diagnostics(this.state);
     this.lastPeriodic = this.state.step;
     // Checkpoints later than this one belong to a future that is no longer certain: keep them (the log replays the same way) unless a new edit branches.
