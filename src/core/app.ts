@@ -222,6 +222,12 @@ class Engine implements KunFayakunApp {
   private readonly cadence = createFrameCadence();
   private universeGraphics: UniverseGraphics | null = null;
   private readonly loggedErrors = new Set<string>();
+  /** Render budgets held (requestRenderBudget), each with its scale cap. */
+  private readonly budgets = new Set<{ maxScale: number }>();
+  /** The explorer's scene scale as its governor last set it, given back when a budget is released. */
+  private sceneScale = 1;
+  /** True while a render budget is held: the film's and the explorer's governors rest. */
+  private readonly budgetHeld = (): boolean => this.budgets.size > 0;
 
   constructor(options: AppOptions) {
     this.canvas = options.canvas;
@@ -288,7 +294,7 @@ class Engine implements KunFayakunApp {
         gfx.post.setSceneScale(1);
         gfx.post.setBloom(this.profile.bloom);
         gfx.handle.setDprCap(this.profile.dprCap);
-        gfx.handle.setResolutionScale(gfx.resolution.scale);
+        gfx.handle.setResolutionScale(this.capped(gfx.resolution.scale));
       },
       stopFilm: () => {
         this.timeline.stop();
@@ -420,10 +426,10 @@ class Engine implements KunFayakunApp {
       this.emitError('deviceLost');
     };
     const post = createPostPipeline(handle.renderer, this.scene, this.camera, { bloom: profile.bloom });
-    const governor = createQualityGovernor(profile, { enabled: this.params.tier === null });
+    const governor = createQualityGovernor(profile, { enabled: this.params.tier === null, held: this.budgetHeld });
     governor.suspend();
     // A fixed tier (tests, benchmarks) or profiling also holds the render scale at 1.
-    const resolution = createResolutionGovernor({ enabled: this.params.tier === null && !this.params.profile });
+    const resolution = createResolutionGovernor({ enabled: this.params.tier === null && !this.params.profile, held: this.budgetHeld });
     this.assets.attachRenderer(handle.renderer);
     const gfx: Graphics = { handle, post, governor, resolution };
     this.gfx = gfx;
@@ -693,7 +699,8 @@ class Engine implements KunFayakunApp {
       adaptive: fixedDetail === null && !params.profile,
       // Only while the explorer has the screen (or is taking it): the film never sees these.
       setRenderScale: (scale) => {
-        if (this.universeHost.requested) this.gfx?.post.setSceneScale(scale);
+        this.sceneScale = scale;
+        if (this.universeHost.requested) this.gfx?.post.setSceneScale(this.capped(scale));
       },
       setDprCap: (cap) => {
         if (this.universeHost.requested) this.gfx?.handle.setDprCap(cap);
@@ -701,6 +708,7 @@ class Engine implements KunFayakunApp {
       setBloom: (on) => {
         if (this.universeHost.requested) this.gfx?.post.setBloom(on);
       },
+      held: this.budgetHeld,
     };
     return this.universeGraphics;
   }
@@ -1026,6 +1034,29 @@ class Engine implements KunFayakunApp {
 
   holdFilm(reason: string): () => void {
     return this.timeline.hold(reason);
+  }
+
+  requestRenderBudget(_reason: string, budget: { maxScale: number }): () => void {
+    const hold = { maxScale: budget.maxScale >= 0 ? budget.maxScale : 1 };
+    this.budgets.add(hold);
+    this.applyBudget();
+    return () => {
+      if (this.budgets.delete(hold)) this.applyBudget();
+    };
+  }
+
+  /** A render scale under the budgets held (the smallest cap wins). */
+  private capped(scale: number): number {
+    for (const b of this.budgets) scale = Math.min(scale, b.maxScale);
+    return scale;
+  }
+
+  /** Puts the picture's scale where the budgets allow: the explorer's scene pass, or the film's canvas. */
+  private applyBudget(): void {
+    const gfx = this.gfx;
+    if (!gfx) return;
+    if (this.universeHost.requested) gfx.post.setSceneScale(this.capped(this.sceneScale));
+    else gfx.handle.setResolutionScale(this.capped(gfx.resolution.scale));
   }
 
   openUniverse(body: BodyId | null = null): void {

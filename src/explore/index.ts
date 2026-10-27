@@ -2527,7 +2527,7 @@ export default function create(): UniverseModule {
       fixed = !c.graphics.adaptive;
       const start: ExploreTier = fixedDetail ? (available.includes(fixedDetail) ? fixedDetail : 'high') : initialTier(device);
       const minScale = Object.fromEntries(EXPLORE_TIERS.map((t) => [t, DETAIL[t].minRenderScale])) as Record<ExploreTier, number>;
-      governor = createDetailGovernor({ tier: start, choice: 'auto', enabled: c.graphics.adaptive, available, minScale, mobile: device.mobile });
+      governor = createDetailGovernor({ tier: start, choice: 'auto', enabled: c.graphics.adaptive, available, minScale, mobile: device.mobile, held: c.graphics.held });
       detail = DETAIL[start];
       if (pendingChoice) {
         const choice = pendingChoice;

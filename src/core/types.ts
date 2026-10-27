@@ -711,6 +711,8 @@ export interface UniverseGraphics {
   /** The canvas's device-pixel-ratio ceiling. */
   setDprCap(cap: number): void;
   setBloom(on: boolean): void;
+  /** True while a render budget is held (AppCommands.requestRenderBudget): the explorer's governor rests. */
+  readonly held: () => boolean;
 }
 
 /**
@@ -1419,6 +1421,15 @@ export interface AppCommands {
    * the chapter: leaving it drops them. The returned function releases this hold (idempotent).
    */
   holdFilm(reason: string): () => void;
+  /**
+   * Holds the picture back while something else shares the GPU (the assistant's language model
+   * prefilling and generating, docs/AI-INTELLIGENCE.md §6). While any budget is held, the render
+   * scale is capped at the smallest maxScale held (the film's dynamic resolution and the explorer's
+   * scene pass), and the film's and the explorer's quality governors rest: their load is not read as
+   * the scene's, so no tier changes or is locked for the visit. The returned function releases this
+   * budget (idempotent) and the picture returns to what its governors chose.
+   */
+  requestRenderBudget(reason: string, budget: { maxScale: number }): () => void;
   /**
    * Opens the solar-system explorer (true scale), optionally on a body. From a chapter, the
    * explorer remembers where the film was, so closeUniverse() returns there.
