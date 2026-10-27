@@ -207,13 +207,16 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   /**
    * What the interface covers: the header at the top (and the readout where it runs across a
    * phone's top), the side panel at the right, the sheet at the bottom (pulled up on a phone held
-   * sideways, at the right). The view frames bodies in the rest.
+   * sideways, at the right), and the assistant's column at the left while it is open (src/ai/ui,
+   * which publishes its edge as --kf-ai-inset and says when it moves). The view frames bodies in the rest.
    */
   const reportInsets = (): void => {
     if (!visible) return;
     const height = window.innerHeight || 1;
     const width = window.innerWidth || 1;
-    const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kf-header-h')) || 0;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const header = parseFloat(rootStyle.getPropertyValue('--kf-header-h')) || 0;
+    const left = parseFloat(rootStyle.getPropertyValue('--kf-ai-inset')) || 0;
     const nav = navigator.element.getBoundingClientRect();
     const readout = hud.readout.getBoundingClientRect();
     let top = header;
@@ -236,11 +239,12 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     element.style.setProperty('--kf-readout-h', `${hud.readout.offsetHeight}px`);
     element.style.setProperty('--kf-sheet-h', `${sheet}px`);
     element.classList.toggle('is-sheet-open', navigator.layout === 'sheet' && navigator.expanded);
-    app.setViewInsets({ top, bottom, left: 0, right });
+    app.setViewInsets({ top, bottom, left, right });
   };
   navigator.onResize(reportInsets);
   new ResizeObserver(reportInsets).observe(hud.readout);
   window.addEventListener('resize', reportInsets);
+  window.addEventListener('kf-ai-inset', reportInsets);
 
   let visible = false;
   let ready = false;
