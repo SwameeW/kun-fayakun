@@ -448,8 +448,8 @@ const REPORTS = /\b(?:says?|said|states?|stated|tells?|told|mentions?|mentioned|
  * What a hadith says is never the model's to tell: only data/hadith.json's sourced summary is shown,
  * with the reference, narrator and grading. A sentence reporting a hadith's content ("The hadith states
  * that…", or "It states that…" after one naming a hadith) is removed, whether or not it quotes: Qwen3.5
- * 4B said a hadith the data holds "states that the sun has a 'resting place' beneath the Throne", which
- * is another hadith's content (docs/AI-EVALUATION.md).
+ * 4B told what a hadith the data holds "states" about where the Sun goes, which is another hadith's
+ * content (docs/AI-EVALUATION.md).
  */
 function hadithContent(text: string): { text: string; changed: boolean } {
   let changed = false;

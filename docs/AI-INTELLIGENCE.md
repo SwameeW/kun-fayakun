@@ -1,6 +1,6 @@
 # Kun Fayakun Intelligence
 
-**Status:** design, 2026-10-26. Contracts: `src/ai/types.ts`. The research behind it, with sources, is summarised in §11.
+**Status:** design, 2026-10-26; measured with real models on 2026-10-27 (`docs/AI-EVALUATION.md`). Contracts: `src/ai/types.ts`. The research behind it, with sources, is summarised in §11.
 
 **The owner's rule.** No API key, account, subscription or hosted inference, for visitors or for the system itself. The assistant runs in the visitor's browser. A model is downloaded only when the visitor asks for one, and the download shows its size, licence and source first.
 
@@ -12,9 +12,9 @@
 |---|---|---|
 | Any browser, no download | **Guide**: a deterministic router for commands, search over the app's verified content, every tool, every calculator, scripture by reference | The guide needs no model, so it is instant, offline and exact. It cannot paraphrase or follow free-form reasoning. |
 | Phone (Android flagship with WebGPU) | Guide by default. Opt-in **Pocket** model: Qwen3 0.6B (≈350 MB) | Pocket writes the explanations only: the guide's router chooses every tool, because in the evaluation Qwen3 0.6B made no tool call in any of its 221 plans (`docs/AI-EVALUATION.md`). Its explanations are weak, and it says so. iPhones get the guide only, because Safari kills tabs above about 0.5–1.5 GB. |
-| Laptop with an integrated GPU | **Compact**: Qwen3 1.7B (≈1.0 GB download, ≈2 GB GPU memory) | Reliable at single tool calls under a schema. Explanations are short and grounded in retrieved passages. |
-| 8 GB+ unified memory, or a mid GPU | **Standard**: Qwen3 4B (≈2.3 GB, ≈3.4 GB) | The best balance: multi-call plans and fluent grounded explanations. |
-| 16 GB+, or a discrete GPU with 8 GB+ | **Large**: Qwen3 8B (≈4.6 GB, ≈5.7 GB) | The strongest of WebLLM's models on function calling (BFCL v4) that fits a browser. |
+| Laptop with an integrated GPU and 8 GB (a 2.6 GB budget, §7) | **Compact**: Qwen3 1.7B (≈1.0 GB download, ≈2 GB GPU memory) | Picks a reasonable tool for one step more often than not, but often gets its settings wrong, and no multi-step experiment succeeded in the evaluation. Explanations are short and keep close to the retrieved passages. |
+| 16 GB+ (a 4.2 GB budget) | **Standard**: Qwen3.5 4B (≈2.4 GB, ≈3.9 GB) | The best balance: in the evaluation it passed as many cases as Qwen3 8B in the shipping order (122 of 128) at half its size, and more than the Qwen3 4B it replaced (117). |
+| 16 GB+ with a discrete GPU or a large `maxBufferSize` (a 6.5 GB budget) | **Large**: Qwen3.5 9B (≈5.1 GB, ≈6.4 GB) | The most accurate model measured (124 of 128 in the shipping order, 122 with no router), and the slowest. It replaced Qwen3 8B (122 and 117). |
 | Chrome 148+ desktop with its built-in model already downloaded | **Browser model**, optional | No download from us. English only, with no native tool use, so it goes through the same schema and validator path. It is never required. |
 
 No model up to 8B is a reliable source of science facts. Non-thinking GPQA is at most about 42 for every one of them. So the assistant never relies on a model's memory:
@@ -89,7 +89,7 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 - **Model libraries:** pinned to a commit of `binary-mlc-llm-libs` through jsDelivr, with SRI hashes where available.
 - **Cache:** the Cache API (`cacheBackend: 'cache'`). What is stored is read from the caches directly, at no download. Deletion goes through `deleteModelAllInfoInCache` in the worker, and only when the model's manifest is stored, because otherwise WebLLM would download the manifest to find the files. A sweep of the three caches then removes whatever is left.
 - **Tool calls:** WebLLM's `tools` field is not used, because it is hard-wired to Hermes models and forbids a system prompt. Instead, plans use `response_format: { type: 'json_object', schema }` (XGrammar), with `enable_thinking: false` and temperature 0, and are validated again in JS. Constrained decoding has open bugs (#868, #807).
-  - XGrammar is given the plan's schema without string lengths and without the patterns it reads otherwise than JavaScript (`grammarSchema` in `src/ai/engine/webllm.ts`); JS checks them afterwards. Measured on this Mac: string lengths cost 10.7 s of grammar start-up on every plan (66 ms without); a pattern of Unicode letters let a model write only "N" or "L"; an unanchored `\S` allowed one character (`docs/AI-EVALUATION.md`).
+  - XGrammar is given the plan's schema without string lengths, number ranges, or the patterns it reads otherwise than JavaScript (`grammarSchema` in `src/ai/engine/webllm.ts`); JS checks them all afterwards. Measured on this Mac: string lengths cost 10.7 s of grammar start-up on every plan (66 ms without); a range sent a number to its maximum (0.3 in 0–0.95 became 0.95); a pattern of Unicode letters let a model write only "N" or "L"; an unanchored `\S` allowed one character (`docs/AI-EVALUATION.md`).
   - With thinking off, WebLLM 0.2.86 still streams the empty thinking block Qwen's template expects ("<think></think>") at the start of every reply; the client takes it off (`thinkFilter`) and the guards remove any such markup that is left.
 
 **Browser model.** Chrome's `LanguageModel` (Prompt API), detected with `availability()` using the same options as `create()`.
@@ -298,24 +298,31 @@ Nothing here downloads anything.
   - `tests/ai-eval/cases.ts` holds the cases: tool choice and arguments against the real registry's schemas, grounded science (expected numbers worked out in `truth.ts` from data/constants.json and the JPL files), Islamic content cited only from the data files, integrity traps, limits and out-of-scope questions, and experiments that must wait for confirmation. `score.ts` scores what the test hook and the page show afterwards, never the model's own words. It also scans every answer for violations that got past the guards, with its own rules. `tests/unit/ai-eval-cases.spec.ts` checks the cases against the registry and the scorer on hand-made turns.
   - `tests/ai-eval/eval.spec.ts` loads one model as a visitor does: the panel for a visitor tier, the `use()` the panel calls for a candidate. It checks that the engine reads back as the local one with that id. Then it asks every case through the panel's field and writes `.work/ai-eval/results/<model>-<mode>[-<tag>].json`. Per case, that holds the turn, every generation's messages and raw reply, first-try and repaired plan validity, the checks, citations, guard flags, violations, and timings (WebLLM's own time to first token, prefill and decode rates, and its grammar's start-up time). Per model, it holds the load (routed into the Cache API, then from it after a reload), frame intervals in the explorer while idle and while generating, and the load average beside every timing. `KF_AI_EVAL_MODE=model` skips the router through the test hook's `evaluate()`, so the model plans every case.
   - `tests/ai-eval/network.spec.ts` (`KF_AI_EVAL_NETWORK=1`) is the one unrouted check. In a fresh profile, a visitor downloads Qwen3 0.6B from Hugging Face through the panel. It checks that nothing reaches a model host before Ask and Download, that the size is shown first and progress during the download, that the model answers, that a reload fetches nothing, and that the panel's Delete frees the Cache API.
-  - `tests/ai-eval/grammar.spec.ts` (`KF_AI_EVAL_GRAMMAR=1`) measures XGrammar's start-up for each shape a plan's schema could take; it found the ten seconds every plan spent compiling string lengths (§3).
+  - `tests/ai-eval/grammar.spec.ts` (`KF_AI_EVAL_GRAMMAR=1`) measures XGrammar's start-up for each shape a plan's schema could take; it found the ten seconds every plan spent compiling string lengths. With `KF_AI_EVAL_GRAMMAR=numbers` it asks for the same number with and without a range; it found ranges sending numbers to their maximum (§3).
   - `scripts/ai-eval/compact.ts` writes the committed copy of a run (`docs/ai-eval/`): every check, plan, flag, citation, timing and load average, and the answer as shown only where the scorer found nothing wrong in it; never a model's words before the guards, never a question. `scripts/ai-eval/report.ts` turns raw files or those copies into the Markdown tables (`--into docs/AI-EVALUATION.md` replaces the generated part); `scripts/ai-eval/rescore.ts` scores raw files again after a change to the scorer, without a model.
   - The results, the tier decision and what each model cannot do are in `docs/AI-EVALUATION.md`.
 
   ```
   node --import tsx scripts/ai-eval/fetch-models.ts                       # once (outside any sandbox)
   npx vite build
-  KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_MODEL=Qwen3-4B-q4f16_1-MLC KF_AI_EVAL_MODE=pipeline npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
-  node --import tsx scripts/ai-eval/report.ts --details                   # Markdown from .work/ai-eval/results
+  KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_MODEL=Qwen3.5-4B-q4f16_1-MLC KF_AI_EVAL_MODE=pipeline npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
+  node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/<run>.json --out docs/ai-eval   # the committed copy
+  node --import tsx scripts/ai-eval/report.ts docs/ai-eval --details      # Markdown from the copies (or from .work/ai-eval/results)
   ```
 
 ## 10. Known limits (stated in the interface)
 
+Measured on this Mac on 2026-10-27 (`docs/AI-EVALUATION.md`):
+- Qwen3 0.6B chooses no tools (the pocket tier explains only); Qwen3 1.7B often gets a tool's settings wrong and completed no multi-step experiment; even the larger models misread units ("within 5 years" as 5 days) and sometimes pick the wrong experiment.
+- Models can explain the wrong verse, say what scripture does not contain, or add a reading of their own. The verse or hadith itself is always shown from data beside the explanation, and the explanation is labelled as the model's; answers about scripture need a human reader before they are relied on.
+- While a model reads its prompt (prefill, one chunk of up to 1,024 tokens in WebLLM 0.2.86's builds, which no option makes smaller), the GPU is the model's: the explorer's frame waits for it, about once per generation. In the speed pass the longest such frame was 133 ms with Qwen3 0.6B, 367 ms with 1.7B, 0.9–1.4 s with the 4B models and up to 2.2 s with the larger ones (4.0 s once under heavy load). Otherwise frames stay at the display's rate (p95 16.8 ms) while a model writes.
+- XGrammar (WebLLM 0.2.86) mishandles parts of JSON Schema: string lengths cost ten seconds of start-up, number ranges push numbers to their maximum, and some patterns are read as whole-string matches. The app leaves these out of what it constrains and checks them in JS (§3).
 - Small models lose track of long, many-step tasks. Experiments therefore go through deterministic planners, and the model only picks the experiment and its numbers.
 - The context window is 4,096 tokens, so a conversation keeps only its last few turns.
-- The first download is large (0.35–4.6 GB) and comes from Hugging Face, which sees the visitor's IP address. Safari may delete stored models after seven days without a visit.
+- The first download is large (0.35–5.1 GB) and comes from Hugging Face, which sees the visitor's IP address. Safari may delete stored models after seven days without a visit.
 - No model on iPhone. No model where WebGPU is missing (Firefox outside Windows, older browsers): the guide is offered there instead.
-- Phones are slow: about 5 tokens/s for a 3B model on a Pixel 8 Pro.
+- Phones are slow: about 5 tokens/s for a 3B model on a Pixel 8 Pro (published figure; not measured here). On this Mac (M5 Pro), decode speeds were 84.5 tok/s (Qwen3 0.6B), 70.0 (1.7B), 31.5 (Qwen3.5 4B) and 23.1 (Qwen3.5 9B).
+- The evaluation was made on one Mac; phones, Windows and Linux GPUs and the q4f32 builds were not measured.
 
 ## 11. Research summary (2026-10-26)
 

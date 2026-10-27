@@ -854,17 +854,21 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   the purpose (plan, repair or answer), the messages sent, the raw reply, the finish, tokens, the
   plan's validity and problems, and `engineUsage`, WebLLM's own prefill and decode rates, time to
   first token and grammar start), taken with `generations()`; with `router: 'skip'` a loaded model
-  plans every question, the router bypassed (`IntelligenceDeps.evaluation`). `evaluate(null)` puts
-  the shipping order back. Nothing a visitor does reaches it.
+  plans every question, the router bypassed (`IntelligenceDeps.evaluation`), even a model that
+  writes explanations only (`ModelSpec.plans: false`, the pocket tier), which in the shipping order
+  is never asked to plan. `evaluate(null)` puts the shipping order back. Nothing a visitor does
+  reaches it.
   `<html>` gets `data-ai-engine` and `data-ai-turn` (Test hooks, above).
 - **Model hosts in tests.** Every page's requests to huggingface.co, hf.co (and their
   subdomains: the file CDNs), cdn.jsdelivr.net and raw.githubusercontent.com are answered 404 in the
   browser (`tests/support/live.ts`, `mockModelHosts`, registered before the live hosts, so a test's
   own route wins); `modelRequests(page)` counts them. No test downloads a model.
   `tests/ai-engine.spec.ts` also resolves those hosts to nothing. The real-model evaluation
-  (`tests/ai-eval`, its own Playwright project, only with `KF_AI_EVAL=1`) answers the pinned URLs
-  from the copies on disk and fails on any other model-host request; only its
-  `network.spec.ts`, with `KF_AI_EVAL_NETWORK=1`, reaches Hugging Face.
+  (`tests/ai-eval`, its own Playwright project, only with `KF_AI_EVAL=1`) resolves huggingface.co
+  and cdn.jsdelivr.net to a local HTTPS server that streams the pinned files from the copies on disk
+  (`tests/ai-eval/serve.ts`; `route.fulfill` cannot carry a file over about 75 MB), and fails on any
+  other model-host request; only its `network.spec.ts`, with `KF_AI_EVAL_NETWORK=1`, reaches
+  Hugging Face. Its results are in `docs/AI-EVALUATION.md`.
 - **Budgets** (`scripts/check-bundle.ts`, gzip): the assistant's chunks on start (with its panel) 120,000 B; the
   model worker 2,400,000 B (and the only built file holding WebLLM's runtime); the comparison
   worker 50,000 B; `assets/ai/index.json` 150,000 B.

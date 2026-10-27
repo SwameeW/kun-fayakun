@@ -93,6 +93,8 @@ const out = outAt >= 0 ? args[outAt + 1] : undefined;
 const intoAt = args.indexOf('--into');
 const into = intoAt >= 0 ? args[intoAt + 1] : undefined;
 const inputs = args.filter((a, i) => !a.startsWith('--') && (outAt < 0 || i !== outAt + 1) && (intoAt < 0 || i !== intoAt + 1));
+/** The tables' headings: a section of their own, or under the document's own heading (--into). */
+const H = into ? '###' : '##';
 const defaultDir = resolve('.work/ai-eval/results');
 
 function files(): string[] {
@@ -182,18 +184,42 @@ function main(): void {
     lines.push('', `Machine: ${m?.cpu ?? '?'}, ${((m?.memoryBytes ?? 0) / 2 ** 30).toFixed(0)} GB, ${m?.os ?? '?'}; WebGPU adapter ${m?.adapter?.vendor ?? '?'} ${m?.adapter?.architecture ?? ''}; ${m?.adapter?.userAgent.match(/Chrome\/[\d.]+/u)?.[0] ?? ''}.`);
     lines.push('', `Runs: ${runs.map((r) => `${basename(r.file)} (${r.run.startedAt.slice(0, 16)}Z${r.run.finishedAt ? '' : ', unfinished'})`).join('; ')}.`);
     const timing = runs.filter((r) => r.run.tag === 'timing');
-    const scored = runs.filter((r) => r.run.tag !== 'timing');
+    const after = runs.filter((r) => r.run.tag === 'after');
+    const scored = runs.filter((r) => r.run.tag !== 'timing' && r.run.tag !== 'after');
     const failed = scored.filter((r) => r.run.loadError);
     if (failed.length > 0) {
-      lines.push('', '## Models that did not load', '', table(['Model', 'Mode', 'Stage', 'Error code', 'Error (as WebLLM or the panel gave it)', '1-min load average'], failed.map((r) => {
+      lines.push('', H + ' Models that did not load', '', table(['Model', 'Mode', 'Stage', 'Error code', 'Error (as WebLLM or the panel gave it)', '1-min load average'], failed.map((r) => {
         const e = r.run.loadError;
         return [r.run.name, r.run.mode, e?.stage ?? '', e?.code ?? '–', (e?.detail ?? e?.panel ?? '–').slice(0, 300), fmt(e?.loadavg[0], 1)];
       })));
     }
     runs.splice(0, runs.length, ...scored.filter((r) => !r.run.loadError));
-    lines.push('', '## Models', '', table(HEAD, runs.map((r) => runRow(r.run))));
+    lines.push('', H + ' Models', '', table(HEAD, runs.map((r) => runRow(r.run))));
+    if (after.length > 0) {
+      // The same cases in the full run of that model and mode, beside the run after the last fixes.
+      lines.push('', H + ' The cases the last fixes touched, run again afterwards', '', table(
+        ['Model', 'Mode', 'Cases', 'Passed in the full run', 'Passed afterwards', 'Integrity violations, full run → afterwards', 'Guard catches afterwards (cases)', 'Cases with markup on screen afterwards', '1-min load average'],
+        after.map(({ run: a }) => {
+          const ids = new Set(a.cases.map((c) => c.id));
+          const full = scored.find((r) => r.run.model === a.model && r.run.mode === a.mode)?.run;
+          const before = full ? full.cases.filter((c) => ids.has(c.id)) : [];
+          const loads = a.cases.flatMap((c) => (c.loadavg ? [c.loadavg.before[0] ?? NaN] : []));
+          return [
+            a.name,
+            a.mode,
+            String(a.cases.length),
+            full ? pct(before.filter((c) => c.pass).length, before.length) : '–',
+            pct(a.cases.filter((c) => c.pass).length, a.cases.length),
+            `${before.reduce((n, c) => n + (c.scored?.integrity.length ?? 0), 0)} → ${a.cases.reduce((n, c) => n + (c.scored?.integrity.length ?? 0), 0)}`,
+            String(a.cases.filter((c) => (c.scored?.guard.flags.length ?? 0) > 0 || c.scored?.guard.guardedNotice).length),
+            String(a.cases.filter((c) => (c.scored?.markup.length ?? 0) > 0).length),
+            loads.length ? `${fmt(Math.min(...loads), 1)}–${fmt(Math.max(...loads), 1)}` : '–',
+          ];
+        }),
+      ));
+    }
     if (timing.length > 0) {
-      lines.push('', '## Speed and frames, measured again on a quieter machine', '', table(
+      lines.push('', H + ' Speed and frames, measured again on a quieter machine', '', table(
         ['Model', 'Mode', 'Generations', 'Time to first token, median (plan / answer)', 'Prefill tok/s, median (answers)', 'Decode tok/s, median (all)', 'Grammar start, median (plans)', 'Load from the Cache API', 'Frames idle p50 / p95 / max (ms)', 'Frames generating p50 / p95 / max (ms)', '1-min load average (cases; frames idle / generating)'],
         timing.map(({ run: r }) => {
           const plans = r.cases.map((c) => c.timings?.plan ?? null).filter((t): t is Timing => t !== null);
@@ -219,21 +245,21 @@ function main(): void {
     }
     // By category.
     const cats = [...new Set(runs.flatMap((r) => r.run.cases.map((c) => c.category)))];
-    lines.push('', '## Passed, by category', '', table(['Model', 'Mode', ...cats], runs.map((r) => [`${r.run.name}${r.run.tag ? ` (${r.run.tag})` : ''}`, r.run.mode, ...cats.map((cat) => {
+    lines.push('', H + ' Passed, by category', '', table(['Model', 'Mode', ...cats], runs.map((r) => [`${r.run.name}${r.run.tag ? ` (${r.run.tag})` : ''}`, r.run.mode, ...cats.map((cat) => {
       const cs = r.run.cases.filter((c) => c.category === cat);
       return pct(cs.filter((c) => c.pass).length, cs.length);
     })])));
     // Violations and guard flags by type.
     const types = [...new Set(runs.flatMap((r) => r.run.cases.flatMap((c) => [...(c.scored?.integrity.map((v) => `violation: ${v.type}`) ?? []), ...(c.scored?.guard.flags.map((g) => `guard: ${g}`) ?? [])])))].sort();
     if (types.length > 0) {
-      lines.push('', '## Integrity after the guards, and what the guards caught (cases)', '', table(['Model', 'Mode', ...types], runs.map((r) => [`${r.run.name}${r.run.tag ? ` (${r.run.tag})` : ''}`, r.run.mode, ...types.map((t) => String(r.run.cases.filter((c) => [...(c.scored?.integrity.map((v) => `violation: ${v.type}`) ?? []), ...(c.scored?.guard.flags.map((g) => `guard: ${g}`) ?? [])].includes(t)).length))])));
+      lines.push('', H + ' Integrity after the guards, and what the guards caught (cases)', '', table(['Model', 'Mode', ...types], runs.map((r) => [`${r.run.name}${r.run.tag ? ` (${r.run.tag})` : ''}`, r.run.mode, ...types.map((t) => String(r.run.cases.filter((c) => [...(c.scored?.integrity.map((v) => `violation: ${v.type}`) ?? []), ...(c.scored?.guard.flags.map((g) => `guard: ${g}`) ?? [])].includes(t)).length))])));
     }
     const unexpected = runs.flatMap((r) => r.run.unexpectedRequests.map((u) => `${r.run.model} ${r.run.mode}: ${u}`));
     lines.push('', `Requests to a model host that were not pinned files: ${unexpected.length === 0 ? 'none' : unexpected.join('; ')}.`);
     lines.push('', `GPU memory: ${runs.every((r) => r.run.gpuMemory.reported === null) ? 'WebLLM reports none at run time; the catalogue estimates are ' + runs.map((r) => `${r.run.name} ${fmt(r.run.catalogue.vramMBEstimate)} MB`).filter((v, i, a) => a.indexOf(v) === i).join(', ') : 'see the raw files'}.`);
     if (details) {
       const ids = [...new Set(runs.flatMap((r) => r.run.cases.map((c) => c.id)))];
-      lines.push('', '## Each case', '', table(['Case', 'Category', ...runs.map((r) => `${r.run.name} ${r.run.mode}${r.run.tag ? ` ${r.run.tag}` : ''}`)], ids.map((id) => {
+      lines.push('', H + ' Each case', '', table(['Case', 'Category', ...runs.map((r) => `${r.run.name} ${r.run.mode}${r.run.tag ? ` ${r.run.tag}` : ''}`)], ids.map((id) => {
         const cat = runs.flatMap((r) => r.run.cases).find((c) => c.id === id)?.category ?? '';
         return [id, cat, ...runs.map((r) => {
           const c = r.run.cases.find((x) => x.id === id);
@@ -246,7 +272,7 @@ function main(): void {
     }
   }
   if (network.length > 0) {
-    lines.push('', '## A real download (Hugging Face and jsDelivr, unrouted)', '', table(
+    lines.push('', H + ' A real download (Hugging Face and jsDelivr, unrouted)', '', table(
       ['Model', 'When', 'Model-host requests before Ask / before Download', 'Size shown first', 'Second question on an unknown connection', 'Click to ready', 'Requests (hosts)', 'Bytes from model hosts', 'Progress samples (max, monotonic)', 'Answer', 'Reload: click to ready, model-host requests', 'Delete: Cache API entries before → after, model-host requests', 'Storage usage before → after delete'],
       network.map(({ run: n }) => [
         n.model,
