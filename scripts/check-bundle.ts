@@ -18,6 +18,11 @@
  * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode,
  * the time machine beyond the everyday, the film's sound, Explore Mode's dock), each
  * against its own budget.
+ *
+ * And the assistant (docs/AI-INTELLIGENCE.md), none of it in the shell: the chunks it loads when it
+ * starts (the Ask button's panel with the assistant itself, or the test hook's start()), the language model's worker (WebLLM's runtime,
+ * fetched only when a model loads, and found in that file and no other), the background
+ * comparison's worker, and the knowledge index it fetches when it first answers.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -89,6 +94,21 @@ const FILM_SOUND_BUDGET_BYTES = 12_000;
 const DISCOVER_SOURCES = ['src/ui/discover-dock.ts'] as const;
 /** What the dock may add beyond the shell, gzipped. */
 const DISCOVER_BUDGET_BYTES = 20_000;
+/** The assistant's entry points, loaded when it starts: its own, and its panel's (the Ask button's); their static imports with them, workers later. */
+const AI_SOURCES = ['src/ai/boot.ts', 'src/ai/ui/index.ts'] as const;
+/** What starting the assistant may add beyond the shell, gzipped. */
+const AI_BUDGET_BYTES = 120_000;
+/** The language model's worker (src/ai/engine/webllm-worker.ts): WebLLM's runtime, fetched only when a model loads. */
+const AI_MODEL_WORKER = /^assets\/webllm-worker-[\w-]+\.js$/u;
+const AI_MODEL_WORKER_BUDGET_BYTES = 2_400_000;
+/** Strings only WebLLM's runtime holds (its engine class, its TVM runtime): they must be in the model's worker alone. */
+const WEBLLM_MARKERS = [/\bMLCEngine\b/u, /\btvmjs\b/u] as const;
+/** The background comparison's worker (src/ai/planner/batch-worker.ts), fetched when a comparison or a search runs. */
+const AI_BATCH_WORKER = /^assets\/batch-worker-[\w-]+\.js$/u;
+const AI_BATCH_WORKER_BUDGET_BYTES = 50_000;
+/** The knowledge index (built by scripts/build-ai-index.ts), fetched when the assistant first answers. */
+const AI_INDEX = 'assets/ai/index.json';
+const AI_INDEX_BUDGET_BYTES = 150_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -162,6 +182,18 @@ function exploreFiles(manifest: Manifest, shell: ReadonlySet<string>, sources: r
     collectChunk(manifest, key, 'explore', files);
   }
   return new Map([...files].filter(([, group]) => group === 'explore'));
+}
+
+/** Scripts listed as a chunk's assets: workers, fetched when the worker starts (not with the chunk that names them). */
+function workerFiles(manifest: Manifest): Set<string> {
+  return new Set(Object.values(manifest).flatMap((chunk) => (chunk.assets ?? []).filter((file) => file.endsWith('.js'))));
+}
+
+/** The one worker file whose name matches, or an error. */
+function oneWorker(workers: ReadonlySet<string>, pattern: RegExp): string {
+  const found = [...workers].filter((file) => pattern.test(file));
+  if (found.length !== 1) throw new Error(`expected one worker matching ${String(pattern)}, found ${found.length}`);
+  return found[0] ?? '';
 }
 
 function measure(files: Map<string, Group>): Row[] {
@@ -288,7 +320,36 @@ function main(): void {
   const discoverBytes = discoverRows.reduce((sum, row) => sum + row.gzip, 0);
   const discoverOk = discoverRows.length > 0 && discoverBytes <= DISCOVER_BUDGET_BYTES;
   console.log(`${discoverOk ? 'PASS' : 'FAIL'}: Explore Mode's dock (lazy, ${discoverRows.length} files) = ${formatBytes(discoverBytes)} bytes gzipped (budget ${formatBytes(DISCOVER_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !theoryOk || !soundOk || !discoverOk) process.exitCode = 1;
+  // The assistant, beyond the shell: what starting it adds (its workers are fetched later, on their own).
+  const workers = workerFiles(manifest);
+  const aiRows = measure(new Map([...exploreFiles(manifest, shellFiles, AI_SOURCES)].filter(([file]) => !workers.has(file))));
+  for (const row of [...aiRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`ai  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const aiBytes = aiRows.reduce((sum, row) => sum + row.gzip, 0);
+  const aiOk = aiRows.length > 0 && aiBytes <= AI_BUDGET_BYTES;
+  console.log(`${aiOk ? 'PASS' : 'FAIL'}: the assistant on start (lazy, ${aiRows.length} files) = ${formatBytes(aiBytes)} bytes gzipped (budget ${formatBytes(AI_BUDGET_BYTES)})`);
+  // The language model's worker: WebLLM's runtime, in that file and in no other (the page never imports it).
+  const modelWorker = oneWorker(workers, AI_MODEL_WORKER);
+  const [modelRow] = measure(new Map([[modelWorker, 'explore']]));
+  const withRuntime = listDir('assets', (name) => name.endsWith('.js')).filter((file) => {
+    const text = readFileSync(join(DIST, file), 'utf8');
+    return WEBLLM_MARKERS.some((marker) => marker.test(text));
+  });
+  const loadedOnStart = new Set([...shellFiles, ...aiRows.map((row) => row.file)]);
+  const modelOk = modelRow !== undefined && modelRow.gzip <= AI_MODEL_WORKER_BUDGET_BYTES && withRuntime.length === 1 && withRuntime[0] === modelWorker && !loadedOnStart.has(modelWorker);
+  console.log(`model worker  ${modelWorker}  ${formatBytes(modelRow?.raw ?? 0)} raw, ${formatBytes(modelRow?.gzip ?? 0)} gzip; WebLLM's runtime found in: ${withRuntime.join(', ') || 'no file'}`);
+  console.log(`${modelOk ? 'PASS' : 'FAIL'}: the language model's worker (fetched when a model loads) = ${formatBytes(modelRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_MODEL_WORKER_BUDGET_BYTES)}), the only file with WebLLM's runtime`);
+  // The background comparison's worker.
+  const batchWorker = oneWorker(workers, AI_BATCH_WORKER);
+  const [batchRow] = measure(new Map([[batchWorker, 'explore']]));
+  const batchOk = batchRow !== undefined && batchRow.gzip <= AI_BATCH_WORKER_BUDGET_BYTES && !loadedOnStart.has(batchWorker);
+  console.log(`${batchOk ? 'PASS' : 'FAIL'}: the comparison worker ${batchWorker} = ${formatBytes(batchRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_BATCH_WORKER_BUDGET_BYTES)})`);
+  // The knowledge index.
+  const [indexRow] = measure(new Map([[AI_INDEX, 'data']]));
+  const indexOk = indexRow !== undefined && indexRow.gzip <= AI_INDEX_BUDGET_BYTES;
+  console.log(`${indexOk ? 'PASS' : 'FAIL'}: the knowledge index ${AI_INDEX} = ${formatBytes(indexRow?.raw ?? 0)} raw, ${formatBytes(indexRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_INDEX_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !theoryOk || !soundOk || !discoverOk || !aiOk || !modelOk || !batchOk || !indexOk) process.exitCode = 1;
 }
 
 try {

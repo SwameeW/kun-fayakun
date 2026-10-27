@@ -373,6 +373,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let tracked: { id: string; quantity: LabQuantity; points: Array<[number, number]>; mergedInto: string | null; lastT: number } | null = null;
   let library: string[] = [];
   let share: UniverseLab['share'] = null;
+  let copy: UniverseLab['copy'] = null;
   /** Placing a new body with the pointer: about which body, and what (a preset, or the Add form's values). */
   let placing: { primary: string; name: string; massKg: number; radiusKm: number; preset: Preset | null } | null = null;
   /** Where the pointer would place it (scenario frame, km from the primary), or null off the plane. */
@@ -1611,6 +1612,19 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
               },
             );
           return;
+        case 'copy':
+          // As a share link's data, but nothing is shown and the status line is left as it was.
+          void saved()
+            .then((scenario) => encodeScenario(scenario))
+            .then(
+              (data) => {
+                copy = { data };
+              },
+              (err: unknown) => {
+                copy = { error: String(err) };
+              },
+            );
+          return;
         case 'importShared':
           void decodeScenario(c.data).then((raw) => {
             if (raw === null) {
@@ -2042,6 +2056,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         presets: presetView,
         library,
         share,
+        copy,
         placing: placing ? { primary: placing.primary, name: placing.name, offsetKm: hoverOffset ? norm3(hoverOffset) : null } : null,
         handle: handleAt,
         status,

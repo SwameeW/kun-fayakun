@@ -17,7 +17,7 @@ export interface ValidationContext {
   constants: Loaded<ConstantsFile>;
   content: ContentLoad;
   refs: Array<{ chapter: LoadedChapter; refs: ContentRefs }>;
-  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; ar: MessageLoad };
+  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; aiEngine: MessageLoad; aiTools: MessageLoad; aiMind: MessageLoad; aiUi: MessageLoad; ar: MessageLoad };
   /** The disclaimer from docs/SPEC.md section 1.7, without its quotation marks. */
   specDisclaimer: string;
 }
@@ -55,6 +55,10 @@ export function loadContext(online: boolean): ValidationContext {
       help: loadMessages('src', 'i18n', 'en.help.json'),
       plain: loadMessages('src', 'i18n', 'en.plain.json'),
       discover: loadMessages('src', 'i18n', 'en.discover.json'),
+      aiEngine: loadMessages('src', 'i18n', 'en.ai.engine.json'),
+      aiTools: loadMessages('src', 'i18n', 'en.ai.tools.json'),
+      aiMind: loadMessages('src', 'i18n', 'en.ai.mind.json'),
+      aiUi: loadMessages('src', 'i18n', 'en.ai.json'),
       ar: loadMessages('src', 'i18n', 'ar.json'),
     },
     specDisclaimer: readSpecDisclaimer(),

@@ -3,7 +3,7 @@ import { externalLink, h, uniqueId } from './dom';
 import { figure } from './figures';
 import { blockCitations, formatProse } from './format';
 import { icon } from './icons';
-import { discoveryBlock, type DiscoveryBlock } from './discovery';
+import type { DiscoveryBlock } from './discovery';
 import { hadithArticle, plainBlock, plainExplanation, verseArticle } from './scripture';
 import { loadPlainWords } from './plain-words';
 import { readPreference, writePreference } from './preferences';
@@ -46,6 +46,19 @@ export interface Panel {
 /** How long the stage invitation stays after its verse's cue ends (ms). */
 const INVITE_LINGER_MS = 6000;
 
+/**
+ * The letter analysis's code (./discovery.ts and its styles), a chunk of its own: only a chapter
+ * that has an analysis (Chapter 7) loads it, when its notes are first rendered.
+ */
+let discoveryCode: Promise<typeof import('./discovery')> | null = null;
+const loadDiscovery = (): Promise<typeof import('./discovery')> => {
+  discoveryCode ??= import('./discovery');
+  discoveryCode.catch(() => {
+    discoveryCode = null;
+  });
+  return discoveryCode;
+};
+
 export function createPanel(app: App): Panel {
   const { i18n } = app;
   const panelId = uniqueId('panel');
@@ -63,8 +76,14 @@ export function createPanel(app: App): Panel {
   let dataReady = false;
   let lastReaderActivity = 0;
   const sections = new Map<Section, HTMLElement>();
-  /** The chapter's letter analysis, if it has one: it must close before the panel hides or re-renders it. */
+  /** The chapter's letter analysis, once its code has loaded: it must close before the panel hides or re-renders it. */
   let discovery: DiscoveryBlock | null = null;
+  /** The analysis was asked to open (invitation, inline button) before its code had arrived. */
+  let openWhenLoaded = false;
+  const closeDiscovery = (): void => {
+    openWhenLoaded = false;
+    discovery?.close();
+  };
 
   const title = h('p', { id: titleId, class: 'kf-panel-title' });
   const peek = h('span', { class: 'kf-panel-peek' });
@@ -116,7 +135,7 @@ export function createPanel(app: App): Panel {
   }
 
   function setOpen(next: boolean): void {
-    if (!next) discovery?.close();
+    if (!next) closeDiscovery();
     open = next;
     writePreference('panelOpen', open);
     sync();
@@ -138,13 +157,17 @@ export function createPanel(app: App): Panel {
     invite.setAttribute('aria-hidden', String(!shown));
     invite.tabIndex = shown ? 0 : -1;
   };
+  const showAnalysis = (block: DiscoveryBlock): void => {
+    block.open();
+    block.element.scrollIntoView({ block: 'nearest', behavior: app.reducedMotion ? 'auto' : 'smooth' });
+  };
   const openAnalysis = (): void => {
     showInvite(false);
     if (!open && routeAllows && hasContent) setOpen(true);
     // The notes take a frame to show (they are inert while closed): the analysis opens after.
     requestAnimationFrame(() => {
-      discovery?.open();
-      discovery?.element.scrollIntoView({ block: 'nearest', behavior: app.reducedMotion ? 'auto' : 'smooth' });
+      if (discovery) showAnalysis(discovery);
+      else openWhenLoaded = true;
     });
   };
   invite.addEventListener('click', openAnalysis);
@@ -251,9 +274,27 @@ export function createPanel(app: App): Panel {
     title.textContent = meta ? `${i18n.t('ui.timeline.chapter', { number: meta.number })} · ${chapterTitle}` : chapterTitle;
     peek.textContent = chapterTitle;
     sections.clear();
-    discovery?.close();
+    closeDiscovery();
+    discovery = null;
     const { panel } = content;
-    discovery = panel.discovery ? discoveryBlock(app, panel.discovery) : null;
+    // The analysis takes this place once its code has arrived (at once after the first time).
+    const discoverySlot = panel.discovery ? h('div', { class: 'kf-discovery-slot' }) : null;
+    if (panel.discovery && discoverySlot) {
+      const spec = panel.discovery;
+      loadDiscovery().then(
+        ({ discoveryBlock }) => {
+          if (renderedChapter !== chapter || !discoverySlot.isConnected) return;
+          const block = discoveryBlock(app, spec);
+          discovery = block;
+          discoverySlot.replaceWith(block.element);
+          if (openWhenLoaded && open) showAnalysis(block);
+          openWhenLoaded = false;
+        },
+        (err: unknown) => {
+          console.error('ui: could not load the letter analysis', err);
+        },
+      );
+    }
     try {
       body.replaceChildren(
         // The order of the three layers is a core principle: text, then scholars, then science.
@@ -262,7 +303,7 @@ export function createPanel(app: App): Panel {
           layerNote(panel.notes?.scholarly),
           ...subheading('ui.panel.classical', panel.scholarly.classical),
           ...subheading('ui.panel.modern', panel.scholarly.modern),
-          discovery?.element ?? null,
+          discoverySlot,
         ]),
         section('science', [
           ...panel.science.flatMap(scienceBlock),
@@ -278,7 +319,7 @@ export function createPanel(app: App): Panel {
       inviteKey = null;
       const verses = sections.get('text')?.querySelectorAll('[data-verse]');
       const last = verses?.[verses.length - 1];
-      if (discovery && last) {
+      if (panel.discovery && last) {
         inviteKey = last.getAttribute('data-verse');
         const inline = h('button', { type: 'button', class: 'kf-btn kf-btn--quiet kf-discovery-inline', 'data-testid': 'discovery-inline' }, i18n.t('ui.discovery.inline'));
         inline.addEventListener('click', openAnalysis);
@@ -356,7 +397,7 @@ export function createPanel(app: App): Panel {
       if (routeAllows && hasContent) setOpen(!open);
     },
     setAvailable(next) {
-      if (!next) discovery?.close();
+      if (!next) closeDiscovery();
       routeAllows = next;
       sync();
     },

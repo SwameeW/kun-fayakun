@@ -137,6 +137,11 @@ export interface GovernorOptions {
   /** Each tier's lowest render scale. */
   minScale: Readonly<Record<ExploreTier, number>>;
   mobile: boolean;
+  /**
+   * True while a render budget is held (another load shares the GPU): every sample is ignored, so
+   * nothing changes, no try upward fails and no lock or failure is counted.
+   */
+  held?: () => boolean;
 }
 
 export interface GovernorDecision {
@@ -336,7 +341,7 @@ export function createDetailGovernor(options: GovernorOptions): DetailGovernor {
     sample(frameSeconds, gpuMs, intervalSeconds) {
       if (!(frameSeconds > 0) || frameSeconds > STALL_SECONDS) return null;
       cadence.sample(frameSeconds);
-      if (!options.enabled) return null;
+      if (!options.enabled || options.held?.()) return null;
       if (hold > 0) {
         hold -= frameSeconds;
         return null;

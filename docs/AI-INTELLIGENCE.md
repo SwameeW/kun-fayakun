@@ -55,7 +55,8 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 | Path | Holds |
 |---|---|
 | `src/ai/types.ts` | The contracts |
-| `src/ai/index.ts` | `createIntelligence(app)`: the orchestrator and the task state machine |
+| `src/ai/boot.ts` | `startIntelligence(app, announce)`: registers the message files, builds the registry, the engine host and the retriever, and returns `createIntelligence(app, deps)`, once per page. The shell reaches it only by a dynamic import (`window.__kf.ai.start` until the Ask button exists) |
+| `src/ai/index.ts` | `createIntelligence(app, deps)`: the orchestrator and the task state machine; `placeFrom`, the named-place resolver the router is given |
 | `src/ai/context.ts` | Context adapter: the app's state → `AiContext` (and a ≤600-character summary for the model) |
 | `src/ai/router.ts` | Deterministic intents: go to, show, set the date, faster, chapter n, verse s:a, escape speed of, qibla from, throw a rock at… |
 | `src/ai/prompts.ts` | Plan and answer prompts, kept short (the context window is 4,096 tokens) |
@@ -64,17 +65,29 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 | `scripts/build-ai-index.ts` | Builds that index from content.json, the message files, data/*.json, the atlas, star names and world facts; the validator checks it |
 | `src/ai/tools/` | The registry, a JSON-schema-subset validator, and the tools (§4) |
 | `src/ai/planner/` | Experiment templates → lab commands, the background comparison worker, the optimiser |
-| `src/ai/engine/` | Capability detection, the pinned model catalogue, the WebLLM worker client, the browser-model adapter, the scripted test engine, storage, GPU pacing |
-| `src/ai/ui/` | Ask button, panel, download dialog, storage manager, answer blocks, confirmation cards |
-| `src/i18n/en.ai.json` | Every string (lazy, registered with the validator) |
+| `src/ai/engine/` | Capability detection, the pinned model catalogue, the model worker (`webllm-worker.ts`, the only importer of WebLLM), its message protocol (`protocol.ts`) and its client (`webllm.ts`), the browser-model adapter, the scripted test engine, storage, GPU pacing |
+| `src/ai/ui/` | The panel the header's Ask button (or /) opens: `index.ts` (a column beside the scene on a wide window, a modal bottom sheet on a phone), `layout.ts` (where it may stand: clear of every piece of chrome on screen), `blocks.ts` (the answer blocks and confirmation cards), `model.ts` (the model on this device: detection, download, progress, errors, stored models), `settings.ts` (explanation level, opt-in memory, clearing), `ai.css` |
+| `src/i18n/en.ai.engine.json`, `en.ai.tools.json`, `en.ai.mind.json`, `en.ai.json` | Every string: the engines', the tools', the orchestrator's and the panel's (lazy, added with `app.i18n.extend` by `boot.ts` and `src/ai/ui`, registered with the validator) |
+
+**Loading, in order.**
+1. First visit: nothing of the assistant. The shell holds only the Ask button, the / shortcut and a starter for the test hook (dynamic imports of `src/ai/ui` and `src/ai/boot.ts`), and `scripts/check-bundle.ts` keeps every file with `src/ai` code out of the shell.
+2. Start (Ask pressed): the assistant's chunks with its panel (measured on their own by `scripts/check-bundle.ts`: about 98 KB gzip, budget 120 KB), and what it reads at once: data/quran.json and data/hadith.json for the scripture catalogue, and the plain words. In all about 113 KB as served (measured on the page by `tests/ai-panel.spec.ts`, which fails above 130 KB). The Arabic typeface (about 63 KB) is fetched only when the first verse is shown.
+3. First question: the knowledge index, `assets/ai/index.json` (about 120 KB gzip, budget 150 KB).
+4. A comparison or a search: the batch worker (about 31 KB gzip, budget 50 KB).
+5. Only when a visitor chooses a model: the model worker with WebLLM's runtime (about 2.16 MB gzip, budget 2.4 MB), then the model's files from Hugging Face. The worker is the only built file that holds WebLLM's runtime; the bundle check fails otherwise.
 
 ## 3. Engines
 
 **WebLLM 0.2.86** (Apache-2.0), pinned exactly; earlier versions lack interrupt and stream-cancel fixes.
-- **Worker:** runs in a dedicated module worker (`CreateWebWorkerMLCEngine`). The page pulls each streamed chunk, so pacing is in our hands.
+- **Worker:** our own dedicated module worker (`src/ai/engine/webllm-worker.ts`) drives `MLCEngine` directly. It is the only module that imports WebLLM, so the runtime is downloaded once, with the worker, when a model is loaded. The page speaks to it in our own typed messages (`src/ai/engine/protocol.ts`):
+  - `load` (the AppConfig and the model id), answered with `progress` messages, then `loaded`;
+  - `generate`, then one `pull` for each next piece: the worker decodes a piece only when the page asks for it, and the page asks through the pacer (§6), so pacing is in our hands;
+  - `interrupt`, `unload`, `hasModelInCache`, `deleteModelAllInfoInCache`.
+
+  Failures are mapped to EngineError codes in the worker and sent as data.
 - **Weights:** come from `huggingface.co/mlc-ai/<model>/resolve/<commit>/`, pinned to a commit. Hugging Face is a public file store here, not an inference service, and needs no account.
 - **Model libraries:** pinned to a commit of `binary-mlc-llm-libs` through jsDelivr, with SRI hashes where available.
-- **Cache:** the Cache API (`cacheBackend: 'cache'`). Deletion goes through `deleteModelAllInfoInCache`.
+- **Cache:** the Cache API (`cacheBackend: 'cache'`). What is stored is read from the caches directly, at no download. Deletion goes through `deleteModelAllInfoInCache` in the worker, and only when the model's manifest is stored, because otherwise WebLLM would download the manifest to find the files. A sweep of the three caches then removes whatever is left.
 - **Tool calls:** WebLLM's `tools` field is not used, because it is hard-wired to Hermes models and forbids a system prompt. Instead, plans use `response_format: { type: 'json_object', schema }` (XGrammar), with `enable_thinking: false` and temperature 0, and are validated again in JS. Constrained decoding has open bugs (#868, #807).
 
 **Browser model.** Chrome's `LanguageModel` (Prompt API), detected with `availability()` using the same options as `create()`.
@@ -96,39 +109,125 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 Every tool has a name, a kind, a one-line summary, an argument schema, a state check, a preview sentence and a `run` that reads the app's state back.
 - **read, calc and cite** tools run at once.
 - **view** tools run at once and can be undone.
-- **experiment** tools show a card ("Double the Sun's mass, then integrate 10 years: Confirm / Cancel") and run only after the visitor confirms.
+- **experiment** tools show a card ("Multiply the Sun's mass by 2: Confirm / Cancel") and run only after the visitor confirms. The card promises only the edit: applying it integrates nothing ahead (a comparison does that, in the background).
+- **Stopping.** Stop before a tool starts (Confirm then Stop at once, say) and nothing is sent; the card says it was cancelled. Once a tool has started, what it did is kept even if the turn is stopped: its card says "sent, but not seen" until its own outcome arrives, then shows that outcome and its Undo, and the turn ends as stopped. An experiment checks for Stop before each command it sends.
+- **Undo** of an experiment undoes that experiment's own edits, never simply the newest: it is refused, with the reason on its card, while a later edit sits on top in the laboratory (or once the laboratory no longer shows the experiment). "Put back as it was" is said only when the laboratory reads back as it was; otherwise the notice says the undo was sent but not seen.
 
-The groups:
-- **film:** open a chapter, play/pause/next/previous, show a moment in Explore Mode.
-- **explorer:** open/close, fly to a body, go to a place, sky layers, walk and end the walk, the stars view, find a star.
-- **time:** pause/play, faster, slower, now, set a date, set a rate.
-- **islamic:** qibla, prayer times by a named convention, the new crescent, the Hijri date.
-- **lab:** open, apply an experiment (confirmed), undo, measure, state, compare in the background, optimise.
-- **calc:** escape and circular speed, orbital period, light time, Hohmann transfer, Roche limit, Hill radius, impact outcome and crater, world facts. Each wraps existing deterministic code (`src/sim`, `src/astro`, `src/explore/about.ts`, `src/explore/islamic`).
-- **cite:** verse by key, hadith by id (reference, grading and summary, never wording), constant, source.
-- **search:** the verified content.
+The tools and their arguments (`src/ai/tools`; the registry's validator checks the schema, then where the tool can work, then its own checks against the app's state). An argument in brackets is optional. A `body` is one of the ten worlds (`sun`, `mercury`, `venus`, `earth`, `moon`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune`). A `place` is the id of a place of the field notes (`everest`, `mecca`, `uyuni`…), and is given instead of `lat` and `lon` (degrees), never with them. A `date` is UTC, `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`. A laboratory body (`lab body`) is a body's id or name in the laboratory.
 
-For a small model, the registry offers only a shortlist: the core tools plus the best matches for the question and where the visitor is. The plan schema's `tool` field is an enum of that shortlist.
+**film** (view)
+
+| Tool | Arguments | Where |
+|---|---|---|
+| `film.open` | `{ chapter: "ch00"…"ch10", [t]: seconds }` | anywhere |
+| `film.control` | `{ action: "play" \| "pause" \| "next" \| "previous" \| "explore" \| "film" }` (explore: Explore Mode on; film: back to the film) | a chapter |
+| `film.moment` | `{ point: a moment's id }` | a chapter |
+
+**explorer** (view)
+
+| Tool | Arguments | Where |
+|---|---|---|
+| `explorer.open` | `{ [body] }` | outside the explorer and the laboratory |
+| `explorer.close` | `{}` | the explorer or the laboratory |
+| `explorer.fly` | `{ body }` (opens the explorer if needed) | anywhere; in the laboratory, only a body still there |
+| `explorer.place` | `{ place }` or `{ lat, lon }`, `[viewKm]` 1–20,000 | the explorer |
+| `explorer.sky` | `{ layer: "constellations" \| "boundaries" \| "grid" \| "names", on: boolean }` | the explorer or the laboratory |
+| `explorer.stars` | `{}` (out among the stars around the Sun) | the explorer |
+| `explorer.find_star` | `{ name }` (a star's name or catalogue number) | the explorer |
+| `explorer.walk` | `{ [world]: "earth" \| "moon" \| "mars" \| "mercury" \| "venus", [place] or [lat, lon] }` (no place: below the camera; never within Makkah's frame) | the explorer |
+| `explorer.walk_end` | `{}` | while walking |
+
+**time** (view)
+
+| Tool | Arguments | Where |
+|---|---|---|
+| `time.control` | `{ action: "pause" \| "play" \| "faster" \| "slower" \| "reverse" \| "now" }` | the explorer or the laboratory (reverse and now: the explorer only) |
+| `time.date` | `{ date }`, within the span the data covers (refused with the span named) | the explorer |
+| `time.rate` | `{ rate }`: an integer on the clock's ladder (1, 10, 60, 600, 3600, 21600, 86400, 604800, 2592000), negative for backwards (not in the laboratory) | the explorer or the laboratory |
+
+**islamic** (calc; anywhere)
+
+| Tool | Arguments |
+|---|---|
+| `islamic.qibla` | `{ place }` or `{ lat, lon }` |
+| `islamic.prayer_times` | `{ place }` or `{ lat, lon }`, `convention: "mwl" \| "isna" \| "egypt" \| "makkah" \| "karachi" \| "tehran" \| "qum" \| "france" \| "russia" \| "singapore"` (required: the visitor names it; a model's plan that fills in one the question does not name becomes the app's own question back, asking which), `[date]`, `[asrShadow]: 1 \| 2` |
+| `islamic.crescent` | `{ place }` or `{ lat, lon }`, `[date]` |
+| `islamic.hijri` | `{ [date] }` (else the date shown, or now) |
+
+**lab**
+
+| Tool | Kind | Arguments | Where |
+|---|---|---|---|
+| `lab.open` | view | `{ [seed]: "solar" \| "two" \| "three" }` | outside the laboratory |
+| `lab.state` | read | `{}` | the laboratory |
+| `lab.experiment` | experiment | `{ experiment, …its parameters }` (below), flat, `[horizonDays]` | the laboratory |
+| `lab.undo` | view | `{}` | the laboratory |
+| `lab.measure` | view | `{ from: lab body, to: lab body, [via]: lab body }` | the laboratory |
+| `lab.compare` | read | as `lab.experiment`; integrated ahead in the background worker, nothing on screen changes (in the laboratory its scenario is read by a silent `copy` command: no share link, no status line) | anywhere (outside the laboratory, against the solar system seeded now) |
+| `lab.optimise` | read | `{ goal: "escape", [body], [days] }` or `{ goal: "year", [body], targetDays }` | anywhere |
+
+The experiments' parameters (every one required, with its range):
+
+| `experiment` | Parameters |
+|---|---|
+| `scale-mass` | `body`, `factor` 0.01–100 |
+| `remove-body` | `body` (not the Sun) |
+| `kick-body` | `body`, `dvKmS` −50–50 (not 0), `direction: "prograde" \| "retrograde" \| "radial-out" \| "radial-in"` |
+| `impact` | `target`, `diameterKm` 0.01–1,000, `speedKmS` 1–72 (above the target's escape speed), `angleDeg` 15–90 |
+| `add-moon` | `host`, `distanceKm` 1–10¹⁰, `massKg` 10⁶–10²⁶ |
+| `second-star` | `massSun` 0.1–10, `distanceAu` 0.5–1,000 |
+| `change-orbit` | `body`, `aFactor` 0.2–5, `e` 0–0.95 |
+
+`horizonDays` (1–36,525) is how far ahead a comparison integrates; each experiment has its own default.
+
+**calc** (anywhere): each wraps existing deterministic code (`src/sim`, `src/astro`, `src/explore/about.ts`, `src/explore/islamic`).
+
+| Tool | Arguments |
+|---|---|
+| `calc.escape_speed`, `calc.circular_speed` | `{ body, [altitudeKm] }` |
+| `calc.orbital_period` | `{ body }` (a planet about the Sun), or `{ primary, aKm }` |
+| `calc.light_time` | `{ from: body, to: body }`, or `{ distanceKm }`, or `{ distanceAu }` |
+| `calc.hohmann` | `{ from: body, to: body }` (planets about the Sun), or `{ fromKm, toKm }`, `[primary]` |
+| `calc.roche` | `{ primary, satellite }` or `{ primary, satelliteDensity }` |
+| `calc.hill` | `{ body, [primary], [aKm], [e] }` |
+| `calc.impact` | `{ target, diameterKm, speedKmS, [angleDeg], [densityKgM3] }` |
+| `calc.world_facts` | `{ body }` |
+
+**cite** (anywhere)
+
+| Tool | Arguments |
+|---|---|
+| `cite.verse` | `{ key: "surah:ayah" }`, one of the verses data/quran.json holds and the data store shows |
+| `cite.hadith` | `{ id }`, one of data/hadith.json's, never an excluded one; its reference, narrator and grading, never its wording |
+| `cite.constant` | `{ id }` of data/constants.json |
+| `cite.source` | `{ id }` of data/sources.json |
+
+**search** (anywhere): `search.knowledge` `{ query, [kinds], [limit] 1–8 }`, over the verified content.
+
+**The guide's router** (`src/ai/router.ts`) makes exactly these shapes, checked by `tests/unit/ai-router.spec.ts` through the real registry in a realistic context for each place the visitor can be. Named places come from the knowledge index (`placeFrom` in `src/ai/index.ts`): the field notes' own places by their id, then the most populous town of that name by its degrees. Prayer times are planned only when the visitor names a convention. "Throw a rock at the Earth" becomes an `impact` with illustrative numbers shown on the card (a size by the word used, a speed above the world's escape speed, 45 degrees).
+
+For a small model, the registry offers only a shortlist: the core tools plus the best matches for the question and where the visitor is. The plan schema's `tool` field is an enum of that shortlist. Because constrained decoding has open bugs, the reply is checked again in JS: a call to a tool not offered is refused ("not offered", in the repair prompt), and the reply as a whole must fit the plan's schema. If the plan still cannot be used, the guide answers that turn from the app's content (the plan's `source` is `fallback`, as it is when no rule matched and there is no model).
 
 ## 5. Integrity
 
 - **Scripture is never generated.** The model refers to verses and hadith by id. The interface renders them with `verseArticle`/`hadithArticle` from data, which withholds any verse whose checksum fails.
 - **Output guards:**
   - Arabic script in model output is removed.
-  - Quoted text that resembles a translation is removed (`scripture-quote`).
-  - A citation id not in the data is dropped (`unknown-citation`).
-  - Banned phrasing ("predicted", "foretold", "proves", "scientific miracle", "proof that", "confirms the Quran") is rewritten or flagged.
+  - Words presented as scripture are removed whatever their length or wording (`scripture-quote`): text a lead-in introduces ("The Prophet said:", "Allah says in the Quran, '…'", "… says:" then a blockquote, "narrated:") goes with its sentence, up to the quotation's closing mark, the sentence's end or the paragraph's; so does any quotation (“…”, «…», „…“, "…", ‘…’, '…', or lines starting with ">") such words come just before. Quoted or unquoted text that resembles a translation is removed too. Where the verse can be told, its marker takes the place of what was removed.
+  - While an answer streams, nothing is shown from a quotation mark not yet closed, a presenting sentence not yet ended, a blockquote being written, or an unfinished sentence that already reads like a verse.
+  - A citation id not in the data is dropped, and a sentence naming a verse key the data does not hold, or a narration data/hadith.json excludes (by collection and number, key or sunnah.com address, read from the file), is removed (`unknown-citation`).
+  - Banned phrasing ("predicted", "foretold", "proves", "scientific miracle", "proof that", "confirms the Quran", in all their forms: "predicts", "foretells", "proven", "a miracle of science", the Qur'an with any apostrophe) is rewritten or removed; "prediction" and "proof of" go where a sentence speaks of scripture (`banned-phrase`).
   - A number with two or more significant digits, or with a unit, that is not among the turn's facts or passages is marked "not checked" (`unchecked-number`).
   - A claim to have done something that no tool outcome reports is removed (`action-claim`).
-- **Labels:** every block is labelled with its kind: observed, model, simulation, scripture, or explanation. Model prose is always labelled "Explanation by <model> on this device".
+- **Labels:** every block is labelled with its kind: observed, model, simulation, scripture, or explanation. Model prose is always labelled "Explanation by <model> on this device", naming the engine that wrote that block (a model loaded while a card waits writes, and is named on, the answer after Confirm); the scripted engine's reads "Test engine".
 - **The laboratory says "integrated ahead", never "predicted".** A simulation never speaks for what Allah would decree.
-- **Prompt injection:** text that comes from data or tool results goes to the model as quoted data, never as instructions. The model cannot run code; it can only name tools from the registry, with validated arguments.
+- **Prompt injection:** text that comes from data or tool results goes to the model as quoted data, never as instructions. The chat template's control tokens ("<|im_start|>", "<|im_end|>") are defused in data and in the visitor's question, so a laboratory body named after one (from a shared link) cannot end a turn or open another. The model cannot run code; it can only name tools it was offered, with validated arguments.
 
 ## 6. GPU sharing
 
 The three.js renderer and WebLLM each have their own `GPUDevice` on one GPU.
 
-**Render budget.** `app.requestRenderBudget(reason, { maxScale })` caps the render scale and holds the film's and the explorer's quality governors for the whole time the assistant holds it, so inference load is not read as scene load and tiers are not locked for the visit.
+**Render budget.** `app.requestRenderBudget(reason, { maxScale })` caps the render scale and holds the film's and the explorer's quality governors for the whole time the assistant holds it, so inference load is not read as scene load and tiers are not locked for the visit. It is held for each generation, and while a model loads from its weights' upload (a device sync for every tensor) and its shaders' compilation to the end of the load.
 
 **Prefill:**
 - Prompts are kept short.
@@ -169,7 +268,7 @@ Nothing here downloads anything.
 | B. Agent | Model plans under a schema with a shortlist, validation and repair, verification by readback, grounded answers with citations, contextual suggestions |
 | C. Experiments | Deterministic experiment planner, confirmation and undo, the background comparison worker, an optimiser (bisection over a launch speed, a mass…), the experiment notebook |
 | D. Tutor and tours | Levels (plain / standard / deeper), tours built from Explore points and the atlas, told from retrieved passages |
-| E. Memory and evaluation | Opt-in memory (IndexedDB, off by default, clearable), the real-model evaluation harness and report, the adversarial suite, measured GPU impact |
+| E. Memory and evaluation | Opt-in memory (IndexedDB, off by default, clearable; with it on, the kept turns come back as earlier turns when the assistant starts, and a model reads the last few as the conversation so far), the real-model evaluation harness and report, the adversarial suite, measured GPU impact |
 
 ## 9. Testing
 

@@ -74,6 +74,6 @@ export function terrariumTile(z: number, x: number, y: number, height: (lat: num
 export async function routeTerrain(page: Page, height: (lat: number, lon: number) => number): Promise<void> {
   await page.route(/s3\.amazonaws\.com\/elevation-tiles-prod\/terrarium\/(\d+)\/(\d+)\/(\d+)\.png/u, async (route) => {
     const [, z, x, y] = /terrarium\/(\d+)\/(\d+)\/(\d+)\.png/u.exec(route.request().url()) ?? [];
-    await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, contentType: 'image/png', body: Buffer.from(terrariumTile(Number(z), Number(x), Number(y), height)) });
+    await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, contentType: 'image/png', body: Buffer.from(terrariumTile(Number(z), Number(x), Number(y), height)) as Buffer });
   });
 }

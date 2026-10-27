@@ -109,9 +109,9 @@ export function plainBlock(key: VerseKey, i18n: I18n): HTMLElement | null {
 /**
  * A verse in the panel: Arabic, transliteration, translation, reference and attribution, then the
  * verse in plain words (`plain: false` leaves that out, where the space is the letters', as in the
- * letter analysis).
+ * letter analysis; `translit: false` leaves out the transliteration, as the assistant does).
  */
-export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey?: I18nKey, options: { plain?: boolean } = {}): HTMLElement {
+export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey?: I18nKey, options: { plain?: boolean; translit?: boolean } = {}): HTMLElement {
   const headingId = uniqueId('verse');
   const heading = h('h3', { id: headingId, class: 'kf-ref' }, i18n.t('ui.verse.reference', { key }));
   const entry = availableVerse(data, key);
@@ -128,7 +128,7 @@ export function verseArticle(key: VerseKey, data: DataStore, i18n: I18n, noteKey
     { class: 'kf-verse', 'aria-labelledby': headingId, 'data-verse': key },
     heading,
     arabicText(entry.arabic, 'kf-arabic'),
-    entry.translit ? h('p', { class: 'kf-translit', lang: 'ar-Latn', dir: 'ltr', translate: 'no' }, entry.translit) : null,
+    entry.translit && options.translit !== false ? h('p', { class: 'kf-translit', lang: 'ar-Latn', dir: 'ltr', translate: 'no' }, entry.translit) : null,
     entry.translation ? h('blockquote', { class: 'kf-translation', dir: 'auto' }, h('p', {}, entry.translation)) : null,
     verseAttribution(entry, data, i18n),
     options.plain === false ? null : plainBlock(key, i18n),
@@ -155,18 +155,20 @@ function parallelLinks(entry: HadithEntry, i18n: I18n): HTMLElement | null {
  * when a person has entered and checked it, the sourced summary (labelled: not a quotation), the
  * grading and any note on it, since gradings that differ must stay plain to see. Then, behind
  * "Source details": the narrator, parallel narrations, why the wording is not shown yet, and the
- * link to sunnah.com. Wording appears only when entered and reviewed.
+ * link to sunnah.com. Wording appears only when entered and reviewed, and never with `wording: false`
+ * (the assistant shows a hadith's reference, summary and grading only).
  */
 export function hadithArticle(
   id: HadithId,
   data: DataStore,
   i18n: I18n,
-  opts: { summaryKey?: I18nKey; noteKey?: I18nKey } = {},
+  opts: { summaryKey?: I18nKey; noteKey?: I18nKey; wording?: boolean } = {},
 ): HTMLElement | null {
   const entry = lookupHadith(data, id);
   if (!entry) return null;
   const headingId = uniqueId('hadith');
-  const text = verifiedHadithText(entry);
+  const verified = verifiedHadithText(entry);
+  const text = opts.wording === false ? null : verified;
   const link = sunnahUrl(entry.sunnahKey);
   return h(
     'article',
@@ -198,7 +200,7 @@ export function hadithArticle(
       h('summary', {}, i18n.t('ui.hadith.sourceDetails')),
       h('p', { class: 'kf-meta' }, i18n.t('ui.hadith.narrator', { narrator: entry.narrator })),
       parallelLinks(entry, i18n),
-      text ? null : h('p', { class: 'kf-pending' }, i18n.t('ui.hadith.pending')),
+      verified ? null : h('p', { class: 'kf-pending' }, i18n.t('ui.hadith.pending')),
       link ? h('p', { class: 'kf-link' }, externalLink(link, i18n.t('ui.hadith.link'))) : null,
     ),
   );

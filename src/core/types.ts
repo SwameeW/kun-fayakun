@@ -715,6 +715,8 @@ export interface UniverseGraphics {
   /** The canvas's device-pixel-ratio ceiling. */
   setDprCap(cap: number): void;
   setBloom(on: boolean): void;
+  /** True while a render budget is held (AppCommands.requestRenderBudget): the explorer's governor rests. */
+  readonly held: () => boolean;
 }
 
 /**
@@ -1195,6 +1197,8 @@ export interface UniverseLab {
   library: readonly string[];
   /** A link to this scenario, or why there is none (too large). */
   share: { url: string } | { tooLarge: true; chars: number } | null;
+  /** The last copy asked for with { kind: 'copy' }: the scenario encoded as a share link's data (any size), or why it could not be made. A new object each time. Never shown. */
+  copy: { data: string } | { error: string } | null;
   /** Placing a body with the pointer: about which body, and where it would go now (km from it, or null off the plane). */
   placing: { primary: string; name: string; offsetKm: number | null } | null;
   /** The chosen body's velocity arrow's tip on the canvas (client px; drag it to change the velocity), or null. */
@@ -1231,6 +1235,8 @@ export type LabCommand =
   | { kind: 'loadSaved'; name: string }
   | { kind: 'deleteSaved'; name: string }
   | { kind: 'share' }
+  /** A copy of the scenario as it stands, for the assistant's background comparisons (UniverseLab.copy): never shown, and no status changes. */
+  | { kind: 'copy' }
   | { kind: 'importShared'; data: string }
   | { kind: 'removeMany'; ids: string[] }
   | { kind: 'duplicateMany'; ids: string[] }
@@ -1457,6 +1463,15 @@ export interface AppCommands {
    * the chapter: leaving it drops them. The returned function releases this hold (idempotent).
    */
   holdFilm(reason: string): () => void;
+  /**
+   * Holds the picture back while something else shares the GPU (the assistant's language model
+   * prefilling and generating, docs/AI-INTELLIGENCE.md §6). While any budget is held, the render
+   * scale is capped at the smallest maxScale held (the film's dynamic resolution and the explorer's
+   * scene pass), and the film's and the explorer's quality governors rest: their load is not read as
+   * the scene's, so no tier changes or is locked for the visit. The returned function releases this
+   * budget (idempotent) and the picture returns to what its governors chose.
+   */
+  requestRenderBudget(reason: string, budget: { maxScale: number }): () => void;
   /**
    * Opens the solar-system explorer (true scale), optionally on a body. From a chapter, the
    * explorer remembers where the film was, so closeUniverse() returns there.
