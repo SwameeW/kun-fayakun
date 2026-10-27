@@ -41,6 +41,7 @@
   "ai.ui.flag.unknown-citation": "A reference that is not in the app’s data was removed.",
   "ai.ui.flag.banned-phrase": "Wording that claimed more than science and scripture show was changed.",
   "ai.ui.flag.action-claim": "A claim to have done something the app did not report was removed.",
+  "ai.ui.flag.repeated": "A sentence the model wrote more than once is shown once.",
   "ai.ui.flag.truncated": "The explanation reached its length limit and was cut short.",
   "ai.ui.kind.observed": "Observed: measured data",
   "ai.ui.kind.model": "Model: a scientific model’s numbers",

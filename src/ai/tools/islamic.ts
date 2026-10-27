@@ -2,9 +2,9 @@ import { julianDateUtc } from '../../astro/time';
 import type { I18n, PrayerConventionId } from '../../core/types';
 import { compassPoint, crescentAt, eveningSpan, KAABA, newMoons, PRAYER_CONVENTIONS, prayerTimes, qiblaBearing, qiblaDistanceKm, skyTrack } from '../../explore/islamic/astronomy';
 import { hijriDate } from '../../explore/islamic/hijri';
-import type { AnswerBlock, Fact, ToolDefinition, ToolEnv, ToolProblem } from '../types';
+import type { AnswerBlock, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolProblem } from '../types';
 import { dataSpanMs, jplData, meanRadiusKm, type JplData } from './data';
-import { PLACE, placeById } from './explorer';
+import { PLACE, placeArgsFor, placeById } from './explorer';
 import { DATE, done, ensureMessages, fact, failed, isoUtc, LAT, LON, num, parseUtc, problem, refused, say, sig, str } from './shared';
 
 /**
@@ -62,6 +62,7 @@ export const islamicQibla: ToolDefinition = {
   summary: 'The qibla from a place: its great-circle bearing from true north and its distance to the Kaaba.',
   keywords: ['qibla', 'kaaba', 'direction of prayer', 'which way', 'facing', 'makkah', 'mecca', 'bearing'],
   args: { type: 'object', properties: placeArgs, additionalProperties: false },
+  argsFor: () => placeArgsFor({}),
   available: () => true,
   check: (args) => placeProblems(args),
   preview: (args, _ctx, i18n) => say(i18n, 'ai.tool.islamic.qibla.preview', { place: placeOf(args)?.name ?? '' }),
@@ -87,6 +88,9 @@ export const islamicQibla: ToolDefinition = {
   },
 };
 
+const CONVENTION: JsonSchema = { type: 'string', enum: CONVENTIONS, description: 'Which convention' };
+const ASR_SHADOW: JsonSchema = { type: 'integer', minimum: 1, maximum: 2, description: "Asr's shadow length: 1 (Shafi'i, Maliki, Hanbali, Ja'fari) or 2 (Hanafi)" };
+
 export const islamicPrayerTimes: ToolDefinition = {
   name: 'islamic.prayer_times',
   kind: 'calc',
@@ -97,12 +101,13 @@ export const islamicPrayerTimes: ToolDefinition = {
     properties: {
       ...placeArgs,
       date: DATE,
-      convention: { type: 'string', enum: CONVENTIONS, description: 'Which convention' },
-      asrShadow: { type: 'integer', minimum: 1, maximum: 2, description: "Asr's shadow length: 1 (Shafi'i, Maliki, Hanbali, Ja'fari) or 2 (Hanafi)" },
+      convention: CONVENTION,
+      asrShadow: ASR_SHADOW,
     },
     required: ['convention'],
     additionalProperties: false,
   },
+  argsFor: () => placeArgsFor({ date: DATE, convention: CONVENTION, asrShadow: ASR_SHADOW }, ['convention']),
   available: () => true,
   check(args) {
     const found = placeProblems(args);
@@ -150,6 +155,7 @@ export const islamicCrescent: ToolDefinition = {
   summary: "Whether the new crescent can be seen from a place on the three evenings after the new moon nearest a date (Yallop's and Odeh's tests).",
   keywords: ['crescent', 'new moon', 'hilal', 'moon sighting', 'ramadan', 'eid', 'month', 'start of the month', 'visibility'],
   args: { type: 'object', properties: { ...placeArgs, date: DATE }, additionalProperties: false },
+  argsFor: () => placeArgsFor({ date: DATE }),
   available: () => true,
   check(args) {
     const found = placeProblems(args);

@@ -13,6 +13,33 @@ declare module 'node:fs' {
   /** The real-model evaluation (tests/ai-eval) writes its raw results. */
   export function writeFileSync(path: string, data: string): void;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): string | undefined;
+  /** The evaluation's local model host streams files too large for route.fulfill (tests/ai-eval/serve.ts). */
+  export function createReadStream(path: string): {
+    on(event: 'end' | 'error', listener: () => void): void;
+    pipe(destination: import('node:https').ServerResponse): void;
+  };
+}
+
+declare module 'node:https' {
+  export interface IncomingMessage {
+    method?: string;
+    url?: string;
+    headers: Record<string, string | string[] | undefined>;
+  }
+  export interface ServerResponse {
+    writeHead(status: number, headers: Record<string, string>): void;
+    end(body?: string): void;
+    destroy(): void;
+  }
+  export interface Server {
+    listen(port: number, host: string, callback: () => void): void;
+    address(): { port: number } | string | null;
+    on(event: 'error', listener: (err: Error) => void): void;
+    closeAllConnections(): void;
+    close(callback?: () => void): void;
+  }
+  /** The real-model evaluation's local HTTPS server for the model hosts (tests/ai-eval/serve.ts). */
+  export function createServer(options: { key: string; cert: string }, handler: (req: IncomingMessage, res: ServerResponse) => void): Server;
 }
 
 declare module 'node:child_process' {

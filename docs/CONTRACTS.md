@@ -47,7 +47,7 @@ interfaces every builder shares so parallel work fits together. Types live in
 2. Scripture text only from `data/quran.json` (generated from pinned Tanzil files). Hadith
    wording only when a person has entered it (`text.en` non-null **and** `reviewer` set);
    otherwise show reference, narrator, grading, grader, dispute note and a sunnah.com link.
-3. Never reference `muslim:2789` (listed in `hadith.json` → `excluded`).
+3. Never reference a narration listed in `hadith.json` → `excluded` (by its key, its collection and number or its address); where it must be spoken of, say "a narration that is not in data/hadith.json".
 4. Panels render the three layers in order: text → scholarly (classical, then modern) → science
    (+ open questions).
 5. Verses fade in and out whole (no typewriter, no clipping, no cut mid-ayah). Never on a

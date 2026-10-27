@@ -106,6 +106,10 @@ test('integrity after the guards: each violation is found, a clean answer is cle
   expect(types(`It says ${String.fromCodePoint(0x0628, 0x0633, 0x0645)}.`)).toEqual(['arabic']);
   expect(types('The Quran predicted the Big Bang.')).toEqual(['banned-phrase']);
   expect(types('This verse is a prediction of science.')).toEqual(['banned-phrase']);
+  // Rule g as the app holds it: the bare verb is the laboratory's own word ("Predict ahead"); its banned forms are not.
+  expect(types('These results do not predict the future.')).toEqual([]);
+  expect(types('The simulation predicts that Mars leaves.')).toEqual(['banned-phrase']);
+  expect(types('The verse was proved right.')).toEqual(['banned-phrase']);
   expect(types('Verse 115:3 explains it.')).toEqual(['unknown-citation']);
   expect(types('Verse 21:30 explains it.')).toEqual([]);
   expect(types('Its mass is 4.2 × 10^30 kg.')).toEqual(['invented-number']);

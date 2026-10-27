@@ -79,7 +79,16 @@ export interface RunOptions {
   onProgress?: (fraction: number, phase: 'replay' | 'run') => void;
   /** Steps between yields (to take an abort, to report progress). */
   sliceSteps?: number;
+  /**
+   * Wall-clock time a comparison may take, ms (COMPARE_BUDGET_MS unless given). Past it the runs stop
+   * where they are, both at the same time, and the comparison says how far it reached: in the
+   * evaluation one comparison held a visitor's question for over five minutes (docs/AI-EVALUATION.md).
+   */
+  budgetMs?: number;
 }
+
+/** How long a comparison may run before it reports what it reached. */
+export const COMPARE_BUDGET_MS = 60_000;
 
 const DAY_S = 86_400;
 const SLICE_STEPS = 2000;
@@ -205,8 +214,8 @@ function escapes(fork: SimState, made: SimState, end: SimState, t0: number): Raw
   return out;
 }
 
-/** Runs an engine on to `tEnd` in slices of whole steps, noting closest approaches after each step. */
-async function runTo(engine: Engine, tEnd: number, closest: Map<string, Closest> | null, options: RunOptions, report: () => void): Promise<void> {
+/** Runs an engine on to `tEnd` in slices of whole steps, noting closest approaches after each step, until `deadline` (ms since the epoch). */
+async function runTo(engine: Engine, tEnd: number, closest: Map<string, Closest> | null, options: RunOptions, report: () => void, deadline = Number.POSITIVE_INFINITY): Promise<void> {
   const slice = options.sliceSteps ?? SLICE_STEPS;
   for (;;) {
     let taken = 0;
@@ -216,7 +225,7 @@ async function runTo(engine: Engine, tEnd: number, closest: Map<string, Closest>
     }
     report();
     stopIfAborted(options.signal);
-    if (taken < slice) return;
+    if (taken < slice || Date.now() >= deadline) return;
     await breathe();
   }
 }
@@ -266,11 +275,13 @@ export async function compareRuns(base: Baseline, source: PlanSource, options: R
   const report = (): void => {
     progress(Math.min(1, (a.state.t - t0 + (b.state.t - t0)) / (2 * span)), 'run');
   };
-  await runTo(a, tEnd, closeA, options, report);
-  await runTo(b, tEnd, closeB, options, () => {
+  // Half the time for the laboratory as it is, half for the change, run only as far as the first got.
+  const half = (options.budgetMs ?? COMPARE_BUDGET_MS) / 2;
+  await runTo(a, tEnd, closeA, options, report, Date.now() + half);
+  await runTo(b, Math.min(tEnd, a.state.t), closeB, options, () => {
     report();
     noteNames(b.state, names);
-  });
+  }, Date.now() + half);
   noteNames(a.state, names);
   noteNames(b.state, names);
   const ids = [...base.scenario.bodies.map((x) => x.id), ...a.state.ids, ...b.state.ids, ...subjects].filter((id, i, all) => all.indexOf(id) === i);

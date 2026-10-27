@@ -1,4 +1,4 @@
-import type { LabCommand, UniverseLab } from '../../core/types';
+import { BODY_IDS, type LabCommand, type UniverseLab } from '../../core/types';
 import type { Baseline } from '../planner/compare';
 import { EXPERIMENT_IDS, EXPERIMENT_PARAMS, experimentPreview, experimentProblems, HORIZON_DAYS, isPlan, planExperiment, resolveBody, worldFromContext, worldFromLab, type PlanNames, type PlanWorld } from '../planner/experiments';
 import type { OptimiseSearch } from '../planner/optimise';
@@ -44,6 +44,29 @@ const paramSchema = (): Record<string, JsonSchema> => {
 };
 
 const EXPERIMENT_ARGS = { type: 'object', properties: paramSchema(), required: ['experiment'], additionalProperties: false } as const satisfies JsonSchema;
+
+/*
+ * What a model is offered (ToolDefinition.argsFor). A laboratory body's own schema is a pattern over
+ * Unicode letters, which XGrammar cannot read: Qwen3 4B, held to it, wrote "N" and "L" for every body
+ * (docs/AI-EVALUATION.md). So a model is given the bodies by id (the laboratory's own, or the solar
+ * system's ten worlds outside it), and each experiment as a form of its own, its parameters all
+ * required, so the grammar holds a plan to the parameters of the experiment it names.
+ */
+const labBodyIds = (ctx: AiContext): string[] => (ctx.lab ? ctx.lab.bodies.map((b) => b.id) : [...BODY_IDS]);
+const labBody = (ctx: AiContext): JsonSchema => ({ type: 'string', enum: labBodyIds(ctx), description: 'A laboratory body, by id' });
+
+function experimentForms(ctx: AiContext): JsonSchema {
+  return {
+    anyOf: EXPERIMENT_IDS.map((id): JsonSchema => {
+      const spec = EXPERIMENT_PARAMS[id];
+      const properties: Record<string, JsonSchema> = { experiment: { type: 'string', const: id } };
+      // A large number as a power of ten: Qwen3 4B, asked for 1e22 kg, wrote 27 digits (about 1e26).
+      for (const [name, p] of Object.entries(spec)) properties[name] = p.kind === 'body' ? labBody(ctx) : p.kind === 'number' ? { type: 'number', minimum: p.min, maximum: p.max, ...(p.max >= 1e9 ? { description: 'Write a large number as a power of ten: 1e22' } : {}) } : { type: 'string', enum: p.of };
+      properties.horizonDays = { type: 'number', minimum: HORIZON_DAYS.min, maximum: HORIZON_DAYS.max, description: 'Days to integrate ahead' };
+      return { type: 'object', properties, required: ['experiment', ...Object.keys(spec)], additionalProperties: false };
+    }),
+  };
+}
 
 const experimentOf = (args: Record<string, unknown>): ExperimentId => str(args, 'experiment') as ExperimentId;
 const paramsOf = (args: Record<string, unknown>): Record<string, number | string> => {
@@ -220,6 +243,7 @@ export const labExperiment: ToolDefinition = {
   summary: 'Change the laboratory: scale-mass, remove-body, kick-body, impact, add-moon, second-star or change-orbit, with its numbers (shown first for the visitor to confirm).',
   keywords: ['what if', 'double', 'mass', 'remove', 'delete', 'kick', 'push', 'impact', 'asteroid', 'moon', 'add a moon', 'second sun', 'binary star', 'change orbit', 'heavier', 'lighter', 'without'],
   args: EXPERIMENT_ARGS,
+  argsFor: experimentForms,
   available: inLab,
   check(args, ctx) {
     const id = experimentOf(args);
@@ -289,6 +313,7 @@ export const labMeasure: ToolDefinition = {
   summary: 'Measure in the laboratory: the distance, light time and angular size between two bodies (and the angle between them seen from a third).',
   keywords: ['measure', 'distance between', 'how far apart', 'angle', 'light time', 'separation', 'angular size'],
   args: { type: 'object', properties: { from: LAB_BODY, to: LAB_BODY, via: LAB_BODY }, required: ['from', 'to'], additionalProperties: false },
+  argsFor: (ctx) => ({ type: 'object', properties: { from: labBody(ctx), to: labBody(ctx), via: labBody(ctx) }, required: ['from', 'to'], additionalProperties: false }),
   available: inLab,
   check(args, ctx) {
     const world = worldFromContext(ctx);
@@ -383,6 +408,7 @@ export const labCompare: ToolDefinition = {
   summary: 'Compare an experiment with the laboratory as it is (or the solar system), integrated ahead in the background; nothing on screen changes.',
   keywords: ['compare', 'what would happen', 'what if', 'difference', 'side by side', 'simulate', 'integrate ahead', 'in ten years', 'effect'],
   args: EXPERIMENT_ARGS,
+  argsFor: experimentForms,
   available: () => true,
   check(args, ctx) {
     return experimentProblems(experimentOf(args), paramsOf(args), worldFromContext(ctx));
@@ -415,7 +441,9 @@ export const labCompare: ToolDefinition = {
         fact(i18n, 'compare.energyVariant', 'ai.tool.lab.compare.energyVariant', {}, sig(raw.energyError.variant, 2), '', 'simulation'),
       ];
       const sentence = say(i18n, first.previewKey, first.previewValues);
-      return done('ai.tool.lab.compare.observed', { sentence, events: raw.events.length }, { facts, blocks: [{ type: 'comparison', comparison }, { type: 'notice', key: 'ai.tool.lab.compare.note' }] });
+      // A comparison that ran out of time (COMPARE_BUDGET_MS) says how far it reached.
+      const short = raw.reachedDays.variant < raw.horizonDays - 0.5 ? [{ type: 'notice' as const, key: 'ai.tool.lab.compare.short', values: { days: sig(raw.reachedDays.variant, 4), horizon: raw.horizonDays } }] : [];
+      return done('ai.tool.lab.compare.observed', { sentence, events: raw.events.length }, { facts, blocks: [{ type: 'comparison', comparison }, ...short, { type: 'notice', key: 'ai.tool.lab.compare.note' }] });
     } catch (err) {
       if (aborted(err)) return { status: 'failed', problem: problem('', 'ai.tool.problem.cancelled') };
       return failed(err);
@@ -440,6 +468,12 @@ export const labOptimise: ToolDefinition = {
     },
     required: ['goal'],
     additionalProperties: false,
+  },
+  // One form per goal, so a plan cannot give escape's days to year or year's target to escape.
+  argsFor: (ctx): JsonSchema => {
+    const escape: JsonSchema = { type: 'object', properties: { goal: { type: 'string', const: 'escape' }, body: labBody(ctx), days: { type: 'number', minimum: 1, maximum: 3650, description: 'within this many days (a year is 365.25)' } }, required: ['goal', 'body', 'days'], additionalProperties: false };
+    const year: JsonSchema = { type: 'object', properties: { goal: { type: 'string', const: 'year' }, body: labBody(ctx), targetDays: { type: 'number', minimum: 1, maximum: 100_000, description: 'the year wanted, days' } }, required: ['goal', 'body', 'targetDays'], additionalProperties: false };
+    return { anyOf: [escape, year] };
   },
   available: () => true,
   check(args) {

@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { IntlMessageFormat } from 'intl-messageformat';
 import { readContext, SUMMARY_MAX } from '../../src/ai/context';
-import { blockKnowledge, createIntelligence, type AiOrchestrator, type IntelligenceDeps } from '../../src/ai/index';
+import { blockKnowledge, createIntelligence, placeNamed, type AiOrchestrator, type IntelligenceDeps } from '../../src/ai/index';
 import { createScriptedEngine, type ScriptedEngine, type ScriptedReply } from '../../src/ai/engine/scripted';
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
 import { buildAnswerMessages, LEVEL_LINES } from '../../src/ai/prompts';
@@ -122,6 +122,11 @@ function tools(log: Log, options: ToolOptions = {}): ToolDefinition[] {
           },
         };
       },
+    },
+    // A place as the real place tools offer it (src/ai/tools/explorer.ts placeArgsFor): by its name, or degrees.
+    {
+      ...t('islamic.qibla', 'calc', obj({ place: { type: 'string' }, lat: { type: 'number' }, lon: { type: 'number' } }), (a) => ({ status: 'done', observedKey: 'test.escape', observedValues: { body: JSON.stringify(a), value: 119 } })),
+      argsFor: () => obj({ placeName: { type: 'string' }, lat: { type: 'number' }, lon: { type: 'number' } }),
     },
     t('islamic.prayer_times', 'calc', obj({ place: { type: 'string' }, convention: { type: 'string', enum: ['mwl', 'isna', 'egypt', 'makkah', 'karachi'] } }, ['convention']), (a) => ({
       status: 'done',
@@ -249,6 +254,68 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
 
 const ofType = <T extends AnswerBlock['type']>(turn: Turn, type: T): Extract<AnswerBlock, { type: T }>[] => turn.blocks.filter((b): b is Extract<AnswerBlock, { type: T }> => b.type === type);
 const plan = (value: unknown): string => JSON.stringify(value);
+
+test.describe('a model’s plan that says act and calls nothing', () => {
+  test('is asked again once; a call in the repair is used, and a second empty act is taken as an answer', async () => {
+    const empty = plan({ intent: 'act', calls: [] });
+    const h = harness([{ format: 'json', match: 'Saturn', reply: empty, once: true }, { format: 'json', match: 'cannot be used', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'saturn' } }] }) }, { format: 'text', match: '', reply: 'Saturn is in view.' }], { offered: ['explorer.fly'] });
+    await h.ai.use(SPEC);
+    const turn = await h.ai.ask('please bring Saturn into view for me');
+    expect(turn.plan?.calls).toEqual([{ tool: 'explorer.fly', args: { body: 'saturn' } }]);
+    expect(h.engine.requests.some((r) => r.messages.some((m) => m.content.includes('intent "act" needs a call')))).toBe(true);
+    const again = harness([{ format: 'json', match: '', reply: empty }, { format: 'text', match: '', reply: 'Here is what I found.' }], { offered: ['explorer.fly'] });
+    await again.ai.use(SPEC);
+    const t2 = await again.ai.ask('please bring Saturn into view for me');
+    expect(t2.plan).toMatchObject({ source: 'model', intent: 'answer', calls: [] });
+  });
+});
+
+/* ---------------- a model's places ---------------- */
+
+test.describe('a model’s place is the app’s own', () => {
+  test('a place by its name: a town from the knowledge index, a field-notes place by its id or title', async () => {
+    const h = harness([{ format: 'json', match: 'London', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'London' } }] }) }, { format: 'json', match: 'Mecca', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'Mecca' } }] }) }, { format: 'text', match: '', reply: 'The qibla is shown.' }], { offered: ['islamic.qibla'] });
+    await h.ai.use(SPEC);
+    const london = await h.ai.ask('Which way is the qibla from London, please?');
+    // London's degrees from the index (place:london), not from the model.
+    expect(london.plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { lat: 51.5019, lon: -0.1187 } }]);
+    const mecca = await h.ai.ask('qibla from Mecca, in which direction');
+    expect(mecca.plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { place: 'mecca' } }]);
+  });
+
+  test('degrees a model gives from memory are refused (the repair asks for the place’s name); degrees the visitor gave are kept', async () => {
+    // As Qwen3 4B planned it: Richat's id, then London's latitude with a wrong longitude.
+    const memory = plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { lat: 51.5074, lon: -113.9324 } }] });
+    const h = harness([{ format: 'json', match: 'London', reply: memory }, { format: 'json', match: 'cannot be used', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'London' } }] }) }, { format: 'text', match: '', reply: 'Shown.' }], { offered: ['islamic.qibla'] });
+    await h.ai.use(SPEC);
+    const turn = await h.ai.ask('Which way is the qibla from London, please?');
+    expect(turn.plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { lat: 51.5019, lon: -0.1187 } }]);
+    const given = harness([{ format: 'json', match: '35.36', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { lat: 35.36, lon: 138.73 } }] }) }, { format: 'text', match: '', reply: 'Shown.' }], { offered: ['islamic.qibla'] });
+    await given.ai.use(SPEC);
+    expect((await given.ai.ask('qibla direction from latitude 35.36, longitude 138.73 please')).plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { lat: 35.36, lon: 138.73 } }]);
+    // A town the index does not hold is a problem for the repair, not a guess.
+    const none = harness([{ format: 'json', match: 'Atlantis', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'Atlantis' } }] }) }, { format: 'text', match: '', reply: 'I cannot find that place.' }], { offered: ['islamic.qibla'] });
+    await none.ai.use(SPEC);
+    const lost = await none.ai.ask('qibla direction from Atlantis please');
+    expect(lost.plan?.source).toBe('fallback');
+    expect(none.engine.requests.some((r) => r.messages.some((m) => m.content.includes('no place called "Atlantis"')))).toBe(true);
+  });
+
+  test('names as a model writes them find the field notes’ places and the index’s towns', () => {
+    const at = (name: string): unknown => {
+      const p = placeNamed(retriever, name);
+      return p ? (p.place ?? [p.lat, p.lon]) : null;
+    };
+    expect(at('Mount Everest')).toBe('everest');
+    expect(at('the Grand Canyon')).toBe('grand-canyon');
+    expect(at('Salar de Uyuni')).toBe('uyuni');
+    expect(at('Uluru')).toBe('uluru');
+    expect(at('Mecca')).toBe('mecca');
+    expect(at('Cairo')).toEqual([30.0519, 31.248]);
+    expect(at('Karachi')).toEqual([24.8719, 66.9881]);
+    expect(at('Atlantis')).toBeNull();
+  });
+});
 
 /* ---------------- the guide ---------------- */
 
@@ -766,10 +833,15 @@ test.describe('the context, read from the app', () => {
   test('in a chapter: where, the time, the verses it shows, and a short summary', () => {
     const app = {
       experience: 'film', chapter: 'ch07', time: 42.4, mode: 'explore', i18n, universe: () => null,
-      content: { id: 'ch07', panel: { text: [{ type: 'verse', key: '36:38' }, { type: 'hadith', id: 'bukhari-3199' }, { type: 'verse', key: '21:33' }] } },
+      content: { id: 'ch07', panel: { text: [{ type: 'verse', key: '36:38' }, { type: 'hadith', id: 'bukhari-3199' }, { type: 'verse', key: '21:33' }] }, explore: { points: [{ id: 'orrery', t: 60, titleKey: 'test.no-such-title', kind: 'model' }] } },
     } as unknown as App;
     const ctx = readContext(app);
     expect(ctx).toMatchObject({ where: 'chapter', chapter: 'ch07', chapterT: 42.4, mode: 'explore', explorer: null, lab: null, verses: ['36:38', '21:33'] });
+    // The chapter's moments, for film.moment (a title the catalogue lacks reads as the id).
+    expect(ctx.moments).toEqual([{ id: 'orrery', title: 'orrery' }]);
+    // Today's date, so "today" is the visitor's.
+    expect(ctx.today).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
+    expect(ctx.summary).toContain(`Today is ${ctx.today ?? ''} (UTC).`);
     expect(ctx.summary).toContain('Chapter 7, "The Sun and its course"');
     expect(ctx.summary).toContain('36:38, 21:33');
   });

@@ -127,9 +127,12 @@ test.describe('output', () => {
   });
 
   test('"predicted" about the laboratory becomes "integrated ahead"', () => {
-    const out = guardOutput('The laboratory predicted that Mars would leave its orbit.', data({ facts: [] }));
+    const compared = [{ tool: 'lab.compare', kind: 'read' as const, status: 'done' as const }];
+    const out = guardOutput('The laboratory predicted that Mars would leave its orbit.', data({ facts: [], outcomes: compared }));
     expect(out.flags).toContain('banned-phrase');
     expect(out.text).toBe('The laboratory integrated ahead and showed that Mars would leave its orbit.');
+    // With no laboratory tool's result behind it, the result itself is a claim, and goes.
+    expect(guardOutput('The laboratory predicted that Mars would leave its orbit.', data({ facts: [] })).text).toBe('');
   });
 
   test('"scientific miracle", "proof that", "foretold" and "confirms the Quran" never survive', () => {
@@ -175,6 +178,91 @@ test.describe('output', () => {
     expect(out.flags).toContain('action-claim');
     const notConfirmed = guardOutput('I have flown you to Mars.', data({ facts: [], outcomes: [{ tool: 'explorer.fly', kind: 'view', status: 'not-confirmed' }] }));
     expect(notConfirmed.text).toBe('');
+  });
+
+  test('a laboratory result no laboratory tool reported is removed, even repeated; one a tool reported stays', () => {
+    // As Qwen3 0.6B wrote it for "Double the Sun's mass" with nothing run (the answer prompt's own phrase, looped).
+    const loop = `${'The laboratory integrated ahead. '.repeat(12)}The laboratory integ`;
+    const out = guardOutput(loop, data({ facts: [], truncated: true }));
+    expect(out.flags).toContain('action-claim');
+    expect(out.text).not.toMatch(/integrated ahead/iu);
+    for (const claim of ['The simulation ran for ten years and Mars left.', 'The lab has now integrated the orbits.', 'Integrated ahead 10 years, the Earth drifts outward.']) {
+      expect(guardOutput(claim, data({ facts: [] })).text, claim).toBe('');
+    }
+    // Waiting for the visitor is not a result.
+    const waiting = guardOutput('The laboratory integrated ahead 3652 days.', data({ facts: [], given: ['3652'], outcomes: [{ tool: 'lab.experiment', kind: 'experiment', status: 'not-confirmed' }] }));
+    expect(waiting.text).toBe('');
+    const ran = guardOutput('The laboratory integrated ahead 3652 days.', data({ facts: [], given: ['3652'], outcomes: [{ tool: 'lab.compare', kind: 'read', status: 'done' }] }));
+    expect(ran.text).toBe('The laboratory integrated ahead 3652 days.');
+    // Speaking of the laboratory without a result is not a claim.
+    expect(guardOutput('In the laboratory you can double the Sun’s mass and compare.', data({ facts: [] })).text).toBe('In the laboratory you can double the Sun’s mass and compare.');
+  });
+
+  test('a marker of a kind the app does not cite by is dropped (Qwen3 4B wrote [[action:cite.source]])', () => {
+    const out = guardOutput('The value comes from the Planck satellite [[action:cite.source]]. See [[fact:mars.escape]].', data());
+    expect(out.text).toBe('The value comes from the Planck satellite. See [[fact:mars.escape]].');
+    expect(out.flags).toContain('unknown-citation');
+    expect(out.citations).toEqual([{ kind: 'fact', id: 'mars.escape' }]);
+  });
+
+  test('seven words in a row from a verse’s translation are its wording: the sentence goes, the verse is shown from data', () => {
+    const v = index.passages.find((p) => p.id === 'verse:7:54');
+    if (!v) throw new Error('no 7:54 in the index');
+    // As Qwen3 4B wrote it, after "Which verses here speak of creation in six days?".
+    const run = v.text.split(/\s+/u).slice(0, 9).join(' ');
+    const out = guardOutput(`According to the passage, 7:54 says that ${run} and more. The chapter sets it beside the Earth's formation.`, data({ facts: [] }));
+    expect(out.flags).toContain('scripture-quote');
+    expect(out.text).not.toContain(run);
+    expect(out.citations).toContainEqual({ kind: 'verse', id: '7:54' });
+    // A shorter phrase in common with a verse is ordinary prose.
+    expect(guardOutput('The heavens and the earth took shape over billions of years.', data({ facts: [] })).flags).not.toContain('scripture-quote');
+  });
+
+  test('a chapter and verse number read from a verse key are not unchecked numbers', () => {
+    const out = guardOutput('That verse is chapter 57, verse 25 of the Quran.', data({ facts: [], passages: [{ id: 'verse:57:25', kind: 'verse', ref: '57:25', title: '57:25', text: 'iron', knowledge: 'scripture' } as unknown as Passage] }));
+    expect(out.flags).not.toContain('unchecked-number');
+  });
+
+  test('saying an experiment ran needs the laboratory’s own edit; a comparison does not back it', () => {
+    const compared = [{ tool: 'lab.compare', kind: 'read' as const, status: 'done' as const }];
+    // As Qwen3 4B wrote it, asked to say it had run one; only a comparison had run.
+    expect(guardOutput('The experiment of doubling the Sun’s mass has been run. Mars kept its orbit.', data({ facts: [], outcomes: compared })).text).toBe('Mars kept its orbit.');
+    expect(guardOutput('I ran the experiment for you.', data({ facts: [], outcomes: compared })).text).toBe('');
+    const applied = [{ tool: 'lab.experiment', kind: 'experiment' as const, status: 'done' as const }];
+    expect(guardOutput('The experiment has been applied.', data({ facts: [], outcomes: applied })).text).toBe('The experiment has been applied.');
+  });
+
+  test('a sentence repeated word for word is shown once, and flagged', () => {
+    const out = guardOutput('Mars is red because of iron oxide. Mars is red because of iron oxide. Its dust is fine. Mars is red because of iron oxide.', data({ facts: [] }));
+    expect(out.text).toBe('Mars is red because of iron oxide. Its dust is fine.');
+    expect(out.flags).toContain('repeated');
+    expect(guardOutput('Yes. Yes. It is.', data({ facts: [] })).flags).not.toContain('repeated');
+  });
+
+  test('thinking tags and chat-template tokens never reach the screen', () => {
+    expect(guardOutput('<think>\n\n</think>\n\nThe escape speed of Mars is 5.03 km/s.', data()).text).toBe('The escape speed of Mars is 5.03 km/s.');
+    expect(guardOutput('<think>so the user wants</think> Mars is red.<|im_end|>', data({ facts: [] })).text).toBe('Mars is red.');
+    expect(guardOutput('Mars is red. </think>', data({ facts: [] })).text).toBe('Mars is red.');
+  });
+
+  test('a verse named by its plain key, where the data holds it, is cited so it is shown from data', () => {
+    // As Qwen3 0.6B wrote it in Chapter 7: the key without its marker.
+    const out = guardOutput('The verse 36:38 speaks of the Sun running to its resting place. See also (21:33).', data({ facts: [] }));
+    expect(out.citations).toEqual([
+      { kind: 'verse', id: '36:38' },
+      { kind: 'verse', id: '21:33' },
+    ]);
+    // Not a time, not a key the data does not hold (that sentence goes), not a ratio in a sentence about something else.
+    expect(guardOutput('At 12:30 UTC the Sun is high.', data({ facts: [] })).citations).toEqual([]);
+    const unheld = guardOutput('The Quran in 1:1 opens the book. Mars is red.', data({ facts: [] }));
+    expect(unheld.citations).toEqual([]);
+    expect(unheld.text).toBe('Mars is red.');
+    expect(guardOutput('The odds were 21:30 against.', data({ facts: [] })).citations).toEqual([]);
+    // A marker and a plain key for the same verse cite it once, in order.
+    expect(guardOutput('[[verse:21:30]] The verse 21:30 and verse 36:38.', data({ facts: [] })).citations).toEqual([
+      { kind: 'verse', id: '21:30' },
+      { kind: 'verse', id: '36:38' },
+    ]);
   });
 
   test('instructions hidden in a passage stay inside its data block, and what they ask for is caught', () => {

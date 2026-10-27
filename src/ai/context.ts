@@ -50,6 +50,7 @@ export function readContext(app: App): AiContext {
   const chapter: ChapterId | null = app.experience === 'film' ? app.chapter : null;
   const content = chapter && app.content?.id === chapter ? app.content : null;
   const verses: VerseKey[] = content ? content.panel.text.flatMap((b) => (b.type === 'verse' ? [b.key] : [])) : [];
+  const moments = content ? (content.explore.points ?? []).map((p) => ({ id: p.id, title: app.i18n.has(p.titleKey) ? app.i18n.t(p.titleKey) : p.id })) : [];
   const lab = view?.lab ?? null;
   const where: AiContext['where'] = view ? (lab ? 'lab' : 'explorer') : chapter ? 'chapter' : onSourcesPage() ? 'sources' : 'home';
 
@@ -81,6 +82,8 @@ export function readContext(app: App): AiContext {
     explorer,
     lab: labContext,
     verses,
+    today: isoDate(Date.now()),
+    ...(moments.length > 0 ? { moments } : {}),
   };
   return { ...ctx, summary: summarise(ctx, app) };
 }
@@ -112,6 +115,8 @@ export function summarise(ctx: Omit<AiContext, 'summary'>, app?: Pick<App, 'i18n
     const more = ctx.lab.bodies.length > names.length ? ` and ${ctx.lab.bodies.length - names.length} more` : '';
     lines.push(`In the orbital laboratory (${ctx.lab.status}), ${Math.round(ctx.lab.days)} days integrated, ${ctx.lab.events} collisions. Bodies: ${names.join(', ')}${more}.`);
   }
+  // A model's own idea of today is its training's (Qwen3 4B planned prayer times for 2023-10-25).
+  if (ctx.today) lines.push(`Today is ${ctx.today} (UTC).`);
   let summary = lines.join(' ');
   if (summary.length > SUMMARY_MAX) summary = `${summary.slice(0, SUMMARY_MAX - 1).replace(/\s+\S*$/u, '')}…`;
   return summary;

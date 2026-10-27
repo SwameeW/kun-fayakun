@@ -5,7 +5,8 @@
  * characters. Text that reads like an instruction to the model stays as it is: it is the visitor's
  * own question, and the prompts treat everything else as data.
  *
- * Out, in this order, each change flagged on the text block:
+ * Out, in this order, each change flagged on the text block (chat-template markup, thinking tags
+ * and control tokens, is taken out first, unflagged: it is never the model's words to the visitor):
  * - arabic-removed: Arabic script is removed (the honorific U+FDFA after the Prophet's name stays,
  *   as it does in the app's own message files);
  * - scripture-quote: words presented as scripture are removed, whatever their length and whether or
@@ -17,8 +18,9 @@
  *   just before; and a quotation that matches a verse's translation (over 40 characters sharing at
  *   least 60% of the verse's words). Where the verse can be told, its marker takes the place of what
  *   was removed, so the verse is shown from data instead. An unquoted sentence that repeats a verse
- *   is treated the same way;
- * - unknown-citation: a citation marker whose id is not in the data is dropped; a sentence that
+ *   (most of its words, or seven of its translation's words in a row) is treated the same way;
+ * - unknown-citation: a citation marker whose id is not in the data, or of a kind the app does not
+ *   cite by ("[[action:…]]"), is dropped; a sentence that
  *   names a verse by a key the data does not hold ("In 2:255 Allah says…"), or names a narration the
  *   hadith file excludes (by its collection and number, its key or its sunnah.com address: read from
  *   data/hadith.json, never written here) is removed;
@@ -26,9 +28,15 @@
  *   with banned phrasing (src/core/phrasing.ts), or with a claim of prediction or proof about
  *   scripture, is removed;
  * - action-claim: a sentence claiming the assistant did something ("I have flown…", "Done:") that no
- *   tool outcome reports done is removed;
+ *   tool outcome reports done is removed, and so is one speaking of a laboratory result ("the
+ *   laboratory integrated ahead…") when no laboratory tool reports one, or saying an experiment ran
+ *   or was applied when the laboratory's own edit (lab.experiment) did not;
+ * - repeated: a sentence said again word for word is shown once;
  * - unchecked-number: a number with two or more significant digits, or with a unit, that is not
  *   within 1% of a number in the turn's facts, passages or the visitor's own words is marked.
+ *
+ * Citations are the markers that remain, and verses named by a plain key the data holds in a
+ * sentence that speaks of scripture ("verse 36:38", "(36:38)"), so they are shown from data.
  *
  * While a reply streams, what is on screen has passed these guards too, and more is held back
  * until it can be judged whole: everything from a quotation mark not yet closed, from a sentence
@@ -363,12 +371,37 @@ function sentences(text: string): string[] {
   return out;
 }
 
+/** Words as runs of them are compared: lower case, no accents, letters and digits only. */
+function plainWords(text: string): string[] {
+  return text.toLowerCase().normalize('NFKD').replace(/\p{M}+/gu, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/u).filter(Boolean);
+}
+
+/** Words in a row a sentence may share with a verse's translation before it counts as the verse's own wording. */
+const VERSE_RUN = 7;
+
+/** The verse whose translation this sentence copies a run of VERSE_RUN words from, if one. */
+function copiedVerse(sentence: string, data: OutputGuardData): string | null {
+  const words = plainWords(sentence);
+  if (words.length < VERSE_RUN) return null;
+  const runs = new Set<string>();
+  for (let i = 0; i + VERSE_RUN <= words.length; i += 1) runs.add(words.slice(i, i + VERSE_RUN).join(' '));
+  for (const v of data.verses(sentence)) {
+    const w = plainWords(v.text);
+    for (let i = 0; i + VERSE_RUN <= w.length; i += 1) if (runs.has(w.slice(i, i + VERSE_RUN).join(' '))) return v.key;
+  }
+  return null;
+}
+
+/**
+ * Sentences that repeat a verse without quotation marks: most of its words (matchVerse, strict), or
+ * seven of its translation's words in a row ("7:54 says that your Lord is Allah, who created the
+ * heavens…", Qwen3 4B). Each is replaced by the verse's marker, so the verse is shown from data.
+ */
 function unquotedVerses(text: string, data: OutputGuardData): { text: string; changed: boolean } {
   let changed = false;
   const out = sentences(text).map((s) => {
     const bare = s.replace(MARKER, ' ');
-    if (bare.trim().length <= 60) return s;
-    const key = matchVerse(bare, data, true);
+    const key = (bare.trim().length > 60 ? matchVerse(bare, data, true) : null) ?? copiedVerse(bare, data);
     if (!key) return s;
     changed = true;
     return `[[verse:${key}]]${/\s$/u.test(s) ? ' ' : ''}`;
@@ -403,11 +436,17 @@ function heldFrom(text: string, data: OutputGuardData): number {
   return at;
 }
 
+/** A marker of a kind the app does not cite by ("[[action:cite.source]]", written by Qwen3 4B): never shown. */
+const OTHER_MARKER = /\[\[(?!(?:verse|hadith|fact|passage):)[A-Za-z_-]{1,24}:[^\]\n]{0,120}\]\]/gu;
+
 function citationMarkers(text: string, data: OutputGuardData): { text: string; dropped: boolean; citations: Citation[] } {
   let dropped = false;
   const citations: Citation[] = [];
   const seen = new Set<string>();
-  const out = text.replace(MARKER, (_m, kind: CitationKind, id: string) => {
+  const out = text.replace(OTHER_MARKER, () => {
+    dropped = true;
+    return '';
+  }).replace(MARKER, (_m, kind: CitationKind, id: string) => {
     const ok = kind === 'verse' ? data.known.verse(id) : kind === 'hadith' ? data.known.hadith(id) : kind === 'fact' ? data.known.fact(id) : data.known.passage(id);
     if (!ok) {
       dropped = true;
@@ -499,6 +538,19 @@ const CLAIM_VERBS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
 const CLAIM = /\b(?:i(?:'ve|\s+have)?|we(?:'ve|\s+have)?)\s+(?:just\s+|now\s+|already\s+|successfully\s+|gone\s+ahead\s+and\s+)*(flown|flew|moved|taken|took|sent|landed|walked|placed|put|brought|zoomed|travell?ed|set|changed|reset|reversed|sped|slowed|paused|played|resumed|turned|switched|started|stopped|enabled|disabled|activated|increased|decreased|adjusted|removed|added|doubled|halved|tripled|deleted|created|applied|made|launched|ran|run|thrown|threw|crashed|smashed|scaled|kicked|opened|closed|shown|showed|displayed|hidden|hid|loaded)\b/iu;
 const PASSIVE_CLAIM = /\b(?:has|have)\s+(?:now\s+)?been\s+(set|changed|moved|removed|added|started|opened|closed|paused|doubled|halved|tripled|applied|reset|reversed|turned|switched|deleted|launched|scaled)\b/iu;
 const DONE = /^\s*(?:done|all done|finished)\s*[:!.,-]/iu;
+/**
+ * A laboratory result spoken of ("The laboratory integrated ahead…", "the simulation ran…"): only a
+ * laboratory tool's done outcome backs it. A small model was seen repeating the answer prompt's own
+ * phrase with nothing run (Qwen3 0.6B, docs/AI-EVALUATION.md).
+ */
+/**
+ * A claim that an experiment ran or was applied: only the laboratory's own edit (lab.experiment, done)
+ * backs it. A comparison integrates a copy in the background and changes nothing on screen, so
+ * "The experiment of doubling the Sun's mass has been run" after a comparison was false (Qwen3 4B,
+ * asked to say it had run one).
+ */
+const EXPERIMENT_RUN = /\bexperiments?\b[^.!?\n]{0,60}?\b(?:has|have|had|was|were|is|are)\s+(?:now\s+|just\s+|already\s+|successfully\s+)?(?:been\s+)?(?:run|ran|applied|done|carried\s+out|performed|completed|conducted|made)\b|\b(?:ran|run|applied|performed|carried\s+out|completed|conducted)\s+(?:the|this|that|your|an?)\s+experiments?\b/iu;
+const LAB_RESULT = /\bintegrated\s+ahead\b|\b(?:laborator(?:y|ies)|lab|simulation|integration)\s+(?:has\s+|have\s+|was\s+|is\s+)?(?:now\s+|just\s+|already\s+)?(?:integrated|ran|run|simulated|computed)\b/iu;
 
 function backed(prefixes: readonly string[], outcomes: readonly OutcomeSummary[]): boolean {
   return outcomes.some((o) => o.status === 'done' && prefixes.some((p) => o.tool.startsWith(p)));
@@ -509,6 +561,14 @@ function actionClaims(text: string, outcomes: readonly OutcomeSummary[]): { text
   const out = sentences(text).map((s) => {
     if (DONE.test(s)) {
       if (outcomes.some((o) => o.status === 'done' && (o.kind === 'view' || o.kind === 'experiment'))) return s;
+      changed = true;
+      return '';
+    }
+    if (EXPERIMENT_RUN.test(s) && !backed(['lab.experiment'], outcomes)) {
+      changed = true;
+      return '';
+    }
+    if (LAB_RESULT.test(s) && !backed(['lab.'], outcomes)) {
       changed = true;
       return '';
     }
@@ -584,6 +644,10 @@ function allowedNumbers(data: OutputGuardData): { values: number[]; mantissas: n
       values.push(n.value, Math.abs(n.value));
       mantissas.push(n.mantissa, Math.abs(n.mantissa));
     }
+    // A date's year, month and day, which prose writes apart ("13 November 2026"), and a verse key's
+    // surah and ayah ("57:25" is "chapter 57, verse 25").
+    for (const m of t.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/gu)) for (const part of [m[1], m[2], m[3]]) values.push(Number(part));
+    for (const m of t.matchAll(/\b(\d{1,3}):(\d{1,3})\b/gu)) for (const part of [m[1], m[2]]) values.push(Number(part));
   }
   return { values, mantissas };
 }
@@ -608,6 +672,47 @@ function uncheckedNumbers(text: string, data: OutputGuardData): { text: string; 
   return { text: out, changed };
 }
 
+/** A sentence said again word for word (a small model's loop) is shown once. */
+function repeatedSentences(text: string): { text: string; changed: boolean } {
+  const seen = new Set<string>();
+  let changed = false;
+  const out = sentences(text).map((s) => {
+    const key = s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    if (key.split(' ').length < 3) return s;
+    if (!seen.has(key)) {
+      seen.add(key);
+      return s;
+    }
+    changed = true;
+    return '';
+  });
+  return { text: out.join(''), changed };
+}
+
+/** Chat-template markup a model may write: thinking tags (with what is between them) and Qwen's control tokens. Never shown. */
+const TEMPLATE_MARKUP = /<think>[\s\S]*?<\/think>\s*|<think>[\s\S]*$|<\/think>\s*|<\|[a-z_]{1,24}\|>/giu;
+
+/**
+ * Verses named by their plain key ("(36:38)", "verse 36:38") in a sentence that speaks of scripture,
+ * where the data holds that key: cited as if marked, so the verse is shown from data. Small models
+ * often write the key without its marker.
+ */
+function plainCitations(text: string, data: OutputGuardData): { index: number; citation: Citation }[] {
+  const out: { index: number; citation: Citation }[] = [];
+  let at = 0;
+  for (const s of sentences(text)) {
+    const bare = s.replace(MARKER, (m) => ' '.repeat(m.length));
+    const speaks = SCRIPTURE_WORDS.test(bare);
+    for (const m of bare.matchAll(PLAIN_KEY)) {
+      const key = `${Number(m[1])}:${Number(m[2])}`;
+      const bracketed = /\(\s*$/u.test(bare.slice(0, m.index)) && /^\s*\)/u.test(bare.slice(m.index + m[0].length));
+      if ((speaks || bracketed) && data.known.verse(key)) out.push({ index: at + m.index, citation: { kind: 'verse', id: key } });
+    }
+    at += s.length;
+  }
+  return out;
+}
+
 function tidy(text: string): string {
   return text
     .replace(/[ \t]+\n/gu, '\n')
@@ -625,7 +730,8 @@ export function guardOutput(text: string, data: OutputGuardData): OutputGuardRes
     if (on && !flags.includes(f)) flags.push(f);
   };
   // While it streams, only what can be judged whole is shown.
-  let t = data.streaming ? text.slice(0, heldFrom(text, data)) : text;
+  let t = text.replace(TEMPLATE_MARKUP, '');
+  t = data.streaming ? t.slice(0, heldFrom(t, data)) : t;
   const arabic = removeArabic(t);
   t = arabic.text;
   flag('arabic-removed', arabic.removed);
@@ -647,20 +753,23 @@ export function guardOutput(text: string, data: OutputGuardData): OutputGuardRes
   const claims = actionClaims(t, data.outcomes);
   t = claims.text;
   flag('action-claim', claims.changed);
+  const again = repeatedSentences(t);
+  t = again.text;
+  flag('repeated', again.changed);
   const numbers = uncheckedNumbers(t, data);
   t = numbers.text;
   flag('unchecked-number', numbers.changed);
   flag('truncated', data.truncated === true);
   t = tidy(t);
-  // Citations that survived every step, in order.
+  // Citations that survived every step, in order: markers, and verses named by a plain key the data holds.
+  const found = [...[...t.matchAll(MARKER)].map((m) => ({ index: m.index, citation: { kind: m[1] as CitationKind, id: m[2] ?? '' } })), ...plainCitations(t, data)].sort((a, b) => a.index - b.index);
   const seen = new Set<string>();
   const citations: Citation[] = [];
-  for (const m of t.matchAll(MARKER)) {
-    const kind = m[1] as CitationKind;
-    const id = m[2] ?? '';
-    if (seen.has(`${kind}:${id}`)) continue;
-    seen.add(`${kind}:${id}`);
-    citations.push({ kind, id });
+  for (const { citation } of found) {
+    const k = `${citation.kind}:${citation.id}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    citations.push(citation);
   }
   return { text: t, flags, citations };
 }

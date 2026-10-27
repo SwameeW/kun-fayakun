@@ -12,10 +12,10 @@
  * - KF_AI_EVAL_CASES: only these case ids or categories (comma-separated); KF_AI_EVAL_TAG names the
  *   results file of such a partial run (<model>-<mode>-<tag>.json).
  *
- * Nothing is downloaded. Chromium resolves every model host to nothing (the project's
- * --host-resolver-rules), and the pinned Hugging Face and jsDelivr URLs are answered from the files on
- * disk by the context's routes, so the app's real path (our worker → WebLLM → the Cache API) runs
- * unchanged but offline. Any other request to a model host fails the run. The browser profile is
+ * Nothing is downloaded. Chromium resolves huggingface.co and cdn.jsdelivr.net to a local HTTPS server
+ * that streams the pinned files from disk (./serve.ts; route.fulfill cannot carry a file over about
+ * 75 MB), and every other model host to nothing, so the app's real path (our worker → WebLLM → the
+ * Cache API) runs unchanged but offline. Any other request to a model host fails the run. The browser profile is
  * persistent (the main checkout's .work/ai-eval/profile-<port>; the Cache API is per origin, so per
  * port), so a model's Cache API copy survives between runs.
  *
@@ -26,7 +26,7 @@
  * is what the test hook and the page show afterwards (./score.ts). Raw results, with every
  * generation's raw text and WebLLM's own usage figures, go to .work/ai-eval/results/.
  */
-import { chromium, expect, test, type BrowserContext, type Page, type Route } from '@playwright/test';
+import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { arch, cpus, loadavg, release, totalmem } from 'node:os';
 import { findModel, VISITOR_MODELS } from '../../src/ai/engine/catalogue';
@@ -37,6 +37,7 @@ import { env } from '../support/env';
 import { isModelHost, mockLiveHosts } from '../support/live';
 import { selectCases, type Start } from './cases';
 import { score, type LabSnapshot, type Observation, type Scored, type TurnData } from './score';
+import { serveModel } from './serve';
 
 const MODEL_ID = env('KF_AI_EVAL_MODEL') ?? 'Qwen3-0.6B-q4f16_1-MLC';
 const MODE: 'pipeline' | 'model' = env('KF_AI_EVAL_MODE') === 'model' ? 'model' : 'pipeline';
@@ -62,37 +63,6 @@ interface Hook {
 
 const load = (): number[] => loadavg().map((x) => Math.round(x * 100) / 100);
 
-interface Served {
-  requests: number;
-  bytes: number;
-}
-
-/** Answers the pinned files from disk; anything else asked of a model host is refused and recorded. */
-function modelRoute(manifest: ModelManifest, served: Served, unexpected: string[]): (route: Route) => Promise<void> {
-  const files = new Map(manifest.files.map((f) => [f.url, f]));
-  const dir = `${modelsDir()}/${manifest.id}`;
-  return async (route) => {
-    const url = route.request().url();
-    const f = files.get(url);
-    if (!f || route.request().method() !== 'GET') {
-      unexpected.push(`${route.request().method()} ${url}`);
-      await route.abort('blockedbyclient');
-      return;
-    }
-    served.requests += 1;
-    served.bytes += f.bytes;
-    await route.fulfill({
-      status: 200,
-      path: `${dir}/${f.path}`,
-      headers: {
-        'access-control-allow-origin': '*',
-        'content-type': f.path.endsWith('.json') ? 'application/json' : f.path.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream',
-        'content-length': String(f.bytes),
-      },
-    });
-  };
-}
-
 /** How many of the model's files the Cache API holds (WebLLM's three caches). */
 async function cached(page: Page, manifest: ModelManifest): Promise<{ stored: number; of: number }> {
   return page.evaluate(async (urls) => {
@@ -116,9 +86,34 @@ async function openPanel(page: Page): Promise<void> {
   await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 60_000 });
 }
 
+/** A model that did not load: the engine's own error (its code and the words WebLLM gave), and what the panel said. */
+class LoadFailure extends Error {
+  constructor(readonly detail: { code: string | null; detail: string | null; panel: string | null; via: 'panel' | 'use'; ms: number }) {
+    super(`the model did not load: ${detail.code ?? '?'}: ${detail.detail ?? detail.panel ?? ''}`);
+  }
+}
+
+/** Records the engine's next error event in the page (window.__evalLoadError). */
+async function watchLoadError(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const w = window as unknown as Hook & { __evalLoadError?: { code: string; detail: string | null } | null; __evalWatching?: boolean };
+    w.__evalLoadError = null;
+    if (w.__evalWatching) return;
+    w.__evalWatching = true;
+    const ai = await w.__kf.ai.start();
+    ai.events.on('engine', (e) => {
+      if (e.state === 'error') w.__evalLoadError = { code: e.error?.code ?? 'unknown', detail: e.error?.detail ?? null };
+    });
+  });
+}
+
+const loadError = (page: Page): Promise<{ code: string; detail: string | null } | null> =>
+  page.evaluate(() => (window as unknown as { __evalLoadError?: { code: string; detail: string | null } | null }).__evalLoadError ?? null);
+
 /** Loads the model as a visitor does: the panel's section for a visitor tier, Intelligence.use() (what the panel calls) for an evaluation candidate. */
 async function loadModel(page: Page, spec: ModelSpec, visitor: boolean): Promise<{ ms: number; via: 'panel' | 'use' }> {
   await openPanel(page);
+  await watchLoadError(page);
   const started = Date.now();
   if (visitor) {
     const section = page.getByTestId('ai-model');
@@ -130,13 +125,21 @@ async function loadModel(page: Page, spec: ModelSpec, visitor: boolean): Promise
     await expect(metered.or(done)).toBeVisible({ timeout: 60_000 });
     if (await metered.isVisible()) await metered.click();
     await expect(done).toBeVisible({ timeout: 60 * 60_000 });
-    await expect(section.getByTestId('ai-load-ready')).toBeVisible();
+    if (!(await section.getByTestId('ai-load-ready').isVisible())) {
+      const e = await loadError(page);
+      throw new LoadFailure({ code: e?.code ?? null, detail: e?.detail ?? null, panel: await section.getByTestId('ai-model-error').textContent(), via: 'panel', ms: Date.now() - started });
+    }
     return { ms: Date.now() - started, via: 'panel' };
   }
-  await page.evaluate(async (s) => {
+  const state = await page.evaluate(async (s) => {
     const ai = await (window as unknown as Hook).__kf.ai.start();
     await ai.use(s);
+    return ai.engine().state;
   }, spec);
+  if (state !== 'ready') {
+    const e = await loadError(page);
+    throw new LoadFailure({ code: e?.code ?? null, detail: e?.detail ?? null, panel: null, via: 'use', ms: Date.now() - started });
+  }
   return { ms: Date.now() - started, via: 'use' };
 }
 
@@ -257,19 +260,22 @@ function stats(xs: readonly number[]): { n: number; p50: number | null; p95: num
   return { n: xs.length, p50: r(q(0.5)), p95: r(q(0.95)), max: r(s[s.length - 1] ?? 0), meanFps: r(1000 / mean) };
 }
 
-/** Asks through the panel's field; resolves when the turn settles (or the case's time runs out). */
+/**
+ * Asks through the panel's field; resolves when the turn settles (or the case's time runs out). The
+ * turn is followed by its own item (a turn id not in the log before): the panel keeps only its last
+ * 50 turns, so after 50 cases a position in the log no longer names the new one.
+ */
 async function askInPanel(page: Page, question: string): Promise<{ ms: number; timedOut: boolean }> {
   await openPanel(page);
-  const log = page.getByTestId('ai-log').locator(':scope > li');
-  const before = await log.count();
+  const before = await page.evaluate(() => [...document.querySelectorAll('[data-testid="ai-log"] > li')].map((li) => li.getAttribute('data-turn') ?? ''));
   const input = page.getByTestId('ai-input');
   await input.fill(question);
   const started = Date.now();
   await input.press('Enter');
   try {
     await page.waitForFunction(
-      (n) => {
-        const li = document.querySelectorAll('[data-testid="ai-log"] > li')[n];
+      (old) => {
+        const li = [...document.querySelectorAll('[data-testid="ai-log"] > li')].find((x) => !old.includes(x.getAttribute('data-turn') ?? ''));
         const s = li?.getAttribute('data-state');
         return s === 'done' || s === 'failed' || s === 'cancelled' || s === 'awaiting-confirmation';
       },
@@ -356,24 +362,25 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
   const outFile = `${OUT_DIR}/${MODEL_ID}-${MODE}${TAG ? `-${TAG}` : ''}.json`;
 
   const use = testInfo.project.use;
+  const server = await serveModel(manifest);
+  const { served, unexpected } = server;
   const context: BrowserContext = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
     headless: true,
     viewport: use.viewport ?? { width: 1280, height: 800 },
-    args: use.launchOptions?.args ?? [],
+    args: server.args(use.launchOptions?.args ?? []),
     ...(baseURL ? { baseURL } : {}),
   });
-  const served: Served = { requests: 0, bytes: 0 };
-  const unexpected: string[] = [];
-  const handler = modelRoute(manifest, served, unexpected);
-  await context.route((url) => isModelHost(url.hostname), handler);
+  // The model hosts go to the network, which resolves them to the local server above.
+  const toServer = (url: URL): boolean => isModelHost(url.hostname);
+  await context.route(toServer, (route) => route.continue());
   const pageErrors: string[] = [];
   try {
     const page = context.pages()[0] ?? (await context.newPage());
     page.on('pageerror', (e) => pageErrors.push(e.message));
-    // The live services answered in the browser (as every test does); the model hosts by the routes above.
+    // The live services answered in the browser (as every test does); the model hosts by the server.
     await mockLiveHosts(page);
-    await page.route((url) => isModelHost(url.hostname), handler);
+    await page.route(toServer, (route) => route.continue());
 
     // A clean start: nothing kept from an earlier run but the Cache API (no crash markers, no memory, default settings).
     await page.goto('/#/');
@@ -390,23 +397,44 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     });
     expect(adapter?.f16 === true || !spec.needsF16, 'this build needs shader-f16').toBe(true);
 
-    // First, the files into the Cache API through the routes (only when they are not there yet).
+    // A model that does not load (out of memory, an operator or shader WebGPU will not run) is a
+    // result too: its exact error is written down in place of the cases, never skipped.
+    const failedLoad = (err: LoadFailure, stage: 'first' | 'cached', l: number[]): void => {
+      const file = { model: MODEL_ID, name: spec.name, mode: MODE, tag: TAG ?? null, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), machine: { cpu: cpus()[0]?.model ?? null, memoryBytes: totalmem(), os: `darwin ${release()}`, arch: arch(), adapter }, catalogue: { weightsUrl: spec.weightsUrl, libUrl: spec.libUrl, downloadBytes: spec.downloadBytes, vramMBEstimate: spec.vramMB, contextTokens: spec.contextTokens }, load: null, loadError: { stage, ...err.detail, loadavg: l, served: { ...served } }, gpuMemory: { reported: null }, loadavgStart: l, cases: [], frames: null, unexpectedRequests: unexpected, pageErrors };
+      writeFileSync(outFile, `${JSON.stringify(file, null, 2)}\n`);
+      process.stdout.write(`load failed (${stage}): ${err.message}\nresults: ${outFile}\n`);
+    };
+
+    // First, the files into the Cache API through the local server (only when they are not there yet).
     const before = await cached(page, manifest);
     let routedLoad: { ms: number; via: string; requests: number; bytes: number; loadavg: number[] } | null = null;
     if (before.stored < before.of) {
       const l0 = load();
-      const r = await loadModel(page, spec, visitor);
-      routedLoad = { ...r, requests: served.requests, bytes: served.bytes, loadavg: l0 };
+      try {
+        const r = await loadModel(page, spec, visitor);
+        routedLoad = { ...r, requests: served.requests, bytes: served.bytes, loadavg: l0 };
+      } catch (err) {
+        if (!(err instanceof LoadFailure)) throw err;
+        failedLoad(err, 'first', l0);
+        return;
+      }
     }
     const afterFirst = await cached(page, manifest);
     expect(afterFirst.stored, 'every pinned file is in the Cache API').toBe(afterFirst.of);
 
     // Then the load a returning visitor gets: a fresh page, the files from the Cache API.
-    const servedBefore = { ...served };
+    const servedBefore = { requests: served.requests, bytes: served.bytes };
     await page.reload();
     await ready(page);
     const l1 = load();
-    const cachedLoad = await loadModel(page, spec, visitor);
+    let cachedLoad: { ms: number; via: 'panel' | 'use' };
+    try {
+      cachedLoad = await loadModel(page, spec, visitor);
+    } catch (err) {
+      if (!(err instanceof LoadFailure)) throw err;
+      failedLoad(err, 'cached', l1);
+      return;
+    }
     const engine = await page.evaluate(async () => (await (window as unknown as Hook).__kf.ai.start()).engine());
     expect(engine).toEqual({ kind: 'local', model: MODEL_ID, state: 'ready' });
     await expect(page.locator('html')).toHaveAttribute('data-ai-engine', 'local');
@@ -526,7 +554,9 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     save();
     process.stdout.write(`results: ${outFile}\n`);
   } finally {
-    await context.close();
+    // A browser that has already gone (a crash) must not hide the error that ended the run.
+    await context.close().catch(() => undefined);
+    await server.close();
   }
   expect(unexpected, 'requests to a model host that are not pinned files').toEqual([]);
 });

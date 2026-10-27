@@ -34,6 +34,7 @@ import { guardInput, guardOutput, stripMarkers, type OutcomeSummary, type Withhe
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
 import { conventionsNamed, route, type NamedPlace } from './router';
+import { PLACE_NAME_ARG, placeById } from './tools/explorer';
 import { validateSchema } from './tools/schema';
 import type {
   AiContext,
@@ -249,8 +250,35 @@ export function placeFrom(retriever: Retriever, name: string): NamedPlace | null
   return found[0]?.place ?? null;
 }
 
+/** A name as places are compared: folded, without a leading "the", up to a comma or a bracket ("The Grand Canyon, Arizona" → "grand canyon"). */
+function placeKey(name: string): string {
+  return fold(name).replace(/^the\s+/u, '').split(/,|\s\(/u)[0]?.trim() ?? '';
+}
+
+/**
+ * A place by its name, for a model's plan: a field-notes place by its id ("mecca") or its title in
+ * the knowledge index ("Mount Everest", "Salar de Uyuni"), else what placeFrom finds (a town).
+ */
+export function placeNamed(retriever: Retriever, name: string): NamedPlace | null {
+  const want = placeKey(name);
+  if (!want) return null;
+  const byId = placeById(want.replace(/[^a-z0-9]+/gu, '-'));
+  if (byId) return { name, lat: byId.lat, lon: byId.lon, place: byId.id };
+  for (const { passage } of retriever.search(name, { kinds: ['place'], limit: 12 })) {
+    if (!passage.id.startsWith(ATLAS_PREFIX) || placeKey(passage.title) !== want) continue;
+    const atlas = placeById(passage.id.slice(ATLAS_PREFIX.length));
+    if (atlas) return { name: passage.title, lat: atlas.lat, lon: atlas.lon, place: atlas.id };
+  }
+  return placeFrom(retriever, name);
+}
+
 function problemText(i18n: I18n, call: ToolCall, problems: readonly { path: string; messageKey: string; values?: Record<string, string | number> }[]): string[] {
   return problems.map((p) => `${call.tool}${p.path ? ` ${p.path}` : ''}: ${i18n.has(p.messageKey) ? i18n.t(p.messageKey, p.values) : p.messageKey}`);
+}
+
+/** The numbers a question states ("35.36", "-0.12", "138,73" is two). */
+function numbersIn(text: string): number[] {
+  return [...text.matchAll(/[-−]?\d+(?:\.\d+)?/gu)].map((m) => Number(m[0].replace('−', '-'))).filter((n) => Number.isFinite(n));
 }
 
 /** The first JSON object in a reply (models sometimes wrap it in a code fence or a sentence). */
@@ -611,18 +639,18 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   }
 
   /** The model's plan, validated; one repair attempt; null when it cannot be used (the guide then answers the turn). */
-  async function modelPlan(rec: TurnRecord, question: string): Promise<Plan | null> {
+  async function modelPlan(rec: TurnRecord, question: string, retriever: Retriever): Promise<Plan | null> {
     const e = engine;
     if (!e) return null;
     const tools = registry.shortlist(question, rec.ctx, SHORTLIST);
-    const schema = planSchema(tools);
+    const schema = planSchema(tools, rec.ctx);
     let messagesNow: ChatMessage[] = buildPlanMessages(question, rec.ctx, tools, history(rec));
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const request = { messages: messagesNow, format: { kind: 'json' as const, schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal };
       const began = now();
       const result = await generate(rec, e, request);
       checkpoint(rec);
-      const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question, tools, schema);
+      const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question, tools, schema, retriever, attempt === 0);
       observe(rec, e, attempt === 0 ? 'plan' : 'repair', request, result, now() - began, { offered: tools.map((t) => t.name), valid: parsed.plan !== null, problems: parsed.problems });
       if (parsed.plan) {
         rec.planner = { kind: e.kind, model: e.model };
@@ -641,7 +669,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
    * tool it was offered (the shortlist) and pass the registry's checks, and the reply as a whole must
    * fit the plan's schema: constrained decoding has open bugs, so nothing is taken on trust.
    */
-  function parsePlan(text: string, ctx: AiContext, question: string, offered: readonly ToolDefinition[], schema: ReturnType<typeof planSchema>): { plan: Plan; problems: [] } | { plan: null; problems: string[] } {
+  function parsePlan(text: string, ctx: AiContext, question: string, offered: readonly ToolDefinition[], schema: ReturnType<typeof planSchema>, retriever: Retriever, first: boolean): { plan: Plan; problems: [] } | { plan: null; problems: string[] } {
     let raw: unknown;
     try {
       raw = jsonObject(text);
@@ -665,18 +693,26 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         continue;
       }
       const c = item as { tool: string; args?: unknown };
-      const args = typeof c.args === 'object' && c.args !== null && !Array.isArray(c.args) ? (c.args as Record<string, unknown>) : {};
-      const call: ToolCall = { tool: c.tool, args };
-      if (!names.has(call.tool)) {
-        problems.push(`${call.tool}: not offered; use only the tools listed`);
+      const given = typeof c.args === 'object' && c.args !== null && !Array.isArray(c.args) ? (c.args as Record<string, unknown>) : {};
+      if (!names.has(c.tool)) {
+        problems.push(`${c.tool}: not offered; use only the tools listed`);
         continue;
       }
+      const where = placeOfCall(c.tool, given, question, retriever);
+      if (typeof where === 'string') {
+        problems.push(where);
+        continue;
+      }
+      const call: ToolCall = { tool: c.tool, args: where };
       const v = registry.validate(call, ctx);
       if (v.ok) calls.push(v.call);
       else problems.push(...(v.problems.length ? problemText(i18n, call, v.problems) : [`${call.tool}: not accepted here`]));
     }
     // The reply as a whole, against the schema it was asked for.
     if (problems.length === 0) problems.push(...problemText(i18n, { tool: 'plan', args: {} }, validateSchema(schema, raw)).slice(0, 4));
+    // "act" with no call at all says one thing and does another (Qwen3 4B, "Play chapter 3"): the first
+    // reply is asked again; a second such reply is taken as an answer.
+    if (first && problems.length === 0 && intent === 'act' && list.length === 0 && offered.length > 0) problems.push('intent "act" needs a call to one of the listed tools; if none of them does what is asked, use intent "answer"');
     if (problems.length > 0 || !intent) return { plan: null, problems };
     // Prayer times differ by convention, and the visitor chooses it: a model may not choose one for them.
     const named = conventionsNamed(question);
@@ -692,6 +728,33 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       plan: { intent: effective, calls, source: 'model', query: query ?? (effective === 'answer' ? question : undefined), ...(clarify ? { question: clarify } : {}) },
       problems: [],
     };
+  }
+
+  /**
+   * A model's place, made the app's own: a place it names is found by the app (a field-notes place
+   * by its id or title, else a town in the knowledge index, by its degrees), and degrees are taken
+   * only when the visitor gave them, so a named place's latitude and longitude never come from a
+   * model's memory. The arguments as the tool takes them, or what is wrong (for the repair prompt).
+   */
+  function placeOfCall(tool: string, args: Record<string, unknown>, question: string, retriever: Retriever): Record<string, unknown> | string {
+    const { [PLACE_NAME_ARG]: named, ...out } = args;
+    if (named !== undefined) {
+      const name = typeof named === 'string' ? named.trim() : '';
+      const found = name ? placeNamed(retriever, name) : null;
+      if (!found) return `${tool} ${PLACE_NAME_ARG}: no place called "${name.slice(0, 60)}" in the app; give another name, or leave it out`;
+      if (found.place) out.place = found.place;
+      else {
+        out.lat = found.lat;
+        out.lon = found.lon;
+      }
+      return out;
+    }
+    const asked = numbersIn(question);
+    for (const key of ['lat', 'lon'] as const) {
+      const v = out[key];
+      if (typeof v === 'number' && !asked.some((n) => Math.abs(Math.abs(n) - Math.abs(v)) < 0.005)) return `${tool} ${key}: degrees only when the question gives them; name the place (${PLACE_NAME_ARG}) instead`;
+    }
+    return out;
   }
 
   async function generate(rec: TurnRecord, e: LanguageEngine, request: Parameters<LanguageEngine['generate']>[0]): Promise<GenerateResult> {
@@ -916,7 +979,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     // The evaluation alone may skip the router, to measure a model's own planning (a model must be loaded).
     const skipRouter = engine !== null && deps.evaluation?.options()?.router === 'skip';
     let plan = skipRouter ? null : route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
-    if (!plan && engine) plan = await modelPlan(rec, input.text);
+    if (!plan && engine) plan = await modelPlan(rec, input.text, retriever);
     checkpoint(rec);
     // No rule matched, and no model plan: retrieval answers.
     plan ??= { intent: 'answer', query: input.text, calls: [], source: 'fallback' };
@@ -925,7 +988,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     emit(rec);
 
     if (plan.intent === 'decline') {
-      rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: i18n.t('ai.mind.guide.decline') });
+      rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: i18n.t(plan.questionKey ?? 'ai.mind.guide.decline') });
       finish(rec, 'done');
       return;
     }

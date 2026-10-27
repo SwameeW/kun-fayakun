@@ -7,16 +7,18 @@
  *
  * - Loading: the pinned AppConfig (catalogue.ts), progress as LoadProgress, abortable (the worker's
  *   unload aborts a reload in flight; the worker is then ended), failures as EngineErrors.
- * - Generating: OpenAI-style streaming with usage, thinking off, plans constrained to a JSON schema
- *   by XGrammar. Each piece is pulled: the worker decodes the next one only when the page asks, and
- *   the page asks through the pacer, so decoding yields to the scene.
+ * - Generating: OpenAI-style streaming with usage, thinking off (and the empty thinking block WebLLM
+ *   still streams back taken off the reply: thinkFilter), plans constrained to a JSON schema by
+ *   XGrammar (without string lengths or the patterns it cannot read: grammarSchema). Each piece is pulled: the worker decodes the
+ *   next one only when the page asks, and the page asks through the pacer, so decoding yields to
+ *   the scene.
  * - Crash markers before device creation, weight upload and the first prefill (detect.ts).
  * - The render budget (pacing.ts) is held from the weights' upload to the end of the load (the
  *   upload syncs the device for every tensor, then the shaders compile), and for each generation, so
  *   the scene's governors never read the model's work as the scene's.
  */
 import type { ChatCompletionMessageParam, ChatCompletionRequestStreaming, InitProgressReport } from '@mlc-ai/web-llm';
-import type { EngineError, GenerateRequest, GenerateResult, LanguageEngine, LoadProgress, ModelSpec } from '../types';
+import type { EngineError, GenerateRequest, GenerateResult, JsonSchema, LanguageEngine, LoadProgress, ModelSpec } from '../types';
 import { buildAppConfig } from './catalogue';
 import { clearStage, markStage } from './detect';
 import { engineError, throwIfAborted, toEngineError, type EngineFailure } from './errors';
@@ -30,6 +32,35 @@ export interface WebLlmEngine extends LanguageEngine {
   readonly lastError: EngineError | null;
 }
 
+/**
+ * A pattern XGrammar cannot hold a reply to as JavaScript reads it: Unicode property classes, long
+ * bounded repeats, and any pattern not anchored at both ends (JSON Schema searches a pattern in the
+ * text; XGrammar makes the whole string match it, so "\S", meant as "not blank", allowed one
+ * character: Qwen3 4B searched for "2" and "g").
+ */
+const UNGRAMMATICAL = /\\p\{|\{\d+,\d{2,}\}|^(?!\^)|(?<!\$)$/u;
+
+/**
+ * The schema XGrammar is given: the plan's schema without string lengths, and without the patterns it
+ * reads otherwise than JavaScript does. Measured on this Mac (tests/ai-eval/grammar.spec.ts,
+ * docs/AI-EVALUATION.md):
+ * - a maxLength becomes a bounded repetition in the grammar, and XGrammar's start-up for a nine-tool
+ *   plan took 10.7 s with them (Qwen3 0.6B) and 66 ms without;
+ * - a pattern of Unicode letters ("[\p{L}\p{N} …]") let Qwen3 4B write only "N" or "L" where a
+ *   laboratory body's name was asked for, and an unanchored one ("\S") only one character.
+ * Neither is lost: every reply is validated again in JS against the full schema (lengths and
+ * patterns), and the reply's tokens are capped.
+ */
+export function grammarSchema(schema: JsonSchema): JsonSchema {
+  return JSON.parse(
+    JSON.stringify(schema, (key, value: unknown) => {
+      if (key === 'maxLength' || key === 'minLength') return undefined;
+      if (key === 'pattern' && typeof value === 'string' && UNGRAMMATICAL.test(value)) return undefined;
+      return value;
+    }),
+  ) as JsonSchema;
+}
+
 /** The request WebLLM is given for a GenerateRequest (pure; tested in tests/unit/ai-engine.spec.ts). */
 export function toCompletionRequest(request: GenerateRequest): ChatCompletionRequestStreaming {
   const messages: ChatCompletionMessageParam[] = request.messages.map((m) =>
@@ -41,9 +72,69 @@ export function toCompletionRequest(request: GenerateRequest): ChatCompletionReq
     stream_options: { include_usage: true },
     temperature: request.temperature ?? 0,
     max_tokens: request.maxTokens,
-    ...(request.format.kind === 'json' ? { response_format: { type: 'json_object' as const, schema: JSON.stringify(request.format.schema) } } : {}),
+    ...(request.format.kind === 'json' ? { response_format: { type: 'json_object' as const, schema: JSON.stringify(grammarSchema(request.format.schema)) } } : {}),
     // Qwen3's thinking is switched off: its reasoning would spend the context window and the visitor's time.
     extra_body: { enable_thinking: false },
+  };
+}
+
+const THINK_OPEN = '<think>';
+const THINK_CLOSE = '</think>';
+
+/**
+ * The reply without its thinking block. With thinking off, WebLLM 0.2.86 still puts the empty block
+ * Qwen's template expects ("<think>\n\n</think>\n\n") at the start of the reply it streams back (it
+ * is the assistant's prefix in its output ids), and it reached the screen on every real model's
+ * answer. A block at the start, empty or not, is dropped with the whitespace after it; what follows
+ * is passed on as it comes. A block never closed is all reasoning, and none of it is passed on.
+ */
+export interface ThinkFilter {
+  /** The part of this piece that is reply text (held back while it may still be the block). */
+  push(delta: string): string;
+  /** What was held back and is reply text after all, at the end of the reply. */
+  end(): string;
+}
+
+export function thinkFilter(): ThinkFilter {
+  let state: 'start' | 'thinking' | 'after' | 'text' = 'start';
+  let held = '';
+  const pass = (text: string): string => {
+    if (state === 'after') {
+      const rest = text.replace(/^\s+/u, '');
+      if (rest.length > 0) state = 'text';
+      return rest;
+    }
+    return text;
+  };
+  return {
+    push(delta) {
+      if (state === 'text') return delta;
+      if (state === 'after') return pass(delta);
+      held += delta;
+      if (state === 'start') {
+        const lead = held.replace(/^\s+/u, '');
+        if (lead.length < THINK_OPEN.length && THINK_OPEN.startsWith(lead)) return '';
+        if (!lead.startsWith(THINK_OPEN)) {
+          state = 'text';
+          const out = held;
+          held = '';
+          return out;
+        }
+        state = 'thinking';
+      }
+      const close = held.indexOf(THINK_CLOSE);
+      if (close < 0) return '';
+      const rest = held.slice(close + THINK_CLOSE.length);
+      held = '';
+      state = 'after';
+      return pass(rest);
+    },
+    end() {
+      // A reply that was only the start of "<think>" was text after all; an unclosed block was not.
+      const out = state === 'start' ? held : '';
+      held = '';
+      return out;
+    },
   };
 }
 
@@ -255,6 +346,7 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     let text = '';
     let finish: GenerateResult['finish'] = 'stop';
     let usage: ModelPiece['usage'] = null;
+    const reply = thinkFilter();
     interrupted = false;
     lastError = null;
     const onAbort = (): void => {
@@ -284,13 +376,19 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
             clearStage();
           }
         }
-        if (piece.delta) {
-          text += piece.delta;
-          if (request.format.kind === 'text') request.onText?.(piece.delta);
+        const shown = piece.delta ? reply.push(piece.delta) : '';
+        if (shown) {
+          text += shown;
+          if (request.format.kind === 'text') request.onText?.(shown);
         }
         if (piece.finish) finish = FINISH[piece.finish] ?? 'stop';
         if (piece.usage) usage = piece.usage;
         await pacer.gate();
+      }
+      const rest = reply.end();
+      if (rest) {
+        text += rest;
+        if (request.format.kind === 'text') request.onText?.(rest);
       }
       if (wasInterrupted(request)) finish = 'abort';
     } catch (err) {

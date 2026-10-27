@@ -257,6 +257,10 @@ export interface AiContext {
   } | null;
   /** Verses this chapter shows (for "explain this verse"). */
   verses: readonly VerseKey[];
+  /** Today's date (UTC, YYYY-MM-DD): "today" and "tomorrow" are the visitor's, not a model's guess. */
+  today?: string;
+  /** This chapter's Explore Mode moments, by id and title (what film.moment takes). */
+  moments?: readonly { id: string; title: string }[];
   /** At most ~600 characters for the model: where the visitor is and what is on screen. */
   summary: string;
 }
@@ -336,6 +340,13 @@ export interface ToolDefinition {
   keywords: readonly string[];
   /** An object schema for its arguments. */
   args: JsonSchema & { type: 'object' };
+  /**
+   * Its arguments as a model is offered them here, when the context narrows them (film.moment: an
+   * enum of this chapter's moments; the laboratory's tools: its bodies by id, one form per
+   * experiment). The plan's schema and prompt use it (the plan is checked against it too);
+   * validation still uses `args` and `check`, and `run` refuses what the app does not hold.
+   */
+  argsFor?(ctx: AiContext): JsonSchema;
   /** Offered only where it can work (the lab tools in the lab, say). */
   available(ctx: AiContext): boolean;
   /** Checks beyond the schema, against the app's state. */
@@ -413,7 +424,7 @@ export interface Plan {
   source: 'router' | 'model' | 'fallback';
   /** For clarify: the question back to the visitor. */
   question?: string;
-  /** For clarify: the question is the app's own words (this message), not the model's. */
+  /** For clarify, or decline: the app's own words (this message), not the model's. */
   questionKey?: I18nKey;
 }
 
@@ -425,6 +436,7 @@ export type GuardFlag =
   | 'unchecked-number'
   | 'action-claim'
   | 'scripture-quote'
+  | 'repeated'
   | 'truncated';
 
 /** How much an explanation assumes, chosen by the visitor (the answer prompt says it in one line). */

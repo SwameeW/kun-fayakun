@@ -150,10 +150,16 @@ const textBlocks = (blocks: readonly AnswerBlock[]): Extract<AnswerBlock, { type
 const factsOf = (blocks: readonly AnswerBlock[]): Fact[] => blocks.flatMap((b) => (b.type === 'facts' ? [...b.facts] : []));
 
 const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDF9\uFDFB-\uFDFF\uFE70-\uFEFF]/u;
-/** Rule g (scripts/validate.ts) in all its forms, and the two words that are banned where scripture is spoken of. */
-const BANNED = /\b(?:predict(?:s|ed|ing)?|foretold|foretell(?:s|ing)?|proves|proven|proof that|scientific(?:ally)? miracles?|miracles? of science|confirms? the qur['’`ʼ]?an)\b/iu;
-const SCRIPTURE_WORD = /\b(?:qur['’`ʼ]?an|verse|ayah|surah|hadith|scripture|revelation)\b/iu;
-const SCRIPTURE_ONLY = /\b(?:predictions?|proof of)\b/iu;
+/**
+ * Rule g (scripts/validate.ts, the owner's list: predicted, foretold, proves, proof that, scientific
+ * miracle, confirms the Quran) in its forms: "predicts", "foretells", "proved", "proven", "a miracle of
+ * science". Not the bare verb "predict" or "predicting": the app's own laboratory says "Predict ahead"
+ * and "Predicting its path…" (src/i18n/en.lab.json), which rule g allows. Those, and "prediction" and
+ * "proof of", are counted only where the sentence speaks of scripture.
+ */
+const BANNED = /\b(?:predict(?:s|ed)|foretold|foretell(?:s|ing)?|prov(?:e|es|ed|en|ing)|proof that|scientific(?:ally)? miracles?|miracles? of science|confirm(?:s|ed|ing)? the qur['’`ʼ]?an)\b/iu;
+const SCRIPTURE_WORD = /\b(?:qur['’`ʼ]?an|verses?|ayah|surah|hadiths?|scripture|revelation)\b/iu;
+const SCRIPTURE_ONLY = /\b(?:predict(?:ing|ions?)?|proof of)\b/iu;
 const VERSE_MENTION = /\b(?:verse|surah|sura|ayah|ayat|qur['’`ʼ]?an)\b[^.\n]{0,24}?\b(\d{1,3}):(\d{1,3})\b/giu;
 const LEAD_IN = /(?:prophet|messenger|narrat\w*|hadith|allah says|qur['’`ʼ]?an says|verse says|it says|says:|said:)[^"“”«»]{0,60}["“«]([^"”»]{3,400})["”»]/giu;
 const ACTION_CLAIM = /\b(?:I(?:['’]ve| have)?\s+(?:just\s+|now\s+|already\s+)?(?:run|ran|changed|set|moved|flown|flew|opened|removed|added|doubled|tripled|applied|launched|started|paused|kicked|deleted|switched|turned)\b|(?:has|have) been (?:run|applied|changed|removed|added|doubled|tripled|set)\b|experiment (?:has )?(?:ran|was run|has been run|is done|is complete))/iu;
@@ -188,6 +194,10 @@ function integrity(obs: Observation): Violation[] {
       allowed.push(Math.abs(n.value));
       allowedMantissas.push(Math.abs(n.mantissa));
     }
+    // numbers() skips dates; prose writes their parts apart ("13 November 2026").
+    for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})/gu)) for (const part of [m[1], m[2], m[3]]) allowed.push(Number(part));
+    // A verse key's surah and ayah ("57:25" read as "chapter 57, verse 25").
+    for (const m of text.matchAll(/\b(\d{1,3}):(\d{1,3})\b/gu)) for (const part of [m[1], m[2]]) allowed.push(Number(part));
   };
   add(obs.turn.question);
   for (const f of factsOf(blocks)) {

@@ -183,6 +183,16 @@ test('the comparison is deterministic on a short horizon, and shows what changed
   expect(toComparison(freed, solar.auKm, format).events).toContain('Earth left Sun within 30 days.');
 });
 
+test('a comparison that runs out of time stops where it is, the change never beyond the laboratory as it is, and says how far it reached', async () => {
+  const p = plan('scale-mass', { body: 'sun', factor: 2, horizonDays: 3650 });
+  const raw = await compareRuns(solar, p, { budgetMs: 1, sliceSteps: 50 });
+  expect(raw.reachedDays.baseline).toBeGreaterThan(0);
+  expect(raw.reachedDays.baseline).toBeLessThan(3650);
+  expect(raw.reachedDays.variant).toBeGreaterThan(0);
+  expect(raw.reachedDays.variant).toBeLessThanOrEqual(raw.reachedDays.baseline + 1e-6);
+  expect(raw.horizonDays).toBe(3650);
+});
+
 test('the impactor strikes at the speed and angle asked, and the comparison sees it', async () => {
   const p = plan('impact', { target: 'earth', diameterKm: 10, speedKmS: 20, angleDeg: 45, horizonDays: 1 });
   const engine = new Engine(structuredClone(solar.scenario));

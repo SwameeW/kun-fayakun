@@ -337,6 +337,7 @@
   "ai.tool.lab.compare.energyVariant": "Relative energy error, with the change",
   "ai.tool.lab.compare.observed": "Compared: {sentence} ({events, plural, =0 {no collisions or escapes} one {one collision or escape} other {# collisions and escapes}} in the run with the change).",
   "ai.tool.lab.compare.note": "Integrated ahead by the laboratory: a thought experiment in a simplified model, not a forecast.",
+  "ai.tool.lab.compare.short": "The comparison ran out of time after {days, number} of the {horizon, number} days asked: both runs are shown as they stood then.",
   "ai.tool.lab.compare.noShare": "The laboratory gave no copy of its scenario.",
   "ai.tool.lab.compare.unreadable": "The laboratory’s scenario could not be read: {detail}",
   "ai.tool.compare.row.a": "{body}: semi-major axis",

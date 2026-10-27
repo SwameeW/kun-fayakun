@@ -138,7 +138,8 @@ const MAX_RATE = TIME_RATES[TIME_RATES.length - 1] ?? 2_592_000;
 export const timeRate: ToolDefinition = {
   name: 'time.rate',
   kind: 'view',
-  summary: "Set the clock's rate exactly: explorer seconds per real second, one of 1, 10, 60, 600, 3600, 21600, 86400, 604800, 2592000 (negative runs backwards).",
+  // What the steps mean, in words: Qwen3 4B set 1 for "one day pass every second".
+  summary: "Set the clock's rate exactly: explorer seconds per real second, one of 1, 10, 60, 600, 3600 (an hour a second), 21600, 86400 (a day a second), 604800 (a week), 2592000 (30 days); negative runs backwards.",
   keywords: ['rate', 'speed', 'per second', 'a day a second', 'a week a second', 'real time', 'time lapse', 'fast forward'],
   args: { type: 'object', properties: { rate: { type: 'integer', minimum: -MAX_RATE, maximum: MAX_RATE, description: 'Seconds per real second' } }, required: ['rate'], additionalProperties: false },
   available: inExplorerOrLab,
