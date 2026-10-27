@@ -1,0 +1,584 @@
+/*
+ * Kun Fayakun Intelligence's panel (src/ai/ui): loaded with its chunk. Its box (top, left, width,
+ * height) is set by ./layout.ts from what is on screen; these rules give it its looks. Opaque
+ * surfaces for text (contrast over any scene), logical properties so it mirrors right to left.
+ */
+
+.kf-ai {
+  position: fixed;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius);
+  background: var(--kf-surface);
+  color: var(--kf-text);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* The sheet is a <dialog class="kf-dialog">: its size and place come from the layout, not the dialog's defaults. */
+.kf-dialog.kf-ai--sheet {
+  inset: auto;
+  inline-size: auto;
+  max-inline-size: none;
+  max-block-size: none;
+  padding: 0;
+}
+
+.kf-dialog.kf-ai--sheet::backdrop {
+  background: rgb(5 6 10 / 0.45);
+}
+
+.kf-dialog.kf-ai--sheet:not([open]) {
+  display: none;
+}
+
+.kf-ai-content {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+/* Head: the title, what is answering, minimise and close. */
+.kf-ai-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kf-space-1);
+  padding-block: var(--kf-space-2);
+  padding-inline: var(--kf-space-4) var(--kf-space-2);
+  border-block-end: 1px solid var(--kf-line);
+  background: var(--kf-surface-2);
+}
+
+.kf-ai-heading {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.kf-ai-title {
+  margin: 0;
+  font-family: var(--kf-font-display);
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.kf-ai-engine,
+.kf-ai-head-status {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.kf-ai-engine-label {
+  color: var(--kf-gold);
+}
+
+.kf-ai-minimise .kf-icon {
+  rotate: 180deg;
+}
+
+.kf-ai-minimise[aria-expanded="false"] .kf-icon {
+  rotate: 0deg;
+}
+
+/* The scrolling part: intro, the model and settings sections, the conversation, the suggestions. */
+.kf-ai-scroll {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--kf-space-3) var(--kf-space-4);
+  container-type: inline-size;
+}
+
+.kf-ai-scroll > * + * {
+  margin-block-start: var(--kf-space-3);
+}
+
+.kf-ai-intro {
+  margin: 0;
+  color: var(--kf-text-muted);
+  font-size: 0.875rem;
+}
+
+.kf-ai-log {
+  margin-block-end: 0;
+  margin-inline: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kf-ai-turn {
+  padding-block: var(--kf-space-3);
+  border-block-start: 1px solid var(--kf-line);
+}
+
+.kf-ai-question {
+  margin: 0 0 var(--kf-space-2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.kf-ai-blocks > * + * {
+  margin-block-start: var(--kf-space-3);
+}
+
+.kf-ai-label {
+  margin: 0 0 var(--kf-space-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--kf-gold);
+}
+
+.kf-ai-label--scripture {
+  color: var(--kf-gold-strong);
+}
+
+.kf-ai-label--simulation,
+.kf-ai-label--model {
+  color: var(--kf-hydrogen);
+}
+
+.kf-ai-block {
+  overflow-wrap: anywhere;
+}
+
+.kf-ai-prose p,
+.kf-ai-block > p {
+  margin: 0;
+}
+
+.kf-ai-prose p + p {
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-ai-flags {
+  margin-block-start: var(--kf-space-2);
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border-inline-start: 2px solid var(--kf-gold-soft);
+  background: var(--kf-surface-2);
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-flags-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--kf-text);
+}
+
+.kf-ai-flags ul,
+.kf-ai-section ul,
+.kf-ai-events {
+  margin: var(--kf-space-1) 0 0;
+  padding-inline-start: var(--kf-space-4);
+}
+
+/* Scripture inside an answer: the notes' own articles, a little smaller. */
+.kf-ai-scripture {
+  padding: var(--kf-space-3);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-2);
+}
+
+.kf-ai-scripture .kf-ref {
+  margin: 0 0 var(--kf-space-2);
+  font-size: 0.9375rem;
+}
+
+.kf-ai-scripture :is(.kf-arabic, .kf-translation, .kf-attrib, .kf-plain, .kf-summary, .kf-grading, .kf-hadith-source) {
+  margin-block: var(--kf-space-2) 0;
+}
+
+.kf-ai-scripture .kf-arabic {
+  font-family: var(--kf-font-arabic);
+  font-size: 1.375rem;
+  line-height: 2;
+}
+
+.kf-ai-scripture blockquote {
+  margin-inline: 0;
+}
+
+.kf-ai-scripture .kf-attrib {
+  font-size: 0.75rem;
+  color: var(--kf-text-muted);
+}
+
+/* Tables: facts and comparisons. A narrow panel stacks each row. */
+.kf-ai-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-ai-table caption {
+  margin-block-end: var(--kf-space-1);
+  text-align: start;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-table :is(th, td) {
+  padding: var(--kf-space-1) var(--kf-space-2);
+  border-block-end: 1px solid var(--kf-line);
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.kf-ai-table thead th {
+  font-weight: 600;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-table tbody th {
+  font-weight: 500;
+}
+
+.kf-ai-value,
+.kf-ai-compare td {
+  white-space: nowrap;
+}
+
+@container (max-width: 26rem) {
+  .kf-ai-facts .kf-ai-table thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .kf-ai-facts .kf-ai-table :is(tr, th, td) {
+    display: block;
+  }
+
+  .kf-ai-facts .kf-ai-table tr {
+    padding-block: var(--kf-space-1);
+    border-block-end: 1px solid var(--kf-line);
+  }
+
+  .kf-ai-facts .kf-ai-table :is(th, td) {
+    padding: 0;
+    border: 0;
+  }
+
+  .kf-ai-facts .kf-ai-value {
+    white-space: normal;
+    font-size: 0.9375rem;
+  }
+
+  .kf-ai-facts .kf-ai-table td[data-kind],
+  .kf-ai-facts .kf-ai-source {
+    color: var(--kf-text-muted);
+  }
+}
+
+.kf-ai-subhead {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.kf-ai-energy {
+  font-size: 0.8125rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-passage-title {
+  margin: 0 0 var(--kf-space-1);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* Action cards. */
+.kf-ai-action {
+  padding: var(--kf-space-3);
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-2);
+}
+
+.kf-ai-action[data-status="awaiting"] {
+  border-color: var(--kf-gold-soft);
+}
+
+.kf-ai-status {
+  margin-block-start: var(--kf-space-1);
+  font-size: 0.875rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-action[data-status="refused"] .kf-ai-status,
+.kf-ai-action[data-status="failed"] .kf-ai-status,
+.kf-ai-error {
+  color: var(--kf-danger);
+}
+
+.kf-ai-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-2);
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-ai-notice,
+.kf-ai-turn-state {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-turn-state {
+  margin-block-start: var(--kf-space-2);
+  font-style: italic;
+}
+
+/* Suggestions. */
+.kf-ai-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-2);
+}
+
+.kf-ai-chip {
+  min-block-size: 2.75rem;
+  padding: var(--kf-space-1) var(--kf-space-3);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--kf-text);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.3;
+  text-align: start;
+  cursor: pointer;
+}
+
+.kf-ai-chip:hover {
+  border-color: var(--kf-gold-soft);
+  background: var(--kf-surface-raised);
+}
+
+/* The model and settings sections. */
+.kf-ai-section {
+  border: 1px solid var(--kf-line);
+  border-radius: var(--kf-radius-small);
+}
+
+.kf-ai-section > summary {
+  min-block-size: 2.75rem;
+  padding: var(--kf-space-2) var(--kf-space-3);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kf-ai-section-body {
+  padding: 0 var(--kf-space-3) var(--kf-space-3);
+  font-size: 0.875rem;
+}
+
+.kf-ai-section-body > * + * {
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-ai-section-body p {
+  margin: 0;
+}
+
+.kf-ai-field {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--kf-text-muted);
+}
+
+.kf-ai-section select {
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  padding-inline: var(--kf-space-2);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface-2);
+  color: var(--kf-text);
+  font: inherit;
+}
+
+.kf-ai-warning {
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border-inline-start: 2px solid var(--kf-danger);
+  background: var(--kf-surface-2);
+}
+
+.kf-ai-confirm {
+  padding: var(--kf-space-3);
+  border: 1px solid var(--kf-gold-soft);
+  border-radius: var(--kf-radius-small);
+}
+
+.kf-ai-progress {
+  block-size: 0.5rem;
+  border-radius: 999px;
+  background: var(--kf-surface-raised);
+  overflow: hidden;
+}
+
+.kf-ai-progress-fill {
+  display: block;
+  block-size: 100%;
+  inline-size: 0;
+  background: var(--kf-gold);
+  transition: inline-size 300ms var(--kf-ease);
+}
+
+.kf-ai-stored {
+  list-style: none;
+  padding: 0;
+}
+
+.kf-ai-stored li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kf-space-2);
+  flex-wrap: wrap;
+}
+
+.kf-ai-levels {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kf-space-1) var(--kf-space-4);
+}
+
+.kf-ai-levels legend {
+  inline-size: 100%;
+  margin-block-end: var(--kf-space-1);
+  padding: 0;
+  font-weight: 600;
+}
+
+.kf-ai-choice-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  min-block-size: 2.75rem;
+}
+
+.kf-ai-choice-label input {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  margin: 0;
+  accent-color: var(--kf-gold);
+}
+
+/* The question. */
+.kf-ai-form {
+  padding: var(--kf-space-2) var(--kf-space-4) var(--kf-space-3);
+  border-block-start: 1px solid var(--kf-line);
+  background: var(--kf-surface-2);
+}
+
+.kf-ai-input {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  max-block-size: 9rem;
+  margin-block-start: var(--kf-space-1);
+  padding: var(--kf-space-2) var(--kf-space-3);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: var(--kf-surface);
+  color: var(--kf-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.kf-ai-input::placeholder {
+  color: var(--kf-text-faint);
+}
+
+.kf-ai-form-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--kf-space-2);
+  margin-block-start: var(--kf-space-2);
+}
+
+.kf-ai-hint {
+  flex: 1;
+  min-inline-size: 0;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--kf-text-muted);
+}
+
+/* Minimised (a phone, while a view or an experiment runs): only the head, as a bar. */
+.kf-ai.is-minimised :is(.kf-ai-scroll, .kf-ai-form) {
+  display: none;
+}
+
+.kf-ai.is-minimised .kf-ai-head {
+  border-block-end: 0;
+}
+
+/* The stage text and Explore Mode's dock step aside from the column. */
+.kf-ai-side-open .kf-stage {
+  inset-inline-start: var(--kf-ai-inset, 0px);
+}
+
+/* Photo mode leaves only the view. */
+.kf-photo .kf-ai {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kf-ai--side {
+    animation: kf-ai-in 180ms var(--kf-ease);
+  }
+}
+
+@keyframes kf-ai-in {
+  from {
+    opacity: 0;
+  }
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-ai--side {
+  animation: none;
+}
+
+:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-ai-progress-fill {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-ai-progress-fill {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .kf-ai,
+  .kf-ai-chip,
+  .kf-ai-section {
+    border-color: CanvasText;
+  }
+}

@@ -20,7 +20,7 @@
  * against its own budget.
  *
  * And the assistant (docs/AI-INTELLIGENCE.md), none of it in the shell: the chunks it loads when it
- * starts (the Ask button, or the test hook's start()), the language model's worker (WebLLM's runtime,
+ * starts (the Ask button's panel with the assistant itself, or the test hook's start()), the language model's worker (WebLLM's runtime,
  * fetched only when a model loads, and found in that file and no other), the background
  * comparison's worker, and the knowledge index it fetches when it first answers.
  */
@@ -90,8 +90,8 @@ const FILM_SOUND_BUDGET_BYTES = 12_000;
 const DISCOVER_SOURCES = ['src/ui/discover-dock.ts'] as const;
 /** What the dock may add beyond the shell, gzipped. */
 const DISCOVER_BUDGET_BYTES = 20_000;
-/** The assistant's entry point, loaded when it starts (its chunk and their static imports; workers are fetched later). */
-const AI_SOURCES = ['src/ai/boot.ts'] as const;
+/** The assistant's entry points, loaded when it starts: its own, and its panel's (the Ask button's); their static imports with them, workers later. */
+const AI_SOURCES = ['src/ai/boot.ts', 'src/ai/ui/index.ts'] as const;
 /** What starting the assistant may add beyond the shell, gzipped. */
 const AI_BUDGET_BYTES = 120_000;
 /** The language model's worker (src/ai/engine/webllm-worker.ts): WebLLM's runtime, fetched only when a model loads. */
