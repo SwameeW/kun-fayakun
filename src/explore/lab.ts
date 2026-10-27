@@ -1074,7 +1074,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         dot.sizePx = Math.max(4, Math.min(40, discPx * 2));
         dot.opacity = 1;
         dot.marker = id === selected ? 1 : 0;
-        if (!RING_MEMBER.test(id) || id === selected) labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.9, offset: [10, -10] });
+        if (!RING_MEMBER.test(id) || id === selected) labelList.push({ id: `lab-${id}`, textKey: 'ui.universe.lab.body', text: s.names[k] ?? id, position: [dot.position.x, dot.position.y, dot.position.z], opacity: 0.9, offset: [10, -10], rank: id === selected ? Number.MAX_VALUE : (s.radius[k] ?? 0) });
         d += 1;
       }
       for (let k = d; k < DOT_SLOTS; k += 1) {
@@ -1827,6 +1827,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         climateView,
         co2DoublingWm2: figure('climate.forcing.co2Doubling'),
         logLength: s?.logLength ?? 0,
+        unapplied: Math.max(0, sentEdits - (s?.applied ?? 0)),
         discarded: s?.discarded ?? 0,
         prediction:
           prediction && prediction.id === selected

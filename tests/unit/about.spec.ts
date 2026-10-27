@@ -7,8 +7,9 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { PlanetsFile } from '../../src/astro/ephemeris';
 import type { PhysicalFile } from '../../src/astro/physical';
+import { orientationAt } from '../../src/astro/rotation';
 import { BODY_IDS } from '../../src/core/types';
-import { solarDay, worldFacts } from '../../src/explore/about';
+import { poleAtJ2000, solarDay, worldFacts } from '../../src/explore/about';
 
 const ROOT = new URL('../../', import.meta.url);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, ROOT), 'utf8'));
@@ -65,4 +66,14 @@ test('the Sun and the Moon from their GM: masses by the Earth’s, gravity, esca
   expect(moon.orbit).toMatchObject({ around: 'earth' });
   // Every world has its facts, each from named sources.
   for (const id of BODY_IDS) expect(worldFacts(id, physical, planets).sources.length, id).toBeGreaterThan(0);
+});
+
+test('the poles at J2000 that the tilts are worked from are the rotation model’s own at that moment', () => {
+  // (About's chunk works the pole out itself, taking none of src/astro/rotation's code: the two must agree.)
+  for (const [name, model] of Object.entries(physical.bodies)) {
+    const pole = poleAtJ2000(model);
+    const o = orientationAt(model, 2_451_545.0);
+    expect(pole.ra, name).toBeCloseTo(o.ra, 12);
+    expect(pole.dec, name).toBeCloseTo(o.dec, 12);
+  }
 });

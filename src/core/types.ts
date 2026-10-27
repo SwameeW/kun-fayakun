@@ -426,6 +426,8 @@ export interface SceneLabel {
    * joined to it by a thin leader line, so tags on crowded small features never overlap.
    */
   offset?: readonly [number, number];
+  /** Where tags crowd, which keeps its place: the higher (a body's radius, the chosen body's highest); others 0. */
+  rank?: number;
 }
 
 /** How big the view really is: world units in metres, at a depth of interest. */
@@ -1141,6 +1143,8 @@ export interface UniverseLab {
   climateView: boolean;
   co2DoublingWm2: number | null;
   logLength: number;
+  /** Edits (undoing and redoing too) sent to the run that its latest snapshot does not have yet: the next ones will. */
+  unapplied: number;
   discarded: number;
   prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null; encounters: ReadonlyArray<{ with: string; t: number; distanceKm: number }> } | null;
   horizonS: number;

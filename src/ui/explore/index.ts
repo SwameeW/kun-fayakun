@@ -12,6 +12,7 @@ import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
 import { createTimeControl } from './time-control';
 import { createToast } from './toast';
+import { TOAST_EVENT } from './help';
 import type { PhotoBar } from './photo-bar';
 
 /**
@@ -74,6 +75,11 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
 
   // A quiet toast marks what joins the log of what was seen, and a detail level applied.
   const toast = createToast('universe-toast');
+  // A part that did not load says so here too (an explanation's "?": ./help).
+  window.addEventListener(TOAST_EVENT, (event) => {
+    const line = (event as CustomEvent<unknown>).detail;
+    if (typeof line === 'string') toast.show(line);
+  });
   const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
   const walkHud = createWalkHud(app, f, () => element);
   const descentHud = createDescentHud(app, f, () => element);
@@ -218,7 +224,11 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     const readout = hud.readout.getBoundingClientRect();
     let top = header;
     // A readout across the top middle (as on a phone) is covered space too.
-    if (readout.height > 0 && readout.top < height / 2 && readout.left < width / 3 && readout.right > width / 3) top = Math.max(top, readout.bottom);
+    const across = readout.height > 0 && readout.top < height / 2 && readout.left < width / 3 && readout.right > width / 3;
+    if (across) top = Math.max(top, readout.bottom);
+    // Inside the clear view the way back stands over it, and on a wide screen the readout's card: the names beside the worlds keep clear of them.
+    const avoid = (across ? [back] : [back, hud.readout]).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    window.dispatchEvent(new CustomEvent('kf-universe-avoid', { detail: avoid.map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })) }));
     const isSheet = navigator.layout === 'sheet' && nav.height > 0;
     // A sheet pulled up beside the view (a phone held sideways: tall, at the right) covers the right, not the bottom.
     const beside = isSheet && nav.left > width / 4 && nav.height > height / 2;
@@ -239,7 +249,9 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     app.setViewInsets({ top, bottom, left: 0, right });
   };
   navigator.onResize(reportInsets);
-  new ResizeObserver(reportInsets).observe(hud.readout);
+  const sized = new ResizeObserver(reportInsets);
+  sized.observe(hud.readout);
+  sized.observe(back);
   window.addEventListener('resize', reportInsets);
 
   let visible = false;

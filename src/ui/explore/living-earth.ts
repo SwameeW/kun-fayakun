@@ -1,6 +1,7 @@
 import type { App, UniverseBulletin, UniverseSatellite, UniverseView } from '../../core/types';
 import { ATLAS, PROPHETS, site, type FieldPlace } from '../../explore/field-notes/data';
 import { loadPlaces, searchPlaces, type Place } from '../../explore/field-notes/places';
+import livingMessages from '../../i18n/en.living.json';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { helpButton, withHelp } from './help';
@@ -49,6 +50,8 @@ interface Stop {
 
 export function createLivingEarth(app: App, f: Formatters, onGo: () => void): LivingEarth {
   const { i18n } = app;
+  // This section's words come with its chunk (its title, the words the qibla's panel shares and the names on the globe's markers are the explorer's).
+  i18n.extend('en.living.json', livingMessages);
   const write = (el: HTMLElement, text: string): void => {
     if (el.textContent !== text) el.textContent = text;
   };

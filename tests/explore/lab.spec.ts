@@ -14,7 +14,7 @@ import type { UniverseLab } from '../../src/core/types';
 import { stateFromElements } from '../../src/sim/elements';
 import { expect, test, type FrameStats, type KfHook } from '../support/fixtures';
 import { SLOW } from '../support/env';
-import { JD, view, waitForUniverse } from '../support/universe';
+import { JD, place, view, waitForUniverse } from '../support/universe';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 const LIVE = { timeout: 60_000 * SLOW };
@@ -89,6 +89,8 @@ test('an experiment forked from the real system: its own clock and gravity, edit
   const moonId = (await lab(page))?.selected ?? '';
   expect(moonId).toMatch(/^body-\d+$/);
   await expect(page.getByTestId('lab-prediction')).toContainText(/integrated ahead|On its present course/, LIVE);
+  // Named where it can be seen (names never show off the view): from far enough out for its whole orbit, 600,000 km across, to be in view.
+  await place(page, { body: 'earth', distanceKm: 8_000_000, elevationDeg: 30 });
   await expect.poll(async () => (await page.evaluate(() => (window as unknown as { __kf: { app: { hud(): { labels: Array<{ id: string }> } } } }).__kf.app.hud().labels.map((l) => l.id))).includes(`lab-${moonId}`), LIVE).toBe(true);
   // Duplicated (a new id), then the copy removed; the Sun cannot be removed.
   await page.getByTestId('lab-duplicate').click();

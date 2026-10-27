@@ -1,6 +1,10 @@
 import type { App } from '../../core/types';
 import helpMessages from '../../i18n/en.help.json';
 import { h, uniqueId } from '../dom';
+import css from '../styles/help.css?inline';
+
+// Its styles come with its code (as ./lazy's styles puts them; this chunk takes nothing of the explorer's).
+document.head.append(h('style', {}, css));
 
 /**
  * The plain-words popover the "?" buttons open (./help; its own chunk with src/i18n/en.help.json):

@@ -62,7 +62,8 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'
   numbers are JPL's "Planetary Physical Parameters" as given; the Sun's and the Moon's come from
-  DE440's GM and NAIF's radii.
+  DE440's GM and NAIF's radii. With the sky's switches and saved views, its body is a chunk of its
+  own (`src/ui/explore/sections.ts`), loaded the first time one of them opens.
 - **The real sky** (SpaceEngine's planetarium). The procedural backdrop is gone: behind the worlds
   are the Bright Star Catalogue's 9,096 naked-eye stars at their real places, colours (from B-V) and
   brightness, so the planets stand in their real constellations. Switches in the navigator show the

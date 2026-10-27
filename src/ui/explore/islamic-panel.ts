@@ -6,6 +6,11 @@ import { ASTROLABE_PX, drawAstrolabe } from './astrolabe-view';
 import { helpButton, withHelp } from './help';
 import { h, uniqueId } from '../dom';
 import type { Formatters } from './format';
+import { styles } from './lazy';
+import css from '../styles/islamic.css?inline';
+
+// Its styles come with its code (./lazy).
+styles(css);
 
 /**
  * The qibla and the new moon (its own chunk, loaded when the navigator's section first opens): the
