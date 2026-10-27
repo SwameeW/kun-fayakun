@@ -732,6 +732,36 @@ Credit:   ESA Hipparcos; F. van Leeuwen (2007); VizieR, CDS, Strasbourg | IAU
           contract with the National Aeronautics and Space Administration
           under the Exoplanet Exploration Program.
 
+The deep star catalogue (ESA Hipparcos and Tycho-2 via CDS)
+          The whole Hipparcos new reduction (van Leeuwen 2007, CDS I/311) and
+          the Tycho-2 Catalogue (Høg et al. 2000, A&A 355, L27; CDS I/259).
+Terms:    Free use with acknowledgement of ESA and CDS
+          (https://cds.unistra.fr/vizier-org/licences_vizier.html).
+Changes:  Hipparcos's stars not in the neighbourhood's file, and Tycho-2's
+          that are not Hipparcos's (by number and by place), packed as
+          binary files brightest first (directions octahedrally to about ten
+          arcseconds, V and B-V to a sixteenth of a magnitude); Alpha Centauri
+          A and B given Kervella et al. (2016)'s parallax and close pairs of a
+          multiple the better one; the density of Tycho-2's faint stars as a
+          map of the Milky Way's glow (public/assets/stars/, scripts/stars/
+          catalogue.py).
+Credit:   ESA Hipparcos (Hipparcos and Tycho-2); F. van Leeuwen (2007); Høg et
+          al. (2000); CDS, Strasbourg
+
+The black holes (SIMBAD; the papers' values)
+          SIMBAD's ICRS positions of Sgr A*, M 87, Ton 618, Gaia BH1, BH2, BH3
+          and HD 226868; masses and distances typed from GRAVITY Collaboration
+          (2022), the Event Horizon Telescope Collaboration (2019, 2022),
+          Shemmer et al. (2004), Ge et al. (2019), El-Badry et al. (2023, two
+          papers), the Gaia Collaboration (2024) and Miller-Jones et al. (2021).
+Terms:    SIMBAD: free use with acknowledgement ("This research has made use
+          of the SIMBAD database, operated at CDS, Strasbourg, France"); the
+          papers' values are facts, each credited.
+Changes:  one file (public/assets/stars/black-holes.json, scripts/stars/
+          black_holes.py); TON 618's comoving distance worked out in Planck
+          2018's cosmology.
+Credit:   SIMBAD, CDS, Strasbourg | the papers named with each hole
+
 Atmospheres descended through (NASA Planetary Data System)
           Pioneer Venus Special Events Data bundle (doi:10.17189/m5zf-6f12):
           the Large and Day Probes' atmosphere structure and the Large Probe's

@@ -19,7 +19,8 @@ const PLACED_SIGNIFICANCE = 5;
 
 export interface NeighbourhoodFile {
   fields: string[];
-  stars: Array<[number, number | null, string | null, number, number, number, number, number, number | null, string | null]>;
+  /** The last field: where the parallax is from when it is not the star's own (a close companion's, "HIP n", or a cited source's id), else null. */
+  stars: Array<[number, number | null, string | null, number, number, number, number, number, number | null, string | null, string | null]>;
   systems: PlanetSystem[];
 }
 
@@ -67,6 +68,8 @@ export interface Star {
   decDeg: number;
   plxMas: number;
   ePlxMas: number;
+  /** Where the parallax is from when not the star's own Hipparcos one (a close companion's, "HIP n", or a cited source's id). */
+  plxFrom: string | null;
   vmag: number;
   bv: number | null;
   spType: string | null;
@@ -98,7 +101,7 @@ export function readNeighbours(file: NeighbourhoodFile, obliquity: number, sunFi
   const byHip = new Map<number, PlanetSystem>();
   for (const s of file.systems) if (s.hip !== null) byHip.set(s.hip, s);
   const direction = [0, 0, 0];
-  const stars: Star[] = file.stars.map(([hip, hr, name, raDeg, decDeg, plxMas, ePlxMas, vmag, bv, spType], index) => {
+  const stars: Star[] = file.stars.map(([hip, hr, name, raDeg, decDeg, plxMas, ePlxMas, vmag, bv, spType, plxFrom], index) => {
     const placed = plxMas > 0 && plxMas / Math.max(ePlxMas, 1e-9) >= PLACED_SIGNIFICANCE;
     const distPc = placed ? 1000 / plxMas : null;
     skyDirection(raDeg, decDeg, obliquity, direction);
@@ -112,6 +115,7 @@ export function readNeighbours(file: NeighbourhoodFile, obliquity: number, sunFi
       decDeg,
       plxMas,
       ePlxMas,
+      plxFrom: plxFrom ?? null,
       vmag,
       bv,
       spType,
@@ -121,7 +125,7 @@ export function readNeighbours(file: NeighbourhoodFile, obliquity: number, sunFi
       system,
     };
   });
-  const sun: Star = { index: -1, hip: null, hr: null, name: 'Sun', raDeg: 0, decDeg: 0, plxMas: Number.POSITIVE_INFINITY, ePlxMas: 0, vmag: sunFigures.absoluteV, bv: sunFigures.bv, spType: 'G2V', distPc: 0, position: [0, 0, 0], absoluteV: sunFigures.absoluteV, system: null };
+  const sun: Star = { index: -1, hip: null, hr: null, name: 'Sun', raDeg: 0, decDeg: 0, plxMas: Number.POSITIVE_INFINITY, ePlxMas: 0, plxFrom: null, vmag: sunFigures.absoluteV, bv: sunFigures.bv, spType: 'G2V', distPc: 0, position: [0, 0, 0], absoluteV: sunFigures.absoluteV, system: null };
   const keyed = stars.map((s) => ({ s, keys: [s.name, s.system?.host, s.hip === null ? null : `hip${s.hip}`, s.hr === null ? null : `hr${s.hr}`].filter((k): k is string => k !== null && k !== undefined).map(normalise) }));
   return {
     stars,
@@ -137,8 +141,19 @@ export function readNeighbours(file: NeighbourhoodFile, obliquity: number, sunFi
       return [...starts.sort(order), ...within.sort(order)].slice(0, limit);
     },
     nearest(point, count) {
-      const d = (s: Star): number => (s.position ? Math.hypot(s.position[0] - point[0], s.position[1] - point[1], s.position[2] - point[2]) : Infinity);
-      return [sun, ...stars].filter((s) => s.position).sort((a, b) => d(a) - d(b)).slice(0, count);
+      // One pass, keeping the nearest `count` in order (squared distances; ties keep the file's order).
+      const best: Array<{ s: Star; d2: number }> = [];
+      for (const s of [sun, ...stars]) {
+        const p = s.position;
+        if (!p) continue;
+        const d2 = (p[0] - point[0]) ** 2 + (p[1] - point[1]) ** 2 + (p[2] - point[2]) ** 2;
+        if (best.length >= count && d2 >= (best[best.length - 1]?.d2 ?? Infinity)) continue;
+        let k = best.length;
+        while (k > 0 && (best[k - 1]?.d2 ?? 0) > d2) k -= 1;
+        best.splice(k, 0, { s, d2 });
+        if (best.length > count) best.pop();
+      }
+      return best.map((b) => b.s);
     },
   };
 }

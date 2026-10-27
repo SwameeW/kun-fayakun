@@ -76,13 +76,16 @@ export interface InputTarget {
   drag(dx: number, dy: number): void;
   /** Two fingers, or a right, middle or Shift drag: the view follows the pointer. */
   pan(dx: number, dy: number): void;
-  /** Natural-log units of height, positive away. */
-  zoom(dLn: number): void;
+  /** Natural-log units of height, positive away; at a point (client px) when there is one (the wheel's pointer, a pinch's middle). */
+  zoom(dLn: number, clientX?: number, clientY?: number): void;
   orbitKeys(azimuth: number, elevation: number, zoom: number): void;
   /** Moves (W A S D, R F, Space), roll (Q E), Shift's boost, and on foot V's ride. */
   flightKeys(move: Km, roll: number, boost: boolean, ride?: boolean): void;
-  /** Esc: true when it stopped a trip (then nothing else hears it). */
-  stop(): boolean;
+  /**
+   * Esc: true when it stopped a trip (then nothing else hears it); 'held' when it is kept from the
+   * interface only (a burst after a switch), so an open card or menu still closes on it.
+   */
+  stop(): boolean | 'held';
   /** The eye shown on the ground (Space jumps) or going down through an air, where a click locks the pointer for mouse-look; null otherwise (landing still waits in orbit). */
   onFoot?(): 'ground' | 'air' | null;
   /** O: orbit the body the camera is near. */
@@ -219,9 +222,9 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
     if (two) {
       // Two fingers: the spread zooms, the midpoint pans (both at once, as on a map).
       const spread = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
-      if (pinch > 0 && spread > 0) target.zoom(-Math.log(spread / pinch));
-      pinch = spread;
       const m = { x: (two[0].x + two[1].x) / 2, y: (two[0].y + two[1].y) / 2 };
+      if (pinch > 0 && spread > 0) target.zoom(-Math.log(spread / pinch), m.x, m.y);
+      pinch = spread;
       if (mid) target.pan(m.x - mid.x, m.y - mid.y);
       mid = m;
       return;
@@ -281,7 +284,7 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
   const onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     const unit = e.deltaMode === 1 ? LINE_PX : e.deltaMode === 2 ? element.clientHeight : 1;
-    target.zoom(e.deltaY * unit * WHEEL_LN_PER_PX * (e.ctrlKey ? PINCH_WHEEL_SCALE : 1));
+    target.zoom(e.deltaY * unit * WHEEL_LN_PER_PX * (e.ctrlKey ? PINCH_WHEEL_SCALE : 1), e.clientX, e.clientY);
   };
 
   const onContextMenu = (e: Event): void => {
@@ -334,9 +337,10 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
       e.stopPropagation();
       return;
     }
-    if (target.stop()) {
+    const used = target.stop();
+    if (used) {
       e.preventDefault();
-      e.stopPropagation();
+      if (used !== 'held') e.stopPropagation();
     }
   };
 

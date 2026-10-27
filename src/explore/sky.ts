@@ -1,7 +1,8 @@
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Group, InstancedBufferAttribute, LineBasicNodeMaterial, LineSegments, PointsNodeMaterial, Sprite, type Node } from 'three/webgpu';
-import { attribute, cameraPosition, dot, exp, float, instancedBufferAttribute, max, uniform, uv, vec3 } from 'three/tsl';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Group, InstancedBufferAttribute, LineBasicNodeMaterial, LineSegments, type Sprite, type Node } from 'three/webgpu';
+import { attribute, cameraPosition, instancedBufferAttribute, uniform, vec3 } from 'three/tsl';
 import { blackbodyRgb } from '../chapters/shared/blackbody';
 import type { SceneLabel, SkyLayerName } from '../core/types';
+import { starMaterial, starSprites } from './starlight';
 
 /**
  * The real night sky behind the explorer (public/assets/sky/sky.json, from scripts/sky/build.py):
@@ -17,8 +18,8 @@ import type { SceneLabel, SkyLayerName } from '../core/types';
  * points on the sphere with straight chords, which from its centre are great circles; boundaries and
  * the grid follow small circles too, so they are drawn in steps of at most STEP_DEG.
  *
- * How bright and large a star is drawn is a display mapping of its real magnitude (fainter stars
- * dimmer, the brightest a little larger), so the sky's light matches the old procedural backdrop's.
+ * How bright a star is drawn is the explorer's star light (./starlight): its magnitude's light,
+ * integrated over each pixel, the same at any pixel density, the brightest spreading into a halo.
  */
 
 export interface SkyFile {
@@ -59,13 +60,6 @@ const NAMED_BRIGHTER_THAN = 2.6;
  * Only named: its faint light is not among the Bright Star Catalogue's stars.
  */
 export const LITTLE_CLOUD = { id: 'sky-m31', raDeg: 10.684708, decDeg: 41.26875 } as const;
-/** Magnitude to light and size on screen: V = 6.5 at FAINT_LIGHT, rising as the flux to FLUX_POWER; brighter than SIZE_FROM a star grows by SIZE_PER_MAG px a magnitude. */
-const FAINT_MAG = 6.5;
-const FAINT_LIGHT = 0.05;
-const FLUX_POWER = 0.45;
-const BASE_SIZE = 2;
-const SIZE_FROM = 3.5;
-const SIZE_PER_MAG = 0.45;
 /** Shares of a frame the layers ease by (a 1/60 s frame), and their colours (linear, faint). */
 const EASE = 0.1;
 const COLOURS: Readonly<Record<'constellations' | 'boundaries' | 'grid' | 'equator' | 'ecliptic', readonly [number, number, number]>> = {
@@ -115,40 +109,23 @@ function steps(path: ReadonlyArray<readonly [number, number]>): Array<[number, n
 
 export function createSky(file: SkyFile, obliquity: number): Sky {
   const count = file.stars.length;
-  const directions = new Float32Array(count * 3);
+  // Each star's direction and its magnitude (w), and its colour.
+  const directions = new Float32Array(count * 4);
   const colors = new Float32Array(count * 3);
-  const sizes = new Float32Array(count);
   const dir = [0, 0, 0];
   file.stars.forEach(([, ra, dec, v, bv], i) => {
     skyDirection(ra, dec, obliquity, dir);
-    directions.set(dir, i * 3);
-    const rgb = blackbodyRgb(bv === null ? 6000 : bvKelvin(bv));
-    const light = FAINT_LIGHT * 10 ** (-0.4 * (v - FAINT_MAG) * FLUX_POWER);
-    colors.set([rgb[0] * light, rgb[1] * light, rgb[2] * light], i * 3);
-    sizes[i] = BASE_SIZE + SIZE_PER_MAG * Math.max(0, SIZE_FROM - v);
+    directions.set([dir[0] ?? 0, dir[1] ?? 0, dir[2] ?? 0, v], i * 4);
+    colors.set(blackbodyRgb(bv === null ? 6000 : bvKelvin(bv)), i * 3);
   });
   const uLight = uniform(1);
   const uRadius = uniform(400);
-  const direction = instancedBufferAttribute(new InstancedBufferAttribute(directions, 3)) as unknown as Node<'vec3'>;
+  const star = instancedBufferAttribute(new InstancedBufferAttribute(directions, 4)) as unknown as Node<'vec4'>;
   const color = instancedBufferAttribute(new InstancedBufferAttribute(colors, 3)) as unknown as Node<'vec3'>;
-  const size = instancedBufferAttribute(new InstancedBufferAttribute(sizes, 1)) as unknown as Node<'float'>;
   // The stars are transparent, so they draw after every opaque body: a planet hides the stars behind it.
-  const material = new PointsNodeMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest: true, sizeAttenuation: false, fog: false });
-  material.positionNode = cameraPosition.add(direction.mul(uRadius));
-  material.sizeNode = size;
-  const c = uv().sub(0.5).mul(2);
-  const r2 = dot(c, c);
-  material.colorNode = color.mul(exp(r2.mul(-6)).mul(max(float(1).sub(r2), 0))).mul(uLight);
-  material.opacityNode = float(1);
-  const geometry = new BufferGeometry();
-  geometry.setIndex([0, 1, 2, 0, 2, 3]);
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]), 3));
-  geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
-  const stars = new Sprite(material);
-  stars.geometry = geometry;
-  stars.count = count;
-  stars.frustumCulled = false;
-  stars.name = 'explore-sky-stars';
+  const material = starMaterial(cameraPosition.add(star.xyz.mul(uRadius)), star.w, color, uLight, true);
+  const stars = starSprites(material, count, 'explore-sky-stars');
+  const geometry = stars.geometry;
 
   // Line layers: segments between unit directions, drawn just inside the stars' sphere.
   const group = new Group();

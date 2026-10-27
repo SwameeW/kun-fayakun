@@ -162,7 +162,7 @@ test('the places to go, and the survey’s galaxies turned into the explorer’s
   await expect.poll(() => added.length).toBe(4);
   expect(beyond.webCount).toBe(3);
   const web = added[3];
-  const positions = (web?.material as unknown as { positionNode: { value: { array: Float32Array } } }).positionNode.value.array;
+  const positions = (web?.userData as { positions: Float32Array }).positions;
   const at = (i: number): number[] => [positions[i * 3] ?? 0, positions[i * 3 + 1] ?? 0, positions[i * 3 + 2] ?? 0];
   expect(Math.hypot(...at(0))).toBeCloseTo(100e6, -2);
   expect(angleDeg(at(0), x)).toBeLessThan(1e-4);

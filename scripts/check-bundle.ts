@@ -15,7 +15,7 @@
  * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
  * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
- * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode,
+ * that load later still (the orbital laboratory, the qibla and new moon section, walking, the stars and a black hole's lens, photo mode,
  * the time machine beyond the everyday, the film's sound, Explore Mode's dock), each
  * against its own budget.
  *
@@ -78,6 +78,14 @@ const ISLAMIC_BUDGET_BYTES = 40_000;
 const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts', 'src/explore/walk/equirect.ts', 'src/ui/explore/walk-hud.ts'] as const;
 /** What walking may add beyond the shell and the explorer, gzipped. */
 const WALK_BUDGET_BYTES = 30_000;
+/** Among the stars' lazy entry points (loaded with the first visit): the stars, their camera, the deep catalogue's worker, the galaxies beyond, and its panel. */
+const STARS_SOURCES = ['src/explore/neighbourhood/index.ts', 'src/ui/explore/neighbourhood-panel.ts'] as const;
+/** What the stars may add beyond the shell and the explorer, gzipped. */
+const STARS_BUDGET_BYTES = 40_000;
+/** A black hole's lens (loaded the first time the camera comes near one): the light-bending shader and the sky's capture. */
+const LENS_SOURCES = ['src/explore/neighbourhood/lens-view.ts'] as const;
+/** What the lens may add beyond the shell, the explorer and the stars, gzipped. */
+const LENS_BUDGET_BYTES = 6_000;
 /** Photo mode's controls (loaded the first time it opens): the picture, a video, the lens, the exposure, tracking. */
 const PHOTO_SOURCES = ['src/ui/explore/photo-bar.ts'] as const;
 /** What photo mode's controls may add beyond the shell and the explorer, gzipped. */
@@ -288,6 +296,22 @@ function main(): void {
   const walkBytes = walkRows.reduce((sum, row) => sum + row.gzip, 0);
   const walkOk = walkRows.length > 0 && walkBytes <= WALK_BUDGET_BYTES;
   console.log(`${walkOk ? 'PASS' : 'FAIL'}: walking (lazy, ${walkRows.length} files) = ${formatBytes(walkBytes)} bytes gzipped (budget ${formatBytes(WALK_BUDGET_BYTES)})`);
+  // Among the stars, beyond the shell and the explorer: what the first visit to the stars adds (the catalogue's worker counted).
+  const starsRows = measure(exploreFiles(manifest, loaded, STARS_SOURCES));
+  for (const row of [...starsRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`stars  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const starsBytes = starsRows.reduce((sum, row) => sum + row.gzip, 0);
+  const starsOk = starsRows.length > 0 && starsBytes <= STARS_BUDGET_BYTES;
+  console.log(`${starsOk ? 'PASS' : 'FAIL'}: among the stars (lazy, ${starsRows.length} files) = ${formatBytes(starsBytes)} bytes gzipped (budget ${formatBytes(STARS_BUDGET_BYTES)})`);
+  // A black hole's lens, beyond the shell, the explorer and the stars: what coming near one adds.
+  const lensRows = measure(exploreFiles(manifest, new Set([...loaded, ...starsRows.map((row) => row.file)]), LENS_SOURCES));
+  for (const row of [...lensRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`lens  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const lensBytes = lensRows.reduce((sum, row) => sum + row.gzip, 0);
+  const lensOk = lensRows.length > 0 && lensBytes <= LENS_BUDGET_BYTES;
+  console.log(`${lensOk ? 'PASS' : 'FAIL'}: a black hole's lens (lazy, ${lensRows.length} files) = ${formatBytes(lensBytes)} bytes gzipped (budget ${formatBytes(LENS_BUDGET_BYTES)})`);
   // Photo mode's controls, beyond the shell and the explorer: what opening photo mode adds.
   const photoRows = measure(exploreFiles(manifest, loaded, PHOTO_SOURCES));
   for (const row of [...photoRows].sort((a, b) => b.gzip - a.gzip)) {
@@ -349,7 +373,7 @@ function main(): void {
   const [indexRow] = measure(new Map([[AI_INDEX, 'data']]));
   const indexOk = indexRow !== undefined && indexRow.gzip <= AI_INDEX_BUDGET_BYTES;
   console.log(`${indexOk ? 'PASS' : 'FAIL'}: the knowledge index ${AI_INDEX} = ${formatBytes(indexRow?.raw ?? 0)} raw, ${formatBytes(indexRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_INDEX_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !theoryOk || !soundOk || !discoverOk || !aiOk || !modelOk || !batchOk || !indexOk) process.exitCode = 1;
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !starsOk || !lensOk || !photoOk || !theoryOk || !soundOk || !discoverOk || !aiOk || !modelOk || !batchOk || !indexOk) process.exitCode = 1;
 }
 
 try {

@@ -127,6 +127,75 @@ test('a double tap on a world flies there; one finger orbits', async ({ page, kf
   expect(pageErrors).toEqual([]);
 });
 
+test('among the stars by touch: one finger looks round (the Sun moving with it), a pinch moves toward its middle, a tap names the star there, a double tap flies to it, the Sun in the clear part of the view', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // (The sheet's way out, as a tool would ask: its button is in the folded sheet.)
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'stars' });
+  });
+  const stars = async () => (await view(page))?.neighbourhood ?? null;
+  await expect.poll(async () => (await stars())?.focus.name ?? null, { timeout: 60_000 * SLOW }).toBe('Sun');
+  const sun = async (): Promise<Point | null> => page.evaluate(() => (window as unknown as KfHook).__kf.app.hud().labels.find((l) => l.id === 'star-sun') ?? null);
+  await expect.poll(async () => (await sun()) !== null, { timeout: 30_000 * SLOW }).toBe(true);
+  // The Sun sits in the clear part of the view, above the sheet, not under it.
+  const sheet = await page.getByTestId('universe-bodies').boundingBox();
+  const at = await sun();
+  expect(at?.y ?? Infinity).toBeLessThan(sheet?.y ?? 0);
+  const cdp = await page.context().newCDPSession(page);
+  const c = await middle(page);
+  // One finger: the sky follows it, the Sun with it.
+  await touch(cdp, 'touchStart', [{ x: c.x - 60, y: c.y }]);
+  for (let i = 1; i <= 10; i++) await touch(cdp, 'touchMove', [{ x: c.x - 60 + i * 8, y: c.y }]);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(async () => ((await sun())?.x ?? 0) - (at?.x ?? 0), { timeout: 5000 * SLOW }).toBeGreaterThan(50);
+  // A tap on a named star (another than the Sun where one is named) says what it is; a double tap flies there, into orbit round it.
+  const named = await page.evaluate(() => {
+    const top = document.querySelector('[data-testid="universe-bodies"]')?.getBoundingClientRect().top ?? 0;
+    const list = (window as unknown as KfHook).__kf.app.hud().labels.filter((l) => l.id.startsWith('star-') && l.y > 80 && l.y < top - 20 && l.x > 20 && l.x < window.innerWidth - 20);
+    return list.find((l) => l.id !== 'star-sun') ?? list[0] ?? null;
+  });
+  if (!named) throw new Error('no named star in the clear part of the view');
+  await tap(cdp, { x: named.x, y: named.y });
+  await expect.poll(async () => (await stars())?.hover?.name ?? null, { timeout: 5000 * SLOW }).toBe(named.text ?? '');
+  // Said beside it, the sheet folded as it is.
+  await expect(page.getByTestId('stars-hover')).toBeVisible();
+  await expect(page.getByTestId('stars-hover')).toContainText(named.text ?? '');
+  await page.waitForTimeout(80);
+  await tap(cdp, { x: named.x, y: named.y });
+  await expect.poll(async () => (await stars())?.travelling ?? null, { timeout: 10_000 * SLOW }).toBe(true);
+  await expect.poll(async () => (await stars())?.travelling ?? null, { timeout: 30_000 * SLOW }).toBe(false);
+  expect((await stars())?.focus.name).toBe(named.text ?? '');
+  expect((await stars())?.camera.mode).toBe('orbit');
+  // A pinch outward in orbit: in toward it, never inside it.
+  const before = (await stars())?.cameraPc ?? 0;
+  await twoFingers(cdp, [{ x: c.x - 40, y: c.y }, { x: c.x + 40, y: c.y }], [{ x: c.x - 140, y: c.y }, { x: c.x + 140, y: c.y }]);
+  await expect.poll(async () => (await stars())?.cameraPc ?? Infinity, { timeout: 5000 * SLOW }).toBeLessThan(before * 0.6);
+  // Pinches whose middle is on empty sky, away from the star and every name: still in toward it, never off to a faint star.
+  const focus = (await stars())?.focus.name;
+  const labels = await page.evaluate(() => (window as unknown as KfHook).__kf.app.hud().labels.map((l) => ({ x: l.x, y: l.y })));
+  const sheetTop = (await page.getByTestId('universe-bodies').boundingBox())?.y ?? 600;
+  const spots = [
+    { x: 80, y: 140 },
+    { x: 300, y: 160 },
+    { x: 100, y: sheetTop - 60 },
+    { x: 290, y: sheetTop - 80 },
+  ].filter((p) => labels.every((l) => Math.hypot(l.x - p.x, l.y - p.y) > 60 && Math.hypot(l.x + 40 - p.x, l.y - 16 - p.y) > 60));
+  expect(spots.length).toBeGreaterThanOrEqual(2);
+  for (const p of spots) {
+    const was = (await stars())?.cameraPc ?? 0;
+    await twoFingers(cdp, [{ x: p.x - 20, y: p.y }, { x: p.x + 20, y: p.y }], [{ x: p.x - 45, y: p.y }, { x: p.x + 45, y: p.y }]);
+    await page.waitForTimeout(300);
+    const now = await stars();
+    expect(now?.focus.name).toBe(focus);
+    expect(now?.travelling).toBe(false);
+    expect(now?.cameraPc ?? Infinity).toBeLessThanOrEqual(was);
+  }
+  expect(pageErrors).toEqual([]);
+});
+
 test('portrait: a bottom sheet of worlds that pulls up (Esc folds it), nothing wider than the screen, and axe finds nothing', async ({ page, kf, pageErrors }, testInfo) => {
   await kf.open('/universe/saturn', { query: { jd: JD } });
   await waitForUniverse(page);

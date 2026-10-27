@@ -39,3 +39,47 @@
   display: grid;
   gap: var(--kf-space-1);
 }
+
+/* Star light's controls: a label and its value on a line, the slider under them, wide enough to take a thumb. */
+.kf-stars-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--kf-space-1) var(--kf-space-2);
+  margin-block: var(--kf-space-2);
+}
+
+.kf-stars-value {
+  color: var(--kf-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-stars-range {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  margin: 0;
+  accent-color: var(--kf-gold);
+}
+
+/* What is a model, set apart from what is measured. */
+.kf-stars-model {
+  padding-inline-start: var(--kf-space-2);
+  border-inline-start: 2px solid var(--kf-gold-soft);
+}
+
+/* The star under the pointer: a small tag beside it, over the view, never taking the pointer. */
+.kf-stars-tip {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 40;
+  max-inline-size: min(22rem, calc(100vw - 2rem));
+  padding: var(--kf-space-1) var(--kf-space-2);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: rgb(5 6 10 / 0.82);
+  color: var(--kf-text);
+  font: 500 0.75rem/1.35 var(--kf-font-ui);
+  pointer-events: none;
+}

@@ -5,7 +5,8 @@
  * bursts of presses faster than a hand, then by hand; the field notes within the Living Earth and the
  * imagery's credits too), the navigator folded and unfolded in bursts, bursts of random presses over its
  * controls (the time machine's among them), photo mode, the orbital laboratory (its sections, a lesson,
- * folded) and the stars (their diagram, folded); after each, every control is inside the window (or its
+ * folded) and the stars (their diagram, folded; at a tablet's 768x1024 and a 1920x1080 window too);
+ * after each, every control is inside the window (or its
  * own scroller), nothing is wider than the window, no two controls overlap, no text is cut off, and
  * nothing was logged as an error. On foot and going down through clouds, the HUDs fit as well, their
  * readouts opened and closed, the navigator folded and unfolded over them. Reduced motion, so trips land
@@ -72,6 +73,66 @@ async function section(page: Page, details: ReturnType<Page['locator']>, label: 
   await expect(details).toHaveAttribute('open', '');
   await summary.click();
   await expect(details).not.toHaveAttribute('open', '');
+}
+
+/**
+ * Among the stars: their panel, its diagram, its controls in bursts, a black hole's facts, folded, and
+ * back (at every size of SIZES, and at a tablet's 768x1024 and a 1920x1080 window too).
+ */
+async function starsLayout(page: Page, kf: { open: (r: string, o?: { query?: Record<string, string> }) => Promise<void> }, pageErrors: unknown[]): Promise<void> {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await setExpanded(page, true);
+  await page.getByTestId('stars-open').click();
+  await expect.poll(async () => (await view(page))?.neighbourhood !== null, LIVE).toBe(true);
+  // A phone's sheet folds for the trip out: pulled up again, the panel is there.
+  await setExpanded(page, true);
+  const panel = page.getByTestId('stars-panel');
+  await expect(panel).toBeVisible(LIVE);
+  const hr = page.getByTestId('stars-hr');
+  await expect(hr).toHaveAttribute('data-count', /\d+/, LIVE);
+  await hr.scrollIntoViewIfNeeded();
+  // The diagram drawn at its shown size and the screen's density, its words at least 11 px.
+  const drawn = await hr.evaluate((c) => ({ width: (c as HTMLCanvasElement).width, wanted: Math.round(c.clientWidth * devicePixelRatio), fontPx: Number((c as HTMLCanvasElement).dataset.fontPx) }));
+  expect(drawn.width).toBe(drawn.wanted);
+  expect(drawn.fontPx).toBeGreaterThanOrEqual(11);
+  await expectLayout(page, 'among the stars');
+  // Its controls in bursts: free look and orbit, the figures, star light to its ends; then a black hole, its facts and model.
+  for (const id of ['stars-camera-orbit', 'stars-camera-look', 'stars-figures']) {
+    await page.getByTestId(id).scrollIntoViewIfNeeded();
+    await spam(page.getByTestId(id), 9);
+  }
+  await page.getByTestId('stars-faintest').fill('12.5');
+  await page.getByTestId('stars-brightness').fill('2');
+  await page.getByTestId('stars-faintest').fill('4');
+  await expectLayout(page, 'among the stars, its controls pressed');
+  await page.getByTestId('stars-bh-ton-618').scrollIntoViewIfNeeded();
+  await spam(page.getByTestId('stars-bh-ton-618'), 5);
+  await expect.poll(async () => (await view(page))?.neighbourhood?.blackHole?.id ?? null, LIVE).toBe('ton-618');
+  await expect.poll(async () => (await view(page))?.neighbourhood?.travelling, LIVE).toBe(false);
+  await expect(page.getByTestId('stars-bh-model')).toBeVisible();
+  await expectLayout(page, 'among the stars, a black hole in view');
+  // Cygnus X-1: the longest notes (its companion, its axis, how each value was measured, the stand-in sky).
+  await page.getByTestId('stars-bh-cyg-x-1').scrollIntoViewIfNeeded();
+  await page.getByTestId('stars-bh-cyg-x-1').click();
+  await expect.poll(async () => (await view(page))?.neighbourhood?.blackHole?.skyFromSun ?? false, LIVE).toBe(true);
+  await expect(page.getByTestId('stars-bh-observation')).toContainText('stand-in');
+  await expectLayout(page, 'among the stars, Cygnus X-1 in view');
+  await page.getByTestId('stars-sun').click();
+  await expect.poll(async () => (await view(page))?.neighbourhood?.travelling, LIVE).toBe(false);
+  await spam(page.getByTestId('universe-nav-toggle'), 25);
+  expect(await expanded(page)).toBe(false);
+  await expect(panel).toBeHidden();
+  await expectLayout(page, 'among the stars, folded');
+  await spam(page.getByTestId('universe-nav-toggle'), 25);
+  expect(await expanded(page)).toBe(true);
+  await expect(panel).toBeVisible();
+  await page.getByTestId('stars-end').click();
+  await expect.poll(async () => (await view(page))?.neighbourhood ?? null, LIVE).toBeNull();
+  await expect(panel).toBeHidden();
+  await expectLayout(page, 'back from the stars');
+  expect(pageErrors).toEqual([]);
 }
 
 for (const size of SIZES) {
@@ -249,36 +310,22 @@ for (const size of SIZES) {
     });
 
     test(`among the stars: their panel, its diagram, folded, and back at ${at}`, async ({ page, kf, pageErrors }) => {
-      test.setTimeout(240_000 * SLOW);
-      await kf.open('/universe/earth', { query: { jd: JD } });
-      await waitForUniverse(page);
-      await setExpanded(page, true);
-      await page.getByTestId('stars-open').click();
-      await expect.poll(async () => (await view(page))?.neighbourhood !== null, LIVE).toBe(true);
-      // A phone's sheet folds for the trip out: pulled up again, the panel is there.
-      await setExpanded(page, true);
-      const panel = page.getByTestId('stars-panel');
-      await expect(panel).toBeVisible(LIVE);
-      const hr = page.getByTestId('stars-hr');
-      await expect(hr).toHaveAttribute('data-count', /\d+/, LIVE);
-      await hr.scrollIntoViewIfNeeded();
-      // The diagram drawn at its shown size and the screen's density, its words at least 11 px.
-      const drawn = await hr.evaluate((c) => ({ width: (c as HTMLCanvasElement).width, wanted: Math.round(c.clientWidth * devicePixelRatio), fontPx: Number((c as HTMLCanvasElement).dataset.fontPx) }));
-      expect(drawn.width).toBe(drawn.wanted);
-      expect(drawn.fontPx).toBeGreaterThanOrEqual(11);
-      await expectLayout(page, 'among the stars');
-      await spam(page.getByTestId('universe-nav-toggle'), 25);
-      expect(await expanded(page)).toBe(false);
-      await expect(panel).toBeHidden();
-      await expectLayout(page, 'among the stars, folded');
-      await spam(page.getByTestId('universe-nav-toggle'), 25);
-      expect(await expanded(page)).toBe(true);
-      await expect(panel).toBeVisible();
-      await page.getByTestId('stars-end').click();
-      await expect.poll(async () => (await view(page))?.neighbourhood ?? null, LIVE).toBeNull();
-      await expect(panel).toBeHidden();
-      await expectLayout(page, 'back from the stars');
+      await starsLayout(page, kf, pageErrors);
       expect(pageErrors).toEqual([]);
+    });
+  });
+}
+
+/** The stars' panel also at a tablet held upright and at a common desktop window. */
+for (const size of [
+  { width: 768, height: 1024, touch: true },
+  { width: 1920, height: 1080, touch: false },
+]) {
+  const at = `${String(size.width)}x${String(size.height)}${size.touch ? ' (touch)' : ''}`;
+  test.describe(at, () => {
+    test.use({ viewport: { width: size.width, height: size.height }, hasTouch: size.touch, isMobile: size.touch });
+    test(`among the stars: their panel, its diagram, folded, and back at ${at}`, async ({ page, kf, pageErrors }) => {
+      await starsLayout(page, kf, pageErrors);
     });
   });
 }
