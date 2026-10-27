@@ -6,7 +6,8 @@
  * sunset the Sun and the sky under it reddened, the land still seen; at night dark; a day passing in ten
  * minute steps with no pumping; the Earth's ground with no dark streaks (no stones' shadows) at a low or a
  * high Sun; on the Moon and Mars the ground near middle grey too (the eye's meter), and on the Moon by day
- * only the brightest stars (the sunlit ground's glare), none near white; the Moon's night dark, its stars out;
+ * only a handful of the brightest stars (the sunlit ground's glare), none near white; the Moon's night dark,
+ * its stars out, the faint ones too, held by night so only the brightest are near white (on the Earth too);
  * a cliff's shadow over the ground below it (horizon mapping); and the ground's heights decoded to the
  * metre (this spec runs in Brave too, whose canvas read-backs are tampered with). Mocked flat terrain at
  * 1,000 m (or a cliff made per tile) and a one-pixel imagery tile.
@@ -104,6 +105,8 @@ interface Shot {
   sun: { disc: number; ring: [number, number, number]; ringLuma: number; reach200: number; glint: number; beside: number } | null;
   /** The stars (and the planets' points) above the horizon: separate lit spots, luma 64 or more touching eight ways, beyond 30 px of the Sun's centre. */
   stars: number;
+  /** Those spots near white: their brightest pixel at luma 200 or more. */
+  white: number;
 }
 
 /** The canvas alone (the interface hidden), as luma statistics; `pitchDeg` the look, for where the horizon lies. */
@@ -204,6 +207,7 @@ async function shot(page: Page, pitchDeg = 0): Promise<Shot> {
       const seen = new Uint8Array(width * above);
       const stack: number[] = [];
       let stars = 0;
+      let white = 0;
       for (let y = 0; y < above; y += 1)
         for (let x = 0; x < width; x += 1) {
           const start = y * width + x;
@@ -211,8 +215,10 @@ async function shot(page: Page, pitchDeg = 0): Promise<Shot> {
           stars += 1;
           seen[start] = 1;
           stack.push(start);
+          let peak = 0;
           while (stack.length > 0) {
             const i = stack.pop() ?? 0;
+            peak = Math.max(peak, luma[i] ?? 0);
             const px = i % width;
             const py = (i - px) / width;
             for (let dy = -1; dy <= 1; dy += 1)
@@ -225,6 +231,7 @@ async function shot(page: Page, pitchDeg = 0): Promise<Shot> {
                 stack.push(j);
               }
           }
+          if (peak >= 200) white += 1;
         }
       const n = width * height;
       const near = ring.map((v) => v / Math.max(ringN, 1)) as [number, number, number];
@@ -237,6 +244,7 @@ async function shot(page: Page, pitchDeg = 0): Promise<Shot> {
         half: { median, p99, dark, detail: Math.sqrt(Math.max(0, hp2 / Math.max(hpN, 1) - (hp / Math.max(hpN, 1)) ** 2)) },
         sun: s && s.inView ? { disc, ring: near, ringLuma: 0.2126 * near[0] + 0.7152 * near[1] + 0.0722 * near[2], reach200: reach, glint, beside: beside / Math.max(besideN, 1) } : null,
         stars,
+        white,
       };
     },
     { b64: btoa(binary), s: sun, pitch: pitchDeg },
@@ -341,6 +349,8 @@ test('the Earth at sunset: the land still seen facing away; at night, dark', asy
   const dark = await shot(page);
   test.info().annotations.push({ type: 'light', description: JSON.stringify({ away, dark }) });
   expect(dark.mean).toBeLessThan(25);
+  // The stars out, held by night (src/explore/walk/daylight NIGHT_STARS): only the brightest near white.
+  expect(dark.white).toBeLessThanOrEqual(12);
   expect(pageErrors).toEqual([]);
 });
 
@@ -435,12 +445,15 @@ for (const [world, at, sunDeg, span, stepDays, ceiling] of [
     // Only the brightest stars by day, under the sunlit ground's glare (or the sky): a dozen lit spots at
     // most. The star light alone lit 312 on the Moon here, some near white, 593 px from the Sun.
     expect(toward.stars).toBeLessThanOrEqual(12);
+    // On the Moon a handful, not two or three (src/explore/walk/daylight AIRLESS_DAY's lift): 7 when measured,
+    // one of them a planet; 3 with the brightest held and every other star dimmed with it.
+    if (world === 'moon') expect(toward.stars).toBeGreaterThanOrEqual(5);
     expect(toward.clipped).toBeLessThan(0.0005);
     expect(pageErrors).toEqual([]);
   });
 }
 
-test('the Moon after sunset: its ground dark, however the eye opens', async ({ page, kf, pageErrors }) => {
+test('the Moon after sunset: its ground dark, however the eye opens; its stars out, only the brightest near white', async ({ page, kf, pageErrors }) => {
   test.setTimeout(300_000 * SLOW);
   const APOLLO = { world: 'moon', lat: 0.67416, lon: 23.47314 } as const;
   await kf.open('/universe/moon', { query: { jd: JD } });
@@ -449,10 +462,20 @@ test('the Moon after sunset: its ground dark, however the eye opens', async ({ p
   expect(jd).not.toBeNaN();
   await face(page, APOLLO, jd, 180, -20);
   const s = await shot(page, -20);
-  test.info().annotations.push({ type: 'light', description: JSON.stringify({ half: s.half, stars: s.stars }) });
   expect(s.half.p99).toBeLessThanOrEqual(20);
-  // The stars out over it (no glare held by night): 220 lit spots when measured.
+  // The stars out over it (by night the sunlit ground's glare is gone): 128 lit spots when measured (220 before they were held by night).
   expect(s.stars).toBeGreaterThan(100);
+  // Held by night (src/explore/walk/daylight NIGHT_STARS), only the brightest near white: 2 when measured (22 before, the eye still opening).
+  expect(s.white).toBeLessThanOrEqual(12);
+  // Looking 30 degrees up, the eye open as far as it goes (its exposure 384): 6 near white of 561 lit when
+  // measured. Before the night's hold, 144 of 892, every star brighter than about magnitude 5.5 near white;
+  // with it, but which stars are drawn judged before the exposure (src/explore/starlight StarScreen), 207,
+  // nothing fainter than about magnitude 5 drawn at all.
+  await face(page, APOLLO, jd, 180, 30);
+  const up = await shot(page, 30);
+  test.info().annotations.push({ type: 'light', description: JSON.stringify({ half: s.half, stars: s.stars, white: s.white, up: { stars: up.stars, white: up.white } }) });
+  expect(up.stars).toBeGreaterThan(400);
+  expect(up.white).toBeLessThanOrEqual(12);
   expect(pageErrors).toEqual([]);
 });
 

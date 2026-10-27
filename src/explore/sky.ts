@@ -2,7 +2,7 @@ import { AdditiveBlending, BufferAttribute, BufferGeometry, Group, InstancedBuff
 import { attribute, cameraPosition, instancedBufferAttribute, uniform, vec3 } from 'three/tsl';
 import { blackbodyRgb } from '../chapters/shared/blackbody';
 import type { SceneLabel, SkyLayerName } from '../core/types';
-import { heldStarLight, starLight, starlightUniforms, starMaterial, starSprites } from './starlight';
+import { starMaterial, starSprites } from './starlight';
 
 /**
  * The real night sky behind the explorer (public/assets/sky/sky.json, from scripts/sky/build.py):
@@ -20,7 +20,9 @@ import { heldStarLight, starLight, starlightUniforms, starMaterial, starSprites 
  *
  * How bright a star is drawn is the explorer's star light (./starlight): its magnitude's light,
  * integrated over each pixel, the same at any pixel density, the brightest spreading into a halo.
- * A hold (by day on an airless world, the sunlit ground's glare) keeps every star under a peak.
+ * On foot the walk holds their light in display terms (./walk/daylight footStarLight): short of white
+ * by night, and on an airless world by day under the sunlit ground's glare; and, the exposure there far
+ * above the orbit's, which stars are drawn is judged on the screen (./starlight StarScreen).
  */
 
 export interface SkyFile {
@@ -33,26 +35,20 @@ export const SKY_URL = 'assets/sky/sky.json';
 export type SkyLayer = SkyLayerName;
 export const SKY_LAYERS: readonly SkyLayer[] = ['constellations', 'boundaries', 'grid', 'names'];
 
-/**
- * A hold on the stars' light: no star's brightest pixel above `peak` (the stars' own light, before the
- * exposure: the most it may show on screen divided by the exposure), eased in by `weight` (0 to 1), at
- * `dpr` pixels of the target a CSS pixel.
- */
-export interface StarHold {
-  peak: number;
-  weight: number;
-  dpr: number;
-}
-
 export interface Sky {
   /** The stars: one draw call, the explorer's first of each frame (it reads the frame's target from it). */
   readonly object: Sprite;
   /** The figures, boundaries and grid. */
   readonly lines: Group;
   readonly count: number;
+  /** The brightest star's magnitude (Sirius's, in the Bright Star Catalogue), for a hold on the light. */
+  readonly brightest: number;
   setRadius(radius: number): void;
-  /** The stars' light (a multiple of the star light's), and a hold on it (none by default): the brightest star held to its peak, the rest dimmed with it. */
-  setLight(light: number, hold?: StarHold | null): void;
+  /**
+   * The stars' light (a multiple of the star light's) and, on foot, the exposure the screen puts on it
+   * and a knee on the brightest (./starlight StarScreen): by default 1 and none, as in orbit.
+   */
+  setLight(light: number, exposure?: number, knee?: number): void;
   setLayer(layer: SkyLayer, on: boolean): void;
   readonly layers: Readonly<Record<SkyLayer, boolean>>;
   /** Eases the layers in and out (dt, s). */
@@ -126,7 +122,6 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
   const directions = new Float32Array(count * 4);
   const colors = new Float32Array(count * 3);
   const dir = [0, 0, 0];
-  // The brightest star's magnitude (Sirius's, in the Bright Star Catalogue), for a hold on the light.
   let brightest = Number.POSITIVE_INFINITY;
   file.stars.forEach(([, ra, dec, v, bv], i) => {
     brightest = Math.min(brightest, v);
@@ -135,11 +130,13 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
     colors.set(blackbodyRgb(bv === null ? 6000 : bvKelvin(bv)), i * 3);
   });
   const uLight = uniform(1);
+  const uExposure = uniform(1);
+  const uKnee = uniform(0);
   const uRadius = uniform(400);
   const star = instancedBufferAttribute(new InstancedBufferAttribute(directions, 4)) as unknown as Node<'vec4'>;
   const color = instancedBufferAttribute(new InstancedBufferAttribute(colors, 3)) as unknown as Node<'vec3'>;
   // The stars are transparent, so they draw after every opaque body: a planet hides the stars behind it.
-  const material = starMaterial(cameraPosition.add(star.xyz.mul(uRadius)), star.w, color, uLight, true);
+  const material = starMaterial(cameraPosition.add(star.xyz.mul(uRadius)), star.w, color, uLight, true, { exposure: uExposure, knee: uKnee });
   const stars = starSprites(material, count, 'explore-sky-stars');
   const geometry = stars.geometry;
 
@@ -211,12 +208,15 @@ export function createSky(file: SkyFile, obliquity: number): Sky {
     object: stars,
     lines: group,
     count,
+    brightest,
     setRadius(next) {
       radius = next;
       uRadius.value = next;
     },
-    setLight(light, hold) {
-      uLight.value = hold ? heldStarLight(light, starLight(brightest, starlightUniforms.faintest.value, starlightUniforms.brightness.value), hold.peak, hold.weight, hold.dpr) : light;
+    setLight(light, exposure = 1, knee = 0) {
+      uLight.value = light;
+      uExposure.value = exposure;
+      uKnee.value = knee;
     },
     setLayer(layer, on) {
       layers[layer] = on;

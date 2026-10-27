@@ -24,6 +24,12 @@ import { exp, float, log, max, min, screenDPR, smoothstep, sqrt, tanh, uniform, 
  * A star of magnitude REFERENCE (a magnitude above the faintest drawn by default) has FAINT_LIGHT and
  * peaks at about 0.03 in linear light at worst, above where the explorer's tone curve (ACES) turns
  * to black.
+ *
+ * The light is before the exposure, which multiplies everything drawn. Where a material's exposure is
+ * far from 1 (on foot by night it is 39 to 384), it says so (StarScreen): which stars are drawn, and how
+ * far each sprite reaches, is then judged against the tone curve's black on the screen, not before the
+ * exposure (which, at 384, left every star fainter than about magnitude 5 undrawn, though it would have
+ * shown at half the screen's white).
  */
 
 /** A Gaussian's width (CSS px) and its least (device px); the light per CSS pixel squared of a star of the reference magnitude; the tone curve's black (linear); the contrast's power. */
@@ -93,6 +99,25 @@ export function starPixels(light: number, dpr: number, offsetX = 0, offsetY = 0)
 }
 
 /**
+ * Whether the star material draws a star of this light (per CSS pixel squared, before the exposure) at
+ * a ratio, the exposure multiplying it on the screen (StarScreen; 1 where a material has none): its
+ * core's peak, centred on a pixel, above a quarter of the tone curve's black there.
+ */
+export function starDrawn(light: number, dpr: number, exposure = 1): boolean {
+  const centre = pixelShare(0, starSigma(dpr)) ** 2;
+  return Math.min(light * dpr * dpr * starSharpness(dpr), STARLIGHT.coreMax / centre) * centre * exposure > STARLIGHT.black / 4;
+}
+
+/**
+ * A star's light under a knee (StarScreen): `light / (1 + light knee)`, as the star material has it. A
+ * faint star's is all but its own; the brightest are held toward 1 / knee, each still brighter than any
+ * fainter one. A knee of 0 leaves the light.
+ */
+export function kneedStarLight(light: number, knee: number): number {
+  return light / (1 + light * knee);
+}
+
+/**
  * The light on a star's brightest pixel for each unit of its light (per CSS pixel squared), at a ratio:
  * a star centred on a pixel whose core is under CORE_MAX, so its peak is in proportion to its light.
  */
@@ -101,12 +126,13 @@ export function starPeakPerLight(dpr: number): number {
 }
 
 /**
- * A multiple of the stars' light, held so that no star shows more than `peak` on its brightest pixel
- * (in the stars' own light, before any exposure). `brightest` is the light of the brightest star drawn
- * (starLight of its magnitude, per CSS pixel squared). That star is held at `peak` (or at CORE_MAX if
- * that is less, so no held star has a halo) and every other star is dimmed with it, by one multiple for
- * all so the stars keep their order. `weight` eases the hold in log terms (0 none of it, 1 all of it).
- * The light is never raised.
+ * A multiple of the stars' light, held so that a star of light `brightest` (starLight of its magnitude,
+ * per CSS pixel squared) shows no more than `peak` on its brightest pixel (in the stars' own light,
+ * before any exposure): given the brightest star drawn, no star shows more; given a fainter one (the
+ * walk's by night), the few brighter than it show brighter, in proportion. That star is held at `peak`
+ * (or at CORE_MAX if that is less, so no held star has a halo) and every other star is dimmed with it,
+ * by one multiple for all so the stars keep their order. `weight` eases the hold in log terms (0 none
+ * of it, 1 all of it). The light is never raised.
  */
 export function heldStarLight(light: number, brightest: number, peak: number, weight: number, dpr: number): number {
   const w = Math.min(1, Math.max(0, weight));
@@ -140,18 +166,31 @@ export function spriteQuad(): BufferGeometry {
 }
 
 /**
+ * How a material's stars meet the screen where its exposure is far from 1 (the solar system's sky on
+ * foot): `exposure`, the multiple the screen puts on their light, so which stars are drawn and how far
+ * each sprite reaches is judged against the tone curve's black where it is (starDrawn); and `knee`, per
+ * unit of a star's light, holding the brightest toward the rest (kneedStarLight; 0 for none).
+ */
+export interface StarScreen {
+  exposure: Node<'float'>;
+  knee: Node<'float'>;
+}
+
+/**
  * A material for stars as points: `position` (the vertex stage's), `magnitude` as seen from the
  * camera, `colour` (its tint, about 1), and `light`, a multiple of its light (the sky's following of
- * the exposure, a fade). Drawn additively, with or without the depth test (the sky's stars hide
- * behind the worlds).
+ * the exposure, a fade); `screen` where the exposure is far from 1 (StarScreen; without it, judged
+ * as if 1, and no knee). Drawn additively, with or without the depth test (the sky's stars hide behind
+ * the worlds).
  */
-export function starMaterial(position: Node<'vec3'>, magnitude: Node<'float'>, colour: Node<'vec3'>, light: Node<'float'>, depthTest: boolean): PointsNodeMaterial {
+export function starMaterial(position: Node<'vec3'>, magnitude: Node<'float'>, colour: Node<'vec3'>, light: Node<'float'>, depthTest: boolean, screen?: StarScreen): PointsNodeMaterial {
   const material = new PointsNodeMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest, sizeAttenuation: false, fog: false });
   const { brightness, faintest } = starlightUniforms;
   const dpr = viewportSize.y.div(cssHeight);
   const sigma = max(float(STARLIGHT.sigmaMin), dpr.mul(STARLIGHT.sigmaCss));
   const fade = smoothstep(faintest, faintest.sub(1), magnitude);
-  const css = brightness.mul(STARLIGHT.faintLight).mul(exp(magnitude.sub(STARLIGHT.reference).mul(-0.4 * STARLIGHT.contrast * Math.LN10))).mul(fade).mul(light);
+  const lit = brightness.mul(STARLIGHT.faintLight).mul(exp(magnitude.sub(STARLIGHT.reference).mul(-0.4 * STARLIGHT.contrast * Math.LN10))).mul(fade).mul(light);
+  const css = screen ? lit.div(lit.mul(screen.knee).add(1)) : lit;
   // The core's capacity: CORE_MAX at the peak of a star centred on a pixel; the rest to the halo. Its light raised as coarse pixels flatten it (sharpness).
   const centre = shaderErf(float(0.5).div(sigma.mul(SQRT2)));
   const centreShare = centre.mul(centre);
@@ -163,9 +202,10 @@ export function starMaterial(position: Node<'vec3'>, magnitude: Node<'float'>, c
   const haloMax = dpr.mul(STARLIGHT.haloCssMax);
   const haloSigma = sqrt(excess.div(2 * Math.PI * STARLIGHT.haloPeak)).clamp(sigma.mul(1.5), haloMax);
   const haloPeak = min(excess.div(haloSigma.mul(haloSigma).mul(2 * Math.PI)), float(STARLIGHT.haloPeak * 2));
-  // The sprite: as wide as the core's Gaussian stays above the tone curve's black (so a faint star's is a few pixels), and the halo's; nothing for a star too faint to show.
-  const reach = sigma.mul(sqrt(log(max(core.mul(centreShare).div(STARLIGHT.black), 8)).mul(2)));
-  const footprint = max(reach.mul(2).add(1), haloSigma.mul(excess.greaterThan(0).select(5.5, 0))).ceil().min(STARLIGHT.footprintMax).mul(core.mul(centreShare).greaterThan(STARLIGHT.black / 4).select(1, 0));
+  // The sprite: as wide as the core's Gaussian stays above the tone curve's black on the screen (so a faint star's is a few pixels), and the halo's; nothing for a star too faint to show (starDrawn).
+  const peak = screen ? core.mul(centreShare).mul(screen.exposure) : core.mul(centreShare);
+  const reach = sigma.mul(sqrt(log(max(peak.div(STARLIGHT.black), 8)).mul(2)));
+  const footprint = max(reach.mul(2).add(1), haloSigma.mul(excess.greaterThan(0).select(5.5, 0))).ceil().min(STARLIGHT.footprintMax).mul(peak.greaterThan(STARLIGHT.black / 4).select(1, 0));
   material.positionNode = position;
   // three sizes a sprite in device pixels of the canvas (its size times the screen's ratio): the footprint is in the target's own.
   material.sizeNode = footprint.div(screenDPR);

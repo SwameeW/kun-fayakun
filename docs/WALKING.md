@@ -324,12 +324,35 @@ sunset.
   then the twilight as only the upper air is still lit. No clouds.
 - **The Moon and Mercury.** No sky: the black sky and the explorer's real stars. By day the sunlit
   ground's glare leaves the eye only the brightest stars (`AIRLESS_DAY` in
-  `src/explore/walk/daylight.ts`): the sky's brightest star is held at 0.4 in linear light on the
-  screen (about 184 of 255), short of white, and every other star is dimmed with it. The hold is eased
-  in as the eye adapts to the day. The planets' points and names keep about a third of their light. A
-  share of the light alone no longer did it: the explorer's star light keeps faint stars above the tone
-  curve's black and put the brightest near white (312 lit spots facing the Sun at Apollo 11's site,
-  where there are now 2).
+  `src/explore/walk/daylight.ts`): the sky's brightest star is held at 0.5 in linear light on the
+  screen (about 197 of 255 for a white star; Sirius, bluish, 174), short of white, and every fainter
+  star is dimmed less than it, by up to twice (a knee on the stars' light, `kneedStarLight` in
+  `src/explore/starlight.ts`): each stays in its order, none is brighter than by night, and a handful
+  are seen rather than two or three. The planets' points and names keep about a third of their light.
+  All of it eases in as the eye adapts to the day (`dayAdaptation`, the weight the exposure's power
+  follows), from nothing with the Sun's disc half set to all of it about 5° up, so nothing steps at
+  sunrise or sunset (the planets' share used to jump nearly threefold as the Sun crossed the horizon,
+  and the stars with it). A share of the light alone no longer did it: the explorer's star light keeps
+  faint stars above the tone curve's black and put the brightest near white. Facing the Sun 30° up
+  at Apollo 11's site, looking 20° up (lit spots of luma 64 or more above the horizon):
+
+  | Moon by day, facing the Sun | Lit spots | Brightest | Near white (200 or more) |
+  |---|---|---|---|
+  | The star light alone | 312 | | some |
+  | The brightest held at 0.4, every star dimmed with it | 2 | 112 | 0 |
+  | Held at 0.5, every star dimmed with it | 3 | 128 | 0 |
+  | Held at 0.5, the fainter lifted (now) | 7 (one a planet) | 157 | 0 |
+
+  A second-magnitude star centred on a pixel shows at 103 of 255 (69 with every star dimmed with the
+  brightest); magnitude 6.5 at 11, all but black (4). On Mercury the same view has 13 lit spots: 8
+  stars, two planets' points and their markers, and the sunlit ground over the horizon.
+
+  The largest change in the stars' light on the screen from one frame to the next through a sunset
+  there (`tests/unit/walk.spec.ts`, the faint stars and the brightest; the same measured in the
+  browser): in real time at 60 frames a second, none to be seen (under a hundred-thousandth); at an
+  hour a second, the most the clock runs on foot, 2% and 3%; a day a second (a time-lapse the walk
+  never runs), where the eye's whole adaptation passes in under half a second, 1.6 and 1.85 times (1.5
+  and 1.8 in the browser). Before, 2.86 times at the moment the Sun crossed the horizon, at any pace.
 - **Venus** (illustrative): the underside of its cloud deck, brightest overhead by day, dark by
   night, its light dim and orange (the deep air takes the blue out of what the clouds let down).
   Neither the Sun's disc nor any star is drawn; the readout says where the Sun is.
@@ -338,7 +361,36 @@ sunset.
   forward, as the rovers' cameras show), dimming through twilight; lit by Mars's sunlight, its
   horizon about as bright as the sunlit ground below it.
 - **Stars** (`src/explore/walk/daylight.ts`): the sky hides the stars, the planets' points and their
-  names until the Sun is 4° down, and lets all of them through by 12°.
+  names until the Sun is 4° down, and lets all of them through by 12°. By night, under any sky, the
+  stars are held short of white (`NIGHT_STARS`, `footStarLight`): a star of magnitude 3.5 shows at most
+  0.5 in linear light on the screen (about 197 of 255) and every other star is dimmed with it, so they
+  keep their order; Sirius's core stays under its cap, so no star spreads into a halo; the twilight
+  dims what the hold leaves. The sky's stars follow a fifth of the eye's exposure, and the night's on
+  foot (39 on Mercury, 64 on the Earth and Mars, 384 on the Moon) is far above the orbit's, so every
+  star brighter than about magnitude 5.5 was near white, its colour lost. Which stars are drawn is
+  judged on the screen, the exposure included (`StarScreen` in `src/explore/starlight.ts`): judged
+  before it, at the Moon's 384 nothing fainter than about magnitude 5 was drawn (2,133 of the
+  catalogue's 9,096 stars; 9,091 before the night's hold), so the sky stopped at mid-grey; now all of
+  them are. Measured at 1440 × 900, one device pixel a CSS
+  pixel (lit spots of luma 64 or more above the horizon, and those of 200 or more):
+
+  | Night, facing away from the Sun | Before | Held, drawn as judged before the exposure | Now |
+  |---|---|---|---|
+  | The Moon, Sun 3° down, looking 20° down (the eye still opening) | 220, 22 | 128, 2 | 128, 2 |
+  | The Moon, the same, looking 30° up (the eye open) | 892, 140 | 207, 6 | 561, 6 |
+  | Mercury, Sun 3° down, looking 30° up | 774, 61 | 497, 11 | 497, 11 |
+  | The Earth (the Sahara), Sun 18° down, looking level | 508, 41 | 325, 5 | 325, 5 |
+  | Mars (Jezero), Sun 18° down, looking 30° up | 1,382, 114 | 909, 17 | 909, 17 |
+
+  On the Moon with the eye open, spots peaking between 32 and 63 of 255 were none at all; now 323. Near
+  white are only the stars brighter than about magnitude 2.5 to 3.4, as each falls on its pixels (92 to
+  257 in the whole sky, half of them up at once), and the planets: in a view rich in bright stars, as
+  Mars's above or the Moon's facing the set Sun (16), more than a dozen; at two device pixels a CSS
+  pixel a few more (each star's brightest pixel nearer its most). Holding a star a quarter of a
+  magnitude brighter at the peak (every star 13% dimmer) took Mars's 17 only to 16 and the Moon's lit
+  spots looking down from 128 to 100 (its test wants more than 100), so it stays. A first-magnitude star keeps its colour (Betelgeuse's red stands 25 of 255 or more over
+  its blue, where it was 8), and the faintest drawn still shows (magnitude 6.5 at 45 of 255 or more,
+  worst placed): the stars on the screen as from orbit, with a fifth less light and no halo.
 
 ### What hides on foot
 
