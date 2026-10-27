@@ -279,10 +279,19 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   let toasted = 0;
   /** The film's compressed view was stretching out last frame (the way in from Chapter 7). */
   let wasStretching = false;
+  /** The readout's illustrative notes as last written. */
+  let shownNotes = '';
 
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
+    // The readout's notes changed (a line more or less across a phone's top): what covers the view is
+    // measured again at once, so no name is laid out a frame under it.
+    const illustrated = view.illustrative?.join() ?? '';
+    if (illustrated !== shownNotes) {
+      shownNotes = illustrated;
+      reportInsets();
+    }
     if (!walkHud && !walkHudLoading && (view.walk !== null || view.walkRefused || view.walkWaiting)) {
       walkHudLoading = true;
       // Its code not arriving leaves the walk without its readout (Esc still goes back); the next walk asks again.

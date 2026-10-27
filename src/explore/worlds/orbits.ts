@@ -13,8 +13,9 @@
  *   magnitude M1 + 5 log10(delta) + K1 log10(r).
  *
  * Two-body orbits drift from the real ones as the planets pull on them: over the explorer's decade
- * by well under a degree for main-belt asteroids, more for comets passing Jupiter (the readout says
- * the positions are from orbital elements, not an integration).
+ * by a tenth of a degree or so for main-belt asteroids and Trojans, up to two degrees for the Hildas
+ * (held in step with Jupiter), more for comets passing Jupiter (tests/unit/small-bodies.spec.ts; the
+ * panel says the positions are from orbital elements, not an integration).
  */
 
 export const DEG = Math.PI / 180;

@@ -111,18 +111,29 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   500,000 at Ultra), each on its own orbit for the date, solved on the GPU: from far out the main belt,
   the Hildas and Jupiter's two Trojan clouds come out of the data, and the clock moves them. Seen from
   near the Earth they are as faint as they are; in wide views their light is raised so they show where
-  they are, which the readout says. The periodic comets near the Sun grow their tails, pointing away
+  they are, which the readout says; "Arrange by orbit size" draws each in the planets' plane at its
+  orbit's mean distance from the Sun instead (a diagram, said so), so the Kirkwood gaps that Jupiter's resonances clear show
+  as empty rings. The periodic comets near the Sun grow their tails, pointing away
   from it (their lengths illustrative). The major moons of Mars, Jupiter, Saturn, Uranus, Neptune and
   Pluto, the dwarf planets and notable asteroids and comets can be flown to (the navigator's "Small
   worlds" section, its search, a double click, or the tools' `world` command): at their measured
-  sizes and shapes (Haumea's elongation, Vesta's flattening), turning as they do, thirteen of them
-  with the USGS's mosaics from Dawn, Galileo, Voyager, Cassini and New Horizons, the rest plain (said
-  so). Pluto and Charon go round their barycentre. Uranus's and Neptune's narrow, dark rings are
+  sizes and shapes (Haumea's elongation, Vesta's flattening; where no shape is measured a sphere of
+  the mean radius, and About says so), turning as they do, thirteen of them with the USGS's mosaics
+  from Dawn, Galileo, Voyager, Cassini and New Horizons (the parts never imaged, Triton's north and
+  Pluto's and Charon's far south, a grey grid, said so), the rest plain (said so). Their names keep
+  off the interface, each other and every disc and Saturn's rings, as the ten worlds' do. Pluto and
+  Charon go round their barycentre. Uranus's and Neptune's narrow, dark rings are
   drawn from NASA's tables (brightened, and said so), and one body's shadow falls on another: the
   Earth's on the Moon in a lunar eclipse (a copper Moon), the Moon's on the Earth in a solar one, the
   moons' on their planets, the planets' on their moons. Moons' places: JPL's mean elements fitted to
-  Horizons (within a few degrees over the decade); asteroids' and comets': two-body orbits (within a
-  degree for the asteroids over the decade, more for comets that pass Jupiter).
+  Horizons (within a few degrees over the decade); asteroids' and comets': two-body orbits (a tenth of
+  a degree or so for most asteroids over the decade, up to two for the Hildas held in step with
+  Jupiter, more for comets that pass Jupiter). None of them is drawn while the film's compressed system
+  stretches out to true scale, in an experiment, on foot or on the way down. At a fast clock a moon's
+  eclipse and a shadow on a planet come in over half a second (no flashing), and a world turning too
+  fast to show is held at an hour of its day, as the ten are. The sky's glow is never lifted as the
+  exposure closes (looking at the Sun, or from Mercury, the sky stays dark), is not drawn through the
+  solar filter, shows the zodiacal light only from 0.3 to 3 au, and is not drawn at Low.
 
 - **Sound where there is air** (ledger CR-6; `src/explore/sound.ts`). Space is silent, and so is the
   explorer there. On foot on a world with air, and on the way down through Venus's or Jupiter's, the

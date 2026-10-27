@@ -11,8 +11,14 @@
  *
  * The explorer calls advance() after placing its ten bodies on the date and before moving the camera
  * (a world flown to is orbited like a body: ../navigation sees it through nav()), nearestKm() for the
- * depth range, and update() with the frame's camera and lens; labels() adds the worlds' names. Nothing
- * here touches the explorer's own bodies: they are read, never changed.
+ * depth range, and update() with the frame's camera and lens; labels() adds the worlds' names, which
+ * the explorer then lays out as it does the laboratory's (clear of the interface, of each other and of
+ * its own names), each name's fits() keeping it off every disc on screen. Nothing here touches the
+ * explorer's own bodies: they are read, never changed.
+ *
+ * The worlds show only with the real sky at true scale: not in an experiment, on foot, on the way down,
+ * among the stars (the explorer draws none of the solar system there), nor while the film's compressed
+ * system stretches out (its planets are not where the worlds' orbits are); they fade in as they come.
  */
 
 import { Group, Matrix4, Vector3, type PerspectiveCamera } from 'three/webgpu';
@@ -26,8 +32,9 @@ import { createWorldBodies, type PlacedWorld, type WorldMap, type WorldRecord } 
 import { createComets, type CometRow, type Comets } from './comets';
 import { createEclipses, type Eclipse, type Eclipses, type ShadowCaster, type ShadowReceiver } from './eclipses';
 import { BELT_GROUPS, GROUP_OF, type BeltGroup, type BeltManifest } from './orbits';
-import { createSkyGlow, type SkyGlow } from './glow';
+import { createSkyGlow, glowLight, type SkyGlow } from './glow';
 import { createIceRings, type IceRings, type RingRow } from './rings';
+import { boxMeetsCircle, boxMeetsConvex } from './screen';
 
 export const SMALL_BODIES_URL = 'assets/smallbodies/';
 
@@ -41,14 +48,19 @@ export interface WorldsFrame {
   pxPerTan: number;
   widthPx: number;
   heightPx: number;
-  /** The exposure's adaptation (points and guides are held in display terms). */
+  /** The exposure's adaptation (points and guides are held in display terms), and how far the solar filter is in (0 to 1). */
   compensation: number;
-  /** Not in an experiment, on foot or on the way down (the real sky's worlds only). */
+  filter: number;
+  /** Not in an experiment, on foot or on the way down, nor during the film's stretch (the real sky's worlds at true scale only). */
   shown: boolean;
   focus: FocusId;
   /** The camera's distance from what it orbits (km): how wide the view is (the marked light comes in as it widens). */
   span: number;
+  /** The frame's real seconds; the days the clock moved (0 for a jump), whether it runs on its own (not paused, not a trip), and reduced motion: for the hold of the worlds' turn. */
   dt: number;
+  days: number;
+  running: boolean;
+  reduced: boolean;
   /** The canvas's pixel ratio, and how much of the night sky shows (on foot by day, none). */
   dpr: number;
   sky: number;
@@ -63,7 +75,7 @@ export interface Worlds {
   /** The camera's height above the nearest world's surface (km). */
   nearestKm(camera: Km): number;
   update(frame: WorldsFrame): void;
-  /** The worlds' names on screen. */
+  /** The worlds' names, for the explorer to lay out (each with its rank and fits()). */
   labels(out: SceneLabel[]): void;
   /** A world as the navigator orbits it (null: none by that id), and every world (the camera keeps out of them all). */
   nav(id: FocusId): NavBody | null;
@@ -72,11 +84,15 @@ export interface Worlds {
   host(id: FocusId): BodyId;
   /** A world by its name or designation, any case ("ceres", "1", "Halley", "67P"), or null. */
   find(name: string): WorldId | null;
-  /** The world under a point of the canvas (CSS px), or null. */
-  pick(x: number, y: number): WorldId | null;
+  /** The world under a point of the canvas (CSS px) nearer than `nearerKm` (a body whose disc holds the point), or null. */
+  pick(x: number, y: number, nearerKm?: number): WorldId | null;
+  /** Whether a world's turn is held now (null: not a world). */
+  held(id: FocusId): boolean | null;
   setDetail(detail: ExploreDetail): void;
   setLayer(on: boolean): void;
   setGrouped(on: boolean): void;
+  /** The asteroids drawn at their orbits' sizes (a diagram of the Kirkwood gaps) or where they are. */
+  setArranged(on: boolean): void;
   /** The view's part (UniverseView.worlds), rewritten in place. */
   view(focus: FocusId): UniverseWorlds;
   /** What is drawn now that is illustrative (for the readout). */
@@ -91,20 +107,29 @@ interface WorldsFile {
 
 /**
  * The layer's fade (s); the camera's distance from what it orbits over which the marked light comes in
- * (km: about 0.03 to 1 au); and beyond about 6 au the marked light a point gets falls as the points
- * crowd closer on screen (as the distance to the power 1.1), so the belt seen from far out is a faint
- * band, not a glare (the power 1.1 keeps the Trojans' sparser clouds in sight from the Kuiper belt).
+ * (km: about a third of an au to 5 au: nearer, the points would be spread over the whole sky as a
+ * grain like a sensor's noise, the belt's shape not yet able to read); and beyond about 6 au the marked
+ * light a point gets falls as the points crowd closer on screen (as the distance to the power 1.1), so
+ * the belt seen from far out is a faint band, not a glare (the power 1.1 keeps the Trojans' sparser
+ * clouds in sight from the Kuiper belt).
  */
 const FADE_SECONDS = 0.5;
-const MARKED_SPAN_KM = [4.5e6, 1.5e8] as const;
+const MARKED_SPAN_KM = [5e7, 7.5e8] as const;
 const CROWD = { fromKm: 9e8, power: 1.1 } as const;
 /** Asteroids decoded a frame (each slice a few milliseconds' work). */
 const DECODE_SLICE = 12_000;
 /** The glows' sphere, as a share of the far plane (just inside the stars' 0.98), and the stars' light as ../index gives it (STARS). */
 const GLOW_SHARE = 0.97;
 const STAR_LIGHT = { light: 0.85, follow: 0.2 } as const;
-/** Names: how many at most, how far apart (CSS px), their tag's size, and how close a moon's name may come to its planet's disc. */
-const NAMES = { max: 14, widthPx: 84, heightPx: 22, clearOfDiscPx: 10, pickPx: 18 } as const;
+/**
+ * Names: how many at most, their opacity, how far a picked point may be (CSS px), how far a name keeps
+ * off any disc (px), the least disc a point of light is reckoned (px), and the disc below which a name
+ * is anchored at the centre rather than at the limb (px: as the explorer's own).
+ */
+const NAMES = { max: 14, opacity: 0.92, pickPx: 18, clearPx: 4, dotPx: 3, limbPx: [4, 12] } as const;
+/** Saturn's rings, out to the F ring (km), which a name keeps off as it does the disc; a ring's outline on screen is a polygon of this many corners. */
+const SATURN_RINGS_KM = 140_180;
+const RING_CORNERS = 32;
 /** A moon is named while the camera is within this many of its orbits' sizes of its planet. */
 const MOON_NAMES_WITHIN = 40;
 /** Small bodies are named within this distance of the camera (km), and the dwarf planets in wide views too. */
@@ -127,9 +152,11 @@ const smooth = (a: number, b: number, x: number): number => {
 
 /**
  * Loads the data and builds the worlds; the asteroid files beyond the first arrive afterwards.
- * `hold` is called as a map goes up to the GPU (the explorer's governor judges no frame for a while).
+ * `detail` gives the detail level as it is when the data has come (the governor may have changed it
+ * since they were asked for); `hold` is called as a map goes up to the GPU (the explorer's governor
+ * judges no frame for a while).
  */
-export async function createWorlds(ctx: UniverseContext, system: SolarSystem, obliquity: number, detail: ExploreDetail, hold: () => void = () => undefined): Promise<Worlds> {
+export async function createWorlds(ctx: UniverseContext, system: SolarSystem, obliquity: number, detail: () => ExploreDetail, hold: () => void = () => undefined): Promise<Worlds> {
   const [manifest, worldsFile, cometFile, mapsFile] = await Promise.all([
     ctx.assets.json<BeltManifest>(`${SMALL_BODIES_URL}manifest.json`),
     ctx.assets.json<WorldsFile>(`${SMALL_BODIES_URL}worlds.json`),
@@ -173,7 +200,7 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
   let loading = false;
   const groups = new Uint8Array(manifest.tiers.reduce((n, t) => n + t.count, 0));
   const groupCounts = Object.fromEntries(BELT_GROUPS.map((g) => [g, 0])) as Record<BeltGroup, number>;
-  let wantCount = detail.smallBodies;
+  let wantCount = detail().smallBodies;
   const filesFor = (count: number): number => {
     const i = manifest.tiers.findIndex((t) => t.cumulative >= count);
     return i < 0 ? manifest.tiers.length : i + 1;
@@ -230,20 +257,33 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
 
   let layerOn = true;
   let layer = 1;
+  let seen = 0;
   let grouped = false;
   let groupedFade = 0;
+  let arranged = false;
+  let arrangedFade = 0;
   let marked = 0;
-  const names = new Map<WorldId, { label: SceneLabel; opacity: number; want: number }>();
-  const labelList: SceneLabel[] = [];
-  const taken: Array<{ x: number; y: number }> = [];
+  let lastDays = 0;
+  let lastView: PerspectiveCamera | null = null;
+  let disposed = false;
+  /** Each name: its label (the explorer eases its opacity and sets its corner), whether it is wanted, and where it goes (camera-relative, as drawn). */
+  const names = new Map<WorldId, { label: SceneLabel; want: boolean; at: [number, number, number] }>();
+  const labelList: Array<{ label: SceneLabel; want: boolean; at: [number, number, number] }> = [];
+  /** The discs a name keeps off this frame: centre and radius (CSS px) and whose (a world's index in the list, or -1), four numbers each; and Saturn's rings' outline. */
+  const discs: number[] = [];
+  const outlines: number[][] = [];
   const sunLocal = new Vector3();
   const eyeLocal = new Vector3();
   const rotation = new Matrix4();
+  const projected = new Vector3();
+  const right = new Vector3();
 
   const list: UniverseWorlds['list'] = bodies.list.map((w) => ({ id: w.record.id, name: w.record.name, kind: w.record.kind, host: w.record.host === 'sun' ? 'sun' : (w.record.host as FocusId) }));
   const view: UniverseWorlds = {
     layer: true,
     grouped: false,
+    arranged: false,
+    shown: 0,
     asteroids: 0,
     asteroidsLoaded: 0,
     groups: groupCounts,
@@ -253,6 +293,7 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
     focus: null,
     eclipses: eclipseList,
     epochJdTdb: manifest.epochJdTdb,
+    gpu: { maps: 0, asteroidSlots: 0 },
   };
   const hostOf = (id: FocusId): BodyId => {
     if (!id.startsWith('w:')) return id as BodyId;
@@ -279,19 +320,71 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
     scale: 1,
   }));
 
-  /** Each world's name: chosen, eased, kept apart from the others and off the ten bodies' discs. */
-  const placeNames = (frame: WorldsFrame, dt: number): void => {
-    const ease = dt > 0 ? 1 - Math.exp(-dt / 0.3) : 1;
-    for (const n of names.values()) n.want = 0;
-    taken.length = 0;
-    if (frame.shown) {
+  /** The discs on screen this frame, the ten bodies' and the worlds' drawn, and Saturn's rings' outline: what names keep off. */
+  const gatherDiscs = (frame: WorldsFrame): void => {
+    discs.length = 0;
+    let rings = 0;
+    const pad = NAMES.clearPx;
+    for (const id of Object.keys(frame.placed) as BodyId[]) {
+      const p = frame.placed[id];
+      if (!p.inView || p.radiusPx < 1.5) continue;
+      discs.push(p.screenX, p.screenY, p.radiusPx + pad, -1);
+      // Saturn's broad rings (Uranus's and Neptune's are a few faint threads a name may cross).
+      if (id !== 'saturn') continue;
+      // The outer ring in the plane of the body's x and z, projected point by point (a near ring's
+      // far side is drawn smaller: no ellipse about its centre fits it), a little out from its centre.
+      const b = system.bodies[id].basis;
+      const k = SATURN_RINGS_KM * p.k;
+      const outline = (outlines[rings] ??= []);
+      outline.length = 0;
+      let front = true;
+      for (let c = 0; c < RING_CORNERS && front; c += 1) {
+        const a = (c / RING_CORNERS) * 2 * Math.PI;
+        const u = Math.cos(a) * k;
+        const v = Math.sin(a) * k;
+        projected.set(p.drawn.x + (b[0] ?? 0) * u + (b[6] ?? 0) * v, p.drawn.y + (b[1] ?? 0) * u + (b[7] ?? 0) * v, p.drawn.z + (b[2] ?? 0) * u + (b[8] ?? 0) * v).project(frame.view);
+        front = projected.z > -1 && projected.z < 1;
+        const sx = ((projected.x + 1) / 2) * frame.widthPx;
+        const sy = ((1 - projected.y) / 2) * frame.heightPx;
+        const l = Math.hypot(sx - p.screenX, sy - p.screenY) || 1;
+        outline.push(sx + ((sx - p.screenX) / l) * pad, sy + ((sy - p.screenY) / l) * pad);
+      }
+      // (One reaching behind the camera surrounds the view: none is kept, the names keep off the disc only.)
+      if (front) rings += 1;
+    }
+    outlines.length = rings;
+    bodies.list.forEach((w, i) => {
+      if (!w.inView || !(w.record.kind === 'moon' || layer > 0.5 || w.record.id === frame.focus)) return;
+      discs.push(w.screenX, w.screenY, Math.max(w.radiusPx, NAMES.dotPx) + pad, i);
+    });
+  };
+  /** Whether world `i`'s name, in a box (CSS px), keeps off every disc but its own world's, and off the rings. */
+  const clearOfDiscs = (i: number, x: number, y: number, w: number, h: number): boolean => {
+    for (let d = 0; d + 3 < discs.length; d += 4) if (discs[d + 3] !== i && boxMeetsCircle(x, y, w, h, discs[d] ?? 0, discs[d + 1] ?? 0, discs[d + 2] ?? 0)) return false;
+    for (const outline of outlines) if (boxMeetsConvex(x, y, w, h, outline)) return false;
+    return true;
+  };
+  /** Whether a world is behind a nearer disc (one of the ten, or a world drawn). */
+  const hidden = (frame: WorldsFrame, w: PlacedWorld): boolean => {
+    for (const id of Object.keys(frame.placed) as BodyId[]) {
+      const p = frame.placed[id];
+      if (p.inView && p.distance < w.distance && Math.hypot(p.screenX - w.screenX, p.screenY - w.screenY) < p.radiusPx) return true;
+    }
+    for (const o of bodies.list) if (o !== w && o.inView && o.radiusPx > 1 && o.distance < w.distance && Math.hypot(o.screenX - w.screenX, o.screenY - w.screenY) < o.radiusPx) return true;
+    return false;
+  };
+
+  /** Which worlds are named (the most important first, none behind a nearer disc), each at its limb (or its point), for the explorer to lay out. */
+  const placeNames = (frame: WorldsFrame): void => {
+    for (const n of names.values()) n.want = false;
+    if (frame.shown && seen > 0.5) {
+      gatherDiscs(frame);
       const candidates: Array<{ w: PlacedWorld; rank: number }> = [];
       for (const w of bodies.list) {
         if (!w.inView || w.radiusPx > 70) continue;
         const r = w.record;
-        const focus = r.id === frame.focus;
         let rank = -1;
-        if (focus) rank = 1e9;
+        if (r.id === frame.focus) rank = 1e9;
         else if (r.kind === 'moon') {
           const host = r.host.startsWith('w:') ? bodies.byId(r.host as WorldId) : null;
           const hostPos = host ? host.position : system.bodies[r.host as BodyId].position;
@@ -299,45 +392,39 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
           const hostDistance = Math.hypot(hostPos.x - frame.camera.x, hostPos.y - frame.camera.y, hostPos.z - frame.camera.z);
           if (hostDistance < orbit * MOON_NAMES_WITHIN) rank = 1e6 + w.radiusKm;
         } else if (layer > 0.5 && (w.distance < SMALL_NAMES_KM || (r.kind === 'dwarf' && marked > 0.5))) rank = 1e3 + w.radiusKm;
-        if (rank >= 0) candidates.push({ w, rank });
+        if (rank >= 0 && !hidden(frame, w)) candidates.push({ w, rank });
       }
       candidates.sort((a, b) => b.rank - a.rank);
-      for (const { w } of candidates) {
-        if (taken.length >= NAMES.max) break;
-        const x = w.screenX + 10;
-        const y = w.screenY - 10;
-        if (x < 0 || y < NAMES.heightPx || x + NAMES.widthPx > frame.widthPx || y > frame.heightPx) continue;
-        if (taken.some((t) => Math.abs(t.x - x) < NAMES.widthPx && Math.abs(t.y - y) < NAMES.heightPx)) continue;
-        // Never over one of the ten bodies' discs (a moon's name beside its planet, not on it).
-        let clear = true;
-        for (const id of Object.keys(frame.placed) as BodyId[]) {
-          const p = frame.placed[id];
-          if (!p.inView || p.distance > w.distance * 4 || p.radiusPx < 2) continue;
-          if (Math.hypot(p.screenX - w.screenX, p.screenY - w.screenY) < p.radiusPx + NAMES.clearOfDiscPx) clear = false;
-        }
-        if (!clear) continue;
-        taken.push({ x, y });
+      right.set(1, 0, 0).applyQuaternion(frame.view.quaternion);
+      for (const { w, rank } of candidates.slice(0, NAMES.max)) {
         let n = names.get(w.record.id);
         if (!n) {
-          n = { label: { id: `world-${w.record.name}`, textKey: '', text: w.record.name, position: [0, 0, 0], opacity: 0, offset: [10, -10] }, opacity: 0, want: 0 };
+          const i = bodies.list.indexOf(w);
+          n = { label: { id: `world-${w.record.name}`, textKey: '', text: w.record.name, position: [0, 0, 0], opacity: 0, offset: [10, -10], fits: (x, y, bw, bh) => clearOfDiscs(i, x, y, bw, bh) }, want: false, at: [0, 0, 0] };
           names.set(w.record.id, n);
         }
-        n.want = 1;
+        n.want = true;
+        n.label.rank = rank;
       }
     }
+    // (The labels themselves are written only as they are handed over, in labels(): the explorer lays
+    // them out and draws them between this frame's update and the next.)
     labelList.length = 0;
     for (const [id, n] of names) {
-      n.opacity += (n.want - n.opacity) * (n.want > n.opacity ? ease : Math.min(1, ease * 3));
-      if (n.opacity < 0.01 && n.want === 0) continue;
+      // Shown, or still fading out (the explorer eases it: its opacity is what it drew last frame).
+      if (!n.want && n.label.opacity < 1e-3) continue;
       const w = bodies.byId(id);
       if (!w) continue;
-      n.label.position = [w.drawn.x, w.drawn.y, w.drawn.z];
-      n.label.opacity = n.opacity * 0.92;
-      labelList.push(n.label);
+      // At the limb of a disc, at the centre of a point (as the explorer's own names).
+      const limb = w.radiusKm * w.k * 1.08 * smooth(NAMES.limbPx[0], NAMES.limbPx[1], w.radiusPx);
+      n.at[0] = w.drawn.x + right.x * limb;
+      n.at[1] = w.drawn.y + right.y * limb;
+      n.at[2] = w.drawn.z + right.z * limb;
+      labelList.push(n);
     }
   };
 
-  return {
+  const worlds: Worlds = {
     object,
     advance(jd) {
       bodies.advance(jd);
@@ -353,12 +440,19 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
     update(frame) {
       const dt = frame.dt;
       const ease = dt > 0 ? 1 - Math.exp(-dt / FADE_SECONDS) : 1;
+      lastView = frame.view;
+      seen += ((frame.shown ? 1 : 0) - seen) * ease;
+      if (seen < 1e-3 && !frame.shown) seen = 0;
       layer += ((layerOn && frame.shown ? 1 : 0) - layer) * ease;
       groupedFade += ((grouped ? 1 : 0) - groupedFade) * ease;
+      arrangedFade += ((arranged ? 1 : 0) - arrangedFade) * ease;
+      // (Arranged, exactly: the diagram's points at their orbits' sizes once the change has eased out.)
+      if (Math.abs(arrangedFade - (arranged ? 1 : 0)) < 1e-3) arrangedFade = arranged ? 1 : 0;
       marked = smooth(Math.log(MARKED_SPAN_KM[0]), Math.log(MARKED_SPAN_KM[1]), Math.log(Math.max(frame.span, 1)));
       const days = frame.jdTdb - manifest.epochJdTdb;
+      lastDays = days;
       const crowd = Math.min(1, (CROWD.fromKm / Math.max(frame.span, 1)) ** CROWD.power);
-      belt?.update({ days, cameraKm: frame.camera, auKm, far: frame.far, compensation: frame.compensation, marked: marked * crowd, grouped: groupedFade, fade: layer });
+      belt?.update({ days, cameraKm: frame.camera, auKm, far: frame.far, compensation: frame.compensation, marked: marked * crowd, grouped: groupedFade, arranged: arrangedFade, fade: layer });
       bodies.update({
         camera: frame.camera,
         view: frame.view,
@@ -369,8 +463,13 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
         compensation: frame.compensation,
         layer,
         marked,
-        shown: frame.shown,
+        shown: seen > 1e-3,
+        fade: seen,
         focus: frame.focus,
+        dt,
+        days: frame.days,
+        running: frame.running,
+        reduced: frame.reduced,
       });
       const focusWorld = frame.focus.startsWith('w:') ? bodies.byId(frame.focus as WorldId) : undefined;
       comets.update({ jd: frame.jdTdb, focus: focusWorld?.record.kind === 'comet' ? focusWorld.record.name : null, camera: frame.camera, far: frame.far, compensation: frame.compensation, fade: layer, marked: marked * crowd });
@@ -379,7 +478,7 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
         const rings = iceRings[id];
         const p = frame.placed[id];
         const mesh = rings.object;
-        mesh.visible = frame.shown && p.radiusPx > 2;
+        mesh.visible = seen > 1e-3 && p.radiusPx > 2;
         if (!mesh.visible) continue;
         const b = system.bodies[id].basis;
         mesh.position.set(p.drawn.x, p.drawn.y, p.drawn.z);
@@ -392,7 +491,7 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
         local(-pos.x / d, -pos.y / d, -pos.z / d, sunLocal);
         const r = system.specs[id].radiusKm * p.k;
         local(-p.drawn.x / r, -p.drawn.y / r, -p.drawn.z / r, eyeLocal);
-        rings.update(sunLocal, eyeLocal, (auKm / d) ** 2);
+        rings.update(sunLocal, eyeLocal, (auKm / d) ** 2 * seen);
       }
       // Shadows: each receiver as drawn, its casters where they are.
       SHADOWS.forEach(({ on }, i) => {
@@ -404,17 +503,30 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
         r.drawn.z = p.drawn.z;
         r.k = p.k;
         r.radiusPx = p.radiusPx;
-        r.visible = frame.shown;
+        r.visible = seen > 1e-3;
       });
-      eclipses.update(pairs, system.specs.sun.radiusKm, eclipseList);
-      // The Milky Way and the zodiacal light, behind the stars, held in display terms with them (../index STARS).
+      eclipses.update(pairs, system.specs.sun.radiusKm, eclipseList, dt, seen);
+      // The Milky Way and the zodiacal light, behind the stars: held with them as the exposure opens,
+      // never lifted as it closes; none through the solar filter.
       const pixelDeg = 180 / Math.PI / Math.max(frame.pxPerTan * frame.dpr, 1);
-      const fromSunAu = Math.hypot(frame.camera.x, frame.camera.y, frame.camera.z) / auKm;
-      glow.update(frame.far * GLOW_SHARE, frame.camera, fromSunAu, pixelDeg * pixelDeg, STAR_LIGHT.light * Math.max(frame.compensation, 1e-4) ** (STAR_LIGHT.follow - 1), frame.sky);
-      placeNames(frame, dt);
+      glow.update({
+        radius: frame.far * GLOW_SHARE,
+        cameraKm: frame.camera,
+        au: Math.hypot(frame.camera.x, frame.camera.y, frame.camera.z) / auKm,
+        pixelDeg2: pixelDeg * pixelDeg,
+        light: glowLight(frame.compensation, STAR_LIGHT.light, STAR_LIGHT.follow),
+        compensation: frame.compensation,
+        shown: frame.sky * seen * (1 - frame.filter),
+        dt,
+      });
+      placeNames(frame);
     },
     labels(out) {
-      for (const l of labelList) out.push(l);
+      for (const n of labelList) {
+        n.label.position = [n.at[0], n.at[1], n.at[2]];
+        n.label.opacity = n.want ? NAMES.opacity : 0;
+        out.push(n.label);
+      }
     },
     nav(id) {
       return id.startsWith('w:') ? (bodies.byId(id as WorldId)?.nav ?? null) : null;
@@ -431,17 +543,23 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
       const found = bodies.list.find(match) ?? bodies.list.find((w) => w.record.name.toLowerCase().includes(q));
       return found ? found.record.id : null;
     },
-    pick(x, y) {
+    pick(x, y, nearerKm = Infinity) {
       let best: PlacedWorld | null = null;
       for (const w of bodies.list) {
-        if (!w.inView || (w.record.kind !== 'moon' && layer < 0.5)) continue;
+        if (!w.inView || seen < 0.5 || w.distance >= nearerKm || (w.record.kind !== 'moon' && layer < 0.5)) continue;
         if (Math.hypot(w.screenX - x, w.screenY - y) > Math.max(NAMES.pickPx, w.radiusPx * 1.04)) continue;
         if (!best || w.distance < best.distance) best = w;
       }
       return best ? best.record.id : null;
     },
+    held(id) {
+      return id.startsWith('w:') ? bodies.held(id as WorldId) : null;
+    },
     setDetail(next) {
       wantCount = next.smallBodies;
+      // At Low: no sky glow (a pass over the whole view), and the smaller maps.
+      glow.setEnabled(next.tier !== 'low');
+      bodies.setSmallMaps(next.maxTexture <= 1024);
       void ensureBelt().catch(() => undefined);
     },
     setLayer(on) {
@@ -450,11 +568,18 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
     setGrouped(on) {
       grouped = on;
     },
+    setArranged(on) {
+      arranged = on;
+    },
     view(focus) {
       view.layer = layerOn;
       view.grouped = grouped;
+      view.arranged = arranged;
+      view.shown = seen;
       view.asteroids = layerOn ? (belt?.count ?? 0) : 0;
       view.asteroidsLoaded = belt?.loaded ?? 0;
+      view.gpu.maps = bodies.maps;
+      view.gpu.asteroidSlots = beltCapacity;
       if (countedFor !== (belt?.count ?? 0)) {
         countedFor = belt?.count ?? 0;
         countGroups();
@@ -464,21 +589,34 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
       const w = focus.startsWith('w:') ? bodies.byId(focus as WorldId) : undefined;
       if (w) {
         const r = w.record;
-        const f = view.focus && view.focus.id === r.id ? view.focus : (view.focus = { id: r.id, name: r.name, kind: r.kind, host: hostOf(r.id), radiusKm: w.radiusKm, axesKm: [...w.axes], albedo: r.albedo ?? null, rotationHours: r.rotationHours ?? null, sizeFromH: r.sizeFromH === true, sunAu: 0, eclipsed: 0, map: mapsFile.maps[r.name]?.credit ?? null });
+        // Its own host (Charon's is Pluto), for what it is and the face it keeps.
+        const host: FocusId = r.host;
+        const f =
+          view.focus && view.focus.id === r.id
+            ? view.focus
+            : (view.focus = { id: r.id, name: r.name, kind: r.kind, host, radiusKm: w.radiusKm, axesKm: [...w.axes], shaped: Array.isArray(r.axesKm) && r.axesKm.length === 3, albedo: r.albedo ?? null, rotationHours: r.rotationHours ?? null, sizeFromH: r.sizeFromH === true, sunAu: 0, eclipsed: 0, unimaged: mapsFile.maps[r.name]?.unimaged ?? 0, map: mapsFile.maps[r.name]?.credit ?? null, screen: { x: 0, y: 0, radiusPx: 0, inView: false } });
         f.sunAu = Math.hypot(w.position.x, w.position.y, w.position.z) / auKm;
         f.eclipsed = 1 - w.share;
+        f.screen.x = w.screenX;
+        f.screen.y = w.screenY;
+        f.screen.radiusPx = w.radiusPx;
+        f.screen.inView = w.inView;
       } else view.focus = null;
       return view;
     },
     illustrative(out) {
+      if (seen < 0.5) return;
       if (layer > 0.5 && marked > 0.05 && (belt?.count ?? 0) > 0) out.push('small-body-light');
+      if (layer > 0.5 && arrangedFade > 0.05 && (belt?.count ?? 0) > 0) out.push('small-body-orbits');
       if (layer > 0.5 && comets.tails > 0) out.push('comet-tails');
       if (iceRings.uranus.object.visible || iceRings.neptune.object.visible) out.push('ring-light');
       if (bodies.meshed > bodies.mapped) out.push('world-shape');
-      if (glow.object.visible) out.push('sky-glow');
+      if (bodies.unimaged > 0) out.push('unimaged');
+      if (lastView && glow.seen(lastView)) out.push('sky-glow');
       if (eclipseList.some((e) => e.on === 'moon' && e.depth > 0.6)) out.push('eclipse-red');
     },
     dispose() {
+      disposed = true;
       bodies.dispose();
       comets.dispose();
       belt?.dispose();
@@ -488,4 +626,19 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
       glow.dispose();
     },
   };
+  worlds.setDetail(detail());
+  // For the tests (window.__kf, where the app made it): the GPU's own places of the first asteroids,
+  // and the date they are for (days after the files' epoch).
+  if (window.__kf)
+    window.__kf.worlds = {
+      probe: async (count, drawn) => {
+        const b = belt;
+        if (!b || disposed) return { days: 0, places: [] };
+        const { probeBelt } = await import('./probe');
+        // (The date the uniforms hold now: the probe draws at once, before its first wait.)
+        const days = lastDays;
+        return { days, places: Array.from(await probeBelt(ctx.renderer, b, count, drawn)) };
+      },
+    };
+  return worlds;
 }

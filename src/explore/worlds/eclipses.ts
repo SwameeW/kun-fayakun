@@ -10,6 +10,11 @@
  * above it whose colour multiplies what is behind it; on the night side it does nothing. The shell
  * is drawn only while an occluder's penumbra reaches its receiver, so it costs nothing otherwise.
  *
+ * A shadow comes in over EASE_SECONDS, never in one frame: at a fast clock a moon's shadow crosses its
+ * planet, or the Earth's the Moon, in a frame or two, and a whole disc darkened for one frame and lit
+ * the next is a flash (docs/CONTRACTS.md: never more than 3 a second). Such a shadow is barely drawn;
+ * one that lasts, at any slower clock, is drawn whole within a second.
+ *
  * The Earth's shadow is cast by the Earth with its air, about 2% larger than the solid globe (Danjon's
  * rule, as eclipse predictions take it). Inside it the Moon still shows the sunlight the Earth's air
  * bends and reddens into the umbra: about a ten-thousandth of full moonlight, too faint for a view
@@ -18,7 +23,7 @@
  */
 
 import { AddEquation, CustomBlending, FrontSide, Mesh, MeshBasicNodeMaterial, OneFactor, SphereGeometry, SrcColorFactor, Vector3, Vector4, ZeroFactor } from 'three/webgpu';
-import { acos, asin, clamp, dot, float, length, max, min, mix, normalize, positionLocal, select, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
+import { acos, asin, atan, clamp, cross, dot, float, length, max, min, mix, normalize, positionLocal, select, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import type { FocusId } from '../../core/types';
 import { visibleShare } from '../bodies/glare';
 import type { FloatNode } from '../render/sampling';
@@ -30,6 +35,8 @@ export const UMBRA_RED: readonly [number, number, number] = [0.024, 0.0085, 0.00
 /** The shell's height above the receiver's radius (its share): above the Earth's clouds, under its air's top. */
 const SHELL = 1.004;
 const MAX_OCCLUDERS = 4;
+/** How long a shadow takes to come in (s). */
+const EASE_SECONDS = 0.5;
 
 export interface ShadowCaster {
   /** Centre, render frame, km (from the Sun). */
@@ -59,8 +66,8 @@ export interface Eclipse {
 export interface Eclipses {
   /** A shell per receiver: add them to the scene. */
   readonly objects: readonly Mesh[];
-  /** Places the shells and reports the eclipses under way (any depth). */
-  update(pairs: ReadonlyArray<{ receiver: ShadowReceiver; casters: ReadonlyArray<{ id: FocusId; caster: ShadowCaster }>; red: boolean; scale: number }>, sunRadiusKm: number, out: Eclipse[]): void;
+  /** Places the shells and reports the eclipses under way (any depth); `dt` the frame's real seconds, `fade` how much of the worlds shows. */
+  update(pairs: ReadonlyArray<{ receiver: ShadowReceiver; casters: ReadonlyArray<{ id: FocusId; caster: ShadowCaster }>; red: boolean; scale: number }>, sunRadiusKm: number, out: Eclipse[], dt: number, fade: number): void;
   dispose(): void;
 }
 
@@ -78,12 +85,13 @@ function share(a: FloatNode, b: FloatNode, d: FloatNode): FloatNode {
   return select(d.greaterThanEqual(a.add(b)), float(1), select(d.lessThanEqual(b.sub(a)), float(0), select(d.lessThanEqual(a.sub(b)), inside, partial)));
 }
 
-function shell(): { mesh: Mesh; occluders: Vector4[]; sun: Vector3; sunAngle: { value: number }; red: Vector3 } {
+function shell(): { mesh: Mesh; occluders: Vector4[]; sun: Vector3; sunAngle: { value: number }; red: Vector3; strength: { value: number }; level: number } {
   const occluders = Array.from({ length: MAX_OCCLUDERS }, () => new Vector4(0, 0, 0, 0));
   const uOcc = occluders.map((v) => uniform(v));
   const uSun = uniform(new Vector3(1, 0, 0));
   const uSunAngle = uniform(0.00465);
   const uRed = uniform(new Vector3(0, 0, 0));
+  const uStrength = uniform(0);
   // On the unit sphere (receiver radii): the point, and per occluder the Sun's disc it leaves.
   const p = normalize(positionLocal);
   let lit: FloatNode = float(1);
@@ -91,7 +99,10 @@ function shell(): { mesh: Mesh; occluders: Vector4[]; sun: Vector3; sunAngle: { 
     const v = o.xyz.sub(p);
     const d = max(length(v), 1e-6);
     const b = asin(min(o.w.div(d), 1));
-    const sep = acos(clamp(dot(v.div(d), uSun), -1, 1));
+    // The angle between the occluder and the Sun, from its sine and cosine: an arc cosine of a number
+    // so near 1 loses the few thousandths of a radian a small moon's shadow is (Io's on Jupiter: 0.004).
+    const toward = v.div(d);
+    const sep = atan(length(cross(toward, uSun)), dot(toward, uSun));
     lit = lit.mul(select(o.w.greaterThan(0), share(uSunAngle, b, sep), float(1)));
   }
   // Only where the Sun is up: the night side is the receiver's own shadow already.
@@ -106,7 +117,7 @@ function shell(): { mesh: Mesh; occluders: Vector4[]; sun: Vector3; sunAngle: { 
   material.blendSrcAlpha = ZeroFactor;
   material.blendDstAlpha = OneFactor;
   material.premultipliedAlpha = false;
-  material.colorNode = mix(vec3(1), mix(vec3(uRed), vec3(1), lit), day);
+  material.colorNode = mix(vec3(1), mix(vec3(uRed), vec3(1), lit), day.mul(uStrength));
   material.opacityNode = float(1);
   const mesh = new Mesh(new SphereGeometry(SHELL, 96, 48), material);
   mesh.name = 'explore-eclipse-shell';
@@ -114,15 +125,16 @@ function shell(): { mesh: Mesh; occluders: Vector4[]; sun: Vector3; sunAngle: { 
   // After the body and its air.
   mesh.renderOrder = 4;
   mesh.visible = false;
-  return { mesh, occluders, sun: uSun.value, sunAngle: uSunAngle, red: uRed.value };
+  return { mesh, occluders, sun: uSun.value, sunAngle: uSunAngle, red: uRed.value, strength: uStrength, level: 0 };
 }
 
 export function createEclipses(receivers: number): Eclipses {
   const shells = Array.from({ length: receivers }, shell);
   return {
     objects: shells.map((s) => s.mesh),
-    update(pairs, sunRadiusKm, out) {
+    update(pairs, sunRadiusKm, out, dt, fade) {
       out.length = 0;
+      const ease = dt > 0 ? 1 - Math.exp(-dt / EASE_SECONDS) : 0;
       pairs.forEach(({ receiver, casters, red, scale }, i) => {
         const s = shells[i];
         if (!s) return;
@@ -159,7 +171,10 @@ export function createEclipses(receivers: number): Eclipses {
           }
         }
         for (let j = slot; j < MAX_OCCLUDERS; j += 1) s.occluders[j]?.set(0, 0, 0, 0);
-        s.mesh.visible = any && receiver.visible && receiver.radiusPx > 1;
+        // In over EASE_SECONDS while the shadow lasts; gone with it.
+        s.level = any ? s.level + (1 - s.level) * ease : 0;
+        s.strength.value = s.level * fade;
+        s.mesh.visible = any && receiver.visible && receiver.radiusPx > 1 && fade > 1e-3;
         if (!s.mesh.visible) return;
         s.sun.set(-r.x / rd, -r.y / rd, -r.z / rd);
         s.sunAngle.value = Math.asin(Math.min(1, sunRadiusKm / rd));

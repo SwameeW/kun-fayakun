@@ -41,6 +41,10 @@ export interface KfHook {
       state(): FilmSoundState | null;
       render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
     };
+    /** The explorer's more worlds, once come (src/explore/worlds): the GPU's own places of the first asteroids, read back, and their date. */
+    worlds?: {
+      probe(count: number, drawn?: boolean): Promise<{ days: number; places: number[] }>;
+    };
   };
 }
 

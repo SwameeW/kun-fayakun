@@ -10,7 +10,8 @@ import type { Formatters } from './format';
  * match a button that flies there (the explorer's `world` command, as a tool would send it). Its own
  * chunk, loaded the first time the section opens (the section and its summary are the navigator's);
  * its strings travel with it (src/i18n/en.worlds.json). Opening it asks for the worlds if they have
- * not come yet.
+ * not come yet (an empty `world` command: the layer as it was). The counts are not a live region (they
+ * change as the clock runs); a screen reader hears once that the worlds have come.
  */
 
 export interface WorldsPanel {
@@ -37,7 +38,9 @@ export function createWorldsPanel(app: App, f: Formatters): WorldsPanel {
   };
   const layer = toggle('worlds-layer', 'ui.universe.worlds.layer', (on) => { app.earthCommand({ kind: 'smallBodies', on }); });
   const grouped = toggle('worlds-grouped', 'ui.universe.worlds.grouped', (on) => { app.earthCommand({ kind: 'smallBodiesGrouped', on }); });
-  const intro = h('p', { class: 'kf-living-hint', 'data-testid': 'worlds-intro', role: 'status' }, i18n.t('ui.universe.worlds.loading'));
+  const orbits = toggle('worlds-orbits', 'ui.universe.worlds.orbits', (on) => { app.earthCommand({ kind: 'smallBodiesOrbits', on }); });
+  const intro = h('p', { class: 'kf-living-hint', 'data-testid': 'worlds-intro' }, i18n.t('ui.universe.worlds.loading'));
+  const announce = h('span', { class: 'kf-sr-only', role: 'status', 'data-testid': 'worlds-status' });
   const counts = h('dl', { class: 'kf-about-facts kf-worlds-groups', 'aria-label': i18n.t('ui.universe.worlds.groupsLabel'), 'data-testid': 'worlds-groups' });
   const values = GROUPS.map((g) => {
     const dd = h('dd', { 'data-testid': `worlds-group-${g}` });
@@ -79,7 +82,8 @@ export function createWorldsPanel(app: App, f: Formatters): WorldsPanel {
     'div',
     { class: 'kf-about-body kf-worlds' },
     intro,
-    h('div', { class: 'kf-living-group' }, layer, grouped),
+    announce,
+    h('div', { class: 'kf-living-group' }, layer, grouped, orbits),
     counts,
     find,
     h('p', { class: 'kf-about-sources' }, i18n.t('ui.universe.worlds.note')),
@@ -95,17 +99,20 @@ export function createWorldsPanel(app: App, f: Formatters): WorldsPanel {
         // Opening the section asks for the worlds (once a visit), if they have not come yet.
         if (!asked) {
           asked = true;
-          app.earthCommand({ kind: 'smallBodies', on: true });
+          app.earthCommand({ kind: 'world', name: '' });
         }
         return;
       }
+      if (announce.textContent === '') announce.textContent = i18n.t('ui.universe.worlds.ready');
       for (const [b, on] of [
         [layer, w.layer],
         [grouped, w.grouped],
+        [orbits, w.arranged],
       ] as const) {
         if (b.getAttribute('aria-pressed') !== String(on)) b.setAttribute('aria-pressed', String(on));
       }
       grouped.disabled = !w.layer;
+      orbits.disabled = !w.layer;
       if (list !== w.list) {
         list = w.list;
         show();

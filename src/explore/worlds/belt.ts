@@ -24,6 +24,12 @@
  * Each point is a small sprite whose light is spread over the pixels it covers as a Gaussian of 0.7
  * device pixels integrated over each pixel (erf, in a tanh form), so a point's light neither shimmers
  * as it moves across pixels nor changes with the display's pixel ratio.
+ *
+ * Arranged by orbit size (a diagram, labelled 'small-body-orbits'): each point is drawn in the
+ * ecliptic at its orbit's semi-major axis from the Sun, at the longitude it really has. The places at
+ * a moment hide the gaps Jupiter's resonances clear in the orbits (the Kirkwood gaps at 2.50, 2.82,
+ * 2.95 and 3.27 au: an asteroid on an eccentric or inclined orbit crosses them, or is seen across
+ * them), so this shows them as empty rings in the belt.
  */
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, InstancedBufferAttribute, PointsNodeMaterial, Sprite, Vector3, type Node } from 'three/webgpu';
@@ -72,8 +78,9 @@ export interface BeltFrame {
   compensation: number;
   /** How far the marked light is in (0 as seen only, 1 marked), times how much of it a point gets at this zoom. */
   marked: number;
-  /** Colour by group (0 natural, 1 grouped), and the whole layer's fade. */
+  /** Colour by group (0 natural, 1 grouped), drawn at their orbits' sizes (0 where they are, 1 arranged), and the whole layer's fade. */
   grouped: number;
+  arranged: number;
   fade: number;
 }
 
@@ -88,6 +95,13 @@ export interface Belt {
   /** How many of the loaded points to draw (the detail level's count). */
   setCount(count: number): void;
   update(frame: BeltFrame): void;
+  /**
+   * For the GPU's own check (./probe): the points' shape, and each point's place from the Sun as the
+   * vertex stage works it out (au, render frame): on its orbit, and as drawn (arranged by orbit size or not).
+   */
+  readonly geometry: BufferGeometry;
+  readonly heliocentric: Vec3Node;
+  readonly drawn: Vec3Node;
   dispose(): void;
 }
 
@@ -132,6 +146,7 @@ export function createBelt(capacity: number, classes: readonly BeltClass[]): Bel
   const uCompensation = uniform(1);
   const uMarked = uniform(0);
   const uGrouped = uniform(0);
+  const uArranged = uniform(0);
   const uFade = uniform(1);
 
   const pAttr = instancedBufferAttribute(attrP) as unknown as Node<'vec4'>;
@@ -139,7 +154,10 @@ export function createBelt(capacity: number, classes: readonly BeltClass[]): Bel
   const nAttr = instancedBufferAttribute(attrN) as unknown as Node<'vec4'>;
   const e = pAttr.w;
   const E = keplerE(qAttr.w.add(nAttr.y.mul(uBlocks)).add(nAttr.x.mul(uDays)), e);
-  const position = pAttr.xyz.mul(cos(E).sub(e)).add(qAttr.xyz.mul(sin(E)));
+  const heliocentric = pAttr.xyz.mul(cos(E).sub(e)).add(qAttr.xyz.mul(sin(E)));
+  // Arranged: in the ecliptic (the render frame's xz plane) at its longitude, at its orbit's semi-major axis (P's length).
+  const flat = vec3(heliocentric.x, 0, heliocentric.z);
+  const position = mix(heliocentric, flat.mul(length(pAttr.xyz).div(max(length(flat), 1e-6))), uArranged);
   const relAu = position.sub(uCamera);
   const deltaAu = max(length(relAu), 1e-9);
   const rAu = max(length(position), 1e-6);
@@ -193,6 +211,9 @@ export function createBelt(capacity: number, classes: readonly BeltClass[]): Bel
 
   return {
     object: sprite,
+    geometry,
+    heliocentric,
+    drawn: position,
     get loaded() {
       return loaded;
     },
@@ -243,6 +264,7 @@ export function createBelt(capacity: number, classes: readonly BeltClass[]): Bel
       uCompensation.value = Math.max(frame.compensation, 1e-6);
       uMarked.value = frame.marked;
       uGrouped.value = frame.grouped;
+      uArranged.value = frame.arranged;
       uFade.value = frame.fade;
       sprite.visible = sprite.count > 0 && frame.fade > 1e-3;
     },

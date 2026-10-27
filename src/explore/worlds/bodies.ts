@@ -13,10 +13,20 @@
  *
  * A world is drawn as a lit ellipsoid once its disc spans more than about a pixel (a pool of meshes
  * goes to the largest on screen), and as a point of light below that (../bodies/impostor), as the ten
- * bodies are. The surfaces are plain: a world's geometric albedo in a neutral colour, Lommel-Seeliger's
- * law with a little Lambert, as rocky and icy surfaces scatter (the readout says the surface is not a
- * map: UniverseIllustration 'world-shape'). A moon in its planet's shadow darkens by the share of the
- * Sun's disc the planet covers from its centre (../bodies/glare visibleShare).
+ * bodies are. A world with a surface map (maps.json) shows it once its disc is MAP_FROM_PX across, at
+ * the detail level's size (1024 wide at Low, else 2048); a map not drawn for MAP_KEEP_S is let go. The
+ * parts no spacecraft imaged are a grey grid in the map itself (UniverseIllustration 'unimaged'). The
+ * rest are plain: a world's geometric albedo in a neutral colour, Lommel-Seeliger's law with a little
+ * Lambert, as rocky and icy surfaces scatter (the readout says the surface is not a map:
+ * UniverseIllustration 'world-shape'). A moon in its planet's shadow darkens by the share of the Sun's
+ * disc the planet covers from its centre (../bodies/glare visibleShare), eased over SHARE_SECONDS: at a
+ * fast clock an eclipse lasts a frame or two, and a whole disc going dark for one frame is a flash.
+ *
+ * Too fast to show a world turning (past SPIN.hold a frame, as the explorer's ten bodies, or past a
+ * turn and a half a second: a map's bright and dark parts passing more than three times a second are
+ * a flashing, WCAG 2.3.1), its turn is held at an hour of its day, the Sun's longitude on it kept, as
+ * the explorer holds its ten bodies' (../time-beyond), and let go the same way once the clock has run
+ * slower for a while (under SPIN.free a frame and a turn a second).
  */
 
 import { DataTexture, FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, Quaternion, RepeatWrapping, SphereGeometry, SRGBColorSpace, Vector3, type PerspectiveCamera, type Texture } from 'three/webgpu';
@@ -57,11 +67,13 @@ export interface WorldRecord {
   spin?: { ra: number; dec: number; w0: number; degPerDay: number } | null;
 }
 
-/** A world's surface map (maps.json): its file, and its mean linear brightness (the albedo sets the level). */
+/** A world's surface map (maps.json): its files (2048 and 1024 wide), its mean linear brightness (the albedo sets the level), and the share of the surface never imaged. */
 export interface WorldMap {
   file: string;
+  small?: string;
   colour: boolean;
   mean: number;
+  unimaged?: number;
   credit: string;
 }
 
@@ -78,9 +90,10 @@ export interface PlacedWorld {
   screenX: number;
   screenY: number;
   inView: boolean;
-  /** Sunlight at it (1 at 1 au), and the share of the Sun's disc its host leaves it (an eclipse). */
+  /** Sunlight at it (1 at 1 au), the share of the Sun's disc its host leaves it (an eclipse), and that share as drawn (eased). */
   light: number;
   share: number;
+  lit: number;
   /** Its semi-axes (km: along its prime meridian, its pole, and the third) and its largest. */
   readonly axes: readonly [number, number, number];
   readonly radiusKm: number;
@@ -101,9 +114,15 @@ export interface WorldsBodiesFrame {
   /** Small bodies shown (dwarf planets, asteroids, comets: not the moons), and how far the marked light is in. */
   layer: number;
   marked: number;
-  /** Everything shown at all (not in an experiment, on foot, on the way down). */
+  /** Everything shown at all (not in an experiment, on foot, on the way down, nor during the film's stretch), and how far it has faded in (0 to 1). */
   shown: boolean;
+  fade: number;
   focus: FocusId;
+  /** The frame's real seconds, the days the clock moved (0 for a jump), whether it runs on its own (not paused, not a trip), and reduced motion. */
+  dt: number;
+  days: number;
+  running: boolean;
+  reduced: boolean;
 }
 
 export interface WorldBodies {
@@ -113,9 +132,15 @@ export interface WorldBodies {
   /** Moves every world to the date (TDB Julian date): after the ten bodies, before the camera. */
   advance(jd: number): void;
   update(frame: WorldsBodiesFrame): void;
-  /** The worlds that cover more than a pixel this frame, drawn as meshes, and how many of them show a map. */
+  /** The worlds that cover more than a pixel this frame, drawn as meshes, how many of them show a map, and how many a map with unimaged parts. */
   readonly meshed: number;
   readonly mapped: number;
+  readonly unimaged: number;
+  /** The maps at the Low detail level's size (1024 wide) or the others' (2048), and how many are held now. */
+  setSmallMaps(small: boolean): void;
+  readonly maps: number;
+  /** Whether world `id`'s turn is held now. */
+  held(id: WorldId): boolean;
   dispose(): void;
 }
 
@@ -136,8 +161,23 @@ const ECLIPTIC_POLE: [number, number] = [270, 90 - 23.4392911];
 const lommel = (mu0: FloatNode, mu: FloatNode): FloatNode => mu0.mul(2).div(mu0.add(mu).add(1e-3));
 /** The maps' mean linear brightness (scripts/smallbodies/maps.py MEAN). */
 const MAP_MEAN = 0.4;
-/** A map eases in once it has come, by this share a frame (about two thirds of a second at 60 frames a second: no change of light faster than half a second). */
-const MAP_EASE = 0.025;
+/** A map eases in once it has come over this long (s: no change of light faster than half a second), and so does an eclipse. */
+const MAP_SECONDS = 0.5;
+const SHARE_SECONDS = 0.5;
+/**
+ * A map is fetched once its world's disc is this wide (px: a map on a disc a few pixels across shows
+ * nothing a plain surface does not), and let go after this long not drawn (s); unimaged parts of
+ * less than this share of a surface are not reported.
+ */
+const MAP_FROM_PX = 24;
+const MAP_KEEP_S = 60;
+const UNIMAGED_SHARE = 0.02;
+/**
+ * A world's turn is held past this many degrees a frame or turns a second, free under the second pair,
+ * let go after this long free (s), caught up at this rate (per second) and at most this much a frame
+ * (as ../time-beyond's, with the rate a second besides).
+ */
+const SPIN = { hold: (30 * Math.PI) / 180, holdTurns: 1.5, free: (20 * Math.PI) / 180, freeTurns: 1, calmS: 0.5, catchUp: 4, catchUpMax: (8 * Math.PI) / 180 } as const;
 
 /** The prime meridian's direction (render frame) for an IAU rotation model: the pole at (ra, dec), W degrees on along the equator from its node on the ICRF's. */
 function spinAxis(ra: number, dec: number, w: number, obliquity: number, out: Km): Km {
@@ -234,6 +274,7 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
       inView: false,
       light: 1,
       share: 1,
+      lit: -1,
       axes,
       radiusKm: largest,
       pole,
@@ -265,30 +306,95 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
     object.add(mesh);
     return { mesh, material, map, mapShare, uniforms, showing: '' };
   });
-  // Maps load the first time their world is drawn as a mesh, go up to the GPU as they come, and stay.
-  const textures = new Map<string, Texture | 'loading' | 'failed'>();
-  const mapFor = (name: string): Texture | null => {
+  // Maps load the first time their world is drawn as a mesh MAP_FROM_PX across (at the detail level's
+  // size), go up to the GPU as they come, and are let go once not drawn for MAP_KEEP_S.
+  const textures = new Map<string, { map: Texture | 'loading' | 'failed'; drawn: number }>();
+  let small = false;
+  let clock = 0;
+  const mapFor = (name: string, radiusPx: number): Texture | null => {
     const entry = maps[name];
     if (!entry) return null;
-    const got = textures.get(name);
+    const file = small ? (entry.small ?? entry.file) : entry.file;
+    const got = textures.get(file);
     if (got === undefined) {
-      textures.set(name, 'loading');
-      loadMap(entry.file).then(
+      if (radiusPx < MAP_FROM_PX) return null;
+      const slot: { map: Texture | 'loading' | 'failed'; drawn: number } = { map: 'loading', drawn: clock };
+      textures.set(file, slot);
+      loadMap(file).then(
         (t) => {
           t.colorSpace = SRGBColorSpace;
           t.wrapS = RepeatWrapping;
           t.anisotropy = 8;
           t.needsUpdate = true;
+          // Let go meanwhile (or the chunk disposed): not kept.
+          if (textures.get(file) !== slot) {
+            t.dispose();
+            return;
+          }
           upload(t);
-          textures.set(name, t);
+          slot.map = t;
         },
-        () => textures.set(name, 'failed'),
+        () => {
+          slot.map = 'failed';
+        },
       );
       return null;
     }
-    return typeof got === 'string' ? null : got;
+    got.drawn = clock;
+    return typeof got.map === 'string' ? null : got.map;
   };
   let mapped = 0;
+  let unimaged = 0;
+  // Each world's turn held (as ../time-beyond holds the ten's): the Sun's longitude kept (null once let go), the turn still to catch up, and how long the clock has run slow.
+  const holds = new Map<WorldId, { lon: number | null; turn: number; calm: number }>();
+  let travel = 1;
+  const spinDegPerDay = (r: WorldRecord): number => r.spin?.degPerDay ?? (r.synchronous && r.host !== 'sun' ? 360 / (r.elements.periodDays ?? 1) : (360 * 24) / (r.rotationHours ?? 24));
+  /** The Sun's longitude on a world (radians, east positive). */
+  const sunLongitude = (w: PlacedWorld): number => {
+    const b = w.basis;
+    const p = w.position;
+    return Math.atan2(p.x * (b[6] ?? 0) + p.y * (b[7] ?? 0) + p.z * (b[8] ?? 0), -(p.x * (b[0] ?? 0) + p.y * (b[1] ?? 0) + p.z * (b[2] ?? 0)));
+  };
+  const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+  const turnBasis = (m: number[], a: number): void => {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    for (let k = 0; k < 3; k += 1) {
+      const x = m[k] ?? 0;
+      const z = m[6 + k] ?? 0;
+      m[k] = x * c - z * s;
+      m[6 + k] = z * c + x * s;
+    }
+  };
+  /** The hold of world `w`'s turn this frame (../time-beyond createSpinHold, for one world). */
+  const holdSpin = (w: PlacedWorld, frame: WorldsBodiesFrame): void => {
+    const id = w.record.id;
+    const rate = spinDegPerDay(w.record);
+    const perFrame = Math.abs(frame.days * rate) * DEG;
+    const turns = frame.dt > 0 ? perFrame / (2 * Math.PI * frame.dt) : 0;
+    let h = holds.get(id);
+    if (frame.dt > 0 && (perFrame > SPIN.hold || turns > SPIN.holdTurns) && h?.lon == null) holds.set(id, (h = { lon: sunLongitude(w) + rate * frame.days * DEG - (h?.turn ?? 0), turn: h?.turn ?? 0, calm: 0 }));
+    if (!h) return;
+    if (h.lon !== null) {
+      if (perFrame >= SPIN.free || turns >= SPIN.freeTurns) h.calm = 0;
+      else if (frame.dt > 0 && frame.running) h.calm += frame.dt;
+      if (h.calm >= SPIN.calmS) {
+        const behind = wrap(sunLongitude(w) - h.lon);
+        const sign = Math.sign(rate * travel) || 1;
+        h.turn = sign > 0 ? (behind > 0 ? behind - 2 * Math.PI : behind) : behind < 0 ? behind + 2 * Math.PI : behind;
+        h.lon = null;
+      } else h.turn = wrap(sunLongitude(w) - h.lon);
+    }
+    if (h.lon === null) {
+      if (frame.reduced) h.turn = 0;
+      else if (frame.dt > 0 && frame.running) h.turn -= Math.sign(h.turn) * Math.min(Math.abs(h.turn) * (1 - Math.exp(-SPIN.catchUp * Math.min(0.1, frame.dt))), SPIN.catchUpMax);
+      if (Math.abs(h.turn) < 1e-3) {
+        holds.delete(id);
+        return;
+      }
+    }
+    turnBasis(w.basis, h.turn);
+  };
   const dots: Impostors = createImpostors(list.length);
   object.add(dots.object);
   const dotList: ImpostorDot[] = list.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: DOT.sizePx, marker: 0 }));
@@ -340,6 +446,18 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
     get mapped() {
       return mapped;
     },
+    get unimaged() {
+      return unimaged;
+    },
+    setSmallMaps(on) {
+      small = on;
+    },
+    get maps() {
+      let n = 0;
+      for (const t of textures.values()) if (typeof t.map !== 'string') n += 1;
+      return n;
+    },
+    held: (id) => holds.get(id)?.lon != null,
     advance(jd) {
       for (const w of order) {
         const r = w.record;
@@ -437,8 +555,15 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
       }
     },
     update(frame) {
-      // Place each relative to the camera and in scaled space; measure its disc on screen.
+      clock += Math.max(0, frame.dt);
+      if (frame.days !== 0) travel = frame.days > 0 ? 1 : -1;
+      // (A frame with no time passed, as between a test's steps, changes nothing.)
+      const ease = frame.dt > 0 ? 1 - Math.exp(-frame.dt / SHARE_SECONDS) : 0;
+      // Place each relative to the camera and in scaled space; measure its disc on screen; its turn
+      // held when too fast to show, and its eclipse eased.
       for (const w of list) {
+        holdSpin(w, frame);
+        w.lit = w.lit < 0 ? w.share : w.lit + (w.share - w.lit) * ease;
         w.rel.x = w.position.x - frame.camera.x;
         w.rel.y = w.position.y - frame.camera.y;
         w.rel.z = w.position.z - frame.camera.z;
@@ -454,21 +579,28 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
       const big = list.filter((w) => frame.shown && w.inView && w.radiusPx > MESH_FROM_PX && (w.record.kind === 'moon' || frame.layer > 0 || w.record.id === frame.focus)).sort((a, b) => (a.record.id === frame.focus ? -1 : b.record.id === frame.focus ? 1 : b.radiusPx - a.radiusPx));
       meshed = Math.min(POOL, big.length);
       mapped = 0;
+      unimaged = 0;
+      const mapEase = frame.dt > 0 ? 1 - Math.exp(-frame.dt / MAP_SECONDS) : 0;
       pool.forEach((slot, i) => {
         const w = big[i];
         slot.mesh.visible = w !== undefined;
-        if (!w) return;
+        // (An empty slot holds no map: one not drawn can be let go.)
+        if (!w) {
+          slot.map.value = BLANK;
+          return;
+        }
         const r = w.record;
-        // Its map, easing in once it has come (a slot taking another world starts plain).
-        const map = mapFor(r.name);
+        // Its map, easing in once it has come (a slot taking another world starts plain; the other size of the same map takes over at once).
+        const map = mapFor(r.name, w.radiusPx);
         if (slot.showing !== r.name) {
           slot.showing = r.name;
           slot.mapShare.value = 0;
         }
         if (map) {
           if (slot.map.value !== map) slot.map.value = map;
-          slot.mapShare.value = Math.min(1, slot.mapShare.value + MAP_EASE);
+          slot.mapShare.value += (1 - slot.mapShare.value) * mapEase;
           mapped += 1;
+          if ((maps[r.name]?.unimaged ?? 0) >= UNIMAGED_SHARE) unimaged += 1;
         } else {
           slot.map.value = BLANK;
           slot.mapShare.value = 0;
@@ -484,7 +616,7 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
         const albedo = r.albedo ?? ALBEDO[r.kind];
         const tint = TINT[r.kind];
         u.albedo.set(albedo * tint[0], albedo * tint[1], albedo * tint[2]);
-        u.light.value = w.light * w.share * Math.min(1, smooth(MESH_FROM_PX, MESH_FROM_PX * 2, w.radiusPx));
+        u.light.value = w.light * w.lit * frame.fade * Math.min(1, smooth(MESH_FROM_PX, MESH_FROM_PX * 2, w.radiusPx));
         // The Sun and the eye in the world's own frame (the mesh's local axes).
         const d = Math.max(Math.hypot(w.position.x, w.position.y, w.position.z), 1);
         const sx = -w.position.x / d;
@@ -515,19 +647,29 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
         const cos = (w.position.x * w.rel.x + w.position.y * w.rel.y + w.position.z * w.rel.z) / Math.max(1e-9, sunAu * auKm * w.distance);
         const v = hgMagnitude(h, r.G ?? 0.15, sunAu, camAu, Math.acos(Math.min(1, Math.max(-1, cos))));
         const seen = DOT.light * 10 ** (-0.4 * DOT.power * (v - DOT.mag));
-        const light = Math.min(DOT.ceiling, Math.max(seen, (moon ? 0.5 : 1) * DOT.marked * frame.marked)) * w.share;
+        const light = Math.min(DOT.ceiling, Math.max(seen, (moon ? 0.5 : 1) * DOT.marked * frame.marked)) * w.lit;
         const tint = TINT[r.kind];
         dot.color = [tint[0] * light, tint[1] * light, tint[2] * light];
-        dot.opacity = want * smooth(MESH_FROM_PX * 2.5, MESH_FROM_PX, w.radiusPx);
+        dot.opacity = want * frame.fade * smooth(MESH_FROM_PX * 2.5, MESH_FROM_PX, w.radiusPx);
         dot.sizePx = DOT.sizePx;
         dot.marker = 0;
       });
       dots.update(dotList, frame.compensation);
+      // Maps not drawn for a while are let go (a slot still showing one keeps it).
+      for (const [file, t] of textures) {
+        if (clock - t.drawn < MAP_KEEP_S || t.map === 'loading') continue;
+        if (typeof t.map !== 'string') {
+          if (pool.some((slot) => slot.map.value === t.map)) continue;
+          t.map.dispose();
+        }
+        textures.delete(file);
+      }
     },
     dispose() {
       geometry.dispose();
       for (const slot of pool) slot.material.dispose();
-      for (const t of textures.values()) if (typeof t !== 'string') t.dispose();
+      for (const t of textures.values()) if (typeof t.map !== 'string') t.map.dispose();
+      textures.clear();
       dots.dispose();
     },
   };

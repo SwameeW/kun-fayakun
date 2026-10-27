@@ -760,7 +760,7 @@ export default function create(): UniverseModule {
     if (!c || !sys || !inputs) return;
     worldsLoading = true;
     import('./worlds')
-      .then((m) => m.createWorlds(c, sys, obliquityRad(inputs.physical), detail, () => governor?.holdOff()))
+      .then((m) => m.createWorlds(c, sys, obliquityRad(inputs.physical), () => detail, () => governor?.holdOff()))
       .then(async (w) => {
         // Every part compiled now, drawn yet or not (a comet's tails, a ring, a shadow, a world's
         // mesh): one first drawn later would build its pipeline then, holding that frame up. The
@@ -790,7 +790,9 @@ export default function create(): UniverseModule {
           worlds = w;
           root.add(w.object);
           (world?.all as NavBody[] | undefined)?.push(...w.navList());
+          // The layer and the detail level chosen meanwhile (the governor may have changed it while they came).
           w.setLayer(worldsLayer);
+          w.setDetail(detail);
           const wanted = worldWanted;
           worldWanted = null;
           const id = wanted ? w.find(wanted) : null;
@@ -970,7 +972,7 @@ export default function create(): UniverseModule {
     v.time.paused = lab?.active ? lab.paused : timePaused;
     v.time.edge = lab?.active ? lab.edge : timeEdge;
     v.time.held = lab?.active ? null : clockHold();
-    v.time.spinHeld = spinHold?.held(host(focus)) ?? false;
+    v.time.spinHeld = worlds?.held(focus) ?? spinHold?.held(focus as BodyId) ?? false;
     v.time.beyond.moon = !lab?.active && tables !== null && (jdTdb < tables.moon.startJd || jdTdb > tables.moon.endJd);
     v.time.beyond.planets = !lab?.active && tables !== null && (jdTdb < tables.planets.startJd || jdTdb > tables.planets.endJd);
     v.lab = lab?.view() ?? null;
@@ -1164,7 +1166,8 @@ export default function create(): UniverseModule {
         best = id;
       }
     }
-    return best ?? worlds?.pick(x, y) ?? null;
+    // A world under the pointer nearer than that body (a moon before its planet) is chosen instead.
+    return worlds?.pick(x, y, bestDistance) ?? best;
   };
 
   /** The stretch's clock: it holds the film's view, eases to true scale, rests, then flies on (unless the visitor has steered). */
@@ -1758,7 +1761,8 @@ export default function create(): UniverseModule {
       else if ((hiddenBodies.has(nav.focus as BodyId) || nav.focus !== host(nav.focus)) && nav.focus !== 'sun' && !nav.busy) nav.flyTo(world, 'sun');
     }
     // Too fast to show a world turning: held at an hour of its day (./time-beyond), let go only as the clock runs on its own (not paused, not a trip).
-    spinHold?.update(sys, days, dt, clockRate !== 0 && (lab?.active === true || !nav.travelling), c.reducedMotion);
+    const running = clockRate !== 0 && (lab?.active === true || !nav.travelling);
+    spinHold?.update(sys, days, dt, running, c.reducedMotion);
     advanceStretch(dt);
     warpSystem(sys);
     for (const path of orbitPaths) path.setDate(jdTdb);
@@ -2212,25 +2216,20 @@ export default function create(): UniverseModule {
     // Labels first: the ring markers of small bodies come and go with their tags.
     updateLabels(dt, viewportPx, widthPx);
 
-    // Names on the sky (the brightest stars', the constellations'), when shown; and the worlds'.
+    // Names on the sky (the brightest stars', the constellations'), when shown.
     stars.labels(labels);
-    worlds?.labels(labels);
 
-    // The experiment's trails, prediction and new bodies (with their names).
+    // The experiment's trails, prediction and new bodies (with their names); else the small worlds'
+    // names. Either kept apart, clear of the interface and of the ten bodies' names (declutterLab).
+    const from = labels.length;
     if (lab?.active) {
       lab.update(
         { camera: origin.camera, forward, near: lens.near, far: lens.far, pxPerTan, focus: focus.position, focusRadius: focus.radiusKm, focusDistance: focusKm, compensation: adapted },
         (abs, out) => origin.relative(abs, out),
       );
-      const from = labels.length;
       lab.labels(labels);
-      declutterLab(from, dt, viewportPx, widthPx);
-    } else if (labSeen.size > 0) {
-      labSeen.clear();
-      labFade.clear();
-      labPlace.clear();
-      labShown.length = 0;
-    }
+    } else worlds?.labels(labels);
+    declutterLab(from, dt, viewportPx, widthPx);
 
     // The point beneath the camera when near the Earth: the direction from its centre to the camera (at the origin), in its own frame.
     {
@@ -2363,7 +2362,7 @@ export default function create(): UniverseModule {
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
     dots.update(dotList, adapted);
-    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, shown: !lab?.active && !walking && !descending, focus: nav.focus, span: focusKm, dt, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : 1, placed });
+    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, filter: filterAmount, shown: !lab?.active && !walking && !descending && stretch.amount >= 1, focus: nav.focus, span: focusKm, dt, days, running, reduced: c.reducedMotion, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : 1, placed });
 
     const sunPlaced = placed.sun;
     // From orbit, the Sun through the Earth's limb (on foot, through the air the walker looks through).
@@ -2458,10 +2457,11 @@ export default function create(): UniverseModule {
 
   /** What the view draws now that is illustrative, for the readout to say. */
   const illustrations = (): UniverseIllustration[] => {
-    const id = nav.focus;
-    if (!system || !bodies || id !== host(id)) return [];
-    const altitude = Math.max(0, placed[host(id)].distance - system.specs[host(id)].radiusKm);
-    switch (host(id)) {
+    // A world flown to: its planet's notes while its planet is large in view.
+    const id = host(nav.focus);
+    if (!system || !bodies || (id !== nav.focus && !(placed[id].inView && placed[id].radiusPx > LARGE_PX / 5))) return [];
+    const altitude = Math.max(0, placed[id].distance - system.specs[id].radiusKm);
+    switch (id) {
       case 'sun':
         return ['sun-surface'];
       case 'earth': {
@@ -2824,7 +2824,8 @@ export default function create(): UniverseModule {
   };
 
   /**
-   * The laboratory's names (its new bodies, a ship's burn directions) kept apart as the worlds' are:
+   * The laboratory's names (its new bodies, a ship's burn directions), or outside an experiment the small
+   * worlds' (./worlds: each keeping off every disc by its fits()), kept apart as the ten worlds' are:
    * none behind a world's disc, outside the clear view or under the interface, the chosen body's own
    * name and marks (its burn directions, its Lagrange points, the encounters ahead: the names without a
    * rank) included. Where two would meet (a torn moon's pieces start strung along one line) each tries
@@ -2893,14 +2894,16 @@ export default function create(): UniverseModule {
     labOrder.sort((a, b) => rank(labels[from + b]) - rank(labels[from + a]) || a - b);
     // Then, the most important first, where each may go: clear of the interface, the corners already given and (but for the chosen body's) the worlds' names.
     let boxes = 0;
-    /** `first`: the chosen body's name or mark, which the worlds' names give way to (theirs are not in its way). */
-    const clear = (bx: number, by: number, w: number, pad: number, first: boolean): boolean => {
-      if (bx < insets.left || bx + w > widthPx - insets.right || by < insets.top || by + h > viewportPx - insets.bottom) return false;
+    /** Inside the clear view and off what stands over it. */
+    const free = (bx: number, by: number, w: number): boolean => !(bx < insets.left || bx + w > widthPx - insets.right || by < insets.top || by + h > viewportPx - insets.bottom) && !avoid.some((r) => bx < r.right && r.left < bx + w && by < r.bottom && r.top < by + h);
+    /** The chosen body's name or mark (own()) the worlds' names give way to (theirs are not in its way); a name that fits() only where it allows. */
+    const clear = (bx: number, by: number, w: number, pad: number, label: SceneLabel): boolean => {
+      const first = own(label);
+      if (!free(bx, by, w) || label.fits?.(bx, by, w, h) === false) return false;
       for (let t = 0; t < takenCount && !first; t++) {
         const o = taken[t];
         if (o && bx < o.x + LABEL.widthPx && o.x < bx + w && by < o.y + LABEL.tagPx && o.y < by + h) return false;
       }
-      for (const r of avoid) if (bx < r.right && r.left < bx + w && by < r.bottom && r.top < by + h) return false;
       for (let t = 0; t < boxes; t++) {
         const o = labBoxes[t];
         if (o && meets(bx, by, w, o.x, o.y, o.w, pad)) return false;
@@ -2919,7 +2922,7 @@ export default function create(): UniverseModule {
       for (let t = -1; labGeom[g + 3] === 1 && spot < 0 && t < LAB_SPOTS.length; t += 1) {
         if (t === was) continue;
         const k = t < 0 ? was : t;
-        if (clear(boxAt(j, k, 'x'), boxAt(j, k, 'y'), w, showing ? LAB_MARGIN_PX : 0, own(label))) spot = k;
+        if (clear(boxAt(j, k, 'x'), boxAt(j, k, 'y'), w, showing ? LAB_MARGIN_PX : 0, label)) spot = k;
       }
       let wait = false;
       if (spot >= 0) {
@@ -2971,7 +2974,8 @@ export default function create(): UniverseModule {
         if (first && labGeom[j * LAB_GEOM + 3] === 2) labShown.push(bx, by, w, 1);
         continue;
       }
-      let meet = false;
+      // (Nor where the interface now covers it: gone at once, never drawn under it while it fades.)
+      let meet = !free(bx, by, w);
       for (let t = 0; t + 3 < labShown.length; t += 4) if (meets(bx, by, w, labShown[t] ?? 0, labShown[t + 1] ?? 0, labShown[t + 2] ?? 0, 0)) meet = true;
       for (const id of BODY_IDS) {
         if (meet || !worldNameAt(id, bx, by, w, h)) continue;
@@ -3582,11 +3586,15 @@ export default function create(): UniverseModule {
         }
         case 'smallBodies':
           worldsLayer = command.on;
-          worldsAt = 0;
+          // (Off asks for nothing: the worlds come in their own time.)
+          if (command.on) worldsAt = 0;
           worlds?.setLayer(command.on);
           return;
         case 'smallBodiesGrouped':
           worlds?.setGrouped(command.on);
+          return;
+        case 'smallBodiesOrbits':
+          worlds?.setArranged(command.on);
           return;
         case 'walkRetry':
           walk?.retry();

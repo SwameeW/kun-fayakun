@@ -253,7 +253,7 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
   and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
   that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts).
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> }, worlds: { probe(count): Promise<{ days, places[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts; worlds by the explorer's more worlds once they have come, src/explore/worlds).
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
   `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,
@@ -768,69 +768,103 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
 
 - **Chunk.** `src/explore/worlds/` (its own chunk, `scripts/check-bundle.ts` WORLDS_SOURCES, 30,000 B
   with `src/ui/explore/worlds-panel.ts` and `src/i18n/en.worlds.json`), asked for 2 s into a visit, at
-  once by a `world` or `smallBodies` command, again 30 s after a failure; its pipelines compiled
-  before it is first drawn, its maps put on the GPU as they come, and the governor holding off
-  meanwhile, so a first visit ends with all of it built, as a later one does. `createWorlds(ctx,
-  system, obliquity, detail, hold)` returns `Worlds`: `advance(jdTdb)` after the ten bodies are
-  placed and before the camera moves; `nearestKm(camera)` joins the depth range's nearest surface; `update(frame)` with the
-  camera, lens, the ten bodies as placed, the exposure's adaptation and whether the real sky's worlds
-  show (not in an experiment, on foot or on the way down); `labels(out)`; `nav(id)`, `navList()`,
-  `host(id)`, `find(name)`, `pick(x, y)`, `setDetail`, `setLayer`, `setGrouped`, `view(focus)`,
-  `illustrative(out)`, `dispose`. Its parts: `orbits.ts` (pure: the files' decoding, Kepler's
-  equation as the GPU solves it and to convergence, heliocentric and moon positions, the H, G law),
-  `belt.ts` (the asteroids on the GPU), `comets.ts`, `bodies.ts` (the worlds to fly to, their maps),
-  `rings.ts`, `eclipses.ts`, `glow.ts` (the Milky Way's and the zodiacal light's models).
+  once by a `world` command or a `smallBodies` one turning the layer on (one turning it off asks for
+  nothing), again 30 s after a failure; its pipelines compiled before it is first drawn, its maps put
+  on the GPU as they come, and the governor holding off meanwhile, so a first visit ends with all of it
+  built, as a later one does. `createWorlds(ctx, system, obliquity, detail, hold)` (`detail` a getter:
+  the level as it is when the data has come; the explorer sets it again as they arrive) returns
+  `Worlds`: `advance(jdTdb)` after the ten bodies are placed and before the camera moves;
+  `nearestKm(camera)` joins the depth range's nearest surface; `update(frame)` with the camera, lens,
+  the ten bodies as placed, the exposure's adaptation, the solar filter's amount, the clock's step
+  (for the hold of the worlds' turn) and whether the real sky's worlds show (not in an experiment, on
+  foot, on the way down, nor while the film's compressed system stretches to true scale: none of the
+  worlds is drawn then, and they fade in over half a second after); `labels(out)`; `nav(id)`,
+  `navList()`, `host(id)`, `find(name)`, `pick(x, y, nearerKm)` (a world under the pointer wins over a
+  body whose disc holds the point only when nearer), `held(id)`, `setDetail`, `setLayer`,
+  `setGrouped`, `setArranged`, `view(focus)`, `illustrative(out)`, `dispose`. Its parts: `orbits.ts`
+  (pure: the files' decoding, Kepler's equation as the GPU solves it and to convergence, heliocentric
+  and moon positions, the H, G law), `belt.ts` (the asteroids on the GPU), `probe.ts` (the GPU's
+  places read back, for the tests only: its own chunk), `comets.ts`, `bodies.ts` (the worlds to fly
+  to, their maps), `rings.ts`, `eclipses.ts`, `glow.ts` (the Milky Way's and the zodiacal light's
+  models), `screen.ts` (pure: boxes against discs and convex outlines).
+- **Names.** The worlds' names go through the explorer's own layout for names (`declutterLab`, the
+  laboratory's, used outside an experiment for the worlds'): inside the clear view and off what stands
+  over it (gone at once, never drawn under it while fading), clear of the ten bodies' names and of one
+  another, at one of four corners about their world; each name's `SceneLabel.fits` keeps it off every
+  disc on screen (the ten bodies', the worlds' drawn, Saturn's rings' outline projected point by point)
+  but its own world's; a world behind a nearer disc is not named. A name is anchored at its disc's
+  limb, or at its point.
+- **Light.** The sky's glow (Milky Way and zodiacal light) is held in display terms with the stars as
+  the exposure opens, never lifted as it closes (`glowLight`), not drawn through the solar filter, and
+  the zodiacal light only from 0.3 to 3 au from the Sun (`zodiacalScale`); the readout's `sky-glow`
+  only while it shows somewhere in view (about ten eight-bit steps above black). A world's eclipse and
+  a shadow on a planet (`eclipses.ts`) come in over half a second, never in one frame; past 30 degrees
+  of turn a frame, or a turn and a half a second (its map's light would flash), a world's turn is held
+  at an hour of its day as the ten bodies' are
+  (`UniverseView.time.spinHeld` for a world flown to). Maps and eases are timed in seconds, not frames.
 - **Data.** `public/assets/smallbodies/` from `scripts/smallbodies/build.py <download dir>` (stdlib
   Python; `fixtures` writes `tests/support/astro/horizons-smallbodies.json`) and `maps.py` (Pillow and
   numpy in `.cache/venv-worlds`): `manifest.json` (common epoch, classes, counts, tiers with sha256,
   every query and its reply's sha256), `asteroids-0..3.bin` (16 bytes an object, brightest first,
-  cumulative: 20,000, 80,000, 250,000, 500,000), `comets.json`, `worlds.json` (66 worlds and the
-  rings), `maps.json` and `maps/<world>.jpg` (2048 x 1024, east longitude 0 in the middle, mean
-  linear brightness 0.4).
+  cumulative: 20,000, 80,000, 250,000, 500,000; `checks`: the records of Juno, Hilda, Achilles and
+  Ixion, which the unit tests compare with Horizons), `comets.json`, `worlds.json` (66 worlds and the
+  rings), `maps.json` and `maps/<world>.jpg` (2048 x 1024; `maps/1k/` 1024 x 512 for Low; east
+  longitude 0 in the middle, mean linear brightness 0.4; the parts never imaged a grey grid, their
+  share of the surface `unimaged`).
 - **Detail.** `ExploreDetail.smallBodies`: 20,000 (Low), 80,000 (Medium), 250,000 (High), 500,000
-  (Ultra) asteroids; the files are fetched as far as the level needs.
+  (Ultra) asteroids; the files are fetched as far as the level needs. At Low the sky's glow is not
+  drawn and the worlds' maps are the 1024-wide set; a map is fetched only once its world's disc is 24
+  px across, and let go after a minute not drawn.
 - **Focus.** `FocusId = BodyId | WorldId` (`WorldId = \`w:${string}\``, the catalogue's name:
   `w:Ceres`, `w:Io`, `w:1P/Halley`). The navigator, trips, `UniverseView.focus` and `from`, and
-  `UniversePose.body` take either. A world has no place beneath the camera (no saved view, no walk),
-  no notes and none of the ten bodies' illustrative items; its host (`Worlds.host`: a moon's planet,
-  the Sun for the rest) is what the ten bodies' code reads. Entering an experiment from a world flies
-  to the Sun.
+  `UniversePose.body` take either. A world has no place beneath the camera (no saved view, no walk) and
+  no notes; the readout keeps its planet's illustrative items while the planet is in view and more than
+  40 px in radius; its host (`Worlds.host`: a moon's planet, the Sun for the rest, Pluto's moons too)
+  is what the ten bodies' code reads, while `UniverseWorlds.focus.host` is its own (Charon's is
+  `w:Pluto`). Entering an experiment from a world flies to the Sun.
 - **Commands.** `app.earthCommand({ kind: 'world', name })` flies to a world by its name or
   designation in any case ("Ceres", "io", "Halley", "67P", "433"; a name contained in one name is
   enough); asked before the chunk has come it is flown to when it does; a name that matches nothing
-  does nothing. `{ kind: 'smallBodies', on }` shows or hides the small bodies' layer (the asteroids,
-  the comets, and the dwarf planets', asteroids' and comets' points and names; the moons always
-  show); `{ kind: 'smallBodiesGrouped', on }` colours the asteroids by group (illustrative).
-- **View.** `UniverseView.worlds` (null until loaded): `layer`, `grouped`, `asteroids` (drawn; 0
-  with the layer off), `asteroidsLoaded`, `groups` (main, near, trojans, hildas, centaurs, kuiper,
-  other), `comets`, `tails`, `list` (id, name, kind, host), `focus` (the world in view's facts: kind,
-  host, radius, axes, albedo, rotation, sizeFromH, sunAu, eclipsed, its map's credit), `eclipses`
-  (receiver, occluder, depth) and `epochJdTdb`. Illustrative items: `small-body-light`,
-  `comet-tails`, `world-shape`, `eclipse-red`, `ring-light`, `sky-glow`.
-- **Cost** (2026-10-27, this Mac's GPU, Chromium on WebGPU, 1440 x 900 at a pixel ratio of 2,
-  `?profile=1`; `tests/explore/small-worlds-perf.spec.ts`): 59.88 fps with the 99th percentile frame
-  at 16.8 ms (the display's own rate) at High (250,000 asteroids) and at Low (20,000), the layer on
-  and off, in the Earth's default view, the belt from above (7.4 au), Jupiter's system, Saturn's ring
-  plane, the Sun at 4 million km and the outer system from 50 au: in 5 of 7 runs at High once every
-  part was compiled ahead (before, slow frames of 33 to 100 ms in 4 views over 3 runs, where a part
-  was first drawn), and in all 3 at Low; of the other two, one had a single 67 ms frame at the Sun,
-  and the other ran while another browser on this Mac was drawing (7.5 fps at Saturn); the commit
-  before held 16.8 ms in 5 runs out of 5 that hour. Uncapped (vsync and the frame-rate limit off),
-  the median frame in ms over two runs each, with the layer on / off, against the commit
-  before (48988b7), on a machine busy with other work (load 8 to 16, so a run differs from the next
-  by up to a millisecond): High: Earth 2.2–2.9 / 2.2–2.4 against 1.8–2.9, the belt 2.0–2.1 / 2.0–2.1
-  against 1.1–1.6, Jupiter 1.6–2.1 / 1.7–2.2 against 0.9–1.7, Saturn's ring plane 1.3–1.7 / 1.2–1.5
-  against 1.0–1.1, the Sun 1.3–1.8 / 1.2 against 1.0–1.4, the outer system 1.9–2.2 / 1.9–2.0 against
-  1.5–2.1; Low: 0.6–0.9 / 0.5–0.8 against 0.3–0.4, 1.0–1.7 / 0.9–1.2 against 0.9–1.2, 0.9–1.1 /
-  0.8–1.0 against 0.8–0.9, 0.5–1.2 / 0.4–0.8 against 0.4–0.5, 0.6–1.3 / 0.4–1.0 against 0.3–0.6,
-  1.1–1.5 / 0.9–1.2 against 0.9–1.2. So up to about a millisecond a frame where it costs most (the
-  sky's glow fills every pixel; the moons, rings and eclipse shells stay with the layer off), far
-  inside a 16.7 ms frame. What keeps it so: a point's light and colour are worked out once in the
-  vertex stage (a varying), not for each of its pixels; a point too faint to see has no size, so no
-  pixels; the comets are placed again only when the clock has moved; the files are decoded, and the
-  glows' tables worked out, a slice a frame; every part's pipeline is built before it is first drawn.
-- **Test ids.** `universe-worlds` (the navigator's section), `worlds-intro`, `worlds-layer`,
-  `worlds-grouped`, `worlds-groups`, `worlds-group-<group>`, `worlds-search`, `worlds-results`,
+  does nothing, and an empty one only asks for the worlds (the navigator's section, opened). `{ kind:
+  'smallBodies', on }` shows or hides the small bodies' layer (the asteroids, the comets, and the dwarf
+  planets', asteroids' and comets' points and names; the moons always show); `{ kind:
+  'smallBodiesGrouped', on }` colours the asteroids by group (illustrative); `{ kind:
+  'smallBodiesOrbits', on }` draws each asteroid in the ecliptic at its orbit's semi-major axis, at its
+  own longitude (a diagram: the Kirkwood gaps show as empty rings).
+- **View.** `UniverseView.worlds` (null until loaded): `layer`, `grouped`, `arranged`, `shown` (0 to 1:
+  how much of the worlds is drawn), `asteroids` (drawn; 0 with the layer off), `asteroidsLoaded`,
+  `groups` (main, near, trojans, hildas, centaurs, kuiper, other), `comets`, `tails`, `list` (id,
+  name, kind, host), `focus` (the world in view's facts: kind, its own host, radius, axes, `shaped`
+  (false: a sphere of its mean radius stands in), albedo, rotation, sizeFromH, sunAu, eclipsed,
+  `unimaged`, its map's credit, `screen`), `eclipses` (receiver, occluder, depth) and `epochJdTdb`.
+  Illustrative items: `small-body-light`, `small-body-orbits`, `comet-tails`, `world-shape`,
+  `unimaged`, `eclipse-red`, `ring-light`, `sky-glow`. Test hook: `window.__kf.worlds.probe(count)`
+  (the GPU's places of the first asteroids, read back, and their date).
+- **Cost** (2026-10-27, after the review's fixes; this Mac's GPU, Chromium on WebGPU, 1440 x 900 at a
+  pixel ratio of 2, `?profile=1`; `tests/explore/small-worlds-perf.spec.ts`, PERF=1): 59.88 fps with
+  the 99th percentile frame at 16.8 ms (the display's own rate) at High (250,000 asteroids) and at Low
+  (20,000), the layer on and off, in the Earth's default view, the belt from above (7.4 au), Jupiter's
+  system, Saturn's ring plane, the Sun at 4 million km and the outer system from 50 au; and at High
+  with the clock at 30 days a second in the belt's view and Jupiter's system. On the phone project
+  (Pixel 7 emulated on this Mac's GPU, its own pixel ratio) at Low: 59.88 fps, 16.8 ms in the Earth's,
+  the belt's, Jupiter's and the Sun's views. Uncapped (vsync and the frame-rate limit off), the median
+  frame in ms over two runs each, with the layer on / off, against the commit before the worlds
+  (48988b7), interleaved, on a machine busy with another worktree's runs (load 5 to 8): Low: Earth
+  0.4 / 0.3–0.4 against 0.3, the belt 0.9–1.1 / 0.7–0.8 against 0.6, Jupiter 0.6–0.7 / 0.6–0.7 against
+  0.5, Saturn's ring plane 0.4–0.5 / 0.3 against 0.2, the Sun 0.4 / 0.3 against 0.2, the outer system
+  0.9–1.1 / 0.7–0.9 against 0.6; High: 2.1 / 1.9–2.2 against 1.9–2.0, 1.6–1.8 / 1.1–1.3 against
+  1.0–1.1, 0.9–1.2 / 0.9–1.2 against 0.8–0.9, 0.8–1.0 / 0.7–0.8 against 0.6–0.7, 1.1 / 1.0 against
+  0.9–1.0, 1.8–1.9 / 1.1–1.5 against 0.9. Before the fixes Low cost about twice the commit before's
+  (Earth 0.8–1.0, the Sun 0.7–0.9): the sky's glow ran trigonometry for every pixel at every level.
+  Now it reads two small tables by the sphere's own texture coordinates and is not drawn at Low, the
+  maps are 1024 wide at Low and fetched only for a disc 24 px across, and a map unseen for a minute is
+  let go. What else keeps it so: a point's light and colour are worked out once in the vertex stage (a
+  varying), not for each of its pixels; a point too faint to see has no size, so no pixels; the comets
+  are placed again only when the clock has moved; the files are decoded, and the glows' tables worked
+  out, a slice a frame; every part's pipeline is built before it is first drawn.
+- **Test ids.** `universe-worlds` (the navigator's section), `worlds-intro` (the counts: not a live
+  region), `worlds-status` (the one announcement that the worlds have come), `worlds-layer`,
+  `worlds-grouped`, `worlds-orbits`, `worlds-groups`, `worlds-group-<group>`, `worlds-search`, `worlds-results`,
   `worlds-go-<name>`, `worlds-none`; the About section's `about-size`, `about-albedo`, `about-day`,
   `about-now` for a world.
 

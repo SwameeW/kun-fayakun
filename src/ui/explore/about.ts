@@ -16,9 +16,11 @@ import { helpButton } from './help';
  * distance only on the navigator's slow ticks. Its own chunk (./sections), loaded the first time the
  * section opens: the section and its summary (the world's name) are the navigator's.
  *
- * A small world flown to (src/explore/worlds) gets its own short list from the view: what it is, its
- * size (an ellipsoid's three axes where measured), albedo, day and distance from the Sun, beside the
- * Moon to scale; its strings come with the small worlds' (src/i18n/en.worlds.json).
+ * A small world flown to (src/explore/worlds) gets its own short list from the view: what it is (and
+ * what it goes round: Charon, Pluto), its size (an ellipsoid's three axes where measured; where its
+ * shape is not, a sphere of its mean radius stands in, and it says so), albedo, day and distance from
+ * the Sun, beside the Moon to scale; its map's credit and the share of it never imaged. Its strings come
+ * with the small worlds' (src/i18n/en.worlds.json).
  */
 
 export interface About {
@@ -167,9 +169,11 @@ export function createAbout(app: App, f: Formatters): About {
     const [a = 0, b = 0, c = 0] = [...w.axesKm].sort((x, y) => y - x);
     const size = w.sizeFromH
       ? i18n.t('ui.universe.worlds.about.fromH', { radius: km(w.radiusKm) })
-      : a - c < 0.01 * a
-        ? i18n.t('ui.universe.worlds.about.radius', { radius: km(w.radiusKm) })
-        : i18n.t('ui.universe.worlds.about.axes', { a: km(2 * a), b: km(2 * b), c: km(2 * c) });
+      : !w.shaped
+        ? i18n.t('ui.universe.worlds.about.sphere', { radius: km(w.radiusKm) })
+        : a - c < 0.01 * a
+          ? i18n.t('ui.universe.worlds.about.radius', { radius: km(w.radiusKm) })
+          : i18n.t('ui.universe.worlds.about.axes', { a: km(2 * a), b: km(2 * b), c: km(2 * c) });
     const day = w.kind === 'moon' && w.rotationHours === null ? i18n.t('ui.universe.worlds.about.facesHost', { body: f.name(w.host) }) : w.rotationHours === null ? '—' : period(w.rotationHours / 24);
     const items = [
       ...row(i18n.t('ui.universe.worlds.about.size'), size, 'size'),
@@ -181,7 +185,9 @@ export function createAbout(app: App, f: Formatters): About {
     items.push(...now);
     facts.replaceChildren(...items);
     compare({ id: w.id, meanRadiusKm: w.radiusKm }, { id: 'moon', meanRadiusKm: files ? worldFacts('moon', files.physical, files.planets).meanRadiusKm : 1737.4 });
-    sources.textContent = `${w.map ? i18n.t('ui.universe.worlds.about.map', { credit: w.map }) : i18n.t('ui.universe.worlds.about.surface')} ${i18n.t('ui.universe.worlds.about.sources')}`;
+    const surface = w.map ? i18n.t('ui.universe.worlds.about.map', { credit: w.map }) : i18n.t('ui.universe.worlds.about.surface');
+    const gaps = w.map && w.unimaged >= 0.02 ? ` ${i18n.t('ui.universe.worlds.about.unimaged', { percent: Math.round(w.unimaged * 100) })}` : '';
+    sources.textContent = `${surface}${gaps} ${i18n.t('ui.universe.worlds.about.sources')}`;
   };
 
   const writeNow = (view: UniverseView): void => {

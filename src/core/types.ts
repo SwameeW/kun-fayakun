@@ -428,6 +428,8 @@ export interface SceneLabel {
   offset?: readonly [number, number];
   /** Where tags crowd, which keeps its place: the higher (a body's radius, the chosen body's highest); others 0. */
   rank?: number;
+  /** Whether the tag may take a box (CSS px: left, top, width, height); false where it would cover what it must not (the explorer's worlds' names keep off every disc). */
+  fits?: (x: number, y: number, width: number, height: number) => boolean;
 }
 
 /** How big the view really is: world units in metres, at a depth of interest. */
@@ -608,8 +610,14 @@ export interface UniverseView {
 export interface UniverseWorlds {
   /** The small bodies' layer: the asteroids, the comets, and the dwarf planets', asteroids' and comets' points and names (the moons always show). */
   layer: boolean;
-  /** The asteroids coloured by group (illustrative). */
+  /** The asteroids coloured by group (illustrative), and drawn at their orbits' sizes (a diagram: the Kirkwood gaps). */
   grouped: boolean;
+  arranged: boolean;
+  /**
+   * How much of the worlds is drawn (0 to 1): none in an experiment, on foot, on the way down, nor while
+   * the film's compressed system stretches out to true scale; fading in as they come.
+   */
+  shown: number;
   /** Asteroids drawn now (the detail level's count, as far as loaded; 0 with the layer off), and loaded. */
   asteroids: number;
   asteroidsLoaded: number;
@@ -621,14 +629,19 @@ export interface UniverseWorlds {
   /** Every world that can be flown to. */
   list: ReadonlyArray<{ id: WorldId; name: string; kind: WorldKind; host: FocusId }>;
   /**
-   * The world in view when one is the focus: its facts (sizes km; its distance from the Sun, au; how
-   * much of the Sun its planet hides from it, 0 to 1), and its surface map's credit (null: drawn plain).
+   * The world in view when one is the focus: its facts (what it goes round, its own host: Charon's is
+   * Pluto; sizes km, and whether its shape is measured or a sphere of its mean radius stands in; its
+   * distance from the Sun, au; how much of the Sun its planet hides from it, 0 to 1), and its surface
+   * map's credit (null: drawn plain) and the share of that surface never imaged (drawn as a grey grid);
+   * where it is on screen (CSS px), as `bodies` give theirs.
    */
-  focus: { id: WorldId; name: string; kind: WorldKind; host: BodyId; radiusKm: number; axesKm: number[]; albedo: number | null; rotationHours: number | null; sizeFromH: boolean; sunAu: number; eclipsed: number; map: string | null } | null;
+  focus: { id: WorldId; name: string; kind: WorldKind; host: FocusId; radiusKm: number; axesKm: number[]; shaped: boolean; albedo: number | null; rotationHours: number | null; sizeFromH: boolean; sunAu: number; eclipsed: number; unimaged: number; map: string | null; screen: { x: number; y: number; radiusPx: number; inView: boolean } } | null;
   /** Shadows of one body on another under way: the receiver, the body casting it, and how much of the Sun it hides at its deepest on the receiver (1 total). */
   eclipses: ReadonlyArray<{ on: FocusId; by: FocusId; depth: number }>;
   /** The asteroid files' common epoch (TDB Julian date). */
   epochJdTdb: number;
+  /** What the worlds hold on the GPU: surface maps, and the asteroids' slots (the largest detail level's asked for so far). */
+  gpu: { maps: number; asteroidSlots: number };
 }
 
 /** The Living Earth's live layers as the view's state reports them. */
@@ -762,11 +775,12 @@ export interface UniverseGraphics {
  * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
  * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still; the small
  * bodies' light, enhanced in wide views so they show where they are (their places are the data's);
- * the comets' tails (their directions physical, their lengths and light not); the small worlds'
- * plain surfaces (shapes and sizes measured, no maps); the eclipsed Moon's copper light, and Uranus's
- * and Neptune's rings, shown brighter; the Milky Way's and the zodiacal light's glow, models.
+ * the asteroids drawn at their orbits' sizes (a diagram); the comets' tails (their directions
+ * physical, their lengths and light not); the small worlds' plain surfaces (no maps); the parts of a
+ * world's map no spacecraft imaged (a grey grid); the eclipsed Moon's copper light, and Uranus's and
+ * Neptune's rings, shown brighter; the Milky Way's and the zodiacal light's glow, models.
  */
-export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles' | 'small-body-light' | 'comet-tails' | 'world-shape' | 'eclipse-red' | 'ring-light' | 'sky-glow';
+export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles' | 'small-body-light' | 'small-body-orbits' | 'comet-tails' | 'world-shape' | 'unimaged' | 'eclipse-red' | 'ring-light' | 'sky-glow';
 
 /**
  * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
@@ -1384,11 +1398,17 @@ export type EarthCommand =
   | { kind: 'walkLook'; scene: boolean }
   /** Asks again at once for the ground's heights that could not be loaded (a walk waiting on them). */
   | { kind: 'walkRetry' }
-  /** Flies to a world by its name or designation, any case ("Ceres", "Io", "Halley", "67P", "433"): the tools' way in; a name that matches nothing does nothing. */
+  /**
+   * Flies to a world by its name or designation, any case ("Ceres", "Io", "Halley", "67P", "433"): the
+   * tools' way in; a name that matches nothing does nothing, and an empty one only asks for the worlds
+   * to come (the navigator's Small worlds section, opened).
+   */
   | { kind: 'world'; name: string }
-  /** The small bodies' layer on or off, and the asteroids coloured by group (illustrative) or as they are. */
+  /** The small bodies' layer on (the worlds asked for, if they have not come) or off (nothing loaded for it). */
   | { kind: 'smallBodies'; on: boolean }
-  | { kind: 'smallBodiesGrouped'; on: boolean };
+  /** The asteroids coloured by group (illustrative) or as they are; drawn at their orbits' sizes (a diagram of the Kirkwood gaps) or where they are. */
+  | { kind: 'smallBodiesGrouped'; on: boolean }
+  | { kind: 'smallBodiesOrbits'; on: boolean };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';
