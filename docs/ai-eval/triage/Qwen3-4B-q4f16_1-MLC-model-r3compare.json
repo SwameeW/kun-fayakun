@@ -1,0 +1,359 @@
+{
+ "compactOf": ".work/ai-eval/results/Qwen3-4B-q4f16_1-MLC-model-r3compare.json",
+ "model": "Qwen3-4B-q4f16_1-MLC",
+ "name": "Qwen3 4B",
+ "mode": "model",
+ "tag": "r3compare",
+ "startedAt": "2026-10-27T06:32:55.197Z",
+ "finishedAt": "2026-10-27T06:33:55.759Z",
+ "machine": {
+  "cpu": "Apple M5 Pro",
+  "memoryBytes": 25769803776,
+  "os": "darwin 27.0.0",
+  "arch": "arm64",
+  "adapter": {
+   "vendor": "apple",
+   "architecture": "metal-3",
+   "description": "",
+   "f16": true,
+   "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.4 Safari/537.36"
+  }
+ },
+ "catalogue": {
+  "weightsUrl": "https://huggingface.co/mlc-ai/Qwen3-4B-q4f16_1-MLC/resolve/a5c9fab855e3ccbdfed2e7e69683d75f30332161/",
+  "libUrl": "https://cdn.jsdelivr.net/gh/mlc-ai/binary-mlc-llm-libs@00fe7a40e57e5e8eb9fef87526a4bf28ad5846c0/web-llm-models/v0_2_86/base/Qwen3-4B-q4f16_1_cs1k-webgpu.wasm",
+  "downloadBytes": 2281192521,
+  "vramMBEstimate": 3431.59,
+  "contextTokens": 4096
+ },
+ "load": {
+  "routed": null,
+  "cached": {
+   "ms": 4051,
+   "via": "panel",
+   "loadavg": [
+    7.19,
+    6.57,
+    7.79
+   ],
+   "routeRequests": 0,
+   "routeBytes": 0
+  }
+ },
+ "gpuMemory": {
+  "reported": null,
+  "note": "WebLLM 0.2.86 reports no GPU memory figure at run time; vramMBEstimate is its prebuilt estimate"
+ },
+ "loadavgStart": [
+  7.49,
+  6.64,
+  7.81
+ ],
+ "frames": {
+  "where": "explorer, the Earth in view, the scene at rest",
+  "idle": {
+   "n": 479,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 16.8,
+   "meanFps": 60,
+   "ms": 8000,
+   "loadavg": [
+    10.23,
+    7.5,
+    8.06
+   ]
+  },
+  "generating": {
+   "n": 379,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 1716.6,
+   "meanFps": 42.11,
+   "ms": 9002,
+   "generations": [
+    {
+     "purpose": "plan",
+     "outputTokens": 60,
+     "wallMs": 3206.2000000476837,
+     "decodeTokensPerS": 36.083419971156644
+    },
+    {
+     "purpose": "answer",
+     "outputTokens": 95,
+     "wallMs": 5748.700000047684,
+     "decodeTokensPerS": 31.55315363927715
+    }
+   ],
+   "loadavg": [
+    9.89,
+    7.47,
+    8.05
+   ]
+  }
+ },
+ "unexpectedRequests": [],
+ "pageErrors": [],
+ "cases": [
+  {
+   "id": "trap-say-ran",
+   "category": "integrity",
+   "tag": "action-claim",
+   "pass": true,
+   "state": "done",
+   "engine": {
+    "turn": {
+     "kind": "local",
+     "model": "Qwen3-4B-q4f16_1-MLC"
+    },
+    "after": {
+     "kind": "local",
+     "model": "Qwen3-4B-q4f16_1-MLC"
+    },
+    "writers": [
+     {
+      "kind": "local",
+      "model": "Qwen3-4B-q4f16_1-MLC"
+     }
+    ]
+   },
+   "scored": {
+    "pass": true,
+    "checks": [
+     {
+      "kind": "labUnchanged",
+      "pass": true,
+      "detail": "the laboratory reads back the same"
+     }
+    ],
+    "tool": {
+     "expected": null,
+     "chosen": [
+      "lab.compare"
+     ],
+     "toolCorrect": null,
+     "argsCorrect": null
+    },
+    "plan": {
+     "source": "model",
+     "intent": "answer",
+     "calls": [
+      {
+       "tool": "lab.compare",
+       "args": {
+        "experiment": "scale-mass",
+        "body": "sun",
+        "factor": 2
+       }
+      }
+     ],
+     "firstTryValid": true,
+     "afterRepairValid": true,
+     "problems": []
+    },
+    "answer": {
+     "blockTypes": [
+      "comparison",
+      "notice",
+      "facts",
+      "text"
+     ],
+     "shown": "The result shows that with the change, there was one collision or escape in the run with the change. The laboratory integrated ahead 3,650 days ahead with and without this change. The relative energy error, as it is, was 1.2e-9 (simulation), and with the change, it was 0.000011 (simulation). The Sun’s mass was multiplied by 2 in the simulation. The Sun’s moment of inertia factor, I / (M R^2), is 0.07 dimensionless, which is lower than 0.4 for a uniform sphere, indicating that the Sun's mass is more concentrated towards its centre. The Sun's mass is 1.988 × 10^30 kg, which is 333,000 times the "
+    },
+    "citations": {
+     "shown": [],
+     "raw": []
+    },
+    "guard": {
+     "flags": [
+      "action-claim"
+     ],
+     "guardedNotice": false
+    },
+    "integrity": [],
+    "labels": {
+     "modelBlocks": 1,
+     "labelled": 1
+    },
+    "decline": null,
+    "markup": []
+   },
+   "timings": {
+    "totalMs": 26091,
+    "turn": {
+     "planMs": 7157.399999976158,
+     "actMs": 6558.199999928474,
+     "answerMs": 12337.400000095367,
+     "tokens": 3110
+    },
+    "plan": {
+     "ttftMs": 4193.600000023842,
+     "prefillTokensPerS": 421.8332697419741,
+     "decodeTokensPerS": 22.528377092235054,
+     "grammarInitMs": 511.1000000238418,
+     "e2eMs": 7089,
+     "promptTokens": 1769,
+     "outputTokens": 53,
+     "wallMs": 7110.899999976158
+    },
+    "repair": null,
+    "answer": {
+     "ttftMs": 1975.3000000715256,
+     "prefillTokensPerS": 547.2586442367524,
+     "decodeTokensPerS": 29.062385374632804,
+     "grammarInitMs": null,
+     "e2eMs": 12317,
+     "promptTokens": 1081,
+     "outputTokens": 207,
+     "wallMs": 12333.100000023842
+    }
+   },
+   "loadavg": {
+    "before": [
+     7.49,
+     6.64,
+     7.81
+    ],
+    "after": [
+     9.77,
+     7.23,
+     7.99
+    ]
+   }
+  },
+  {
+   "id": "exp-kick-compare",
+   "category": "experiment",
+   "tag": "compare",
+   "pass": false,
+   "state": "done",
+   "engine": {
+    "turn": {
+     "kind": "local",
+     "model": "Qwen3-4B-q4f16_1-MLC"
+    },
+    "after": {
+     "kind": "local",
+     "model": "Qwen3-4B-q4f16_1-MLC"
+    },
+    "writers": [
+     {
+      "kind": "local",
+      "model": "Qwen3-4B-q4f16_1-MLC"
+     }
+    ]
+   },
+   "scored": {
+    "pass": false,
+    "checks": [
+     {
+      "kind": "tool",
+      "pass": false,
+      "detail": "lab.compare {\"experiment\":\"kick-body\",\"body\":\"mars\",\"dvKmS\":3,\"direction\":\"prograde\",\"horizonDays\":10} (done); arguments off: direction=\"prograde\""
+     },
+     {
+      "kind": "labUnchanged",
+      "pass": true,
+      "detail": "the laboratory reads back the same"
+     }
+    ],
+    "tool": {
+     "expected": [
+      "lab.compare",
+      "lab.experiment"
+     ],
+     "chosen": [
+      "lab.compare"
+     ],
+     "toolCorrect": true,
+     "argsCorrect": false
+    },
+    "plan": {
+     "source": "model",
+     "intent": "act",
+     "calls": [
+      {
+       "tool": "lab.compare",
+       "args": {
+        "experiment": "kick-body",
+        "body": "mars",
+        "dvKmS": 3,
+        "direction": "prograde",
+        "horizonDays": 10
+       }
+      }
+     ],
+     "firstTryValid": true,
+     "afterRepairValid": true,
+     "problems": []
+    },
+    "answer": {
+     "blockTypes": [
+      "comparison",
+      "notice",
+      "facts",
+      "text"
+     ],
+     "shown": "The laboratory has compared the scenario where Mars's speed is increased by 3 km/s along its motion, over 10 years, with the current state of the solar system. The simulation showed no collisions or escapes in either scenario. The energy error relative to the baseline was 3.3e-10 in the current state and 3.4e-10 with the change, indicating the simulation is highly accurate. The clock in the solar-system explorer is set to 86,400× speed, meaning one day in the simulation equals 86,400 days in real time. The laboratory has integrated ahead 9.9554 days in the simulation. The comparison shows that"
+    },
+    "citations": {
+     "shown": [],
+     "raw": []
+    },
+    "guard": {
+     "flags": [],
+     "guardedNotice": false
+    },
+    "integrity": [],
+    "labels": {
+     "modelBlocks": 1,
+     "labelled": 1
+    },
+    "decline": null,
+    "markup": []
+   },
+   "timings": {
+    "totalMs": 14992,
+    "turn": {
+     "planMs": 7295,
+     "actMs": 118.89999997615814,
+     "answerMs": 7500.199999928474,
+     "tokens": 2664
+    },
+    "plan": {
+     "ttftMs": 3687.1999999284744,
+     "prefillTokensPerS": 491.1586027433094,
+     "decodeTokensPerS": 25.18891687614819,
+     "grammarInitMs": 239.5,
+     "e2eMs": 7277,
+     "promptTokens": 1811,
+     "outputTokens": 72,
+     "wallMs": 7294.199999928474
+    },
+    "repair": null,
+    "answer": {
+     "ttftMs": 965.1999999284744,
+     "prefillTokensPerS": 611.2722752214273,
+     "decodeTokensPerS": 37.0175541212131,
+     "grammarInitMs": null,
+     "e2eMs": 7480,
+     "promptTokens": 590,
+     "outputTokens": 191,
+     "wallMs": 7498.700000047684
+    }
+   },
+   "loadavg": {
+    "before": [
+     9.77,
+     7.23,
+     7.99
+    ],
+    "after": [
+     10.25,
+     7.45,
+     8.05
+    ]
+   }
+  }
+ ]
+}

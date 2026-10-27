@@ -16,7 +16,7 @@ import { catalogueFrom, createRegistry, createRegistryFor } from '../../src/ai/t
 import { buildPlanMessages, planSchema } from '../../src/ai/prompts';
 import { createToolRegistry } from '../../src/ai/tools/registry';
 import { validateSchema } from '../../src/ai/tools/schema';
-import type { AiContext, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolOutcome } from '../../src/ai/types';
+import type { AiContext, Fact, JsonSchema, Passage, ToolDefinition, ToolEnv, ToolOutcome } from '../../src/ai/types';
 import { createDataStore } from '../../src/core/data';
 import type { App, AssetLoader, HadithFile, I18n, LabCommand, QuranFile, SkyLayerName, UniverseLab, UniverseLabBody, UniverseSkyCommand, UniverseTimeCommand, UniverseView } from '../../src/core/types';
 
@@ -326,6 +326,21 @@ test('a place is offered by its name or by degrees, flat; the tool’s own check
   const line = buildPlanMessages('qibla', BASE, [qibla], [])[0]?.content ?? '';
   expect(line).toContain('args {placeName?: string, lat?: number (Latitude, degrees north), lon?: number (Longitude, degrees east)}');
   expect(line).not.toContain('richat');
+});
+
+test('search never says back, or searches for, a verse key the data does not hold (“Quran 2:999”)', async () => {
+  const unheld = await run('search.knowledge', { query: 'Quran 2:999' });
+  expect(unheld.status).toBe('done');
+  expect(JSON.stringify(unheld)).not.toContain('2:999');
+  const only = await run('search.knowledge', { query: '2:999' });
+  expect(only.status).toBe('refused');
+  expect(JSON.stringify(only)).not.toContain('2:999');
+  // A key the data holds is searched for as asked.
+  const held = { search: () => [], get: (id: string) => (id === 'verse:21:30' ? ({ id, kind: 'verse', ref: '21:30', title: '21:30', text: '', knowledge: 'scripture' } as unknown as Passage) : null) };
+  const kept = await tool('search.knowledge').run({ query: 'verse 21:30' }, { ...envFor(fakeApp().app), retriever: held });
+  expect(JSON.stringify(kept)).toContain('21:30');
+  const search = registry.get('search.knowledge');
+  expect(search?.preview({ query: 'Quran 2:999' }, BASE, fakeApp().app.i18n)).not.toContain('2:999');
 });
 
 /* ----- Calculators against textbook values ----- */

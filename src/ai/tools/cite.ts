@@ -202,10 +202,17 @@ export const searchKnowledge: ToolDefinition = {
     additionalProperties: false,
   },
   available: () => true,
-  preview: (args, _ctx, i18n) => say(i18n, 'ai.tool.search.preview', { query: str(args, 'query') ?? '' }),
+  // A query with a verse key is not said back before the key is checked (run leaves out one the data does not hold).
+  preview: (args, _ctx, i18n) => {
+    const query = str(args, 'query') ?? '';
+    return /\d{1,3}:\d{1,3}/u.test(query) ? say(i18n, 'ai.tool.search.previewVerse') : say(i18n, 'ai.tool.search.preview', { query });
+  },
   run(args, env) {
     ensureMessages(env.i18n);
-    const query = str(args, 'query') ?? '';
+    // A verse key the data does not hold is not searched for, nor said back: "Quran 2:999" found four
+    // other verses "for “Quran 2:999”" (docs/AI-EVALUATION.md).
+    const query = (str(args, 'query') ?? '').replace(/(?<![\w.:/-])(\d{1,3}):(\d{1,3})(?![\w:/-])/gu, (key, s: string, a: string) => (env.retriever.get(`verse:${Number(s)}:${Number(a)}`) ? key : ' ')).replace(/\s+/gu, ' ').trim();
+    if (!/[\p{L}\p{N}]/u.test(query)) return Promise.resolve(refused(problem('query', 'ai.tool.search.unheld')));
     const list: readonly unknown[] = Array.isArray(args.kinds) ? args.kinds : [];
     const kinds = Array.isArray(args.kinds) ? list.filter((k): k is PassageKind => typeof k === 'string' && (KINDS as readonly string[]).includes(k)) : undefined;
     const ctx = env.context();

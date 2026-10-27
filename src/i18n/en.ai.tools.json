@@ -275,8 +275,10 @@
   "ai.tool.cite.source.observed": "Source: {title}.",
   "ai.tool.cite.source.unknown": "There is no source {id} in the app’s data.",
   "ai.tool.search.preview": "Search the app’s verified content for “{query}”.",
+  "ai.tool.search.previewVerse": "Search the app’s verified content for a verse.",
   "ai.tool.search.observed": "{count, plural, one {One passage} other {# passages}} found for “{query}”.",
   "ai.tool.search.none": "Nothing in the app’s verified content matched “{query}”.",
+  "ai.tool.search.unheld": "That verse is not among those the app holds, so there is nothing to search for.",
 
   "ai.tool.lab.open.preview": "Open the orbital laboratory{seed, select, two { with two bodies} three { with three bodies} other { on a copy of the solar system}}.",
   "ai.tool.lab.open.observed": "The laboratory is open, with {bodies, number} bodies.",

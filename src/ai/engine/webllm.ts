@@ -41,24 +41,36 @@ export interface WebLlmEngine extends LanguageEngine {
 const UNGRAMMATICAL = /\\p\{|\{\d+,\d{2,}\}|^(?!\^)|(?<!\$)$/u;
 
 /**
- * The schema XGrammar is given: the plan's schema without string lengths, and without the patterns it
- * reads otherwise than JavaScript does. Measured on this Mac (tests/ai-eval/grammar.spec.ts,
+ * The schema XGrammar is given: the plan's schema without string lengths, number ranges, or the
+ * patterns it reads otherwise than JavaScript does. Measured on this Mac (tests/ai-eval/grammar.spec.ts,
  * docs/AI-EVALUATION.md):
  * - a maxLength becomes a bounded repetition in the grammar, and XGrammar's start-up for a nine-tool
  *   plan took 10.7 s with them (Qwen3 0.6B) and 66 ms without;
  * - a pattern of Unicode letters ("[\p{L}\p{N} …]") let Qwen3 4B write only "N" or "L" where a
- *   laboratory body's name was asked for, and an unanchored one ("\S") only one character.
- * Neither is lost: every reply is validated again in JS against the full schema (lengths and
- * patterns), and the reply's tokens are capped.
+ *   laboratory body's name was asked for, and an unanchored one ("\S") only one character;
+ * - a number's range sent the number to its maximum: asked for 0.3 in 0–0.95, Qwen3 1.7B wrote
+ *   0.95, and for 1e22 kg in 1e6–1e26 it wrote 1.0000000000000000476e26; without the range it wrote
+ *   0.3 and 1e22 (the grammar spec's number ranges).
+ * None of it is lost: every reply is validated again in JS against the full schema (lengths,
+ * patterns and ranges), and the reply's tokens are capped.
  */
+const LEFT_OUT: ReadonlySet<string> = new Set(['maxLength', 'minLength', 'minimum', 'maximum']);
+
 export function grammarSchema(schema: JsonSchema): JsonSchema {
-  return JSON.parse(
-    JSON.stringify(schema, (key, value: unknown) => {
-      if (key === 'maxLength' || key === 'minLength') return undefined;
-      if (key === 'pattern' && typeof value === 'string' && UNGRAMMATICAL.test(value)) return undefined;
-      return value;
-    }),
-  ) as JsonSchema;
+  // Only a schema's own keywords go (an object of properties may name an argument anything).
+  const strip = (node: unknown, isSchema: boolean): unknown => {
+    if (Array.isArray(node)) return node.map((x) => strip(x, isSchema));
+    if (typeof node !== 'object' || node === null) return node;
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (isSchema && LEFT_OUT.has(key)) continue;
+      if (isSchema && key === 'pattern' && typeof value === 'string' && UNGRAMMATICAL.test(value)) continue;
+      // Under "properties" are argument names, each with its schema; anything else of a schema is a schema or a value.
+      out[key] = isSchema && key === 'properties' && typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, strip(v, true)])) : strip(value, isSchema && (key === 'items' || key === 'anyOf'));
+    }
+    return out;
+  };
+  return strip(schema, true) as JsonSchema;
 }
 
 /** The request WebLLM is given for a GenerateRequest (pure; tested in tests/unit/ai-engine.spec.ts). */

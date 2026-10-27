@@ -255,6 +255,27 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
 const ofType = <T extends AnswerBlock['type']>(turn: Turn, type: T): Extract<AnswerBlock, { type: T }>[] => turn.blocks.filter((b): b is Extract<AnswerBlock, { type: T }> => b.type === type);
 const plan = (value: unknown): string => JSON.stringify(value);
 
+test.describe('a model that writes explanations only', () => {
+  test('is never asked to plan: the router chooses, retrieval finds, the model explains; the evaluation can still ask it', async () => {
+    const explainer: ModelSpec = { ...SPEC, id: 'Test-0B', plans: false };
+    const h = harness([{ format: 'json', match: '', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'saturn' } }] }) }, { format: 'text', match: '', reply: 'Saturn has rings of ice.' }], { offered: ['explorer.fly'] });
+    await h.ai.use(explainer);
+    const turn = await h.ai.ask('tell me something about the rings of Saturn');
+    expect(h.engine.requests.filter((r) => r.format.kind === 'json')).toHaveLength(0);
+    expect(turn.plan?.source).toBe('fallback');
+    expect(turn.blocks.find((b) => b.type === 'text')).toMatchObject({ by: 'model', text: 'Saturn has rings of ice.' });
+    // The router still acts for it.
+    const routed = await h.ai.ask('escape speed of mars');
+    expect(routed.plan).toMatchObject({ source: 'router', calls: [{ tool: 'calc.escape_speed' }] });
+    // Asked to measure its own planning (the evaluation's model mode), it plans.
+    let options: EvaluationOptions | null = { router: 'skip' };
+    const measured = harness([{ format: 'json', match: '', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'saturn' } }] }) }, { format: 'text', match: '', reply: 'Saturn is in view.' }], { offered: ['explorer.fly'], evaluation: { options: () => options, record: () => undefined } });
+    await measured.ai.use(explainer);
+    expect((await measured.ai.ask('tell me something about the rings of Saturn')).plan?.calls).toEqual([{ tool: 'explorer.fly', args: { body: 'saturn' } }]);
+    options = null;
+  });
+});
+
 test.describe('a model’s plan that says act and calls nothing', () => {
   test('is asked again once; a call in the repair is used, and a second empty act is taken as an answer', async () => {
     const empty = plan({ intent: 'act', calls: [] });

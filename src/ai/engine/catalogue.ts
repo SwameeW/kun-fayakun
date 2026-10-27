@@ -49,9 +49,12 @@ const LICENCE: Readonly<Record<string, string>> = {
   'Qwen3.5-9B': 'https://huggingface.co/Qwen/Qwen3.5-9B/blob/c202236235762e1c871ad0ccb60c8ee5ba337b9a/LICENSE',
 };
 
-/** What a model of each size cannot do well, said before it is downloaded (src/i18n/en.ai.engine.json). */
+/**
+ * What a model of each size cannot do well, said before it is downloaded (src/i18n/en.ai.engine.json),
+ * as the evaluation measured it on this Mac (docs/AI-EVALUATION.md).
+ */
 const LIMITS: Readonly<Record<ModelTier, readonly I18nKey[]>> = {
-  pocket: ['ai.engine.limit.pocket.tools', 'ai.engine.limit.pocket.explain', 'ai.engine.limit.pocket.plans', 'ai.engine.limit.facts', 'ai.engine.limit.context'],
+  pocket: ['ai.engine.limit.pocket.tools', 'ai.engine.limit.pocket.explain', 'ai.engine.limit.facts', 'ai.engine.limit.context'],
   compact: ['ai.engine.limit.compact.tools', 'ai.engine.limit.compact.explain', 'ai.engine.limit.facts', 'ai.engine.limit.context'],
   standard: ['ai.engine.limit.standard.plans', 'ai.engine.limit.facts', 'ai.engine.limit.context'],
   large: ['ai.engine.limit.large.speed', 'ai.engine.limit.facts', 'ai.engine.limit.context'],
@@ -76,6 +79,8 @@ interface Pin {
   /** WebLLM's override for this family (Qwen3.5 keeps one turn of history). */
   maxHistory?: number;
   sourceId: string;
+  /** false: explanations only, the router chooses every tool (ModelSpec.plans). */
+  plans?: false;
 }
 
 function spec(pin: Pin): ModelSpec {
@@ -96,12 +101,14 @@ function spec(pin: Pin): ModelSpec {
     licence: { name: 'Apache-2.0', url: LICENCE[pin.base] ?? '' },
     sourceId: pin.sourceId,
     limitKeys: LIMITS[pin.tier],
+    ...(pin.plans === false ? { plans: false } : {}),
   };
 }
 
 const PINS: readonly Pin[] = [
-  { base: 'Qwen3-0.6B', quant: 'q4f16_1', tier: 'pocket', name: 'Qwen3 0.6B', paramsB: 0.6, sha: '8c14ce481d4c692769976ad52afea453a102df19', weightBytes: 346_926_408, libBytes: 6_358_805, libIntegrity: 'sha384-l+z226DC4XeJrqhzjXTtmWuMke7hpfJbQc4fElaJevDKbOEPqRlh2j/c+J9nzcu5', vramMB: 1403.34, lowResource: true, sourceId: 'qwen3' },
-  { base: 'Qwen3-0.6B', quant: 'q4f32_1', tier: 'pocket', name: 'Qwen3 0.6B', paramsB: 0.6, sha: '9b4f0b05b08c692ea86fe151ea878406ad22f428', weightBytes: 346_926_409, libBytes: 6_239_496, libIntegrity: 'sha384-myAJdwhFfl9FnWXksrRVZ3HfxYMt83kv79qZT9mvyN2GcI7kO5IcLPmm/lP+zbbK', vramMB: 1924.98, lowResource: true, sourceId: 'qwen3' },
+  // Pocket writes explanations only: in the evaluation Qwen3 0.6B made no call in any of its plans (docs/AI-EVALUATION.md).
+  { base: 'Qwen3-0.6B', quant: 'q4f16_1', tier: 'pocket', name: 'Qwen3 0.6B', paramsB: 0.6, sha: '8c14ce481d4c692769976ad52afea453a102df19', weightBytes: 346_926_408, libBytes: 6_358_805, libIntegrity: 'sha384-l+z226DC4XeJrqhzjXTtmWuMke7hpfJbQc4fElaJevDKbOEPqRlh2j/c+J9nzcu5', vramMB: 1403.34, lowResource: true, sourceId: 'qwen3', plans: false },
+  { base: 'Qwen3-0.6B', quant: 'q4f32_1', tier: 'pocket', name: 'Qwen3 0.6B', paramsB: 0.6, sha: '9b4f0b05b08c692ea86fe151ea878406ad22f428', weightBytes: 346_926_409, libBytes: 6_239_496, libIntegrity: 'sha384-myAJdwhFfl9FnWXksrRVZ3HfxYMt83kv79qZT9mvyN2GcI7kO5IcLPmm/lP+zbbK', vramMB: 1924.98, lowResource: true, sourceId: 'qwen3', plans: false },
   { base: 'Qwen3-1.7B', quant: 'q4f16_1', tier: 'compact', name: 'Qwen3 1.7B', paramsB: 1.7, sha: '80b3abcec6c3b3f5355dc0cc99cc4fb578f192bc', weightBytes: 979_560_600, libBytes: 6_386_879, libIntegrity: 'sha384-Nl0m2ynzyk2i2j+XyK8Og/dAjX2xlKfgrkjOCwmhQEgmOit1qbAqcrhKy9WjE0J4', vramMB: 2036.66, lowResource: true, sourceId: 'qwen3' },
   { base: 'Qwen3-1.7B', quant: 'q4f32_1', tier: 'compact', name: 'Qwen3 1.7B', paramsB: 1.7, sha: 'bddd4d584cabe19113f7e4ff46fd9e73b4d3dc89', weightBytes: 979_560_601, libBytes: 6_266_325, libIntegrity: 'sha384-EcVJCw92YQJ8iX+8RQ6Z2BsjLPluluc0r3+l4FtMilOq5YvvVN9vtrqszhcbzdZq', vramMB: 2635.44, lowResource: true, sourceId: 'qwen3' },
   { base: 'Qwen3-4B', quant: 'q4f16_1', tier: 'standard', name: 'Qwen3 4B', paramsB: 4, sha: 'a5c9fab855e3ccbdfed2e7e69683d75f30332161', weightBytes: 2_274_525_373, libBytes: 6_667_148, libIntegrity: 'sha384-UI6LgZYcCgIdelusHFxuBMRNhkUKhxLXvMmW71jcrJVQio574h1T1jFYJb8Ka9N8', vramMB: 3431.59, lowResource: true, sourceId: 'qwen3' },

@@ -276,6 +276,11 @@ function problemText(i18n: I18n, call: ToolCall, problems: readonly { path: stri
   return problems.map((p) => `${call.tool}${p.path ? ` ${p.path}` : ''}: ${i18n.has(p.messageKey) ? i18n.t(p.messageKey, p.values) : p.messageKey}`);
 }
 
+/** Whether the model chosen plans turns (every engine does but a catalogue model marked explanations only). */
+function plansWith(choice: ModelSpec | 'browser' | LanguageEngine | null): boolean {
+  return !(choice !== null && typeof choice === 'object' && !('generate' in choice) && choice.plans === false);
+}
+
 /** The numbers a question states ("35.36", "-0.12", "138,73" is two). */
 function numbersIn(text: string): number[] {
   return [...text.matchAll(/[-−]?\d+(?:\.\d+)?/gu)].map((m) => Number(m[0].replace('−', '-'))).filter((n) => Number.isFinite(n));
@@ -979,7 +984,9 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     // The evaluation alone may skip the router, to measure a model's own planning (a model must be loaded).
     const skipRouter = engine !== null && deps.evaluation?.options()?.router === 'skip';
     let plan = skipRouter ? null : route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
-    if (!plan && engine) plan = await modelPlan(rec, input.text, retriever);
+    // A model that writes explanations only (ModelSpec.plans false: Qwen3 0.6B made no call in any of
+    // its plans, docs/AI-EVALUATION.md) is not asked to plan; the evaluation's model mode still asks it.
+    if (!plan && engine && (skipRouter || plansWith(chosen))) plan = await modelPlan(rec, input.text, retriever);
     checkpoint(rec);
     // No rule matched, and no model plan: retrieval answers.
     plan ??= { intent: 'answer', query: input.text, calls: [], source: 'fallback' };

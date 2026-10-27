@@ -436,8 +436,8 @@ function heldFrom(text: string, data: OutputGuardData): number {
   return at;
 }
 
-/** A marker of a kind the app does not cite by ("[[action:cite.source]]", written by Qwen3 4B): never shown. */
-const OTHER_MARKER = /\[\[(?!(?:verse|hadith|fact|passage):)[A-Za-z_-]{1,24}:[^\]\n]{0,120}\]\]/gu;
+/** A marker of a kind the app does not cite by ("[[action:cite.source]]", Qwen3 4B; Qwen3 1.7B copied whole lines of the actions block into one): never shown. */
+const OTHER_MARKER = /\[\[(?!(?:verse|hadith|fact|passage):)[A-Za-z_-]{1,24}:[^\]\n]{0,600}\]\]/gu;
 
 function citationMarkers(text: string, data: OutputGuardData): { text: string; dropped: boolean; citations: Citation[] } {
   let dropped = false;

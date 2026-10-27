@@ -109,3 +109,66 @@ test(`grammar start-up: ${MODEL_ID}`, async ({ baseURL }, testInfo) => {
     await server.close();
   }
 });
+
+/*
+ * What XGrammar lets a model write for a number with a range (JSON Schema minimum and maximum): the same
+ * request with and without the range, the number asked for stated in the prompt. Writes
+ * .work/ai-eval/results/grammar-numbers-<model>.json.
+ */
+const NUMBER_CASES: readonly { name: string; asked: string; prop: string; range: { minimum: number; maximum: number }; integer?: boolean }[] = [
+  { name: 'eccentricity 0.3 in 0–0.95', asked: 'e is 0.3', prop: 'e', range: { minimum: 0, maximum: 0.95 } },
+  { name: 'mass 1e22 kg in 1e6–1e26', asked: 'massKg is 1e22', prop: 'massKg', range: { minimum: 1e6, maximum: 1e26 } },
+  { name: 'rate 86400 in ±2592000 (integer)', asked: 'rate is 86400', prop: 'rate', range: { minimum: -2_592_000, maximum: 2_592_000 }, integer: true },
+  { name: 'days 1826 in 1–3650', asked: 'days is 1826', prop: 'days', range: { minimum: 1, maximum: 3650 } },
+  { name: 'factor 1.1 in 0.01–100', asked: 'factor is 1.1', prop: 'factor', range: { minimum: 0.01, maximum: 100 } },
+];
+
+test(`grammar number ranges: ${MODEL_ID}`, async ({ baseURL }, testInfo) => {
+  test.skip(testInfo.project.name !== 'ai-eval' || env('KF_AI_EVAL_GRAMMAR') !== 'numbers', 'runs only with KF_AI_EVAL=1 KF_AI_EVAL_GRAMMAR=numbers');
+  const spec = findModel(MODEL_ID);
+  const manifest = readManifest(MODEL_ID);
+  expect(spec && manifest).toBeTruthy();
+  if (!spec || !manifest) return;
+  const port = new URL(baseURL ?? 'http://127.0.0.1:4173/').port;
+  const profile = `${modelsDir().replace(/\/models$/u, '')}/ai-eval/profile-${port}-numbers`;
+  mkdirSync(OUT_DIR, { recursive: true });
+  const server = await serveModel(manifest);
+  const context = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true, viewport: { width: 1280, height: 800 }, args: server.args(testInfo.project.use.launchOptions?.args ?? []), ...(baseURL ? { baseURL } : {}) });
+  await context.route((url) => isModelHost(url.hostname), (route) => route.continue());
+  try {
+    const page = context.pages()[0] ?? (await context.newPage());
+    await mockLiveHosts(page);
+    await page.route((url) => isModelHost(url.hostname), (route) => route.continue());
+    await page.goto('/#/');
+    await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 120_000 });
+    await page.evaluate(async (s: ModelSpec) => {
+      const w = window as unknown as { __kf: { ai: { start(): Promise<{ host: { load(m: ModelSpec, p: () => void, signal: AbortSignal): Promise<unknown> } }> } }; __probe?: unknown };
+      const ai = await w.__kf.ai.start();
+      w.__probe = await ai.host.load(s, () => undefined, new AbortController().signal);
+    }, spec);
+    const results: unknown[] = [];
+    for (const c of NUMBER_CASES) {
+      for (const ranged of [true, false]) {
+        const schema = { type: 'object', properties: { [c.prop]: { type: c.integer ? 'integer' : 'number', ...(ranged ? c.range : {}) } }, required: [c.prop], additionalProperties: false };
+        const msgs = [
+          { role: 'system', content: `Reply with one JSON object: {"${c.prop}": number}.` },
+          { role: 'user', content: `${c.asked}.` },
+        ];
+        const r = await page.evaluate(
+          async ({ s, m }) => {
+            const w = window as unknown as { __probe: { generate(r: unknown): Promise<{ text: string; engineUsage?: { grammarInitMs: number | null } }> } };
+            const out = await w.__probe.generate({ messages: m, format: { kind: 'json', schema: s }, maxTokens: 40, temperature: 0 });
+            return { text: out.text, grammarInitMs: out.engineUsage?.grammarInitMs ?? null };
+          },
+          { s: schema, m: msgs },
+        );
+        results.push({ name: c.name, ranged, reply: r.text, grammarInitMs: r.grammarInitMs, loadavg: loadavg().map((x) => Math.round(x * 100) / 100) });
+        process.stdout.write(`${c.name} ${ranged ? 'with' : 'without'} the range: ${r.text}\n`);
+      }
+    }
+    writeFileSync(`${OUT_DIR}/grammar-numbers-${MODEL_ID}.json`, `${JSON.stringify({ model: MODEL_ID, at: new Date().toISOString(), results }, null, 2)}\n`);
+  } finally {
+    await context.close().catch(() => undefined);
+    await server.close();
+  }
+});

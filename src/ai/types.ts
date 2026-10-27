@@ -63,6 +63,11 @@ export interface ModelSpec {
   sourceId: string;
   /** Plain limits shown before download ("can lose track of long tasks"). */
   limitKeys: readonly I18nKey[];
+  /**
+   * false: the model writes explanations only, and the guide's router does all tool choice (set from
+   * the evaluation's measurements, docs/AI-EVALUATION.md). Left out: it plans when the router does not.
+   */
+  plans?: boolean;
 }
 
 /** What this device can do, found without downloading anything (src/ai/engine/detect.ts). */

@@ -235,6 +235,11 @@ test('the visitor tiers are Qwen3 0.6B to 8B, ordered by GPU memory, each q4f16 
   expect(EVAL_CANDIDATES.some((m) => VISITOR_MODELS.includes(m))).toBe(false);
 });
 
+test('pocket writes explanations only (the evaluation: Qwen3 0.6B made no call in any plan); every other tier plans', () => {
+  for (const m of VISITOR_MODELS) expect(m.plans === false, m.id).toBe(m.tier === 'pocket');
+  for (const m of VISITOR_MODELS.filter((x) => x.tier === 'pocket')) expect(m.limitKeys).toContain('ai.engine.limit.pocket.tools');
+});
+
 test('the catalogue matches WebLLM 0.2.86 prebuilt records (GPU memory, context, library) and its AppConfig is complete', async () => {
   const webllm = await import('@mlc-ai/web-llm');
   expect(webllm.modelVersion).toBe('v0_2_86/base');
@@ -308,6 +313,12 @@ test('XGrammar is given the plan without string lengths (each cost about 10 s to
   expect(JSON.stringify(sent)).not.toContain('{1,48}');
   // A pattern JSON Schema searches for ("\\S": not blank) would be a whole match in the grammar: one character.
   expect(JSON.stringify(sent)).not.toContain('"pattern":"\\\\S"');
+  // Number ranges: XGrammar sent a number to its maximum (0.3 in 0–0.95 became 0.95).
+  const lab = allTools().filter((t) => t.name === 'lab.optimise');
+  expect(JSON.stringify(grammarSchema(planSchema(lab)))).not.toMatch(/"(?:minimum|maximum)"/u);
+  // Only a schema's own keywords go: an argument may be named anything.
+  const named: JsonSchema = { type: 'object', properties: { maximum: { type: 'number', maximum: 5 }, pattern: { type: 'string' } }, required: ['maximum', 'pattern'], additionalProperties: false };
+  expect(grammarSchema(named)).toEqual({ type: 'object', properties: { maximum: { type: 'number' }, pattern: { type: 'string' } }, required: ['maximum', 'pattern'], additionalProperties: false });
   // An anchored pattern both read alike is kept (a date).
   expect(JSON.stringify(sent)).toContain('"pattern":"^\\\\d{4}-');
   // Everything else is kept: the enums, patterns, required fields and the shortlist's tool names.

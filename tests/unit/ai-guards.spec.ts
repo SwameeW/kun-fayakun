@@ -203,6 +203,9 @@ test.describe('output', () => {
     expect(out.text).toBe('The value comes from the Planck satellite. See [[fact:mars.escape]].');
     expect(out.flags).toContain('unknown-citation');
     expect(out.citations).toEqual([{ kind: 'fact', id: 'mars.escape' }]);
+    // As Qwen3 1.7B wrote it: a line of the actions block in a marker.
+    const long = `The times are shown. [[action:islamic.prayer_times: Work out the times of prayer at 24.5019, 39.5781 by the isna convention. (done): The times of prayer at 24.5019, 39.5781 on 2026-12-01, by the convention of the Islamic Society of North America, in UTC.]]`;
+    expect(guardOutput(long, data({ facts: [], given: [long] })).text).toBe('The times are shown.');
   });
 
   test('seven words in a row from a verse’s translation are its wording: the sentence goes, the verse is shown from data', () => {
