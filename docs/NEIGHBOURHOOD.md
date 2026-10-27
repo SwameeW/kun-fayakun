@@ -125,9 +125,10 @@ the file itself.
   placed). The brightest stars spread into a halo rather than clipping; the bloom does the rest.
   A sprite is as wide as its core stays above the tone curve's black (a faint star's a few pixels,
   a bright one's seven sigma), and a star too faint to show is not drawn at all. The solar system's
-  sky can hold its stars under a peak (`heldStarLight`, `src/explore/sky.ts` StarHold): its brightest
-  star is held at the peak and every other star is dimmed with it. On foot on an airless world by day,
-  the walk holds them so (docs/WALKING.md).
+  sky's stars can be held under a peak (`heldStarLight`): a star of a given magnitude is held at the
+  peak and every other star is dimmed with it. On foot the walk holds them so
+  (`src/explore/walk/daylight.ts` `footStarLight`, docs/WALKING.md): by night a star of magnitude 3.5
+  short of white, and on an airless world by day the brightest, Sirius, under the glare.
   Measured at 2000x1300, lit spots of 64 of 255 or more in the left 72% of the view, the same
   protocol for the build before this work (the `worlds` branch) and after, both ways of counting:
 

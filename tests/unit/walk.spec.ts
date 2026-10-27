@@ -10,7 +10,7 @@
  * Earth's air, its disc always far brighter than the sky round it, the sky's colours and its glow round
  * the Sun held under the bloom (and graded, not a plateau), the eye's adapted exposure and its meter for
  * dark ground, the regolith's lunar-Lambert law, the terrain's horizons (a ridge's and a cliff's, to half a
- * degree), the Sun's true size, and the stars' fade.
+ * degree), the Sun's true size, and the stars' fade, eased through an airless world's sunset and sunrise.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -18,7 +18,7 @@ import { pngOf } from '../support/terrain';
 import { createHeights, decodeTerrarium, despike, mercatorPixel, TERRAIN, zoomFor, type TileLoader } from '../../src/explore/walk/terrain';
 import { decodePng } from '../../src/explore/walk/png';
 import { createWalker, localFrame, look, pressureKpa, solarTimeHours, stepWalker, sunAzimuthDeg, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkWorld } from '../../src/explore/walk/walker';
-import { DAYLIGHT, starlight } from '../../src/explore/walk/daylight';
+import { AIRLESS_DAY, DAYLIGHT, footStarLight, pointsSeen, starlight } from '../../src/explore/walk/daylight';
 import { clearDayAir, dayAdaptation, EXPOSURE, groundIlluminance, horizonRise, luminance, lunarLambert, METER, skyCompression, SKY_KNEE, skyRadiance, SUN_DISC, sunDiscTint, sunThroughAir, walkExposure } from '../../src/explore/walk/light';
 import { earthAir } from '../../src/explore/render/air';
 import { equirectMaxZoom } from '../../src/explore/walk/equirect';
@@ -275,6 +275,55 @@ test('the eye’s adaptation to the day (what the airless sky’s hold on the st
   expect(dayAdaptation(EXPOSURE.dayE)).toBe(1);
   expect(dayAdaptation(Number.NaN)).toBe(0);
   expect(dayAdaptation(0.5, Number.NaN)).toBe(0);
+});
+
+test('sunset and sunrise on an airless world: the stars’ light on the screen and the planets’ share ease through the twilight with the eye’s adaptation, no step (in real time, and an hour or a day a second)', () => {
+  // The Moon's dark mare and Mercury (their sunlight, the Sun's pace across their sky in degrees a second, the ground the eye's meter sees).
+  const seen: Record<string, unknown> = {};
+  for (const [world, light, degPerSecond] of [
+    ['moon', 1, 360 / (29.530589 * 86400)],
+    ['mercury', 6.7, 360 / (175.94 * 86400)],
+  ] as const) {
+    // On the screen (after the exposure), at one pixel a CSS pixel, the eye at its adapted exposure; the explorer's light follows a fifth of it (src/explore/index STARS), the sky's brightest is Sirius (V -1.46).
+    const at = (h: number): { stars: number; points: number } => {
+      const e = groundIlluminance('airless', h, light, null);
+      const day = dayAdaptation(e, light);
+      const exposure = walkExposure(e, light, 0.12);
+      return { stars: footStarLight('airless', h, day, 0.85 * exposure ** -0.8, exposure, 1, -1.46) * exposure, points: pointsSeen('airless', h, day) };
+    };
+    // The worst change from one frame to the next (a ratio, either way) as the Sun sinks from 8 degrees to 3 below at a frame's step.
+    const worst = (stepDeg: number): { stars: number; points: number } => {
+      let prev = at(8);
+      const out = { stars: 1, points: 1 };
+      for (let h = 8 - stepDeg; h >= -3; h -= stepDeg) {
+        const next = at(h);
+        out.stars = Math.max(out.stars, Math.exp(Math.abs(Math.log(next.stars / prev.stars))));
+        out.points = Math.max(out.points, Math.exp(Math.abs(Math.log(next.points / prev.points))));
+        prev = next;
+      }
+      return out;
+    };
+    // Real time at 60 frames a second is far finer than a thousandth of a degree (the Moon's Sun sinks that in 2 minutes): bounded by that step's change.
+    const fine = worst(0.001);
+    const realTime = fine.stars ** (degPerSecond / 60 / 0.001);
+    const hour = worst((degPerSecond * 3600) / 60);
+    const day = worst((degPerSecond * 86400) / 60);
+    seen[world] = { thousandthDeg: fine, realTime, hourPerSecond: hour, dayPerSecond: day };
+    // No step: the share that stepped from a third to all of it as the Sun crossed the horizon changed 2.86 times in one frame at any pace.
+    expect(fine.stars, world).toBeLessThan(1.01);
+    expect(fine.points, world).toBeLessThan(1.01);
+    expect(realTime, world).toBeLessThan(1.0001);
+    expect(hour.stars, world).toBeLessThan(1.05);
+    expect(hour.points, world).toBeLessThan(1.05);
+    // A day a second sweeps the whole twilight in a few frames: still never the old step.
+    expect(day.stars, world).toBeLessThan(2.86);
+    // By day all of the glare, by night none: the planets at their share, the stars the night's.
+    expect(at(10).points).toBeCloseTo(AIRLESS_DAY.stars, 12);
+    expect(at(-1).points).toBe(1);
+    expect(at(-1).stars / at(-3).stars).toBeCloseTo(1, 12);
+    expect(at(10).stars).toBeLessThan(at(-1).stars / 10);
+  }
+  test.info().annotations.push({ type: 'sunset', description: JSON.stringify(seen) });
 });
 
 test('the eye’s adaptation on foot: opening as the light fails, continuous through sunset, within its stops, darker worlds opened further', () => {

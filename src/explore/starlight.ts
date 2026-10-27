@@ -101,12 +101,13 @@ export function starPeakPerLight(dpr: number): number {
 }
 
 /**
- * A multiple of the stars' light, held so that no star shows more than `peak` on its brightest pixel
- * (in the stars' own light, before any exposure). `brightest` is the light of the brightest star drawn
- * (starLight of its magnitude, per CSS pixel squared). That star is held at `peak` (or at CORE_MAX if
- * that is less, so no held star has a halo) and every other star is dimmed with it, by one multiple for
- * all so the stars keep their order. `weight` eases the hold in log terms (0 none of it, 1 all of it).
- * The light is never raised.
+ * A multiple of the stars' light, held so that a star of light `brightest` (starLight of its magnitude,
+ * per CSS pixel squared) shows no more than `peak` on its brightest pixel (in the stars' own light,
+ * before any exposure): given the brightest star drawn, no star shows more; given a fainter one (the
+ * walk's by night), the few brighter than it show brighter, in proportion. That star is held at `peak`
+ * (or at CORE_MAX if that is less, so no held star has a halo) and every other star is dimmed with it,
+ * by one multiple for all so the stars keep their order. `weight` eases the hold in log terms (0 none
+ * of it, 1 all of it). The light is never raised.
  */
 export function heldStarLight(light: number, brightest: number, peak: number, weight: number, dpr: number): number {
   const w = Math.min(1, Math.max(0, weight));
