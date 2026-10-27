@@ -2,7 +2,7 @@
  * The prompt read in smaller pieces (docs/AI-INTELLIGENCE.md §6).
  *
  * WebLLM 0.2.86 reads a prompt (its prefill) in chunks of the size its model library was compiled
- * with: 1,024 tokens in every pinned build (the library's metadata, prefill_chunk_size). tvmjs
+ * with: 1,024 tokens in every pinned q4f16 build (the library's metadata, prefill_chunk_size). tvmjs
  * records every kernel of a chunk into one command encoder and submits it only at the next copy to
  * or from the GPU, which comes with the next chunk (or the first token's readback), so each chunk
  * reaches the GPU as one long submission. On this Mac the explorer's frames waited on them: every
