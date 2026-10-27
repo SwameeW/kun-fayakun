@@ -725,13 +725,15 @@ test('the rover, the zoom and the look’s sense: V rides at 30 m/s, the wheel n
   // is refused at 25 km, and the view never narrows below 30 km across there.
   const KM_PER_DEG = (6378.137 * Math.PI) / 180;
   await walkAt(page, { lat: 21.4225 + 25.05 / KM_PER_DEG, lon: 39.8261, headingDeg: 180, pitchDeg: 0 });
+  // Held until it is refused (the 50 m to the line take what frames a busy machine gives them, not a fixed
+  // second count), then pushed on against it for two seconds more.
   await page.keyboard.down('KeyV');
   await page.keyboard.down('KeyW');
-  await page.waitForTimeout(3000);
+  await expect(page.getByTestId('walk-notice')).toContainText('Makkah', LIVE);
+  await page.waitForTimeout(2000);
   await page.keyboard.up('KeyW');
   await page.keyboard.up('KeyV');
   expect((await walkView(page))?.lat ?? 0).toBeGreaterThan(21.4225 + 24.99 / KM_PER_DEG);
-  await expect(page.getByTestId('walk-notice')).toContainText('Makkah');
   for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, -400);
   await page.waitForTimeout(300);
   const kaabaKm = (((await walkView(page))?.lat ?? 0) - 21.4225) * KM_PER_DEG;

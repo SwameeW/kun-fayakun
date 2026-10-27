@@ -26,7 +26,7 @@ import { exp, float, log, max, min, screenDPR, smoothstep, sqrt, tanh, uniform, 
  * to black.
  *
  * The light is before the exposure, which multiplies everything drawn. Where a material's exposure is
- * far from 1 (on foot by night it is 39 to 384), it says so (StarScreen): which stars are drawn, and how
+ * far from 1 (on foot by night it is 39 to 384, in orbit at Neptune 458), it says so (StarScreen): which stars are drawn, and how
  * far each sprite reaches, is then judged against the tone curve's black on the screen, not before the
  * exposure (which, at 384, left every star fainter than about magnitude 5 undrawn, though it would have
  * shown at half the screen's white).

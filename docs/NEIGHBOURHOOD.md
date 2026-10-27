@@ -131,8 +131,9 @@ the file itself.
   held at the peak and every other star is dimmed with it. On foot the walk holds them so
   (`src/explore/walk/daylight.ts` `footStarLight`, docs/WALKING.md): by night a star of magnitude 3.5
   short of white, and on an airless world by day the brightest, Sirius, under the glare, the fainter
-  dimmed less than it by a knee (`kneedStarLight`); and, the exposure there up to 384, which are drawn
-  is judged on the screen. Here, the stars around the Sun, and the sky in orbit, nothing changes.
+  dimmed less than it by a knee (`kneedStarLight`); and, on foot (the exposure up to 384) and in orbit
+  (458 at Neptune, where judged before the exposure the stars of magnitude 7.5 to 8.5 were cut rather
+  than faded), which are drawn is judged on the screen. Here, the stars around the Sun, nothing changes.
   Measured at 2000x1300, lit spots of 64 of 255 or more in the left 72% of the view, the same
   protocol for the build before this work (the `worlds` branch) and after, both ways of counting:
 

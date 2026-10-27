@@ -21,8 +21,8 @@ import { starMaterial, starSprites } from './starlight';
  * How bright a star is drawn is the explorer's star light (./starlight): its magnitude's light,
  * integrated over each pixel, the same at any pixel density, the brightest spreading into a halo.
  * On foot the walk holds their light in display terms (./walk/daylight footStarLight): short of white
- * by night, and on an airless world by day under the sunlit ground's glare; and, the exposure there far
- * above the orbit's, which stars are drawn is judged on the screen (./starlight StarScreen).
+ * by night, and on an airless world by day under the sunlit ground's glare; and, on foot or in orbit,
+ * which stars are drawn is judged on the screen, the eye's exposure included (./starlight StarScreen).
  */
 
 export interface SkyFile {
@@ -45,8 +45,9 @@ export interface Sky {
   readonly brightest: number;
   setRadius(radius: number): void;
   /**
-   * The stars' light (a multiple of the star light's) and, on foot, the exposure the screen puts on it
-   * and a knee on the brightest (./starlight StarScreen): by default 1 and none, as in orbit.
+   * The stars' light (a multiple of the star light's), the exposure the screen puts on it (the eye's, on
+   * foot or in orbit) and, on foot by day, a knee on the brightest (./starlight StarScreen): by default 1
+   * and none.
    */
   setLight(light: number, exposure?: number, knee?: number): void;
   setLayer(layer: SkyLayer, on: boolean): void;
