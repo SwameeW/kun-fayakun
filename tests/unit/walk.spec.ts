@@ -19,7 +19,7 @@ import { createHeights, decodeTerrarium, despike, mercatorPixel, TERRAIN, zoomFo
 import { decodePng } from '../../src/explore/walk/png';
 import { createWalker, localFrame, look, pressureKpa, solarTimeHours, stepWalker, sunAzimuthDeg, sunElevationDeg, WALK, walkerPose, type WalkInput, type WalkWorld } from '../../src/explore/walk/walker';
 import { DAYLIGHT, starlight } from '../../src/explore/walk/daylight';
-import { clearDayAir, EXPOSURE, groundIlluminance, horizonRise, luminance, lunarLambert, METER, skyCompression, SKY_KNEE, skyRadiance, SUN_DISC, sunDiscTint, sunThroughAir, walkExposure } from '../../src/explore/walk/light';
+import { clearDayAir, dayAdaptation, EXPOSURE, groundIlluminance, horizonRise, luminance, lunarLambert, METER, skyCompression, SKY_KNEE, skyRadiance, SUN_DISC, sunDiscTint, sunThroughAir, walkExposure } from '../../src/explore/walk/light';
 import { earthAir } from '../../src/explore/render/air';
 import { equirectMaxZoom } from '../../src/explore/walk/equirect';
 import type { DataStore } from '../../src/core/types';
@@ -257,6 +257,24 @@ test('the sky held under the bloom: never above its ceiling on screen, unchanged
       expect(l * skyCompression(l), `Sun ${String(sun)}, view ${String(el)}/${String(az)}`).toBeLessThan(0.75);
     }
   }
+});
+
+test('the eye’s adaptation to the day (what the airless sky’s hold on the stars eases in by): none by night, all of it by day, never less as the Sun climbs', () => {
+  for (const light of [1, 6.7]) {
+    let last = 0;
+    for (let e = -5; e <= 30; e += 0.05) {
+      const w = dayAdaptation(groundIlluminance('airless', e, light, null), light);
+      expect(w, `${String(e)} degrees`).toBeGreaterThanOrEqual(last - 1e-12);
+      expect(w).toBeLessThanOrEqual(1);
+      last = w;
+    }
+    expect(dayAdaptation(groundIlluminance('airless', -1, light, null), light)).toBe(0);
+    expect(dayAdaptation(groundIlluminance('airless', 10, light, null), light)).toBe(1);
+  }
+  expect(dayAdaptation(EXPOSURE.floorE)).toBe(0);
+  expect(dayAdaptation(EXPOSURE.dayE)).toBe(1);
+  expect(dayAdaptation(Number.NaN)).toBe(0);
+  expect(dayAdaptation(0.5, Number.NaN)).toBe(0);
 });
 
 test('the eye’s adaptation on foot: opening as the light fails, continuous through sunset, within its stops, darker worlds opened further', () => {

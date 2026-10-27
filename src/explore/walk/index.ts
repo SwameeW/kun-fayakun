@@ -5,8 +5,8 @@ import { qiblaBearing } from '../islamic/kaaba';
 import { createTransmittanceTable, type AirModel } from '../render/air';
 import { createGround, MARS_HAZE, VENUS_HAZE } from './ground';
 import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFACE, type SurfaceStyle } from './surface';
-import { starlight } from './daylight';
-import { clearDayAir, groundIlluminance, marsSunlight, sunDiscTint, sunThroughAir, walkExposure, type LightKind } from './light';
+import { AIRLESS_DAY, starlight } from './daylight';
+import { clearDayAir, dayAdaptation, groundIlluminance, marsSunlight, sunDiscTint, sunThroughAir, walkExposure, type LightKind } from './light';
 import { createMeter } from './meter';
 import { createWalkSky, type SkyKind } from './sky';
 import { createHeights, TERRAIN, zoomFor, type TileLoader } from './terrain';
@@ -70,6 +70,13 @@ export interface Walk {
   where(): { lat: number; lon: number } | null;
   /** How much starlight the sky lets through (1 at night, 0 by day, from the Sun's height): 1 while not walking. */
   starlight(): number;
+  /**
+   * By day on an airless world, the sunlit ground's glare on the stars: the most light (linear, on the
+   * screen, after the exposure) any star's brightest pixel may show, and how far the eye has adapted to
+   * the day (0 to 1, ./light dayAdaptation) for the explorer to ease it in with. Null when no star is held
+   * (at night, under an atmosphere, or while not walking).
+   */
+  starHold(): { readonly peak: number; readonly weight: number } | null;
   look(dxPx: number, dyPx: number): void;
   /** Steps the walker: its eye's pose in the world's frame (km from the centre, gaze, up), or null while the ground under it loads. */
   step(dt: number, input: WalkInput): { position: [number, number, number]; forward: [number, number, number]; up: [number, number, number] } | null;
@@ -115,8 +122,6 @@ const LOOKS: Record<WalkableWorld, { sky: SkyKind; light: LightKind; surface: Su
   venus: { sky: 'venus', light: 'venus', surface: VENUS_SURFACE, haze: VENUS_HAZE, seaLevel: false, ground: [0.1, 0.09, 0.08] },
 };
 
-/** On an airless world by day, how much of the stars' light shows past the sunlit ground's glare (illustrative). */
-const AIRLESS_DAY_STARS = 0.35;
 /** The zoom the walker's own footing is read at, and the coarsest that counts as having landed. */
 const FOOT_ZOOM_M = 5;
 const LANDED_ZOOM = 9;
@@ -152,6 +157,8 @@ export function createWalk(setup: WalkSetup): Walk {
   let lastSun = { elevation: 0, azimuth: 0, solar: 12 };
   /** The exposure the eye adapts to, and the Sun's colour, from the last frame placed. */
   let metered: number | null = null;
+  /** The stars' hold by day on an airless world (its weight, the eye's adaptation to the day, set as placed). */
+  const hold = { peak: AIRLESS_DAY.starPeak, weight: 0 };
   const sunTint: [number, number, number] = [1, 1, 1];
 
   const footing = (lat: number, lon: number): { metres: number; zoom: number } | null => heights.at(lat, lon, zoomFor(FOOT_ZOOM_M, lat, world.radiusKm));
@@ -187,6 +194,7 @@ export function createWalk(setup: WalkSetup): Walk {
       walker = null;
       landed = false;
       metered = null;
+      hold.weight = 0;
       ground.object.visible = false;
       sky.mesh.visible = false;
     },
@@ -196,10 +204,13 @@ export function createWalk(setup: WalkSetup): Walk {
     starlight() {
       if (!walker || !landed) return 1;
       // Airless, the sky stays black; by day the sunlit ground's glare leaves the eye only the brightest stars.
-      if (skyKind === 'airless') return sky.sunDeg > 0 ? AIRLESS_DAY_STARS : 1;
+      if (skyKind === 'airless') return sky.sunDeg > 0 ? AIRLESS_DAY.stars : 1;
       // Under Venus's clouds no star is ever seen.
       if (skyKind === 'venus') return 0;
       return starlight(sky.sunDeg);
+    },
+    starHold() {
+      return walker && landed && skyKind === 'airless' && sky.sunDeg > 0 && hold.weight > 0 ? hold : null;
     },
     look(dx, dy) {
       if (walker) look(walker, dx, dy);
@@ -245,6 +256,7 @@ export function createWalk(setup: WalkSetup): Walk {
       if (frame.eye) meter.read(frame.renderer, frame.camera);
       const e = groundIlluminance(looks.light, lastSun.elevation, frame.light, air, eyeRadii - 1);
       metered = walkExposure(e, frame.light, meter.luminance !== null && e > 0 ? meter.luminance / e : (setup.albedo?.bond ?? null));
+      hold.weight = dayAdaptation(e, frame.light);
       const sin = Math.sin((lastSun.elevation * Math.PI) / 180);
       const through: [number, number, number] = looks.light === 'earth' && air ? sunThroughAir(air, eyeRadii - 1, sin, 32) : looks.light === 'mars' ? marsSunlight(sin) : [1, 1, 1];
       sunDiscTint(through, sunTint);
