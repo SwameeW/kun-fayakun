@@ -482,7 +482,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   date field). A control that cannot act is `aria-disabled`, dimmed, and says why in the note
   (`universe-time-note`) when pressed. The controls head the navigator; on a phone's sheet the
   buttons sit above its scrolling part, folded or not, and the help, date and Islamic date under
-  the list. A change is announced politely.
+  the list. Folded on a narrow sheet (under 600 px wide, or 500 px tall) the rate's words have a line
+  of their own under the buttons, so the folded sheet keeps one height whatever they say (and in an
+  experiment, its Reset among the buttons, as small as outside one). On a desktop's side panel the
+  row folds away with the panel (landing on foot folds it: opened again, the row is there). A change
+  is announced politely.
 - **Photo mode.** `kf-photo` on the root hides the header, the HUD tags and everything in the
   explorer's interface but "Show the interface"; H toggles it and Esc leaves it (before Esc would
   leave the explorer).
