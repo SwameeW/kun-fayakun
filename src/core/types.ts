@@ -478,6 +478,16 @@ export type BodyId = 'sun' | 'mercury' | 'venus' | 'earth' | 'moon' | 'mars' | '
 export const BODY_IDS: readonly BodyId[] = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 /**
+ * A world beyond the ten the explorer can fly to (src/explore/worlds: a moon, a dwarf planet, an
+ * asteroid or a comet), as 'w:' and its name (public/assets/smallbodies/worlds.json: "w:Ceres",
+ * "w:Io", "w:1P/Halley").
+ */
+export type WorldId = `w:${string}`;
+/** What the explorer's camera can orbit: one of its ten bodies, or a world. */
+export type FocusId = BodyId | WorldId;
+export type WorldKind = 'moon' | 'dwarf' | 'asteroid' | 'comet';
+
+/**
  * A non-chapter experience: the chapter lifecycle minus content and cues (no film clock).
  * Lifecycle: load → enter → update* → exit → (enter again …) → dispose.
  */
@@ -503,12 +513,12 @@ export interface ExperienceModule {
 
 /** Where the explorer's camera is and what it is doing, for its UI and the tests. */
 export interface UniverseView {
-  /** The body the camera orbits (during a flight: the body it is flying to). */
-  focus: BodyId;
+  /** The body the camera orbits (during a flight: the body it is flying to): one of the ten, or a world (`worlds`). */
+  focus: FocusId;
   /** True while the camera flies from one body to another. */
   travelling: boolean;
   /** During a flight, the body it left (else null). */
-  from: BodyId | null;
+  from: FocusId | null;
   /** The camera moved this frame (a drag, a zoom, a flight); at rest nothing on screen moves but the sky's slow turn. */
   moving: boolean;
   /** Distance from the camera to the focus's centre and to its surface (cloud tops, photosphere), km. */
@@ -545,6 +555,8 @@ export interface UniverseView {
   descent: UniverseDescent | null;
   /** Among the stars around the Sun, while there; else null. */
   neighbourhood: UniverseNeighbourhood | null;
+  /** The small bodies and the worlds to fly to beyond the ten (src/explore/worlds), once loaded; else null. */
+  worlds?: UniverseWorlds | null;
   /** Sound where there is air (src/explore/sound.ts): whether it is on, and what plays (the wind, a suit's fans, or nothing). */
   sound: { on: boolean; playing: 'wind' | 'suit' | null };
   /** Photo mode's lens (degrees of field), or null for the explorer's own framing. */
@@ -590,6 +602,33 @@ export interface UniverseView {
   living: UniverseLiving | null;
   /** The lens over the Earth (degrees) and the ground one CSS pixel spans at the view's centre (m), when zoomed in. */
   lens: { deg: number; metresPerPixel: number } | null;
+}
+
+/** The small bodies and the worlds beyond the ten (src/explore/worlds), as the view reports them. */
+export interface UniverseWorlds {
+  /** The small bodies' layer: the asteroids, the comets, and the dwarf planets', asteroids' and comets' points and names (the moons always show). */
+  layer: boolean;
+  /** The asteroids coloured by group (illustrative). */
+  grouped: boolean;
+  /** Asteroids drawn now (the detail level's count, as far as loaded; 0 with the layer off), and loaded. */
+  asteroids: number;
+  asteroidsLoaded: number;
+  /** Of those drawn, how many in each group: the main belt (and the Hungarias and Mars-crossers), near the Earth, Jupiter's Trojans, the Hildas, centaurs, beyond Neptune, the rest. */
+  groups: Readonly<Record<'main' | 'near' | 'trojans' | 'hildas' | 'centaurs' | 'kuiper' | 'other', number>>;
+  /** Periodic comets drawn (within 8 au of the Sun), and those near enough to it to have tails. */
+  comets: number;
+  tails: number;
+  /** Every world that can be flown to. */
+  list: ReadonlyArray<{ id: WorldId; name: string; kind: WorldKind; host: FocusId }>;
+  /**
+   * The world in view when one is the focus: its facts (sizes km; its distance from the Sun, au; how
+   * much of the Sun its planet hides from it, 0 to 1), and its surface map's credit (null: drawn plain).
+   */
+  focus: { id: WorldId; name: string; kind: WorldKind; host: BodyId; radiusKm: number; axesKm: number[]; albedo: number | null; rotationHours: number | null; sizeFromH: boolean; sunAu: number; eclipsed: number; map: string | null } | null;
+  /** Shadows of one body on another under way: the receiver, the body casting it, and how much of the Sun it hides at its deepest on the receiver (1 total). */
+  eclipses: ReadonlyArray<{ on: FocusId; by: FocusId; depth: number }>;
+  /** The asteroid files' common epoch (TDB Julian date). */
+  epochJdTdb: number;
 }
 
 /** The Living Earth's live layers as the view's state reports them. */
@@ -721,9 +760,13 @@ export interface UniverseGraphics {
  * Illustrative elements the explorer can draw: the Sun's surface detail, prominences and corona; the
  * Earth's fine detail below its maps' texels up close, the clouds' drift, and its night side (city
  * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
- * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still.
+ * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still; the small
+ * bodies' light, enhanced in wide views so they show where they are (their places are the data's);
+ * the comets' tails (their directions physical, their lengths and light not); the small worlds'
+ * plain surfaces (shapes and sizes measured, no maps); the eclipsed Moon's copper light, and Uranus's
+ * and Neptune's rings, shown brighter; the Milky Way's and the zodiacal light's glow, models.
  */
-export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
+export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles' | 'small-body-light' | 'comet-tails' | 'world-shape' | 'eclipse-red' | 'ring-light' | 'sky-glow';
 
 /**
  * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
@@ -1340,7 +1383,12 @@ export type EarthCommand =
   /** The look's sense on foot: a drag turns the view the way the hand moves (false, the default), or moves the scene with it (true). */
   | { kind: 'walkLook'; scene: boolean }
   /** Asks again at once for the ground's heights that could not be loaded (a walk waiting on them). */
-  | { kind: 'walkRetry' };
+  | { kind: 'walkRetry' }
+  /** Flies to a world by its name or designation, any case ("Ceres", "Io", "Halley", "67P", "433"): the tools' way in; a name that matches nothing does nothing. */
+  | { kind: 'world'; name: string }
+  /** The small bodies' layer on or off, and the asteroids coloured by group (illustrative) or as they are. */
+  | { kind: 'smallBodies'; on: boolean }
+  | { kind: 'smallBodiesGrouped'; on: boolean };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';
@@ -1385,7 +1433,7 @@ export interface UniverseModule extends ExperienceModule {
 
 /** A camera pose around a body, for tests and frame captures. */
 export interface UniversePose {
-  body: BodyId;
+  body: FocusId;
   /** From the body's centre, km. */
   distanceKm: number;
   /** Degrees around and above the direction the camera is placed in (see `from`). */

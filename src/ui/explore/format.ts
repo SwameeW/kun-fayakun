@@ -1,4 +1,4 @@
-import type { BodyId, I18n } from '../../core/types';
+import type { BodyId, FocusId, I18n } from '../../core/types';
 
 /** Names of the explorer's bodies (existing HUD keys). */
 export const NAME_KEYS: Readonly<Record<BodyId, string>> = {
@@ -27,7 +27,8 @@ const keepTogether = (text: string): string => text.replace(/(\d) (?=\S)/gu, `$1
 export interface Formatters {
   /** km per astronomical unit, from the explorer's data (physical.json, the DE440 header); set from each view. */
   auKm: number;
-  name(id: BodyId): string;
+  /** A body's name, or a world's (its name from the data, after 'w:'). */
+  name(id: FocusId): string;
   /** Three significant figures in km, or au from 0.1 au out. */
   distance(km: number): string;
   /** A distance in plain words, two figures ("1.3 billion km", "400 thousand km"), for a scale's end. */
@@ -49,7 +50,7 @@ export function formatters(i18n: I18n): Formatters {
   const words = new Intl.NumberFormat(i18n.locale, { notation: 'compact', compactDisplay: 'long', maximumSignificantDigits: 2 });
   return {
     auKm: Infinity,
-    name: (id) => i18n.t(NAME_KEYS[id]),
+    name: (id) => (id.startsWith('w:') ? id.slice(2) : i18n.t(NAME_KEYS[id as BodyId])),
     number,
     keep: keepTogether,
     coordinates: (lat, lon, digits = 1) =>

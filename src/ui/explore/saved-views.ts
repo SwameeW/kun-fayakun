@@ -126,7 +126,8 @@ export function createSavedViews(app: App, f: Formatters, onGo: () => void): Sav
     }
     notice.hidden = true;
     const jdUtc = julianDateUtc(v.unixMs);
-    const body = w ? w.world : (place?.body ?? v.focus);
+    const body = w ? w.world : place?.body;
+    if (!body) return;
     const name = nameInput.value.trim() || i18n.t('ui.universe.saved.defaultName', { body: f.name(body), date: dateOf(jdUtc) });
     const entry: Saved = {
       id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,

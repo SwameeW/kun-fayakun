@@ -88,7 +88,7 @@ for (const size of SIZES) {
       await expectLayout(page, 'navigator open');
 
       // Every section, opened and closed again and again; the detail menu and the keys too.
-      for (const id of ['universe-about', 'universe-sky', 'saved-views', 'living-earth', 'universe-islamic', 'universe-seen']) await section(page, page.getByTestId(id), id);
+      for (const id of ['universe-about', 'universe-sky', 'universe-worlds', 'saved-views', 'living-earth', 'universe-islamic', 'universe-seen']) await section(page, page.getByTestId(id), id);
       await section(page, page.locator('.kf-nav-keys'), 'keys');
       // A section within a section: the Living Earth's field notes on the prophets.
       const living = page.getByTestId('living-earth').locator(':scope > summary');
@@ -115,6 +115,7 @@ for (const size of SIZES) {
       for (const [id, part] of [
         ['universe-about', '.kf-about-body'],
         ['universe-sky', '.kf-about-body'],
+        ['universe-worlds', '.kf-about-body'],
         ['saved-views', '.kf-living-body'],
         ['living-earth', '.kf-living-body'],
         ['universe-islamic', '[data-testid="islamic-panel"]'],

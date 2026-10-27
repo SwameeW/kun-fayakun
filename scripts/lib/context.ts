@@ -17,7 +17,7 @@ export interface ValidationContext {
   constants: Loaded<ConstantsFile>;
   content: ContentLoad;
   refs: Array<{ chapter: LoadedChapter; refs: ContentRefs }>;
-  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; ar: MessageLoad };
+  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; worlds: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; ar: MessageLoad };
   /** The disclaimer from docs/SPEC.md section 1.7, without its quotation marks. */
   specDisclaimer: string;
 }
@@ -51,6 +51,7 @@ export function loadContext(online: boolean): ValidationContext {
       lab: loadMessages('src', 'i18n', 'en.lab.json'),
       islamic: loadMessages('src', 'i18n', 'en.islamic.json'),
       stars: loadMessages('src', 'i18n', 'en.stars.json'),
+      worlds: loadMessages('src', 'i18n', 'en.worlds.json'),
       photo: loadMessages('src', 'i18n', 'en.photo.json'),
       help: loadMessages('src', 'i18n', 'en.help.json'),
       plain: loadMessages('src', 'i18n', 'en.plain.json'),

@@ -940,3 +940,36 @@ Redistribution and use in source and binary forms, with or without modification,
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+==============================================================================
+15. The explorer's small worlds: asteroids, comets, moons, rings and maps
+==============================================================================
+Files: public/assets/smallbodies/ (built by scripts/smallbodies/build.py and
+scripts/smallbodies/maps.py; every query and download with its sha256 in
+manifest.json and maps.json), tests/support/astro/horizons-smallbodies.json.
+
+JPL Small-Body Database, Planetary Satellite Mean Elements and Physical
+Parameters, and JPL Horizons (NASA Jet Propulsion Laboratory, Solar System
+Dynamics)
+Terms:    Public information from NASA/JPL
+          (https://www.jpl.nasa.gov/jpl-image-use-policy).
+Credit:   Asteroids, comets and moons' orbits and sizes: NASA/JPL-Caltech
+          Solar System Dynamics
+
+NSSDCA Planetary Fact Sheets (David R. Williams, NASA Goddard Space Flight
+Center): the moons' albedos and shapes, the rings of Uranus and Neptune
+Terms:    A U.S. Government work, public domain in the United States.
+
+USGS Astrogeology Science Center global mosaics (Dawn, Galileo, Voyager,
+Cassini and New Horizons images): the maps of Ceres, Vesta, Io, Europa,
+Ganymede, Callisto, Enceladus, Tethys, Rhea, Iapetus, Triton, Pluto, Charon
+Terms:    USGS and NASA works, public domain in the United States
+          (https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits).
+Credit:   USGS Astrogeology Science Center; NASA/JPL; NASA/JPL-Caltech/Space
+          Science Institute; NASA/JPL-Caltech/UCLA/MPS/DLR/IDA;
+          NASA/JHUAPL/SwRI
+
+The Milky Way's and the zodiacal light's glows are computed by the explorer
+from published models (src/explore/worlds/glow.ts: Bland-Hawthorn and Gerhard
+2016; Kelsall et al. 1998; Hong 1985; scaled after Leinert et al. 1998): no
+image is used.
