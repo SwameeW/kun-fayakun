@@ -56,8 +56,8 @@ const labBodyIds = (ctx: AiContext): string[] => (ctx.lab ? ctx.lab.bodies.map((
 const labBody = (ctx: AiContext): JsonSchema => ({ type: 'string', enum: labBodyIds(ctx), description: 'A laboratory body, by id' });
 
 /**
- * What each number means, shown beside it in the plan's prompt. Without them three models made "the
- * Sun 10% heavier" an orbit 1.1 times as wide (change-orbit's aFactor, not scale-mass's factor).
+ * What each number means, shown beside it in the plan's prompt. Without them Qwen3 4B and Qwen3.5 4B
+ * made "the Sun 10% heavier" an orbit 1.1 times as wide (change-orbit's aFactor, not scale-mass's factor).
  */
 const PARAM_NOTES: Readonly<Record<string, string>> = {
   factor: "multiply the body's mass by this",

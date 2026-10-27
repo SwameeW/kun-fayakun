@@ -111,21 +111,24 @@ const PINS: readonly Pin[] = [
   { base: 'Qwen3-0.6B', quant: 'q4f32_1', tier: 'pocket', name: 'Qwen3 0.6B', paramsB: 0.6, sha: '9b4f0b05b08c692ea86fe151ea878406ad22f428', weightBytes: 346_926_409, libBytes: 6_239_496, libIntegrity: 'sha384-myAJdwhFfl9FnWXksrRVZ3HfxYMt83kv79qZT9mvyN2GcI7kO5IcLPmm/lP+zbbK', vramMB: 1924.98, lowResource: true, sourceId: 'qwen3', plans: false },
   { base: 'Qwen3-1.7B', quant: 'q4f16_1', tier: 'compact', name: 'Qwen3 1.7B', paramsB: 1.7, sha: '80b3abcec6c3b3f5355dc0cc99cc4fb578f192bc', weightBytes: 979_560_600, libBytes: 6_386_879, libIntegrity: 'sha384-Nl0m2ynzyk2i2j+XyK8Og/dAjX2xlKfgrkjOCwmhQEgmOit1qbAqcrhKy9WjE0J4', vramMB: 2036.66, lowResource: true, sourceId: 'qwen3' },
   { base: 'Qwen3-1.7B', quant: 'q4f32_1', tier: 'compact', name: 'Qwen3 1.7B', paramsB: 1.7, sha: 'bddd4d584cabe19113f7e4ff46fd9e73b4d3dc89', weightBytes: 979_560_601, libBytes: 6_266_325, libIntegrity: 'sha384-EcVJCw92YQJ8iX+8RQ6Z2BsjLPluluc0r3+l4FtMilOq5YvvVN9vtrqszhcbzdZq', vramMB: 2635.44, lowResource: true, sourceId: 'qwen3' },
-  { base: 'Qwen3-4B', quant: 'q4f16_1', tier: 'standard', name: 'Qwen3 4B', paramsB: 4, sha: 'a5c9fab855e3ccbdfed2e7e69683d75f30332161', weightBytes: 2_274_525_373, libBytes: 6_667_148, libIntegrity: 'sha384-UI6LgZYcCgIdelusHFxuBMRNhkUKhxLXvMmW71jcrJVQio574h1T1jFYJb8Ka9N8', vramMB: 3431.59, lowResource: true, sourceId: 'qwen3' },
-  { base: 'Qwen3-4B', quant: 'q4f32_1', tier: 'standard', name: 'Qwen3 4B', paramsB: 4, sha: 'b7e4eb1ba80728187fb5df44055cc1a7c32310e0', weightBytes: 2_274_525_372, libBytes: 6_527_308, libIntegrity: 'sha384-jlJqEAc0or29EDKLWK3g87aR4QtLfeKIw1lP9gvy1N+xhc29camjWoCgcjKrE4gD', vramMB: 4327.71, lowResource: true, sourceId: 'qwen3' },
-  { base: 'Qwen3-8B', quant: 'q4f16_1', tier: 'large', name: 'Qwen3 8B', paramsB: 8, sha: 'b3d55c289eae58f77095f5b68c895eeea358ee09', weightBytes: 4_619_346_526, libBytes: 6_668_936, libIntegrity: 'sha384-9n+UFYZ4MJEaacxyJMsHc+XLoZeLl+qFi5coUAi1FDDz5mNyKKVdmV6w/U2+7EBJ', vramMB: 5695.78, lowResource: false, sourceId: 'qwen3' },
-  { base: 'Qwen3-8B', quant: 'q4f32_1', tier: 'large', name: 'Qwen3 8B', paramsB: 8, sha: '34026572351006ba1865d11319309b151d9ccf16', weightBytes: 4_619_346_526, libBytes: 6_530_710, libIntegrity: 'sha384-y0he30qiA/VRrqfjn11TCGq0hpytNf4rgCRfQCFncyi0DvAd/z+sw3za7cw4UZgf', vramMB: 6852.55, lowResource: false, sourceId: 'qwen3' },
-];
-
-/**
- * Measured only on this Mac by the evaluation stage (tests/ai-eval), never offered to visitors
- * unless that measurement says so (docs/AI-INTELLIGENCE.md §9).
- */
-const EVAL_PINS: readonly Pin[] = [
+  // Standard and large are Qwen3.5 since the evaluation of 2026-10-27 (docs/AI-EVALUATION.md): Qwen3.5 4B passed
+  // 122 and 119 of 128 cases (shipping order, model alone) where Qwen3 4B passed 117 and 111, and Qwen3.5 9B
+  // 124 and 122 where Qwen3 8B passed 122 and 117, each with no integrity violation after the guards.
   { base: 'Qwen3.5-4B', quant: 'q4f16_1', tier: 'standard', name: 'Qwen3.5 4B', paramsB: 4, sha: '44b42469f9e192814bfd90440e3b377d89ba7a13', weightBytes: 2_380_165_548, libBytes: 7_466_230, libIntegrity: 'sha384-w7goHkFvA18IfLENRf/+uYqYy8kbgR9eTpCb/3rC7BApZw52TjXY6uZf+vBKwbfK', vramMB: 3867.82, lowResource: false, maxHistory: 1, sourceId: 'qwen3-5' },
   { base: 'Qwen3.5-4B', quant: 'q4f32_1', tier: 'standard', name: 'Qwen3.5 4B', paramsB: 4, sha: 'ce39652c7b493d59331e40ef9c7a87de5a47abe3', weightBytes: 2_380_165_548, libBytes: 7_323_514, libIntegrity: 'sha384-poeaI5UJzZuB5tK3pn8fB8PbJsGLZz/C+kQ34fYXo6h9Ym69ntYxITSAeca/kYtw', vramMB: 4680.36, lowResource: false, maxHistory: 1, sourceId: 'qwen3-5' },
   { base: 'Qwen3.5-9B', quant: 'q4f16_1', tier: 'large', name: 'Qwen3.5 9B', paramsB: 9, sha: 'c7c5d3f5a81e37b8facbb72970940a1b131314a8', weightBytes: 5_051_100_190, libBytes: 7_488_165, libIntegrity: 'sha384-eCaqjaer6oGlGI9t4q1ponZO+1A4gRFUvwyjKPgxckmGu5WsoudMf4fPcPnDOTKj', vramMB: 6433.01, lowResource: false, maxHistory: 1, sourceId: 'qwen3-5' },
   { base: 'Qwen3.5-9B', quant: 'q4f32_1', tier: 'large', name: 'Qwen3.5 9B', paramsB: 9, sha: 'f8f042bfb68cb88573af4c8e0ef9b1a26bef4ad0', weightBytes: 5_051_100_190, libBytes: 7_347_353, libIntegrity: 'sha384-+csrga+DKrCKKcrvIWwigkI4tSKluGGNoHPAOL/eGCPgIiOUcTncrto1zLhGqvhd', vramMB: 7544.74, lowResource: false, maxHistory: 1, sourceId: 'qwen3-5' },
+];
+
+/**
+ * Measured on this Mac by the evaluation (tests/ai-eval) and kept for it, not offered to visitors: the
+ * Qwen3 4B and 8B builds the Qwen3.5 ones replaced (docs/AI-EVALUATION.md).
+ */
+const EVAL_PINS: readonly Pin[] = [
+  { base: 'Qwen3-4B', quant: 'q4f16_1', tier: 'standard', name: 'Qwen3 4B', paramsB: 4, sha: 'a5c9fab855e3ccbdfed2e7e69683d75f30332161', weightBytes: 2_274_525_373, libBytes: 6_667_148, libIntegrity: 'sha384-UI6LgZYcCgIdelusHFxuBMRNhkUKhxLXvMmW71jcrJVQio574h1T1jFYJb8Ka9N8', vramMB: 3431.59, lowResource: true, sourceId: 'qwen3' },
+  { base: 'Qwen3-4B', quant: 'q4f32_1', tier: 'standard', name: 'Qwen3 4B', paramsB: 4, sha: 'b7e4eb1ba80728187fb5df44055cc1a7c32310e0', weightBytes: 2_274_525_372, libBytes: 6_527_308, libIntegrity: 'sha384-jlJqEAc0or29EDKLWK3g87aR4QtLfeKIw1lP9gvy1N+xhc29camjWoCgcjKrE4gD', vramMB: 4327.71, lowResource: true, sourceId: 'qwen3' },
+  { base: 'Qwen3-8B', quant: 'q4f16_1', tier: 'large', name: 'Qwen3 8B', paramsB: 8, sha: 'b3d55c289eae58f77095f5b68c895eeea358ee09', weightBytes: 4_619_346_526, libBytes: 6_668_936, libIntegrity: 'sha384-9n+UFYZ4MJEaacxyJMsHc+XLoZeLl+qFi5coUAi1FDDz5mNyKKVdmV6w/U2+7EBJ', vramMB: 5695.78, lowResource: false, sourceId: 'qwen3' },
+  { base: 'Qwen3-8B', quant: 'q4f32_1', tier: 'large', name: 'Qwen3 8B', paramsB: 8, sha: '34026572351006ba1865d11319309b151d9ccf16', weightBytes: 4_619_346_526, libBytes: 6_530_710, libIntegrity: 'sha384-y0he30qiA/VRrqfjn11TCGq0hpytNf4rgCRfQCFncyi0DvAd/z+sw3za7cw4UZgf', vramMB: 6852.55, lowResource: false, sourceId: 'qwen3' },
 ];
 
 /** The visitor tiers, smallest first, each as a q4f16 build and its q4f32 fallback for adapters without shader-f16. */

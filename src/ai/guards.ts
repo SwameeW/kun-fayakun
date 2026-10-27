@@ -9,6 +9,7 @@
  * and control tokens, is taken out first, unflagged: it is never the model's words to the visitor):
  * - arabic-removed: Arabic script is removed (the honorific U+FDFA after the Prophet's name stays,
  *   as it does in the app's own message files);
+ * - other-script: Chinese, Japanese and Korean characters are removed (the answer is in English);
  * - scripture-quote: words presented as scripture are removed, whatever their length and whether or
  *   not they match a verse: text introduced by the Quran, Allah, the Prophet, a verse or a hadith
  *   saying it ("The Prophet said: …", "Allah says in the Quran, '…'", "… says:" then a blockquote),
@@ -135,6 +136,15 @@ function isArabic(cp: number): boolean {
   return (cp >= 0x0600 && cp <= 0x06ff) || (cp >= 0x0750 && cp <= 0x077f) || (cp >= 0x08a0 && cp <= 0x08ff) || (cp >= 0xfb50 && cp <= 0xfdff) || (cp >= 0xfe70 && cp <= 0xfeff);
 }
 
+/** Scripts an English answer never needs: Chinese, Japanese and Korean (Qwen models drift into Chinese). */
+const OTHER_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
+
+/** Text without Chinese, Japanese or Korean characters, and whether any were removed. */
+export function removeOtherScripts(text: string): { text: string; removed: boolean } {
+  const out = text.replace(OTHER_SCRIPT, '');
+  return out === text ? { text, removed: false } : { text: out.replace(/[ \t]{2,}/gu, ' ').replace(/\s+([,.;:!?])/gu, '$1'), removed: true };
+}
+
 /** Text without Arabic script (bar the honorific), and whether any was removed. */
 export function removeArabic(text: string): { text: string; removed: boolean } {
   let removed = false;
@@ -161,6 +171,13 @@ const SOURCE = String.raw`qur['’ʼʾ]?an|koran|allah|god|the\s+lord|prophet|me
 const SAYS = String.raw`says?|said|states?|stated|tells?|told|declares?|declared|reads?|recites?|recited|proclaims?|proclaimed|commands?|commanded|asks?|asked|replied|answered|teaches|taught`;
 /** A short phrase between the verb and the words: "in the Quran", "in Surah Al-Anbiya", "to his companions". */
 const WHERE = String.raw`(?:\s+(?:in|to|of|through|by|at|on|about|from|after|when)\s+[^.!?\n:,>“"«„‘]{1,50}?)?`;
+/**
+ * A verse named as a heading, its words to follow: "Quran 1:1:", "Surah 36, verse 38 —", "21:30:" after
+ * "verse". Qwen3 1.7B, asked to recite a verse the data does not hold, wrote "(scripture) Quran 1:1:"
+ * and a text of its own (docs/AI-EVALUATION.md).
+ */
+const VERSE_HEADING = String.raw`(?:qur['’ʼʾ]?an|koran|surah?|ayah?|verses?)\s*\(?\s*(?<hs>\d{1,3})\s*[:,]\s*(?:verse\s*)?(?<ha>\d{1,3})\s*\)?\s*(?<hd>[:—–]|\n)`;
+
 /** Opening quotation marks. */
 const OPENERS = `“«„"‘'`;
 
@@ -171,7 +188,7 @@ const OPENERS = `“«„"‘'`;
  * is ordinary prose: "the telescope revealed, for the first time, …").
  */
 const LEAD_IN = new RegExp(
-  String.raw`\b(?:(?:${SOURCE})\b(?:[^.!?\n:]|(?<=\d):(?=\d)){0,60}?\b(?:${SAYS})\b${WHERE}\s*(?:([:,>]|\n)|(?=[${OPENERS}]))|(?:narrated|narrates|revealed)\b${WHERE}\s*(?:([:>]|\n)|(?=[${OPENERS}])))`,
+  String.raw`\b(?:(?:${SOURCE})\b(?:[^.!?\n:]|(?<=\d):(?=\d)){0,60}?\b(?:${SAYS})\b${WHERE}\s*(?:([:,>]|\n)|(?=[${OPENERS}]))|(?:narrated|narrates|revealed)\b${WHERE}\s*(?:([:>]|\n)|(?=[${OPENERS}]))|${VERSE_HEADING})`,
   'giu',
 );
 
@@ -231,6 +248,8 @@ interface Presented {
   inner: string;
   /** Whether its end has come (a closing mark, a sentence's end, a blank line), not only the text's. */
   closed: boolean;
+  /** The verse key a heading named ("Quran 21:30:"). */
+  heading?: string;
 }
 
 /** Everything the text presents as scripture by a lead-in, in order and apart. */
@@ -238,7 +257,8 @@ function presentedSpans(text: string): Presented[] {
   const out: Presented[] = [];
   for (const m of text.matchAll(LEAD_IN)) {
     if (out.length > 0 && m.index < (out.at(-1)?.end ?? 0)) continue;
-    const delim = m[1] ?? m[2] ?? '';
+    const delim = m[1] ?? m[2] ?? m.groups?.hd ?? '';
+    const heading = m.groups?.hs && m.groups.ha ? `${Number(m.groups.hs)}:${Number(m.groups.ha)}` : undefined;
     let i = m.index + m[0].length;
     while (text[i] === ' ' || text[i] === '\t') i += 1;
     let end: number;
@@ -263,7 +283,7 @@ function presentedSpans(text: string): Presented[] {
       closed = stop !== null;
       end = stop ? stop.index + stop[0].replace(/\s+$/u, '').length : text.length;
     }
-    out.push({ start: sentenceStart(text, m.index), end, inner: text.slice(i, end), closed });
+    out.push({ start: sentenceStart(text, m.index), end, inner: text.slice(i, end), closed, ...(heading ? { heading } : {}) });
   }
   return out;
 }
@@ -346,7 +366,8 @@ function markerFor(key: string | null, after: string): string {
 function presentedScripture(text: string, data: OutputGuardData): { text: string; changed: boolean } {
   const spans = presentedSpans(text);
   if (spans.length === 0) return { text, changed: false };
-  const ranges = spans.map((s) => ({ start: s.start, end: s.end, put: markerFor(matchVerse(s.inner, data, false), text.slice(s.end, s.end + 40)) }));
+  // The verse its words match, else the one its heading named if the data holds it: shown from data instead.
+  const ranges = spans.map((s) => ({ start: s.start, end: s.end, put: markerFor(matchVerse(s.inner, data, false) ?? (s.heading && data.known.verse(s.heading) ? s.heading : null), text.slice(s.end, s.end + 40)) }));
   return { text: cut(text, ranges), changed: true };
 }
 
@@ -380,14 +401,22 @@ function plainWords(text: string): string[] {
 /** Words in a row a sentence may share with a verse's translation before it counts as the verse's own wording. */
 const VERSE_RUN = 7;
 
-/** The verse whose translation this sentence copies a run of VERSE_RUN words from, if one. */
+/** A whole sentence this many words long or more, found word for word in a verse's translation, is that verse's wording. */
+const VERSE_SENTENCE = 4;
+
+/**
+ * The verse whose translation this sentence copies: a run of VERSE_RUN words, or the whole sentence when
+ * it is at least VERSE_SENTENCE words ("Lo! Allah is Strong, Almighty.", the end of 57:25, Qwen3 1.7B).
+ */
 function copiedVerse(sentence: string, data: OutputGuardData): string | null {
   const words = plainWords(sentence);
-  if (words.length < VERSE_RUN) return null;
+  if (words.length < VERSE_SENTENCE) return null;
   const runs = new Set<string>();
   for (let i = 0; i + VERSE_RUN <= words.length; i += 1) runs.add(words.slice(i, i + VERSE_RUN).join(' '));
+  const whole = ` ${words.join(' ')} `;
   for (const v of data.verses(sentence)) {
     const w = plainWords(v.text);
+    if (words.length < VERSE_RUN && ` ${w.join(' ')} `.includes(whole)) return v.key;
     for (let i = 0; i + VERSE_RUN <= w.length; i += 1) if (runs.has(w.slice(i, i + VERSE_RUN).join(' '))) return v.key;
   }
   return null;
@@ -463,8 +492,12 @@ function heldFrom(text: string, data: OutputGuardData): number {
   return at;
 }
 
-/** A marker of a kind the app does not cite by ("[[action:cite.source]]", Qwen3 4B; Qwen3 1.7B copied whole lines of the actions block into one): never shown. */
-const OTHER_MARKER = /\[\[(?!(?:verse|hadith|fact|passage):)[A-Za-z_-]{1,24}:[^\]\n]{0,600}\]\]/gu;
+/**
+ * Anything in double brackets that is not a citation marker: one of another kind ("[[action:cite.source]]",
+ * Qwen3 4B; whole lines of the actions block, Qwen3 1.7B) or the prompt's own markup ("[[data name=]]",
+ * Qwen3.5 9B). Never shown.
+ */
+const OTHER_MARKER = /\[\[(?!(?:verse|hadith|fact|passage):[^\]\s]{1,120}\]\])[^\]\n]{0,600}\]\]/gu;
 
 function citationMarkers(text: string, data: OutputGuardData): { text: string; dropped: boolean; citations: Citation[] } {
   let dropped = false;
@@ -505,7 +538,8 @@ function withheldPattern(n: WithheldNarration): RegExp | null {
 }
 
 /** A plain verse key ("2:255"), as written where a sentence speaks of scripture; never a time ("05:12", "12:30 UTC"). */
-const PLAIN_KEY = /(?<![\w.:[\]/-])(?:q\.?\s*)?([1-9]\d{0,2}):([1-9]\d{0,2})(?![\w:\]/-]|\.\d|\s*(?:utc|gmt|am\b|pm\b|a\.m\.|p\.m\.|h\b|hours?\b))/giu;
+// A key may end a heading ("Quran 1:1: …"); a time's seconds ("12:30:45") still make it no key.
+const PLAIN_KEY = /(?<![\w.:[\]/-])(?:q\.?\s*)?([1-9]\d{0,2}):([1-9]\d{0,2})(?![\w\]/-]|:\d|\.\d|\s*(?:utc|gmt|am\b|pm\b|a\.m\.|p\.m\.|h\b|hours?\b))/giu;
 
 /**
  * Sentences that name a verse the data does not hold by its plain key, or a narration the hadith
@@ -762,6 +796,10 @@ export function guardOutput(text: string, data: OutputGuardData): OutputGuardRes
   const arabic = removeArabic(t);
   t = arabic.text;
   flag('arabic-removed', arabic.removed);
+  // "Big Bang" and two Chinese characters (Qwen3 1.7B, asked to answer in Arabic script): another script, removed too.
+  const other = removeOtherScripts(t);
+  t = other.text;
+  flag('other-script', other.removed);
   const presented = presentedScripture(t, data);
   t = presented.text;
   const quoted = scriptureQuotes(t, data);

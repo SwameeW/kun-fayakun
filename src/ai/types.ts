@@ -436,6 +436,7 @@ export interface Plan {
 /** Changes the guards made to a model's words before they were shown. */
 export type GuardFlag =
   | 'arabic-removed'
+  | 'other-script'
   | 'banned-phrase'
   | 'unknown-citation'
   | 'unchecked-number'

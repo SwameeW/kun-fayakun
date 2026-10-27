@@ -37,6 +37,7 @@
   "ai.ui.flags.title": "Changed before it was shown",
   "ai.ui.flag.unchecked": "{count, plural, one {# number in this explanation was} other {# numbers in this explanation were}} not found in the data, so marked “not checked”.",
   "ai.ui.flag.arabic-removed": "Arabic script was removed: scripture is shown only from the app’s data.",
+  "ai.ui.flag.other-script": "Writing in another script was removed: the assistant answers in English.",
   "ai.ui.flag.scripture-quote": "A quotation that looked like scripture was removed: verses are shown only from the app’s data.",
   "ai.ui.flag.unknown-citation": "A reference that is not in the app’s data was removed.",
   "ai.ui.flag.banned-phrase": "Wording that claimed more than science and scripture show was changed.",

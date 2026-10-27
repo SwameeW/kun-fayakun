@@ -7,7 +7,7 @@
  */
 import type { ChapterId } from '../../core/types';
 import type { Passage, PassageKind, Retriever } from '../types';
-import { synonymTokens, tokenize, VERSE_KEY_PATTERN } from './text';
+import { foldText, synonymTokens, tokenize, VERSE_KEY_PATTERN } from './text';
 
 export const BM25_K1 = 1.2;
 export const BM25_B = 0.75;
@@ -17,6 +17,22 @@ const SYNONYM_WEIGHT = 0.6;
 const CHAPTER_BOOST = 1.3;
 /** A passage about a verse key named in the question gets this added before weighting. */
 const REFERENCE_BONUS = 12;
+/** For a passage holding a phrase the question quotes, or is made of (common words only). */
+const PHRASE_BONUS = 12;
+
+/** Text as phrases are compared: folded, letters and digits only, single-spaced. */
+const phraseText = (text: string): string => ` ${foldText(text).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+
+/**
+ * The phrases a question asks for word for word: what it quotes, or the whole question when every word
+ * is a common one. "Where does the Quran say \"Be, and it is\"?" searched for nothing, its words all
+ * stop words, and models then said the Quran does not hold the phrase (docs/AI-EVALUATION.md).
+ */
+function phrasesOf(query: string, plain: boolean): string[] {
+  const quoted = [...query.matchAll(/[“"«]([^”"»]{3,120})[”"»]/gu)].map((m) => m[1] ?? '');
+  const all = plain ? [query] : [];
+  return [...quoted, ...all].map((q) => phraseText(q).trim()).filter((q) => q.split(' ').length >= 3);
+}
 
 /**
  * How much each kind of passage counts. The app's own explanations come first; places and stars
@@ -49,6 +65,8 @@ interface Doc {
   passage: Passage;
   tf: Map<string, number>;
   length: number;
+  /** Its text as phrases are compared (phraseText). */
+  phrase: string;
 }
 
 export interface SearchOptions {
@@ -69,7 +87,7 @@ export function createRetriever(passages: readonly Passage[]): Retriever {
     const tf = new Map<string, number>();
     for (const word of words) tf.set(word, (tf.get(word) ?? 0) + 1);
     for (const word of tf.keys()) df.set(word, (df.get(word) ?? 0) + 1);
-    docs.push({ passage, tf, length: words.length });
+    docs.push({ passage, tf, length: words.length, phrase: phraseText(passage.text) });
     total += words.length;
   }
   const n = docs.length;
@@ -85,7 +103,8 @@ export function createRetriever(passages: readonly Passage[]): Retriever {
     for (const word of tokenize(query)) weights.set(word, 1);
     for (const [word, weight] of synonymTokens(query)) if (!weights.has(word)) weights.set(word, weight * SYNONYM_WEIGHT);
     const keys = [...query.matchAll(VERSE_KEY_PATTERN)].map((m) => `${Number(m[1])}:${Number(m[2])}`);
-    if (weights.size === 0 && keys.length === 0) return [];
+    const phrases = phrasesOf(query, weights.size === 0);
+    if (weights.size === 0 && keys.length === 0 && phrases.length === 0) return [];
     const kinds = options.kinds ? new Set(options.kinds) : null;
     const scored: { passage: Passage; score: number }[] = [];
     for (const doc of docs) {
@@ -97,6 +116,7 @@ export function createRetriever(passages: readonly Passage[]): Retriever {
         if (!f) continue;
         score += weight * idf(word) * ((f * (BM25_K1 + 1)) / (f + BM25_K1 * (1 - BM25_B + (BM25_B * doc.length) / avg)));
       }
+      if (phrases.some((ph) => doc.phrase.includes(` ${ph} `))) score += PHRASE_BONUS;
       if (keys.length > 0 && (keys.includes(p.ref ?? '') || keys.some((k) => p.id === `plain:${k}` || p.id.endsWith(`.${k}`) || (p.kind === 'prose' && p.title.includes(` ${k}`))))) {
         score += REFERENCE_BONUS;
       }

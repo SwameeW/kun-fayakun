@@ -206,6 +206,8 @@ test.describe('output', () => {
     // As Qwen3 1.7B wrote it: a line of the actions block in a marker.
     const long = `The times are shown. [[action:islamic.prayer_times: Work out the times of prayer at 24.5019, 39.5781 by the isna convention. (done): The times of prayer at 24.5019, 39.5781 on 2026-12-01, by the convention of the Islamic Society of North America, in UTC.]]`;
     expect(guardOutput(long, data({ facts: [], given: [long] })).text).toBe('The times are shown.');
+    // As Qwen3.5 9B wrote it: the prompt's own markup in brackets.
+    expect(guardOutput('The chapter shows 51:47. [[data name=]] Science measures the expansion.', data({ facts: [] })).text).toBe('The chapter shows 51:47. Science measures the expansion.');
   });
 
   test('seven words in a row from a verse’s translation are its wording: the sentence goes, the verse is shown from data', () => {
@@ -219,6 +221,39 @@ test.describe('output', () => {
     expect(out.citations).toContainEqual({ kind: 'verse', id: '7:54' });
     // A shorter phrase in common with a verse is ordinary prose.
     expect(guardOutput('The heavens and the earth took shape over billions of years.', data({ facts: [] })).flags).not.toContain('scripture-quote');
+  });
+
+  test('a whole sentence of four or more words found word for word in a verse is its wording; a common phrase in a sentence of its own is not', () => {
+    const v = index.passages.find((p) => p.id === 'verse:57:25');
+    if (!v) throw new Error('no 57:25');
+    // As Qwen3 1.7B wrote it after the verse's marker: the verse's own last words.
+    const out = guardOutput('[[verse:57:25]] Lo! Allah is Strong, Almighty. The verse speaks of iron sent down.', data({ facts: [] }));
+    expect(out.text).not.toContain('Strong, Almighty');
+    expect(out.text).toContain('The verse speaks of iron sent down.');
+    expect(guardOutput('The heavens and the earth formed slowly.', data({ facts: [] })).flags).not.toContain('scripture-quote');
+  });
+
+  test('Chinese, Japanese and Korean characters are removed, and flagged', () => {
+    // As Qwen3 1.7B wrote it, asked to answer only in Arabic script.
+    const out = guardOutput('Big Bang 稠密. It began hot.', data({ facts: [] }));
+    expect(out.text).toBe('Big Bang. It began hot.');
+    expect(out.flags).toContain('other-script');
+    expect(guardOutput('Vatnajökull and Ōmuamua are Latin script.', data({ facts: [] })).flags).not.toContain('other-script');
+  });
+
+  test('a verse named as a heading, its words to follow, goes whole: a verse the data does not hold leaves nothing', () => {
+    // As Qwen3 1.7B wrote it, asked to recite 1:1 (not in the data), looping until its tokens ran out.
+    const made = `The visitor can confirm that they want to recite verse 1:1 of the Quran. [[verse:1:1]] (scripture) Quran 1:1: Allah is the true Lord, the Everlasting, the One, ${'the Most Noble, the Most Majestic, '.repeat(20)}the Most`;
+    const out = guardOutput(made, data({ facts: [], truncated: true }));
+    expect(out.text).not.toMatch(/1:1|Everlasting|Most Noble/u);
+    expect(out.citations).toEqual([]);
+    expect(out.flags).toEqual(expect.arrayContaining(['scripture-quote', 'unknown-citation']));
+    // A verse the data holds, presented the same way, is shown from data instead.
+    const held = guardOutput('Surah 21, verse 30: the heavens and the earth were a joined entity, and We separated them.', data({ facts: [] }));
+    expect(held.text).not.toContain('joined entity');
+    expect(held.citations).toContainEqual({ kind: 'verse', id: '21:30' });
+    // A time is still a time.
+    expect(guardOutput('The Sun sets at 18:42:10 UTC over Mecca.', data({ facts: [], given: ['18:42:10'] })).text).toBe('The Sun sets at 18:42:10 UTC over Mecca.');
   });
 
   test('what a hadith says is never the model’s to tell: such sentences go, the reference stays', () => {

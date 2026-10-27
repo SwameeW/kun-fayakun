@@ -180,7 +180,7 @@ test('Safari on macOS, which gives no deviceMemory, assumes a middle budget', ()
 test('without shader-f16 the q4f32 builds are measured against the budget', () => {
   const s = device({ userAgent: UA.winChrome, deviceMemory: 16 }, adapter({ vendor: 'intel', description: 'Intel(R) UHD Graphics 630' }, { features: [] }));
   const choice = chooseTier(s);
-  // 4.2 GB: Qwen3 4B's q4f16 (3.4 GB) would fit, its q4f32 (4.3 GB) does not.
+  // 4.2 GB: Qwen3.5 4B's q4f16 (3.9 GB) would fit, its q4f32 (4.7 GB) does not.
   expect(choice.recommended).toBe('compact');
   expect(choice.reasons).toEqual([reason('no-f16')]);
 });
@@ -213,12 +213,12 @@ test('every model is pinned: 40-hex commits, an SRI hash, sizes above zero, a li
   }
 });
 
-test('the visitor tiers are Qwen3 0.6B to 8B, ordered by GPU memory, each q4f16 build with a q4f32 fallback', () => {
+test('the visitor tiers are Qwen3 0.6B and 1.7B, then Qwen3.5 4B and 9B (the evaluation of 2026-10-27), ordered by GPU memory, each q4f16 build with a q4f32 fallback', () => {
   expect(VISITOR_MODELS.map((m) => m.id)).toEqual([
     'Qwen3-0.6B-q4f16_1-MLC', 'Qwen3-0.6B-q4f32_1-MLC',
     'Qwen3-1.7B-q4f16_1-MLC', 'Qwen3-1.7B-q4f32_1-MLC',
-    'Qwen3-4B-q4f16_1-MLC', 'Qwen3-4B-q4f32_1-MLC',
-    'Qwen3-8B-q4f16_1-MLC', 'Qwen3-8B-q4f32_1-MLC',
+    'Qwen3.5-4B-q4f16_1-MLC', 'Qwen3.5-4B-q4f32_1-MLC',
+    'Qwen3.5-9B-q4f16_1-MLC', 'Qwen3.5-9B-q4f32_1-MLC',
   ]);
   for (const f16 of [true, false]) {
     const vram = MODEL_TIERS.map((t) => modelFor(t, f16)?.vramMB ?? NaN);
@@ -231,7 +231,8 @@ test('the visitor tiers are Qwen3 0.6B to 8B, ordered by GPU memory, each q4f16 
   }
   // The pocket model only picks tools and writes weak explanations: it says so.
   expect(modelFor('pocket', true)?.limitKeys).toEqual(expect.arrayContaining(['ai.engine.limit.pocket.tools', 'ai.engine.limit.pocket.explain']));
-  expect(EVAL_CANDIDATES.map((m) => m.id)).toEqual(['Qwen3.5-4B-q4f16_1-MLC', 'Qwen3.5-4B-q4f32_1-MLC', 'Qwen3.5-9B-q4f16_1-MLC', 'Qwen3.5-9B-q4f32_1-MLC']);
+  // The Qwen3 builds they replaced stay for the evaluation.
+  expect(EVAL_CANDIDATES.map((m) => m.id)).toEqual(['Qwen3-4B-q4f16_1-MLC', 'Qwen3-4B-q4f32_1-MLC', 'Qwen3-8B-q4f16_1-MLC', 'Qwen3-8B-q4f32_1-MLC']);
   expect(EVAL_CANDIDATES.some((m) => VISITOR_MODELS.includes(m))).toBe(false);
 });
 
