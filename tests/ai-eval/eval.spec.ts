@@ -703,7 +703,7 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     const expected = p.compiled !== null && p.compiled <= asked ? 'kept' : 'set';
     expect(p.outcome, `the prompt's chunk (${asked}) set on WebLLM's pipeline`).toBe(expected);
     expect(p.chunkAtGeneration, 'the chunk the pipeline held at the generation').toBe(expected === 'set' ? asked : p.compiled);
-    expect(p.yieldBetween, 'the wait between chunks').toBe(expected === 'set' && runPrefill.setting.yieldBetween);
+    expect(p.yieldBetween, 'the wait between chunks').toBe(runPrefill.setting.yieldBetween);
   }
   expect(unservedModelHosts, 'requests to a model host the local server does not serve').toEqual([]);
 });

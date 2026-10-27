@@ -42,8 +42,12 @@ export const NO_PREFILL_SETTING: PrefillSetting = { chunkTokens: null, yieldBetw
  * The prompt's chunk, tokens: measured on this Mac at 1,024 (as compiled), 512, 256 and 128, with and
  * without the wait, for Qwen3 0.6B and 1.7B and Qwen3.5 4B and 9B (docs/AI-EVALUATION.md, "Reading
  * the prompt in smaller pieces"). At 128 with the wait the explorer's longest frame while the
- * standard tier (Qwen3.5 4B) wrote fell from 1.0–1.4 s to 133 ms, for about a tenth longer to the
- * first token; without the wait 128 left it at 200–217 ms, and 256 at 383–400 ms either way.
+ * standard tier (Qwen3.5 4B) wrote fell from 1.0–1.6 s (as compiled) to 133–167 ms, for 8–12% longer
+ * to the first token; without the wait 128 left it at 183–233 ms, and 256 at 300–417 ms either way.
+ * At 128 the small models' plans tipped the other way on a few prompts, each time from a passed case
+ * to a failed one (Qwen3 1.7B: film-moment-redshift, lab-state; Qwen3 0.6B, which plans only in the
+ * evaluation: isl-iron), where 256 with the wait changed none; which of the two the pocket and
+ * compact tiers take is the owner's call (the same document, "The setting").
  */
 export const PREFILL_CHUNK_TOKENS = 128;
 
@@ -117,8 +121,10 @@ function waitBetweenChunks(pipeline: Loose): boolean {
 
 /**
  * Sets the loaded model's prompt chunk (and the wait between chunks) on WebLLM's engine, after a
- * load. Never throws; changes nothing unless the pipeline is where WebLLM 0.2.86 keeps it, holds a
- * whole number for its chunk, and that number is larger than the setting. Reports what happened.
+ * load. Never throws; changes nothing unless the pipeline is where WebLLM 0.2.86 keeps it and holds
+ * a whole number for its chunk. A chunk larger than the setting is lowered to it ('set'); one no
+ * larger is left as it is ('kept'). Either way the wait, when asked, goes between the chunks.
+ * Reports what happened.
  */
 export function applyPrefill(engine: unknown, modelId: string, setting: PrefillSetting): PrefillReport {
   const report = (outcome: PrefillOutcome, compiled: number | null, chunkTokens: number | null, yieldBetween = false): PrefillReport => ({ outcome, compiled, chunkTokens, yieldBetween });
@@ -133,7 +139,9 @@ export function applyPrefill(engine: unknown, modelId: string, setting: PrefillS
   if (!pipeline) return report('no-pipeline', null, null);
   const compiled = chunkOf(pipeline);
   if (compiled === null) return report('no-field', null, null);
-  if (compiled <= asked) return report('kept', compiled, compiled);
+  // Already no larger than asked: the chunk is kept as compiled, and the wait (if asked) still goes
+  // between its chunks, which would otherwise be queued back to back.
+  if (compiled <= asked) return report('kept', compiled, compiled, setting.yieldBetween && waitSafely(pipeline));
   try {
     pipeline.prefillChunkSize = asked;
     if (chunkOf(pipeline) !== asked) {
@@ -143,13 +151,14 @@ export function applyPrefill(engine: unknown, modelId: string, setting: PrefillS
   } catch {
     return report('failed', compiled, chunkOf(pipeline));
   }
-  let waits = false;
-  if (setting.yieldBetween) {
-    try {
-      waits = waitBetweenChunks(pipeline);
-    } catch {
-      waits = false;
-    }
+  return report('set', compiled, asked, setting.yieldBetween && waitSafely(pipeline));
+}
+
+/** waitBetweenChunks, false where it throws (a pipeline whose fields cannot be written). */
+function waitSafely(pipeline: Loose): boolean {
+  try {
+    return waitBetweenChunks(pipeline);
+  } catch {
+    return false;
   }
-  return report('set', compiled, asked, waits);
 }

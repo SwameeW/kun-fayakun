@@ -125,15 +125,39 @@ test('WebLLM internals not as 0.2.86 has them: nothing changes, nothing throws, 
   expect(report(hostile).outcome).toBe('failed');
 });
 
-test('a value already as small or smaller is kept as it is', () => {
+test('a value already as small or smaller is kept as it is; without the wait asked, nothing else is touched', () => {
   for (const compiled of [256, 128, 64]) {
     const engine = new FakeEngine();
     const pipeline = engine.reload(ID, compiled);
-    expect(applyPrefill(engine, ID, at(256, true))).toEqual({ outcome: 'kept', compiled, chunkTokens: compiled, yieldBetween: false });
+    expect(applyPrefill(engine, ID, at(256))).toEqual({ outcome: 'kept', compiled, chunkTokens: compiled, yieldBetween: false });
     expect(pipeline.prefillChunkSize).toBe(compiled);
-    // Nothing else is touched either: the forward is still the class's own, not a wrapper.
+    // The forward is still the class's own, not a wrapper.
     expect(Object.hasOwn(pipeline, 'embedAndForward')).toBe(false);
   }
+});
+
+test('a value kept as it is still gets the wait between its chunks when the wait is asked', async () => {
+  // A library compiled at 128 or smaller would otherwise queue its chunks back to back.
+  for (const compiled of [256, 128, 64]) {
+    const engine = new FakeEngine();
+    const pipeline = engine.reload(ID, compiled);
+    expect(applyPrefill(engine, ID, at(256, true))).toEqual({ outcome: 'kept', compiled, chunkTokens: compiled, yieldBetween: true });
+    expect(pipeline.prefillChunkSize).toBe(compiled);
+    await pipeline.prefill(compiled * 2 + 10);
+    await pipeline.decode();
+    expect(pipeline.log, String(compiled)).toEqual([`forward ${compiled}`, 'sync', 'tick', `forward ${compiled}`, 'sync', 'tick', 'forward 10', 'forward 1']);
+  }
+  // Kept, and no device to wait on (or a program artifact): no wait, and the report says so.
+  const bare = { prefillChunkSize: 128, embedAndForward: (): Promise<void> => Promise.resolve() };
+  const forward = bare.embedAndForward;
+  expect(applyPrefill({ loadedModelIdToPipeline: new Map([[ID, bare]]) }, ID, at(256, true))).toEqual({ outcome: 'kept', compiled: 128, chunkTokens: 128, yieldBetween: false });
+  expect(bare.embedAndForward).toBe(forward);
+  const programmed = Object.assign(new FakePipeline(128), { artifact: { program: {} } });
+  expect(applyPrefill({ loadedModelIdToPipeline: new Map([[ID, programmed]]) }, ID, at(256, true)).yieldBetween).toBe(false);
+  expect(Object.hasOwn(programmed, 'embedAndForward')).toBe(false);
+  // A pipeline whose forward cannot be replaced: kept, no wait, nothing thrown.
+  const sealed = Object.freeze(new FakePipeline(128));
+  expect(applyPrefill({ loadedModelIdToPipeline: new Map([[ID, sealed]]) }, ID, at(256, true))).toEqual({ outcome: 'kept', compiled: 128, chunkTokens: 128, yieldBetween: false });
 });
 
 test('a chunk that cannot be written, or does not hold, is put back and reported as failed', () => {

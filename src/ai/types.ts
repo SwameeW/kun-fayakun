@@ -158,7 +158,8 @@ export interface GenerateResult {
  * pipeline after its load, or why none was.
  * - set: the pipeline reads prompts in chunks of chunkTokens now (compiled before);
  * - off: none was asked for;
- * - kept: the build's own chunk is already that size or smaller, so nothing changed;
+ * - kept: the build's own chunk is already that size or smaller, so it stays (the wait, if asked,
+ *   still goes between its chunks);
  * - no-pipeline, no-field: WebLLM's engine holds no pipeline for the model, or the pipeline no
  *   whole-number prefillChunkSize, where 0.2.86 keeps them (a WebLLM that moved them);
  * - failed: reading or writing it threw, or the value did not hold (nothing changed).

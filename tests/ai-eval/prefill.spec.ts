@@ -211,7 +211,13 @@ test(`prefill chunk on real models: ${MODEL_ID}, then ${SWITCH_ID}`, async ({ ba
     for (const g of [refLong, refShort, long, short, again, switchedShort, reloadedShort]) expect(g.result.finish, g.result.text).toBe('stop');
     expect((asCompiled.prefill as { outcome: string }).outcome).toBe('off');
     for (const l of [chunked, switched, reloaded]) expect(l.prefill).toMatchObject({ outcome: 'set', chunkTokens: setting.chunkTokens, yieldBetween: setting.yieldBetween });
-    for (const g of [long, short, stopped, again, switchedShort, reloadedShort]) expect(g.result.engineUsage?.prefill?.chunkAtGeneration ?? setting.chunkTokens).toBe(setting.chunkTokens);
+    // Every generation reports it, the stopped one too: a generation with no report fails here.
+    for (const g of [long, short, stopped, again, switchedShort, reloadedShort]) {
+      expect(g.result.engineUsage?.prefill, 'the setting as the generation reported it').toMatchObject({ outcome: 'set', chunkTokens: setting.chunkTokens, yieldBetween: setting.yieldBetween });
+      expect(g.result.engineUsage?.prefill?.chunkAtGeneration, 'the chunk the pipeline held at the generation').toBe(setting.chunkTokens);
+    }
+    // As compiled: no setting, and the pipeline at the chunk its library was compiled with.
+    for (const g of [refLong, refShort]) expect(g.result.engineUsage?.prefill, 'as compiled').toMatchObject({ outcome: 'off', chunkAtGeneration: (chunked.prefill as { compiled: number }).compiled });
     // Stopped while it read the prompt: aborted, and nothing left that would read as a crash next time.
     expect(stopped.result.finish).toBe('abort');
     for (const g of [refLong, long, stopped, again, reloadedShort]) expect(g.marker).toBeNull();
