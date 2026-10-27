@@ -1,4 +1,5 @@
 import type { App, DataStore, HadithEntry, HadithFile, HadithId, QuranFile, VerseKey } from '../../core/types';
+import type { WithheldNarration } from '../guards';
 import type { AnswerBlock, Fact, PassageKind, ToolDefinition } from '../types';
 import { done, ensureMessages, fact, num, problem, refused, say, str } from './shared';
 
@@ -10,10 +11,15 @@ import { done, ensureMessages, fact, num, problem, refused, say, str } from './s
  * data/hadith.json excludes are read from its `excluded` list at run time and never offered.
  */
 
-/** The verses and hadith that can be cited: every key in data/quran.json the data store shows, every hadith not excluded. */
+/**
+ * The verses and hadith that can be cited: every key in data/quran.json the data store shows, every
+ * hadith not excluded; and the excluded narrations themselves, so the output guards can remove a
+ * sentence that names one.
+ */
 export interface ScriptureCatalogue {
   verses: readonly VerseKey[];
   hadith: readonly HadithId[];
+  withheld: readonly WithheldNarration[];
 }
 
 const VERSE_KEY = /^\d{1,3}:\d{1,3}$/u;
@@ -49,10 +55,27 @@ export function catalogueFrom(quran: Pick<QuranFile, 'ayat'>, hadith: Pick<Hadit
   return {
     verses: quran.ayat.map((a) => a.key).filter((k) => verseAvailable(data, k)),
     hadith: hadith.hadith.filter((h) => !excluded.has(h.sunnahKey) && !h.parallels.some((p) => excluded.has(p)) && hadithEntry(data, h.id) !== null).map((h) => h.id),
+    withheld: withheldFrom(hadith),
   };
 }
 
-const EMPTY: ScriptureCatalogue = { verses: [], hadith: [] };
+/** A collection's title, and the shorter names it goes by ("Sahih al-Bukhari", "al-Bukhari", "Bukhari"). */
+function collectionNames(title: string): string[] {
+  const short = title.replace(/^(?:sahih|sunan|jami['’`]?|musnad|muwatta)\s+/iu, '');
+  return [...new Set([title, short, short.replace(/^(?:al|at|an|ad|as|ash|ibn)-/iu, ''), short.replace(/^abi\s/iu, 'Abu ')])];
+}
+
+/** The narrations the hadith file excludes, each with the names its collection goes by (from the file's own entries). */
+export function withheldFrom(hadith: Pick<HadithFile, 'hadith' | 'excluded'>): WithheldNarration[] {
+  const titles = new Map<string, string>();
+  for (const h of hadith.hadith) titles.set(h.sunnahKey.split(':')[0] ?? '', h.collection);
+  return hadith.excluded.map((e) => {
+    const title = titles.get(e.sunnahKey.split(':')[0] ?? '');
+    return { sunnahKey: e.sunnahKey, collection: title ? collectionNames(title) : [] };
+  });
+}
+
+const EMPTY: ScriptureCatalogue = { verses: [], hadith: [], withheld: [] };
 
 export function citeTools(catalogue: ScriptureCatalogue = EMPTY): ToolDefinition[] {
   const verse: ToolDefinition = {

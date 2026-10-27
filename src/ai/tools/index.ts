@@ -41,5 +41,5 @@ export const registerToolMessages = ensureMessages;
 
 export { validateSchema, fits } from './schema';
 export { stem, terms, navigationTool } from './registry';
-export { catalogueFrom, loadScriptureCatalogue, type ScriptureCatalogue } from './cite';
+export { catalogueFrom, loadScriptureCatalogue, withheldFrom, type ScriptureCatalogue } from './cite';
 export { MESSAGE_FILE } from './shared';

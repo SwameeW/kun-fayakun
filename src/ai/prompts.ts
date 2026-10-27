@@ -6,7 +6,10 @@
  *   citing by marker.
  * Everything that comes from data (the context, passages, facts, tool outcomes, earlier turns) is
  * put in delimited data blocks that the system prompt says are data, never instructions. Text in a
- * block cannot close it early: anything that looks like a block's end is defused first.
+ * block cannot close it early: anything that looks like a block's end is defused first. Nor can any
+ * text, the visitor's question included, end its turn of the chat or open another: the chat
+ * template's control tokens ("<|im_end|>", "<|im_start|>system" for Qwen) are defused everywhere,
+ * so a laboratory body named after one (from a shared link, say) reaches the model as plain text.
  */
 import type { AiContext, ChatMessage, ExplanationLevel, Fact, JsonSchema, Passage, ToolDefinition } from './types';
 
@@ -64,9 +67,14 @@ export function planSchema(tools: readonly ToolDefinition[]): JsonSchema {
   };
 }
 
-/** Defuses anything in data that could pass for a block's end or a new block. */
+/** Defuses chat-template control tokens ("<|im_start|>", "<|endoftext|>"): their brackets become look-alikes. */
+export function asText(text: string): string {
+  return text.replace(/<\|/gu, '‹|').replace(/\|>/gu, '|›');
+}
+
+/** Defuses anything in data that could pass for a block's end or a new block, or for the chat template's own markup. */
 export function asData(text: string): string {
-  return text.replace(/<\s*\/?\s*data\b[^>]*>/giu, (m) => m.replace(/</gu, '‹').replace(/>/gu, '›'));
+  return asText(text).replace(/<\s*\/?\s*data\b[^>]*>/giu, (m) => m.replace(/</gu, '‹').replace(/>/gu, '›'));
 }
 
 function block(name: string, body: string): string {
@@ -113,7 +121,7 @@ export function buildPlanMessages(question: string, ctx: AiContext, tools: reado
   if (earlier) parts.push(earlier);
   return [
     { role: 'system', content: `${PLAN_SYSTEM}\n\n${parts.join('\n')}` },
-    { role: 'user', content: question },
+    { role: 'user', content: asText(question) },
   ];
 }
 
@@ -121,7 +129,7 @@ export function buildPlanMessages(question: string, ctx: AiContext, tools: reado
 export function buildRepairMessages(previous: readonly ChatMessage[], reply: string, problems: readonly string[]): ChatMessage[] {
   return [
     ...previous,
-    { role: 'assistant', content: reply.slice(0, 1200) },
+    { role: 'assistant', content: asText(reply.slice(0, 1200)) },
     {
       role: 'user',
       content: `That plan cannot be used: ${problems.slice(0, 6).join('; ')}. Reply again with one corrected JSON object, using only the listed tools and their arguments.`,
@@ -190,6 +198,6 @@ export function buildAnswerMessages(
   const parts = lines.length > 0 ? [...fixed, block('passages', lines.join('\n'))] : [...fixed, block('passages', '(none found)')];
   return [
     { role: 'system', content: `${system}\n\n${parts.join('\n')}` },
-    { role: 'user', content: question },
+    { role: 'user', content: asText(question) },
   ];
 }
