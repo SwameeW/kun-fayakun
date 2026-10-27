@@ -35,7 +35,7 @@ const BRAVE_PATH = env('BRAVE_PATH') ?? '/Applications/Brave Browser.app/Content
 const HAS_BRAVE = existsSync(BRAVE_PATH);
 
 /** Specs that run only on the emulated phone (the "mobile" project). */
-const MOBILE_SPECS = /explore\/mobile\.spec\.ts/u;
+const MOBILE_SPECS = /explore\/mobile\.spec\.ts|ai-panel-mobile\.spec\.ts/u;
 
 const desktopChromium = {
   ...devices['Desktop Chrome'],

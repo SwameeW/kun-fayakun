@@ -12,6 +12,7 @@ import { readContext, SUMMARY_MAX } from '../../src/ai/context';
 import { blockKnowledge, createIntelligence, type AiOrchestrator, type IntelligenceDeps } from '../../src/ai/index';
 import { createScriptedEngine, type ScriptedEngine, type ScriptedReply } from '../../src/ai/engine/scripted';
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
+import { buildAnswerMessages, LEVEL_LINES } from '../../src/ai/prompts';
 import type { AiMemory, MemoryEntry } from '../../src/ai/memory';
 import type { AiContext, AnswerBlock, EngineHost, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn } from '../../src/ai/types';
 import { BODY_IDS, type App, type I18n } from '../../src/core/types';
@@ -519,6 +520,45 @@ test.describe('engines and the rest', () => {
     await h.ai.confirm(turn.id, 'c1', true);
     const states = h.turnEvents.map((t) => t.state).filter((s, i, all) => s !== all[i - 1]);
     expect(states).toEqual(['understanding', 'planning', 'acting', 'awaiting-confirmation', 'acting', 'verifying', 'answering', 'done']);
+  });
+});
+
+/* ---------------- what the interface asks of it ---------------- */
+
+test.describe('for the interface (src/ai/ui)', () => {
+  test('the explanation level is one line of the answer prompt; a model’s words are marked as its own, the guide’s are not', async () => {
+    const h = harness(
+      [
+        { format: 'json', match: 'hard to leave', reply: plan({ intent: 'answer', query: 'escape speed mars', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] }) },
+        { format: 'text', match: 'hard to leave', reply: 'Leaving Mars takes 5.03 km/s [[fact:escape.mars]].' },
+      ],
+      { where: CTX.explorer },
+    );
+    const guide = await h.ai.ask('escape speed of mars');
+    expect(ofType(guide, 'text')[0]?.by).toBeUndefined();
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    expect(h.ai.level()).toBe('standard');
+    const answerPrompt = (): string => h.engine.requests.filter((r) => r.format.kind === 'text').at(-1)?.messages[0]?.content ?? '';
+    await h.ai.ask('Why is Mars hard to leave?');
+    expect(answerPrompt()).toContain(LEVEL_LINES.standard);
+    for (const level of ['plain', 'deeper'] as const) {
+      h.ai.setLevel(level);
+      const turn = await h.ai.ask('Why is Mars hard to leave?');
+      expect(answerPrompt()).toContain(LEVEL_LINES[level]);
+      for (const other of Object.values(LEVEL_LINES)) if (other !== LEVEL_LINES[level]) expect(answerPrompt()).not.toContain(other);
+      expect(ofType(turn, 'text')[0]).toMatchObject({ by: 'model', text: 'Leaving Mars takes 5.03 km/s.' });
+    }
+    // Without a level, the prompt is the standard one.
+    expect(buildAnswerMessages('q', CTX.home, [], [], [], [])[0]?.content).toContain(LEVEL_LINES.standard);
+  });
+
+  test('kindOf names a tool’s kind', () => {
+    const h = harness();
+    expect(h.ai.kindOf('explorer.fly')).toBe('view');
+    expect(h.ai.kindOf('lab.experiment')).toBe('experiment');
+    expect(h.ai.kindOf('calc.escape_speed')).toBe('calc');
+    expect(h.ai.kindOf('no.such')).toBeNull();
   });
 });
 
