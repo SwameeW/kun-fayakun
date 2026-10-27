@@ -35,7 +35,15 @@ function pieceOf(chunk: ChatCompletionChunk): ModelPiece {
     delta: choice?.delta.content ?? '',
     finish: choice?.finish_reason ?? null,
     usage: usage
-      ? { promptTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, ttftMs: usage.extra.time_to_first_token_s * 1000, e2eMs: usage.extra.e2e_latency_s * 1000 }
+      ? {
+          promptTokens: usage.prompt_tokens,
+          outputTokens: usage.completion_tokens,
+          ttftMs: usage.extra.time_to_first_token_s * 1000,
+          e2eMs: usage.extra.e2e_latency_s * 1000,
+          prefillTokensPerS: usage.extra.prefill_tokens_per_s,
+          decodeTokensPerS: usage.extra.decode_tokens_per_s,
+          grammarInitMs: usage.extra.grammar_init_s !== undefined ? usage.extra.grammar_init_s * 1000 : null,
+        }
       : null,
   };
 }

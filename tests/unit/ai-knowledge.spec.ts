@@ -135,3 +135,14 @@ test('is deterministic for the same question', () => {
     expect(JSON.stringify(retriever.search(query))).toBe(JSON.stringify(retriever.search(query)));
   }
 });
+
+test('a phrase quoted, or made only of common words, is found word for word ("Be, and it is", the app’s own name)', () => {
+  // Every word of it is a stop word: it found nothing, and models then said the Quran does not hold it.
+  const keys = (q: string): string[] => retriever.search(q, { kinds: ['verse'], limit: 5 }).map((r) => r.passage.ref ?? '');
+  const quoted = keys('Where does the Quran say "Be, and it is"? Give the verse reference.');
+  expect(quoted.some((k) => ['36:82', '2:117'].includes(k))).toBe(true);
+  expect(keys('be and it is').some((k) => ['36:82', '2:117'].includes(k))).toBe(true);
+  // A short quote, or one no passage holds, changes nothing.
+  expect(retriever.search('"it is"', { limit: 3 })).toEqual(retriever.search('it is', { limit: 3 }));
+  expect(retriever.search('"zebra crossing at noon"', { limit: 3 })).toEqual(retriever.search('zebra crossing at noon', { limit: 3 }));
+});

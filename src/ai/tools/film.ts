@@ -1,5 +1,5 @@
 import type { App, ChapterId } from '../../core/types';
-import type { ToolDefinition, ToolEnv } from '../types';
+import type { JsonSchema, ToolDefinition, ToolEnv } from '../types';
 import { done, ensureMessages, failed, focusOf, notConfirmed, num, problem, refused, returnTo, say, str, waitFor, type Focus } from './shared';
 
 /**
@@ -140,12 +140,19 @@ export const filmControl: ToolDefinition = {
   },
 };
 
+const filmMomentArgs: JsonSchema = { type: 'object', properties: { point: { type: 'string', maxLength: 48, pattern: '^[a-z0-9-]{1,48}$', description: "A moment's id in this chapter" } }, required: ['point'], additionalProperties: false };
+
 export const filmMoment: ToolDefinition = {
   name: 'film.moment',
   kind: 'view',
   summary: "Show one of this chapter's Explore Mode moments (by its id) in Explore Mode.",
   keywords: ['moment', 'show me', 'when', 'explore point', 'discover'],
-  args: { type: 'object', properties: { point: { type: 'string', maxLength: 48, pattern: '^[a-z0-9-]{1,48}$', description: "A moment's id in this chapter" } }, required: ['point'], additionalProperties: false },
+  args: filmMomentArgs,
+  // A model is offered this chapter's own moments by id; "Show the orrery" had nothing to pick from.
+  argsFor: (ctx) =>
+    ctx.moments?.length
+      ? { type: 'object', properties: { point: { type: 'string', enum: ctx.moments.map((m) => m.id), description: `One of this chapter's moments: ${ctx.moments.map((m) => `${m.id} (${m.title})`).join(', ')}` } }, required: ['point'], additionalProperties: false }
+      : filmMomentArgs,
   available: (ctx) => ctx.where === 'chapter',
   preview: (args, _ctx, i18n) => say(i18n, 'ai.tool.film.moment.preview', { point: str(args, 'point') ?? '' }),
   async run(args, env) {

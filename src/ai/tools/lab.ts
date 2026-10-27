@@ -1,8 +1,9 @@
-import type { LabCommand, UniverseLab } from '../../core/types';
+import { BODY_IDS, type LabCommand, type UniverseLab } from '../../core/types';
 import type { Baseline } from '../planner/compare';
 import { EXPERIMENT_IDS, EXPERIMENT_PARAMS, experimentPreview, experimentProblems, HORIZON_DAYS, isPlan, planExperiment, resolveBody, worldFromContext, worldFromLab, type PlanNames, type PlanWorld } from '../planner/experiments';
 import type { OptimiseSearch } from '../planner/optimise';
 import type { AiContext, ExperimentId, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolOutcome, UndoOutcome } from '../types';
+import { labForAssistant } from '../context';
 import { dateJdTdb, jplData } from './data';
 import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfirmed, num, OPEN_MS, problem, refused, say, settle, sig, str, view, waitFor } from './shared';
 
@@ -23,7 +24,11 @@ import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfir
 const QUICK_MS = 5000;
 
 const inLab = (ctx: AiContext): boolean => ctx.where === 'lab';
-const labView = (env: ToolEnv): UniverseLab | null => view(env)?.lab ?? null;
+/** The laboratory as the assistant reads it: a body the visitor renamed by its own name (../context.ts labForAssistant). */
+const labView = (env: ToolEnv): UniverseLab | null => {
+  const lab = view(env)?.lab ?? null;
+  return lab ? labForAssistant(lab) : null;
+};
 
 /** Names the planner gives new bodies, in the visitor's language. */
 const planNames = (env: ToolEnv): PlanNames => ({ moon: say(env.i18n, 'ai.tool.experiment.name.moon'), star: say(env.i18n, 'ai.tool.experiment.name.star'), impactor: say(env.i18n, 'ai.tool.experiment.name.impactor') });
@@ -44,6 +49,46 @@ const paramSchema = (): Record<string, JsonSchema> => {
 };
 
 const EXPERIMENT_ARGS = { type: 'object', properties: paramSchema(), required: ['experiment'], additionalProperties: false } as const satisfies JsonSchema;
+
+/*
+ * What a model is offered (ToolDefinition.argsFor). A laboratory body's own schema is a pattern over
+ * Unicode letters, which XGrammar cannot read: Qwen3 4B, held to it, wrote "N" and "L" for every body
+ * (docs/AI-EVALUATION.md). So a model is given the bodies by id (the laboratory's own, or the solar
+ * system's ten worlds outside it), and each experiment as a form of its own, its parameters all
+ * required, so the grammar holds a plan to the parameters of the experiment it names.
+ */
+const labBodyIds = (ctx: AiContext): string[] => (ctx.lab ? ctx.lab.bodies.map((b) => b.id) : [...BODY_IDS]);
+const labBody = (ctx: AiContext): JsonSchema => ({ type: 'string', enum: labBodyIds(ctx), description: 'A laboratory body, by id' });
+
+/**
+ * What each number means, shown beside it in the plan's prompt. Without them Qwen3 4B and Qwen3.5 4B
+ * made "the Sun 10% heavier" an orbit 1.1 times as wide (change-orbit's aFactor, not scale-mass's factor).
+ */
+const PARAM_NOTES: Readonly<Record<string, string>> = {
+  factor: "multiply the body's mass by this",
+  dvKmS: 'km/s added to its speed',
+  diameterKm: "the impactor's size, km",
+  speedKmS: 'km/s',
+  angleDeg: 'degrees above the horizon',
+  distanceKm: 'km from the host',
+  massKg: 'kg; a large number as a power of ten: 1e22',
+  massSun: 'solar masses',
+  distanceAu: 'au from the Sun',
+  aFactor: "multiply the orbit's size by this",
+  e: 'eccentricity: 0 a circle',
+};
+
+function experimentForms(ctx: AiContext): JsonSchema {
+  return {
+    anyOf: EXPERIMENT_IDS.map((id): JsonSchema => {
+      const spec = EXPERIMENT_PARAMS[id];
+      const properties: Record<string, JsonSchema> = { experiment: { type: 'string', const: id } };
+      for (const [name, p] of Object.entries(spec)) properties[name] = p.kind === 'body' ? labBody(ctx) : p.kind === 'number' ? { type: 'number', minimum: p.min, maximum: p.max, ...(PARAM_NOTES[name] ? { description: PARAM_NOTES[name] } : {}) } : { type: 'string', enum: p.of };
+      properties.horizonDays = { type: 'number', minimum: HORIZON_DAYS.min, maximum: HORIZON_DAYS.max, description: 'Days to integrate ahead' };
+      return { type: 'object', properties, required: ['experiment', ...Object.keys(spec)], additionalProperties: false };
+    }),
+  };
+}
 
 const experimentOf = (args: Record<string, unknown>): ExperimentId => str(args, 'experiment') as ExperimentId;
 const paramsOf = (args: Record<string, unknown>): Record<string, number | string> => {
@@ -218,8 +263,10 @@ export const labExperiment: ToolDefinition = {
   name: 'lab.experiment',
   kind: 'experiment',
   summary: 'Change the laboratory: scale-mass, remove-body, kick-body, impact, add-moon, second-star or change-orbit, with its numbers (shown first for the visitor to confirm).',
-  keywords: ['what if', 'double', 'mass', 'remove', 'delete', 'kick', 'push', 'impact', 'asteroid', 'moon', 'add a moon', 'second sun', 'binary star', 'change orbit', 'heavier', 'lighter', 'without'],
+  // "Throw a rock at the Earth" in the laboratory named none of these, and the laboratory's own experiment was not offered (docs/AI-EVALUATION.md).
+  keywords: ['what if', 'double', 'mass', 'remove', 'delete', 'kick', 'push', 'impact', 'asteroid', 'moon', 'add a moon', 'second sun', 'binary star', 'change orbit', 'heavier', 'lighter', 'without', 'throw', 'hurl', 'rock', 'comet', 'crash into', 'smash into'],
   args: EXPERIMENT_ARGS,
+  argsFor: experimentForms,
   available: inLab,
   check(args, ctx) {
     const id = experimentOf(args);
@@ -289,6 +336,7 @@ export const labMeasure: ToolDefinition = {
   summary: 'Measure in the laboratory: the distance, light time and angular size between two bodies (and the angle between them seen from a third).',
   keywords: ['measure', 'distance between', 'how far apart', 'angle', 'light time', 'separation', 'angular size'],
   args: { type: 'object', properties: { from: LAB_BODY, to: LAB_BODY, via: LAB_BODY }, required: ['from', 'to'], additionalProperties: false },
+  argsFor: (ctx) => ({ type: 'object', properties: { from: labBody(ctx), to: labBody(ctx), via: labBody(ctx) }, required: ['from', 'to'], additionalProperties: false }),
   available: inLab,
   check(args, ctx) {
     const world = worldFromContext(ctx);
@@ -383,6 +431,7 @@ export const labCompare: ToolDefinition = {
   summary: 'Compare an experiment with the laboratory as it is (or the solar system), integrated ahead in the background; nothing on screen changes.',
   keywords: ['compare', 'what would happen', 'what if', 'difference', 'side by side', 'simulate', 'integrate ahead', 'in ten years', 'effect'],
   args: EXPERIMENT_ARGS,
+  argsFor: experimentForms,
   available: () => true,
   check(args, ctx) {
     return experimentProblems(experimentOf(args), paramsOf(args), worldFromContext(ctx));
@@ -415,7 +464,9 @@ export const labCompare: ToolDefinition = {
         fact(i18n, 'compare.energyVariant', 'ai.tool.lab.compare.energyVariant', {}, sig(raw.energyError.variant, 2), '', 'simulation'),
       ];
       const sentence = say(i18n, first.previewKey, first.previewValues);
-      return done('ai.tool.lab.compare.observed', { sentence, events: raw.events.length }, { facts, blocks: [{ type: 'comparison', comparison }, { type: 'notice', key: 'ai.tool.lab.compare.note' }] });
+      // A comparison that ran out of time (COMPARE_BUDGET_MS) says how far it reached.
+      const short = raw.reachedDays.variant < raw.horizonDays - 0.5 ? [{ type: 'notice' as const, key: 'ai.tool.lab.compare.short', values: { days: sig(raw.reachedDays.variant, 4), horizon: raw.horizonDays } }] : [];
+      return done('ai.tool.lab.compare.observed', { sentence, events: raw.events.length }, { facts, blocks: [{ type: 'comparison', comparison }, ...short, { type: 'notice', key: 'ai.tool.lab.compare.note' }] });
     } catch (err) {
       if (aborted(err)) return { status: 'failed', problem: problem('', 'ai.tool.problem.cancelled') };
       return failed(err);
@@ -440,6 +491,12 @@ export const labOptimise: ToolDefinition = {
     },
     required: ['goal'],
     additionalProperties: false,
+  },
+  // One form per goal, so a plan cannot give escape's days to year or year's target to escape.
+  argsFor: (ctx): JsonSchema => {
+    const escape: JsonSchema = { type: 'object', properties: { goal: { type: 'string', const: 'escape' }, body: labBody(ctx), days: { type: 'number', minimum: 1, maximum: 3650, description: 'within this many days (a year is 365.25)' } }, required: ['goal', 'body', 'days'], additionalProperties: false };
+    const year: JsonSchema = { type: 'object', properties: { goal: { type: 'string', const: 'year' }, body: labBody(ctx), targetDays: { type: 'number', minimum: 1, maximum: 100_000, description: 'the year wanted, days' } }, required: ['goal', 'body', 'targetDays'], additionalProperties: false };
+    return { anyOf: [escape, year] };
   },
   available: () => true,
   check(args) {

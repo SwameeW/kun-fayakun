@@ -40,8 +40,11 @@ export interface ModelPiece {
   delta: string;
   /** WebLLM's finish reason, when this piece ends the reply. */
   finish: string | null;
-  /** Token counts and timings, on the last piece (stream_options.include_usage). */
-  usage: { promptTokens: number; outputTokens: number; ttftMs: number; e2eMs: number } | null;
+  /**
+   * Token counts and timings, on the last piece (stream_options.include_usage), with WebLLM's own
+   * prefill and decode rates and the time its grammar matcher took to start (a plan's schema).
+   */
+  usage: { promptTokens: number; outputTokens: number; ttftMs: number; e2eMs: number; prefillTokensPerS: number; decodeTokensPerS: number; grammarInitMs: number | null } | null;
 }
 
 /** What the worker sends back. */

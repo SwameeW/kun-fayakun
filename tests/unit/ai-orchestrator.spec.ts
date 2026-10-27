@@ -6,18 +6,20 @@
  * labels on every block, and the guide with no model at all. Also: Stop pressed just after Confirm
  * or while the experiment runs, an Undo the tool refuses or cannot confirm, the engine that wrote
  * each text block, a plan held to the tools it was offered and to the schema, prayer times only by
- * a convention the question names, and memory brought back as earlier turns.
+ * a convention the question names, and memory brought back as earlier turns. And the evaluation's
+ * seam (the test hook's evaluate()): off by default, it records each generation when on, and only
+ * with router 'skip' does a model plan what the router would have matched.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { IntlMessageFormat } from 'intl-messageformat';
 import { readContext, SUMMARY_MAX } from '../../src/ai/context';
-import { blockKnowledge, createIntelligence, type AiOrchestrator, type IntelligenceDeps } from '../../src/ai/index';
+import { blockKnowledge, createIntelligence, placeNamed, type AiOrchestrator, type IntelligenceDeps } from '../../src/ai/index';
 import { createScriptedEngine, type ScriptedEngine, type ScriptedReply } from '../../src/ai/engine/scripted';
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
 import { buildAnswerMessages, LEVEL_LINES } from '../../src/ai/prompts';
 import type { AiMemory, MemoryEntry } from '../../src/ai/memory';
-import type { AiContext, AnswerBlock, EngineHost, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
+import type { AiContext, AnswerBlock, EngineHost, EvaluationOptions, GenerationRecord, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
 import { BODY_IDS, type App, type I18n } from '../../src/core/types';
 
 const index = JSON.parse(readFileSync(new URL('../../public/assets/ai/index.json', import.meta.url), 'utf8')) as { passages: Passage[] };
@@ -121,6 +123,11 @@ function tools(log: Log, options: ToolOptions = {}): ToolDefinition[] {
         };
       },
     },
+    // A place as the real place tools offer it (src/ai/tools/explorer.ts placeArgsFor): by its name, or degrees.
+    {
+      ...t('islamic.qibla', 'calc', obj({ place: { type: 'string' }, lat: { type: 'number' }, lon: { type: 'number' } }), (a) => ({ status: 'done', observedKey: 'test.escape', observedValues: { body: JSON.stringify(a), value: 119 } })),
+      argsFor: () => obj({ placeName: { type: 'string' }, lat: { type: 'number' }, lon: { type: 'number' } }),
+    },
     t('islamic.prayer_times', 'calc', obj({ place: { type: 'string' }, convention: { type: 'string', enum: ['mwl', 'isna', 'egypt', 'makkah', 'karachi'] } }, ['convention']), (a) => ({
       status: 'done',
       observedKey: 'test.escape',
@@ -194,7 +201,7 @@ interface Harness {
   remembered: MemoryEntry[];
 }
 
-function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[] } & ToolOptions = {}): Harness {
+function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[]; evaluation?: { options: () => EvaluationOptions | null; record: (entry: GenerationRecord) => void } } & ToolOptions = {}): Harness {
   const log: Log = { runs: [], undone: [] };
   const where = { ctx: options.where ?? CTX.home };
   const engine = createScriptedEngine(script, { delayMs: options.delayMs ?? 0 });
@@ -236,6 +243,7 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
     context: () => where.ctx,
     memory,
     ...(options.idleUnloadMs !== undefined ? { idleUnloadMs: options.idleUnloadMs } : {}),
+    ...(options.evaluation ? { evaluation: options.evaluation } : {}),
   };
   const ai = createIntelligence(app, deps);
   ai.events.on('turn', ({ turn }) => h.turnEvents?.push(turn));
@@ -246,6 +254,117 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
 
 const ofType = <T extends AnswerBlock['type']>(turn: Turn, type: T): Extract<AnswerBlock, { type: T }>[] => turn.blocks.filter((b): b is Extract<AnswerBlock, { type: T }> => b.type === type);
 const plan = (value: unknown): string => JSON.stringify(value);
+
+test.describe('a model’s arguments in Arabic script', () => {
+  test('never reach the screen through a card’s preview or the guide’s line saying them back', async () => {
+    const arabic = String.fromCodePoint(0x0628, 0x0633, 0x0645);
+    // As Qwen3 8B planned it when asked to answer in Arabic script: its argument in Arabic; no answer of its own follows.
+    const h = harness([{ format: 'json', match: '', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.prayer_times', args: { place: arabic, convention: 'mwl' } }] }) }], { offered: ['islamic.prayer_times'] });
+    await h.ai.use(SPEC);
+    const turn = await h.ai.ask('prayer times by mwl, please, written in Arabic script');
+    expect(turn.plan?.calls).toEqual([{ tool: 'islamic.prayer_times', args: { place: arabic, convention: 'mwl' } }]);
+    // The guide's line says the tool's values back ("Escape speed at … "): without the Arabic.
+    expect(turn.blocks.some((b) => b.type === 'text')).toBe(true);
+    expect(JSON.stringify(turn.blocks)).not.toMatch(/[\u0600-\u06FF]/u);
+  });
+});
+
+test.describe('a verse a tool shows', () => {
+  test('is in the passages the model reads, so it explains the verse it cited, not one from memory', async () => {
+    const v = index.passages.find((p) => p.id === 'verse:21:30');
+    if (!v) throw new Error('no 21:30');
+    // "act": nothing is searched for, so the verse's text can reach the model only as the verse shown.
+    const h = harness([{ format: 'json', match: '', reply: plan({ intent: 'act', calls: [{ tool: 'cite.verse', args: { key: '21:30' } }] }) }, { format: 'text', match: '', reply: 'The verse speaks of the heavens and the earth [[verse:21:30]].' }], { offered: ['cite.verse'] });
+    await h.ai.use(SPEC);
+    await h.ai.ask('tell me what that verse about the heavens means');
+    const answer = h.engine.requests.find((r) => r.format.kind === 'text');
+    expect(answer?.messages[0]?.content).toContain('[[verse:21:30]]');
+    expect(answer?.messages[0]?.content).toContain(v.text.slice(0, 60));
+  });
+});
+
+test.describe('a model that writes explanations only', () => {
+  test('is never asked to plan: the router chooses, retrieval finds, the model explains; the evaluation can still ask it', async () => {
+    const explainer: ModelSpec = { ...SPEC, id: 'Test-0B', plans: false };
+    const h = harness([{ format: 'json', match: '', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'saturn' } }] }) }, { format: 'text', match: '', reply: 'Saturn has rings of ice.' }], { offered: ['explorer.fly'] });
+    await h.ai.use(explainer);
+    const turn = await h.ai.ask('tell me something about the rings of Saturn');
+    expect(h.engine.requests.filter((r) => r.format.kind === 'json')).toHaveLength(0);
+    expect(turn.plan?.source).toBe('fallback');
+    expect(turn.blocks.find((b) => b.type === 'text')).toMatchObject({ by: 'model', text: 'Saturn has rings of ice.' });
+    // The router still acts for it.
+    const routed = await h.ai.ask('escape speed of mars');
+    expect(routed.plan).toMatchObject({ source: 'router', calls: [{ tool: 'calc.escape_speed' }] });
+    // Asked to measure its own planning (the evaluation's model mode), it plans.
+    let options: EvaluationOptions | null = { router: 'skip' };
+    const measured = harness([{ format: 'json', match: '', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'saturn' } }] }) }, { format: 'text', match: '', reply: 'Saturn is in view.' }], { offered: ['explorer.fly'], evaluation: { options: () => options, record: () => undefined } });
+    await measured.ai.use(explainer);
+    expect((await measured.ai.ask('tell me something about the rings of Saturn')).plan?.calls).toEqual([{ tool: 'explorer.fly', args: { body: 'saturn' } }]);
+    options = null;
+  });
+});
+
+test.describe('a model’s plan that says act and calls nothing', () => {
+  test('is asked again once; a call in the repair is used, and a second empty act is taken as an answer', async () => {
+    const empty = plan({ intent: 'act', calls: [] });
+    const h = harness([{ format: 'json', match: 'Saturn', reply: empty, once: true }, { format: 'json', match: 'cannot be used', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'saturn' } }] }) }, { format: 'text', match: '', reply: 'Saturn is in view.' }], { offered: ['explorer.fly'] });
+    await h.ai.use(SPEC);
+    const turn = await h.ai.ask('please bring Saturn into view for me');
+    expect(turn.plan?.calls).toEqual([{ tool: 'explorer.fly', args: { body: 'saturn' } }]);
+    expect(h.engine.requests.some((r) => r.messages.some((m) => m.content.includes('intent "act" needs a call')))).toBe(true);
+    const again = harness([{ format: 'json', match: '', reply: empty }, { format: 'text', match: '', reply: 'Here is what I found.' }], { offered: ['explorer.fly'] });
+    await again.ai.use(SPEC);
+    const t2 = await again.ai.ask('please bring Saturn into view for me');
+    expect(t2.plan).toMatchObject({ source: 'model', intent: 'answer', calls: [] });
+  });
+});
+
+/* ---------------- a model's places ---------------- */
+
+test.describe('a model’s place is the app’s own', () => {
+  test('a place by its name: a town from the knowledge index, a field-notes place by its id or title', async () => {
+    const h = harness([{ format: 'json', match: 'London', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'London' } }] }) }, { format: 'json', match: 'Mecca', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'Mecca' } }] }) }, { format: 'text', match: '', reply: 'The qibla is shown.' }], { offered: ['islamic.qibla'] });
+    await h.ai.use(SPEC);
+    const london = await h.ai.ask('Which way is the qibla from London, please?');
+    // London's degrees from the index (place:london), not from the model.
+    expect(london.plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { lat: 51.5019, lon: -0.1187 } }]);
+    const mecca = await h.ai.ask('qibla from Mecca, in which direction');
+    expect(mecca.plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { place: 'mecca' } }]);
+  });
+
+  test('degrees a model gives from memory are refused (the repair asks for the place’s name); degrees the visitor gave are kept', async () => {
+    // As Qwen3 4B planned it: Richat's id, then London's latitude with a wrong longitude.
+    const memory = plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { lat: 51.5074, lon: -113.9324 } }] });
+    const h = harness([{ format: 'json', match: 'London', reply: memory }, { format: 'json', match: 'cannot be used', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'London' } }] }) }, { format: 'text', match: '', reply: 'Shown.' }], { offered: ['islamic.qibla'] });
+    await h.ai.use(SPEC);
+    const turn = await h.ai.ask('Which way is the qibla from London, please?');
+    expect(turn.plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { lat: 51.5019, lon: -0.1187 } }]);
+    const given = harness([{ format: 'json', match: '35.36', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { lat: 35.36, lon: 138.73 } }] }) }, { format: 'text', match: '', reply: 'Shown.' }], { offered: ['islamic.qibla'] });
+    await given.ai.use(SPEC);
+    expect((await given.ai.ask('qibla direction from latitude 35.36, longitude 138.73 please')).plan?.calls).toEqual([{ tool: 'islamic.qibla', args: { lat: 35.36, lon: 138.73 } }]);
+    // A town the index does not hold is a problem for the repair, not a guess.
+    const none = harness([{ format: 'json', match: 'Atlantis', reply: plan({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args: { placeName: 'Atlantis' } }] }) }, { format: 'text', match: '', reply: 'I cannot find that place.' }], { offered: ['islamic.qibla'] });
+    await none.ai.use(SPEC);
+    const lost = await none.ai.ask('qibla direction from Atlantis please');
+    expect(lost.plan?.source).toBe('fallback');
+    expect(none.engine.requests.some((r) => r.messages.some((m) => m.content.includes('no place called "Atlantis"')))).toBe(true);
+  });
+
+  test('names as a model writes them find the field notes’ places and the index’s towns', () => {
+    const at = (name: string): unknown => {
+      const p = placeNamed(retriever, name);
+      return p ? (p.place ?? [p.lat, p.lon]) : null;
+    };
+    expect(at('Mount Everest')).toBe('everest');
+    expect(at('the Grand Canyon')).toBe('grand-canyon');
+    expect(at('Salar de Uyuni')).toBe('uyuni');
+    expect(at('Uluru')).toBe('uluru');
+    expect(at('Mecca')).toBe('mecca');
+    expect(at('Cairo')).toEqual([30.0519, 31.248]);
+    expect(at('Karachi')).toEqual([24.8719, 66.9881]);
+    expect(at('Atlantis')).toBeNull();
+  });
+});
 
 /* ---------------- the guide ---------------- */
 
@@ -763,10 +882,15 @@ test.describe('the context, read from the app', () => {
   test('in a chapter: where, the time, the verses it shows, and a short summary', () => {
     const app = {
       experience: 'film', chapter: 'ch07', time: 42.4, mode: 'explore', i18n, universe: () => null,
-      content: { id: 'ch07', panel: { text: [{ type: 'verse', key: '36:38' }, { type: 'hadith', id: 'bukhari-3199' }, { type: 'verse', key: '21:33' }] } },
+      content: { id: 'ch07', panel: { text: [{ type: 'verse', key: '36:38' }, { type: 'hadith', id: 'bukhari-3199' }, { type: 'verse', key: '21:33' }] }, explore: { points: [{ id: 'orrery', t: 60, titleKey: 'test.no-such-title', kind: 'model' }] } },
     } as unknown as App;
     const ctx = readContext(app);
     expect(ctx).toMatchObject({ where: 'chapter', chapter: 'ch07', chapterT: 42.4, mode: 'explore', explorer: null, lab: null, verses: ['36:38', '21:33'] });
+    // The chapter's moments, for film.moment (a title the catalogue lacks reads as the id).
+    expect(ctx.moments).toEqual([{ id: 'orrery', title: 'orrery' }]);
+    // Today's date, so "today" is the visitor's.
+    expect(ctx.today).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
+    expect(ctx.summary).toContain(`Today is ${ctx.today ?? ''} (UTC).`);
     expect(ctx.summary).toContain('Chapter 7, "The Sun and its course"');
     expect(ctx.summary).toContain('36:38, 21:33');
   });
@@ -806,5 +930,60 @@ test.describe('the context, read from the app', () => {
     expect(io.summary).toContain('near Io, which goes round Jupiter');
     // A moon of a dwarf planet: its host's host, the Sun.
     expect(readContext(at('w:Charon', 'Charon')).explorer).toMatchObject({ focus: 'sun', world: { id: 'w:Charon', name: 'Charon' } });
+  });
+});
+
+test.describe('the evaluation’s seam (the test hook’s evaluate(), tests/ai-eval)', () => {
+  const escapePlan = plan({ intent: 'answer', query: 'escape speed mars', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] });
+  const script = (): ScriptedReply[] => [
+    { format: 'json', match: 'escape speed of mars', reply: 'not json', once: true },
+    { format: 'json', match: 'cannot be used', reply: escapePlan },
+    { format: 'text', match: 'escape speed of mars', reply: 'Leaving Mars takes 5.03 km/s [[fact:escape.mars]].' },
+  ];
+
+  test('off (the shipping order): the router goes first, the model only writes the answer, nothing is recorded', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness(script(), { where: CTX.explorer, evaluation: { options: () => null, record: (e) => records.push(e) } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan).toMatchObject({ source: 'router', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] });
+    expect(h.engine.requests.map((r) => r.format.kind)).toEqual(['text']);
+    expect(records).toEqual([]);
+  });
+
+  test('router "first": the same shipping order, and the answer’s generation recorded with its raw reply', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness(script(), { where: CTX.explorer, evaluation: { options: () => ({ router: 'first' }), record: (e) => records.push(e) } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan?.source).toBe('router');
+    expect(records.map((r) => r.purpose)).toEqual(['answer']);
+    expect(records[0]).toMatchObject({ turnId: turn.id, engine: { kind: 'scripted', model: 'scripted' }, raw: 'Leaving Mars takes 5.03 km/s [[fact:escape.mars]].', finish: 'stop', engineUsage: null });
+  });
+
+  test('router "skip": the model plans what the router would have matched; the first plan, its repair and the answer are recorded', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness(script(), { where: CTX.explorer, evaluation: { options: () => ({ router: 'skip' }), record: (e) => records.push(e) } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan).toMatchObject({ source: 'model', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] });
+    expect(records.map((r) => [r.purpose, r.valid])).toEqual([['plan', false], ['repair', true], ['answer', undefined]]);
+    expect(records[0]?.raw).toBe('not json');
+    expect(records[0]?.problems).toEqual(['the reply was not one JSON object']);
+    expect(records[0]?.offered).toContain('calc.escape_speed');
+    expect(records[1]?.raw).toBe(escapePlan);
+    expect(records[1]?.messages.at(-1)?.content).toContain('cannot be used');
+    for (const r of records) expect(r.turnId).toBe(turn.id);
+  });
+
+  test('router "skip" without a model: the router still answers (the guide has nothing else)', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness([], { where: CTX.explorer, evaluation: { options: () => ({ router: 'skip' }), record: (e) => records.push(e) } });
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan?.source).toBe('router');
+    expect(records).toEqual([]);
   });
 });

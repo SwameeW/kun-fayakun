@@ -70,7 +70,7 @@ test('the model: size, licence and source before any download; a second question
   await expect(section.getByTestId('ai-browser-model')).toBeHidden();
   // The limits come with it, and a larger model is offered with a warning.
   await expect(section.locator('.kf-ai-limits li').first()).toBeVisible();
-  await section.getByTestId('ai-model-select').selectOption(VISITOR_MODELS.find((m) => m.id === 'Qwen3-8B-q4f16_1-MLC')?.id ?? '?');
+  await section.getByTestId('ai-model-select').selectOption(VISITOR_MODELS.find((m) => m.tier === 'large' && m.needsF16)?.id ?? '?');
   await expect(section.getByTestId('ai-larger')).toHaveText(s('ai.ui.model.larger'));
   await section.getByTestId('ai-model-select').selectOption(COMPACT?.id ?? '?');
   await expect(section.getByTestId('ai-larger')).toHaveCount(0);

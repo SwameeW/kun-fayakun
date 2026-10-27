@@ -29,11 +29,12 @@
 import type { App, BodyId, I18n } from '../core/types';
 import { createEventBus } from '../core/events';
 import messages from '../i18n/en.ai.mind.json' with { type: 'json' };
-import { readContext } from './context';
-import { guardInput, guardOutput, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
+import { readContext, withoutCameraDistance } from './context';
+import { asksScriptureClaim, guardInput, guardOutput, removeArabic, removeOtherScripts, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
 import { conventionsNamed, route, type NamedPlace } from './router';
+import { PLACE_NAME_ARG, placeById } from './tools/explorer';
 import { validateSchema } from './tools/schema';
 import type {
   AiContext,
@@ -44,7 +45,9 @@ import type {
   EngineKind,
   ExplanationLevel,
   Fact,
+  EvaluationOptions,
   GenerateResult,
+  GenerationRecord,
   Intelligence,
   IntelligenceEvents,
   KnowledgeKind,
@@ -85,6 +88,15 @@ export interface IntelligenceDeps {
   idleUnloadMs?: number;
   /** Narrations data/hadith.json excludes (the scripture catalogue's): a model's sentence naming one is removed. */
   withheld?: readonly WithheldNarration[];
+  /**
+   * The real-model evaluation's seam (tests/ai-eval, through the test hook's evaluate() in
+   * ./boot.ts), read at each turn: whether the router goes first (null: the shipping order), and
+   * where each generation is recorded. Visitors never reach it.
+   */
+  evaluation?: {
+    options(): EvaluationOptions | null;
+    record(entry: GenerationRecord): void;
+  };
 }
 
 /** The assistant, with what the test hook and the interface's settings also need. */
@@ -168,6 +180,8 @@ interface TurnRecord {
   };
   controller: AbortController;
   ctx: AiContext;
+  /** The app's own words on scripture and science were shown first (asksScriptureClaim): the guards need not say them again. */
+  sideBySideShown?: boolean;
   pending: Map<string, Pending>;
   /** Experiments confirmed whose run has not begun yet (a second Confirm does nothing). */
   confirming: Set<string>;
@@ -187,6 +201,19 @@ type EngineState = ReturnType<Intelligence['engine']>;
 
 function isEngineError(value: unknown): value is EngineError {
   return typeof value === 'object' && value !== null && typeof (value as EngineError).code === 'string' && typeof (value as EngineError).messageKey === 'string';
+}
+
+/**
+ * The verses a quotation might be, for the guards: by their translations, and by the app's plain words
+ * for them (an explanation, not a translation, which a model may still put in quotation marks as the
+ * verse's own words: Qwen3.5 4B and 9B on 41:11).
+ */
+function verseTexts(retriever: Retriever, quote: string): { key: string; text: string; plain?: boolean }[] {
+  const out: { key: string; text: string; plain?: boolean }[] = retriever.search(quote, { kinds: ['verse'], limit: 4 }).map((r) => ({ key: r.passage.ref ?? r.passage.id.slice('verse:'.length), text: r.passage.text }));
+  for (const r of retriever.search(quote, { kinds: ['prose'], limit: 8 })) {
+    if (r.passage.id.startsWith('plain:')) out.push({ key: r.passage.id.slice('plain:'.length), text: r.passage.text, plain: true });
+  }
+  return out;
 }
 
 function now(): number {
@@ -238,8 +265,49 @@ export function placeFrom(retriever: Retriever, name: string): NamedPlace | null
   return found[0]?.place ?? null;
 }
 
+/** A name as places are compared: folded, without a leading "the", up to a comma or a bracket ("The Grand Canyon, Arizona" → "grand canyon"). */
+function placeKey(name: string): string {
+  return fold(name).replace(/^the\s+/u, '').split(/,|\s\(/u)[0]?.trim() ?? '';
+}
+
+/**
+ * A place by its name, for a model's plan: a field-notes place by its id ("mecca") or its title in
+ * the knowledge index ("Mount Everest", "Salar de Uyuni"), else what placeFrom finds (a town).
+ */
+export function placeNamed(retriever: Retriever, name: string): NamedPlace | null {
+  const want = placeKey(name);
+  if (!want) return null;
+  const byId = placeById(want.replace(/[^a-z0-9]+/gu, '-'));
+  if (byId) return { name, lat: byId.lat, lon: byId.lon, place: byId.id };
+  for (const { passage } of retriever.search(name, { kinds: ['place'], limit: 12 })) {
+    if (!passage.id.startsWith(ATLAS_PREFIX) || placeKey(passage.title) !== want) continue;
+    const atlas = placeById(passage.id.slice(ATLAS_PREFIX.length));
+    if (atlas) return { name: passage.title, lat: atlas.lat, lon: atlas.lon, place: atlas.id };
+  }
+  return placeFrom(retriever, name);
+}
+
 function problemText(i18n: I18n, call: ToolCall, problems: readonly { path: string; messageKey: string; values?: Record<string, string | number> }[]): string[] {
   return problems.map((p) => `${call.tool}${p.path ? ` ${p.path}` : ''}: ${i18n.has(p.messageKey) ? i18n.t(p.messageKey, p.values) : p.messageKey}`);
+}
+
+/**
+ * The app's own words with what a model put in them (a card's preview, a guide line saying back a
+ * tool's arguments) in the scripts an English answer uses: Qwen3 8B, asked to answer in Arabic script,
+ * searched in Arabic, and the search's own line says its query back (docs/AI-EVALUATION.md).
+ */
+function lettersOnly(text: string): string {
+  return removeOtherScripts(removeArabic(text).text).text;
+}
+
+/** Whether the model chosen plans turns (every engine does but a catalogue model marked explanations only). */
+function plansWith(choice: ModelSpec | 'browser' | LanguageEngine | null): boolean {
+  return !(choice !== null && typeof choice === 'object' && !('generate' in choice) && choice.plans === false);
+}
+
+/** The numbers a question states ("35.36", "-0.12", "138,73" is two). */
+function numbersIn(text: string): number[] {
+  return [...text.matchAll(/[-−]?\d+(?:\.\d+)?/gu)].map((m) => Number(m[0].replace('−', '-'))).filter((n) => Number.isFinite(n));
 }
 
 /** The first JSON object in a reply (models sometimes wrap it in a code fence or a sentence). */
@@ -281,6 +349,27 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   /** Memory has been read back (restore() runs once). */
   let restored = false;
   const withheld = deps.withheld ?? [];
+  /** Records a generation for the evaluation, when it is on (nothing is kept otherwise). */
+  const observe = (rec: TurnRecord, e: LanguageEngine, purpose: GenerationRecord['purpose'], request: Parameters<LanguageEngine['generate']>[0], result: GenerateResult, wallMs: number, extra: Pick<GenerationRecord, 'offered' | 'valid' | 'problems'> = {}): void => {
+    if (!deps.evaluation?.options()) return;
+    deps.evaluation.record({
+      turnId: rec.turn.id,
+      purpose,
+      engine: { kind: e.kind, model: e.model },
+      messages: request.messages,
+      raw: result.text,
+      finish: result.finish,
+      promptTokens: result.promptTokens,
+      outputTokens: result.outputTokens,
+      prefillMs: result.prefillMs,
+      decodeMs: result.decodeMs,
+      engineUsage: result.engineUsage ?? null,
+      wallMs,
+      // When it began on the page's clock (performance.now()), so frames can be set against it.
+      startedMs: now() - wallMs,
+      ...extra,
+    });
+  };
 
   /* ---------------- engine ---------------- */
 
@@ -500,7 +589,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
 
   function preview(tool: ToolDefinition, args: Record<string, unknown>, ctx: AiContext): string {
     try {
-      return tool.preview(args, ctx, i18n);
+      return lettersOnly(tool.preview(args, ctx, i18n));
     } catch {
       return tool.name;
     }
@@ -581,16 +670,19 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   }
 
   /** The model's plan, validated; one repair attempt; null when it cannot be used (the guide then answers the turn). */
-  async function modelPlan(rec: TurnRecord, question: string): Promise<Plan | null> {
+  async function modelPlan(rec: TurnRecord, question: string, retriever: Retriever): Promise<Plan | null> {
     const e = engine;
     if (!e) return null;
     const tools = registry.shortlist(question, rec.ctx, SHORTLIST);
-    const schema = planSchema(tools);
+    const schema = planSchema(tools, rec.ctx);
     let messagesNow: ChatMessage[] = buildPlanMessages(question, rec.ctx, tools, history(rec));
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const result = await generate(rec, e, { messages: messagesNow, format: { kind: 'json', schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal });
+      const request = { messages: messagesNow, format: { kind: 'json' as const, schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal };
+      const began = now();
+      const result = await generate(rec, e, request);
       checkpoint(rec);
-      const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question, tools, schema);
+      const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question, tools, schema, retriever, attempt === 0);
+      observe(rec, e, attempt === 0 ? 'plan' : 'repair', request, result, now() - began, { offered: tools.map((t) => t.name), valid: parsed.plan !== null, problems: parsed.problems });
       if (parsed.plan) {
         rec.planner = { kind: e.kind, model: e.model };
         return parsed.plan;
@@ -608,7 +700,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
    * tool it was offered (the shortlist) and pass the registry's checks, and the reply as a whole must
    * fit the plan's schema: constrained decoding has open bugs, so nothing is taken on trust.
    */
-  function parsePlan(text: string, ctx: AiContext, question: string, offered: readonly ToolDefinition[], schema: ReturnType<typeof planSchema>): { plan: Plan; problems: [] } | { plan: null; problems: string[] } {
+  function parsePlan(text: string, ctx: AiContext, question: string, offered: readonly ToolDefinition[], schema: ReturnType<typeof planSchema>, retriever: Retriever, first: boolean): { plan: Plan; problems: [] } | { plan: null; problems: string[] } {
     let raw: unknown;
     try {
       raw = jsonObject(text);
@@ -632,18 +724,26 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         continue;
       }
       const c = item as { tool: string; args?: unknown };
-      const args = typeof c.args === 'object' && c.args !== null && !Array.isArray(c.args) ? (c.args as Record<string, unknown>) : {};
-      const call: ToolCall = { tool: c.tool, args };
-      if (!names.has(call.tool)) {
-        problems.push(`${call.tool}: not offered; use only the tools listed`);
+      const given = typeof c.args === 'object' && c.args !== null && !Array.isArray(c.args) ? (c.args as Record<string, unknown>) : {};
+      if (!names.has(c.tool)) {
+        problems.push(`${c.tool}: not offered; use only the tools listed`);
         continue;
       }
+      const where = placeOfCall(c.tool, given, question, retriever);
+      if (typeof where === 'string') {
+        problems.push(where);
+        continue;
+      }
+      const call: ToolCall = { tool: c.tool, args: where };
       const v = registry.validate(call, ctx);
       if (v.ok) calls.push(v.call);
       else problems.push(...(v.problems.length ? problemText(i18n, call, v.problems) : [`${call.tool}: not accepted here`]));
     }
     // The reply as a whole, against the schema it was asked for.
     if (problems.length === 0) problems.push(...problemText(i18n, { tool: 'plan', args: {} }, validateSchema(schema, raw)).slice(0, 4));
+    // "act" with no call at all says one thing and does another (Qwen3 4B, "Play chapter 3"): the first
+    // reply is asked again; a second such reply is taken as an answer.
+    if (first && problems.length === 0 && intent === 'act' && list.length === 0 && offered.length > 0) problems.push('intent "act" needs a call to one of the listed tools; if none of them does what is asked, use intent "answer"');
     if (problems.length > 0 || !intent) return { plan: null, problems };
     // Prayer times differ by convention, and the visitor chooses it: a model may not choose one for them.
     const named = conventionsNamed(question);
@@ -661,6 +761,33 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     };
   }
 
+  /**
+   * A model's place, made the app's own: a place it names is found by the app (a field-notes place
+   * by its id or title, else a town in the knowledge index, by its degrees), and degrees are taken
+   * only when the visitor gave them, so a named place's latitude and longitude never come from a
+   * model's memory. The arguments as the tool takes them, or what is wrong (for the repair prompt).
+   */
+  function placeOfCall(tool: string, args: Record<string, unknown>, question: string, retriever: Retriever): Record<string, unknown> | string {
+    const { [PLACE_NAME_ARG]: named, ...out } = args;
+    if (named !== undefined) {
+      const name = typeof named === 'string' ? named.trim() : '';
+      const found = name ? placeNamed(retriever, name) : null;
+      if (!found) return `${tool} ${PLACE_NAME_ARG}: no place called "${name.slice(0, 60)}" in the app; give another name, or leave it out`;
+      if (found.place) out.place = found.place;
+      else {
+        out.lat = found.lat;
+        out.lon = found.lon;
+      }
+      return out;
+    }
+    const asked = numbersIn(question);
+    for (const key of ['lat', 'lon'] as const) {
+      const v = out[key];
+      if (typeof v === 'number' && !asked.some((n) => Math.abs(Math.abs(n) - Math.abs(v)) < 0.005)) return `${tool} ${key}: degrees only when the question gives them; name the place (${PLACE_NAME_ARG}) instead`;
+    }
+    return out;
+  }
+
   async function generate(rec: TurnRecord, e: LanguageEngine, request: Parameters<LanguageEngine['generate']>[0]): Promise<GenerateResult> {
     setEngine({ ...engineState, state: 'busy' });
     try {
@@ -674,8 +801,9 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     }
   }
 
+  /** What each call of the turn reported, and the cards still waiting for the visitor. */
   function outcomesFor(rec: TurnRecord): OutcomeSummary[] {
-    return rec.done.map((d) => ({ tool: d.tool.name, kind: d.tool.kind, status: d.outcome.status }));
+    return [...rec.done.map((d): OutcomeSummary => ({ tool: d.tool.name, kind: d.tool.kind, status: d.outcome.status })), ...[...rec.pending.values()].map((p): OutcomeSummary => ({ tool: p.tool.name, kind: p.tool.kind, status: 'awaiting' }))];
   }
 
   function actionLines(rec: TurnRecord): ActionLine[] {
@@ -716,6 +844,21 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     });
   }
 
+  /**
+   * The verses and hadith a tool put on screen this turn, as the passages that hold them (a verse's
+   * translation, a hadith's sourced summary), so a model explaining one reads it. Without them a model
+   * asked about a verse it had cited by key said what the verse says from memory, and wrongly ("verse
+   * 36:38 states that Allah creates whatever He wills", Qwen3.5 4B, docs/AI-EVALUATION.md).
+   */
+  function shownScripture(rec: TurnRecord, retriever: Retriever, searched: readonly Passage[]): Passage[] {
+    const out: Passage[] = [];
+    for (const b of rec.turn.blocks) {
+      const p = b.type === 'verse' ? retriever.get(`verse:${b.key}`) : b.type === 'hadith' ? retriever.get(`hadith:${b.id}`) : null;
+      if (p && !out.some((x) => x.id === p.id) && !searched.some((x) => x.id === p.id)) out.push(p);
+    }
+    return out.slice(0, MODEL_PASSAGES);
+  }
+
   function guideAnswer(rec: TurnRecord, passages: readonly Passage[]): void {
     const lines: string[] = [];
     for (const d of rec.done) {
@@ -733,7 +876,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     if (shown.length > 0) lines.push(i18n.t('ai.mind.guide.found'));
     const hasContent = rec.turn.blocks.some((b) => b.type === 'verse' || b.type === 'hadith' || b.type === 'facts' || b.type === 'comparison' || b.type === 'passage');
     if (lines.length === 0 && !hasContent) lines.push(i18n.t('ai.mind.guide.nothing'));
-    if (lines.length > 0) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: lines.join(' ') });
+    if (lines.length > 0) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: lettersOnly(lines.join(' ')) });
     rec.turn.blocks.push(...shown);
     emit(rec);
   }
@@ -748,12 +891,15 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const msgs = buildAnswerMessages(question, rec.ctx, passages, rec.facts, actionLines(rec), history(rec), explanationLevel);
     const factIds = new Set(rec.facts.map((f) => f.id));
     const passageIds = new Set(passages.map((p) => p.id));
-    const given = [question, rec.ctx.summary, ...rec.done.map((d) => JSON.stringify(d.call.args)), ...actionLines(rec).map((a) => a.observed ?? '')];
+    // The camera's distance is where the visitor stands, not a quantity of anything asked about: Qwen3.5 9B
+    // gave it as the radius of an orbit (docs/AI-EVALUATION.md), so it backs no number.
+    const given = [question, withoutCameraDistance(rec.ctx.summary), ...rec.done.map((d) => JSON.stringify(d.call.args)), ...actionLines(rec).map((a) => a.observed ?? '')];
     const guard = (text: string, truncated: boolean, streaming = false): ReturnType<typeof guardOutput> =>
       guardOutput(text, {
         facts: rec.facts,
         passages,
         given,
+        question,
         outcomes: outcomesFor(rec),
         known: {
           verse: (key) => retriever.get(`verse:${key}`) !== null,
@@ -761,10 +907,13 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
           fact: (id) => factIds.has(id),
           passage: (id) => passageIds.has(id) || retriever.get(id) !== null,
         },
-        verses: (quote) =>
-          retriever
-            .search(quote, { kinds: ['verse'], limit: 4 })
-            .map((r) => ({ key: r.passage.ref ?? r.passage.id.slice('verse:'.length), text: r.passage.text })),
+        verses: (quote) => verseTexts(retriever, quote),
+        hadith: (id) => retriever.get(`hadith:${id}`)?.text ?? null,
+        verseText: (key) => {
+          const v = retriever.get(`verse:${key}`);
+          return v ? `${v.text} ${retriever.get(`plain:${key}`)?.text ?? ''}` : null;
+        },
+        ...(rec.sideBySideShown ? {} : { sideBySide: i18n.t('ai.mind.guard.sideBySide') }),
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         truncated,
         withheld,
@@ -772,7 +921,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       });
     const index = addBlock(rec, { type: 'text', knowledge: 'explanation', text: '', by: 'model', writer });
     let streamed = '';
-    const result = await generate(rec, e, {
+    const request: Parameters<LanguageEngine['generate']>[0] = {
       messages: msgs,
       format: { kind: 'text' },
       maxTokens: ANSWER_MAX_TOKENS,
@@ -784,7 +933,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         // What is on screen while it streams has passed the guards too, and what cannot be judged yet is held back.
         replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text: stripMarkers(guard(streamed, false, true).text), by: 'model', writer });
       },
-    });
+    };
+    const began = now();
+    const result = await generate(rec, e, request);
+    observe(rec, e, 'answer', request, result, now() - began);
     checkpoint(rec);
     if (result.finish === 'error') {
       rec.turn.blocks.splice(index, 1);
@@ -835,8 +987,13 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const passages = wantsAnswer ? search(retriever, rec, query, MODEL_PASSAGES) : [];
     rec.passages = passages;
     const onlyViews = rec.done.length > 0 && rec.done.every((d) => d.tool.kind === 'view');
+    // Asked whether scripture predicted, proved or foretold science: the app says where it stands first, in its own words.
+    if (asksScriptureClaim(rec.turn.question)) {
+      addBlock(rec, { type: 'text', knowledge: 'explanation', text: i18n.t('ai.mind.guard.sideBySide') });
+      rec.sideBySideShown = true;
+    }
     let answered = false;
-    if (engine && !rec.guideOnly && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, passages, retriever);
+    if (engine && !rec.guideOnly && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, [...shownScripture(rec, retriever, passages), ...passages], retriever);
     checkpoint(rec);
     if (!answered) guideAnswer(rec, passages);
     rec.turn.timings.answerMs += now() - started;
@@ -877,8 +1034,12 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       addBlock(rec, { type: 'notice', key: 'ai.mind.notice.noKnowledge' });
     }
     checkpoint(rec);
-    let plan = route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
-    if (!plan && engine) plan = await modelPlan(rec, input.text);
+    // The evaluation alone may skip the router, to measure a model's own planning (a model must be loaded).
+    const skipRouter = engine !== null && deps.evaluation?.options()?.router === 'skip';
+    let plan = skipRouter ? null : route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
+    // A model that writes explanations only (ModelSpec.plans false: Qwen3 0.6B made no call in any of
+    // its plans, docs/AI-EVALUATION.md) is not asked to plan; the evaluation's model mode still asks it.
+    if (!plan && engine && (skipRouter || plansWith(chosen))) plan = await modelPlan(rec, input.text, retriever);
     checkpoint(rec);
     // No rule matched, and no model plan: retrieval answers.
     plan ??= { intent: 'answer', query: input.text, calls: [], source: 'fallback' };
@@ -887,7 +1048,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     emit(rec);
 
     if (plan.intent === 'decline') {
-      rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: i18n.t('ai.mind.guide.decline') });
+      rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: i18n.t(plan.questionKey ?? 'ai.mind.guide.decline') });
       finish(rec, 'done');
       return;
     }
@@ -904,7 +1065,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         given: [input.text],
         outcomes: [],
         known: { verse: () => false, hadith: () => false, fact: () => false, passage: () => false },
-        verses: (q) => retriever.search(q, { kinds: ['verse'], limit: 4 }).map((r) => ({ key: r.passage.ref ?? '', text: r.passage.text })),
+        verses: (q) => verseTexts(retriever, q),
+        question: input.text,
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         withheld,
       });

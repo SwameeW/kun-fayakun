@@ -1,0 +1,105 @@
+{
+ "compactOf": ".work/ai-eval/results/grammar-Qwen3-0.6B-q4f16_1-MLC.json",
+ "spec": "tests/ai-eval/grammar.spec.ts",
+ "model": "Qwen3-0.6B-q4f16_1-MLC",
+ "at": "2026-10-27T05:34:49.205Z",
+ "note": "WebLLM usage.extra.grammar_init_s per generation, max_tokens 24; each schema twice where marked again (WebLLM keeps the last compiled grammar)",
+ "results": [
+  {
+   "name": "shipping: anyOf over the explorer shortlist (9 tools)",
+   "schemaChars": 4858,
+   "grammarInitMs": 10688.9,
+   "ttftMs": 10848.7,
+   "wallMs": 10974,
+   "loadavg": [
+    7.68,
+    8.64,
+    9.6
+   ]
+  },
+  {
+   "name": "shipping, again (same schema)",
+   "schemaChars": 4858,
+   "grammarInitMs": 0.1,
+   "ttftMs": 26.2,
+   "wallMs": 130,
+   "loadavg": [
+    7.44,
+    8.55,
+    9.56
+   ]
+  },
+  {
+   "name": "shipping: anyOf over the laboratory shortlist (7 tools)",
+   "schemaChars": 4870,
+   "grammarInitMs": 10807,
+   "ttftMs": 10886.7,
+   "wallMs": 10981,
+   "loadavg": [
+    7.44,
+    8.55,
+    9.56
+   ]
+  },
+  {
+   "name": "explorer shortlist without maxLength",
+   "schemaChars": 4795,
+   "grammarInitMs": 65.8,
+   "ttftMs": 90.1,
+   "wallMs": 189,
+   "loadavg": [
+    8.06,
+    8.65,
+    9.58
+   ]
+  },
+  {
+   "name": "tool enum (every tool) with free args",
+   "schemaChars": 1044,
+   "grammarInitMs": 27.1,
+   "ttftMs": 51.5,
+   "wallMs": 151,
+   "loadavg": [
+    8.06,
+    8.65,
+    9.58
+   ]
+  },
+  {
+   "name": "tool enum (every tool) with free args, again",
+   "schemaChars": 1044,
+   "grammarInitMs": 0.1,
+   "ttftMs": 29.5,
+   "wallMs": 144,
+   "loadavg": [
+    8.06,
+    8.65,
+    9.58
+   ]
+  },
+  {
+   "name": "anyOf over every tool",
+   "schemaChars": 23174,
+   "grammarInitMs": 11372.6,
+   "ttftMs": 11423.6,
+   "wallMs": 11529,
+   "loadavg": [
+    8.06,
+    8.65,
+    9.58
+   ]
+  },
+  {
+   "name": "anyOf over every tool, again",
+   "schemaChars": 23174,
+   "grammarInitMs": 0.1,
+   "ttftMs": 30.3,
+   "wallMs": 127,
+   "loadavg": [
+    7.67,
+    8.53,
+    9.53
+   ]
+  }
+ ]
+}

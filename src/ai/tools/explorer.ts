@@ -1,7 +1,7 @@
 import type { BodyId, SkyLayerName, WalkableWorld } from '../../core/types';
 import { ATLAS, MAKKAH_FRAME, SITES, type FieldPlace } from '../../explore/field-notes/data';
 import { centralAngleDeg, qiblaDistanceKm } from '../../explore/islamic/astronomy';
-import type { AiContext, ToolDefinition, ToolEnv, ToolProblem } from '../types';
+import type { AiContext, JsonSchema, ToolDefinition, ToolEnv, ToolProblem } from '../types';
 import { BODY, bodyName, bool, done, ensureExplorer, ensureMessages, focusOf, isBodyId, LAT, LON, notConfirmed, num, OPEN_MS, problem, refused, returnTo, say, str, view, waitFor } from './shared';
 
 /**
@@ -17,6 +17,22 @@ export const PLACES: readonly FieldPlace[] = [...ATLAS, ...SITES];
 const PLACE_IDS = PLACES.map((p) => p.id);
 export const PLACE = { type: 'string', enum: PLACE_IDS, description: 'A place of the field notes' } as const;
 export const placeById = (id: string | undefined): FieldPlace | undefined => (id === undefined ? undefined : PLACES.find((p) => p.id === id));
+
+/** The argument a model names a place by: the orchestrator finds it (src/ai/index.ts placeOfCall). */
+export const PLACE_NAME_ARG = 'placeName';
+const PLACE_NAME: JsonSchema = { type: 'string', maxLength: 80, description: 'A place by its name: a field-notes place or a town' };
+
+/**
+ * A place as a model is offered it (ToolDefinition.argsFor), with the tool's other arguments: a place
+ * by its name (a field-notes place or a town, found by the app, so a model never gives a named
+ * place's degrees from memory), or degrees the visitor gave. Flat, every one optional: given the
+ * field notes' ids, Qwen3 4B wrote the first of them ("richat") with London's latitude and a wrong
+ * longitude; given one form per way of naming a place, it took the first form whatever was asked
+ * (docs/AI-EVALUATION.md). Which of them may go together is the tool's own check.
+ */
+export function placeArgsFor(rest: Readonly<Record<string, JsonSchema>>, required: readonly string[] = []): JsonSchema {
+  return { type: 'object', properties: { [PLACE_NAME_ARG]: PLACE_NAME, lat: LAT, lon: LON, ...rest }, required: [...required], additionalProperties: false };
+}
 
 const WALKABLE = ['earth', 'moon', 'mars', 'mercury', 'venus'] as const satisfies readonly WalkableWorld[];
 const LAYERS = ['constellations', 'boundaries', 'grid', 'names'] as const satisfies readonly SkyLayerName[];
@@ -131,16 +147,20 @@ export const explorerFly: ToolDefinition = {
   },
 };
 
+const VIEW_KM: JsonSchema = { type: 'number', minimum: 1, maximum: 20_000, description: 'Ground to frame, km' };
+
 export const explorerPlace: ToolDefinition = {
   name: 'explorer.place',
   kind: 'view',
   summary: 'Fly to a place on the Earth: a field-notes place id, or lat and lon in degrees (viewKm: ground to frame).',
-  keywords: ['place', 'city', 'country', 'location', 'coordinates', 'latitude', 'longitude', 'mountain', 'desert', 'canyon', 'everest', 'makkah', 'mecca', 'madinah', 'medina', 'jerusalem', 'zoom', 'where is'],
+  // The field notes' own places by name too: "Show me the Salar de Uyuni" named no other keyword.
+  keywords: ['place', 'city', 'country', 'location', 'coordinates', 'latitude', 'longitude', 'mountain', 'desert', 'canyon', 'makkah', 'madinah', 'zoom', 'where is', ...PLACE_IDS.map((id) => id.replace(/-/gu, ' '))],
   args: {
     type: 'object',
-    properties: { place: PLACE, lat: LAT, lon: LON, viewKm: { type: 'number', minimum: 1, maximum: 20_000, description: 'Ground to frame, km' } },
+    properties: { place: PLACE, lat: LAT, lon: LON, viewKm: VIEW_KM },
     additionalProperties: false,
   },
+  argsFor: () => placeArgsFor({ viewKm: VIEW_KM }),
   available: inExplorer,
   check(args) {
     const found = placeProblems(args);
@@ -269,6 +289,7 @@ export const explorerWalk: ToolDefinition = {
   summary: 'Walk on the ground of the Earth, the Moon, Mars, Mercury or Venus: at a place, at lat and lon, or below the camera.',
   keywords: ['walk', 'on foot', 'stand', 'surface', 'land', 'landing', 'ground', 'space suit'],
   args: { type: 'object', properties: { world: { type: 'string', enum: WALKABLE }, place: PLACE, lat: LAT, lon: LON }, additionalProperties: false },
+  argsFor: () => placeArgsFor({ world: { type: 'string', enum: WALKABLE } }),
   available: inExplorer,
   check(args) {
     const found = placeProblems(args);

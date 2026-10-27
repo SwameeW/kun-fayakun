@@ -13,8 +13,10 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { IntlMessageFormat } from 'intl-messageformat';
 import { catalogueFrom, createRegistry, createRegistryFor } from '../../src/ai/tools';
+import { buildPlanMessages, planSchema } from '../../src/ai/prompts';
 import { createToolRegistry } from '../../src/ai/tools/registry';
-import type { AiContext, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolOutcome } from '../../src/ai/types';
+import { validateSchema } from '../../src/ai/tools/schema';
+import type { AiContext, Fact, JsonSchema, Passage, ToolDefinition, ToolEnv, ToolOutcome } from '../../src/ai/types';
 import { createDataStore } from '../../src/core/data';
 import type { App, AssetLoader, HadithFile, I18n, LabCommand, QuranFile, SkyLayerName, UniverseLab, UniverseLabBody, UniverseSkyCommand, UniverseTimeCommand, UniverseView } from '../../src/core/types';
 
@@ -249,10 +251,111 @@ test('shortlist: the core first, then the best matches here, deterministic', () 
   // The same question, the same list.
   expect(names('a trip to Mars: how much delta-v?', BASE)).toEqual(names('a trip to Mars: how much delta-v?', BASE));
   expect(names('a trip to Mars: how much delta-v?', BASE)).toContain('calc.hohmann');
+  // A date in the question offers the tools that take one; a field-notes place by name offers explorer.place (both missed before, docs/AI-EVALUATION.md).
+  expect(names('Show the sky on 2027-08-02', EXPLORER, 9)).toContain('time.date');
+  expect(names('Set it to 1 January 2030 at noon', EXPLORER, 9)).toContain('time.date');
+  expect(names('Show me the Salar de Uyuni', EXPLORER, 9)).toContain('explorer.place');
+  expect(names('Show me the Grand Canyon from 50 km up', EXPLORER, 9)).toContain('explorer.place');
+  // "Throw a rock at the Earth" in the laboratory: its own experiment is offered, not only the calculator (docs/AI-EVALUATION.md).
+  expect(names('Throw a rock at the Earth', LAB, 9)).toContain('lab.experiment');
+  // A verse key in the question offers the tool that shows a verse by its key ("Show me 21:30" was read as a time in the film).
+  const scripture = createRegistry({ scripture: { verses: ['21:30', '36:38'], hadith: ['bukhari-3199'], withheld: [] } });
+  expect(scripture.shortlist('Show me 21:30', BASE, 9).map((t) => t.name)).toContain('cite.verse');
+  expect(scripture.shortlist('Show me the orbit', BASE, 9).map((t) => t.name)).not.toContain('cite.verse');
   // Ties are broken by name.
   const twin = (name: string): ToolDefinition => ({ ...tool('calc.hill'), name, keywords: ['zebra'], summary: 'Nothing.' });
   const tie = createToolRegistry([twin('b.second'), twin('a.first'), twin('c.third')]);
   expect(tie.shortlist('a zebra', BASE, 5).map((t) => t.name)).toEqual(['a.first', 'b.second', 'c.third']);
+});
+
+test('in a chapter with moments, film.moment is offered with this chapter’s moments by id (“Show the orrery” named no keyword)', () => {
+  const ch7: AiContext = { ...CHAPTER, mode: 'explore', moments: [{ id: 'orrery', title: 'The orrery' }, { id: 'sun-apex', title: 'The solar apex' }] };
+  // As the registry gave it to Qwen3 4B in the evaluation before: search and film.control only.
+  expect(registry.shortlist('Show the orrery', CHAPTER, 9).map((t) => t.name)).not.toContain('film.moment');
+  const offered = registry.shortlist('Show the orrery', ch7, 9).map((t) => t.name);
+  expect(offered.slice(0, 3)).toEqual(['search.knowledge', 'film.control', 'film.moment']);
+  const moment = registry.get('film.moment');
+  if (!moment) throw new Error('no film.moment');
+  const schema = planSchema([moment], ch7);
+  expect(JSON.stringify(schema)).toContain('"enum":["orrery","sun-apex"]');
+  const plan = buildPlanMessages('Show the orrery', ch7, [moment], []);
+  expect(plan[0]?.content).toContain('point: orrery|sun-apex');
+  // Validation is the registry's own: a moment the plan's schema does not offer fails it.
+  expect(validateSchema(schema, { intent: 'act', calls: [{ tool: 'film.moment', args: { point: 'redshift' } }] }).length).toBeGreaterThan(0);
+  expect(validateSchema(schema, { intent: 'act', calls: [{ tool: 'film.moment', args: { point: 'orrery' } }] })).toEqual([]);
+  // Without moments in the context, the tool's own arguments.
+  expect(planSchema([moment], CHAPTER)).toEqual(planSchema([moment]));
+});
+
+test('the laboratory’s tools are offered its bodies by id and one form per experiment; the plans Qwen3 4B wrote under the old schema fail them', () => {
+  const offered = (name: string, ctx: AiContext): JsonSchema => {
+    const t = registry.get(name);
+    if (!t) throw new Error(name);
+    return planSchema([t], ctx);
+  };
+  const plan = (tool: string, args: Record<string, unknown>): unknown => ({ intent: 'act', calls: [{ tool, args }] });
+  const measure = offered('lab.measure', LAB);
+  expect(JSON.stringify(measure)).toContain('"enum":["sun","earth","moon"]');
+  // As Qwen3 4B wrote it, held to a pattern of Unicode letters XGrammar cannot read.
+  expect(validateSchema(measure, plan('lab.measure', { from: 'N', to: 'N', via: 'N' })).length).toBeGreaterThan(0);
+  expect(validateSchema(measure, plan('lab.measure', { from: 'earth', to: 'moon' }))).toEqual([]);
+  // Outside the laboratory, the solar system's ten worlds.
+  expect(JSON.stringify(offered('lab.compare', BASE))).toContain('"enum":["sun","mercury","venus","earth","moon","mars","jupiter","saturn","uranus","neptune"]');
+  // One form per experiment: its parameters, all required, and no other experiment's.
+  const compare = offered('lab.compare', BASE);
+  expect(validateSchema(compare, plan('lab.compare', { experiment: 'scale-mass', body: 'sun', factor: 1.1 }))).toEqual([]);
+  expect(validateSchema(compare, plan('lab.compare', { experiment: 'scale-mass', body: 'sun', factor: 1.1, horizonDays: 3650 }))).toEqual([]);
+  expect(validateSchema(compare, plan('lab.compare', { experiment: 'scale-mass', body: 'sun' })).length).toBeGreaterThan(0);
+  expect(validateSchema(compare, plan('lab.compare', { experiment: 'change-orbit', body: 'earth', factor: 1.1, target: 'earth', distanceKm: 147.1, massSun: 1.1 })).length).toBeGreaterThan(0);
+  // lab.optimise: escape takes days, year takes targetDays.
+  const optimise = offered('lab.optimise', LAB);
+  expect(validateSchema(optimise, plan('lab.optimise', { goal: 'year', body: 'earth', targetDays: 300 }))).toEqual([]);
+  expect(validateSchema(optimise, plan('lab.optimise', { goal: 'year', body: 'earth', days: 300 })).length).toBeGreaterThan(0);
+  expect(validateSchema(optimise, plan('lab.optimise', { goal: 'escape', body: 'earth', days: 1826 }))).toEqual([]);
+  // What the forms accept, the tool's own schema accepts too (validation is the registry's).
+  expect(registry.validate({ tool: 'lab.compare', args: { experiment: 'scale-mass', body: 'sun', factor: 1.1 } }, BASE).ok).toBe(true);
+  // The prompt shows the forms.
+  const lines = buildPlanMessages('Double the Sun', LAB, [registry.get('lab.experiment') as ToolDefinition], [])[0]?.content ?? '';
+  expect(lines).toContain("{experiment: scale-mass, body: sun|earth|moon, factor: number (multiply the body's mass by this), horizonDays?: number (Days to integrate ahead)} or {experiment: remove-body");
+  expect(lines).toContain("aFactor: number (multiply the orbit's size by this)");
+  expect(lines).toContain('massKg: number (kg; a large number as a power of ten: 1e22)');
+});
+
+test('a place is offered by its name or by degrees, flat; the tool’s own check says which go together', () => {
+  const qibla = registry.get('islamic.qibla');
+  if (!qibla) throw new Error('no qibla');
+  const schema = planSchema([qibla], BASE);
+  const plan = (args: Record<string, unknown>): unknown => ({ intent: 'answer', calls: [{ tool: 'islamic.qibla', args }] });
+  expect(validateSchema(schema, plan({ placeName: 'London' }))).toEqual([]);
+  expect(validateSchema(schema, plan({ lat: 51.5, lon: -0.12 }))).toEqual([]);
+  // The field notes' ids are not offered: as Qwen3 4B used them, the first of them ("richat") with degrees from memory.
+  expect(validateSchema(schema, plan({ place: 'richat', lat: 51.5074, lon: -113.9324 })).length).toBeGreaterThan(0);
+  const line = buildPlanMessages('qibla', BASE, [qibla], [])[0]?.content ?? '';
+  expect(line).toContain('args {placeName?: string, lat?: number (Latitude, degrees north), lon?: number (Longitude, degrees east)}');
+  expect(line).not.toContain('richat');
+});
+
+test('search never says back, or searches for, a verse key the data does not hold (“Quran 2:999”)', async () => {
+  const unheld = await run('search.knowledge', { query: 'Quran 2:999' });
+  expect(unheld.status).toBe('done');
+  expect(JSON.stringify(unheld)).not.toContain('2:999');
+  const only = await run('search.knowledge', { query: '2:999' });
+  expect(only.status).toBe('refused');
+  expect(JSON.stringify(only)).not.toContain('2:999');
+  // A key the data holds is searched for as asked.
+  const held = { search: () => [], get: (id: string) => (id === 'verse:21:30' ? ({ id, kind: 'verse', ref: '21:30', title: '21:30', text: '', knowledge: 'scripture' } as unknown as Passage) : null) };
+  const kept = await tool('search.knowledge').run({ query: 'verse 21:30' }, { ...envFor(fakeApp().app), retriever: held });
+  expect(JSON.stringify(kept)).toContain('21:30');
+  const search = registry.get('search.knowledge');
+  expect(search?.preview({ query: 'Quran 2:999' }, BASE, fakeApp().app.i18n)).not.toContain('2:999');
+  // Nor a hadith the data does not hold ("stars Sahih al-Bukhari 7000" was said back whole, Qwen3.5 9B).
+  const hadith = await run('search.knowledge', { query: 'stars Sahih al-Bukhari 7000' });
+  expect(JSON.stringify(hadith)).not.toContain('7000');
+  expect(search?.preview({ query: 'stars Sahih al-Bukhari 7000' }, BASE, fakeApp().app.i18n)).not.toContain('7000');
+  expect(JSON.stringify((await run('search.knowledge', { query: 'Bukhari 7000' })).status)).toBe('"refused"');
+  // Nor a verse named in words ("chapter 36, verse 99 of the Quran" was said back whole, Qwen3 1.7B).
+  expect(JSON.stringify(await run('search.knowledge', { query: 'chapter 36, verse 99 of the Quran' }))).not.toContain('verse 99');
+  expect(search?.preview({ query: 'chapter 36, verse 99 of the Quran' }, BASE, fakeApp().app.i18n)).not.toContain('99');
 });
 
 /* ----- Calculators against textbook values ----- */

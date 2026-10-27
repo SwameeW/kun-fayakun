@@ -11,7 +11,9 @@ import { buildAppConfig, EVAL_CANDIDATES, MODEL_TIERS, modelFor, VISITOR_MODELS 
 import { adapterSignals, BUDGET_MB, browserOf, chooseTier, limitsOk, platformOf, type NavigatorLike, type TierSignals } from '../../src/ai/engine/detect';
 import { engineError, EngineFailure, isEngineError, toEngineError } from '../../src/ai/engine/errors';
 import type { Pacer } from '../../src/ai/engine/pacing';
-import { loadWebLLM, toCompletionRequest, toLoadProgress, type ModelWorker } from '../../src/ai/engine/webllm';
+import { grammarSchema, loadWebLLM, thinkFilter, toCompletionRequest, toLoadProgress, type ModelWorker } from '../../src/ai/engine/webllm';
+import { planSchema } from '../../src/ai/prompts';
+import { allTools } from '../../src/ai/tools/index';
 import type { GenerateRequest, JsonSchema } from '../../src/ai/types';
 
 const ROOT = new URL('../../', import.meta.url);
@@ -178,7 +180,7 @@ test('Safari on macOS, which gives no deviceMemory, assumes a middle budget', ()
 test('without shader-f16 the q4f32 builds are measured against the budget', () => {
   const s = device({ userAgent: UA.winChrome, deviceMemory: 16 }, adapter({ vendor: 'intel', description: 'Intel(R) UHD Graphics 630' }, { features: [] }));
   const choice = chooseTier(s);
-  // 4.2 GB: Qwen3 4B's q4f16 (3.4 GB) would fit, its q4f32 (4.3 GB) does not.
+  // 4.2 GB: Qwen3.5 4B's q4f16 (3.9 GB) would fit, its q4f32 (4.7 GB) does not.
   expect(choice.recommended).toBe('compact');
   expect(choice.reasons).toEqual([reason('no-f16')]);
 });
@@ -211,12 +213,12 @@ test('every model is pinned: 40-hex commits, an SRI hash, sizes above zero, a li
   }
 });
 
-test('the visitor tiers are Qwen3 0.6B to 8B, ordered by GPU memory, each q4f16 build with a q4f32 fallback', () => {
+test('the visitor tiers are Qwen3 0.6B and 1.7B, then Qwen3.5 4B and 9B (the evaluation of 2026-10-27), ordered by GPU memory, each q4f16 build with a q4f32 fallback', () => {
   expect(VISITOR_MODELS.map((m) => m.id)).toEqual([
     'Qwen3-0.6B-q4f16_1-MLC', 'Qwen3-0.6B-q4f32_1-MLC',
     'Qwen3-1.7B-q4f16_1-MLC', 'Qwen3-1.7B-q4f32_1-MLC',
-    'Qwen3-4B-q4f16_1-MLC', 'Qwen3-4B-q4f32_1-MLC',
-    'Qwen3-8B-q4f16_1-MLC', 'Qwen3-8B-q4f32_1-MLC',
+    'Qwen3.5-4B-q4f16_1-MLC', 'Qwen3.5-4B-q4f32_1-MLC',
+    'Qwen3.5-9B-q4f16_1-MLC', 'Qwen3.5-9B-q4f32_1-MLC',
   ]);
   for (const f16 of [true, false]) {
     const vram = MODEL_TIERS.map((t) => modelFor(t, f16)?.vramMB ?? NaN);
@@ -229,8 +231,14 @@ test('the visitor tiers are Qwen3 0.6B to 8B, ordered by GPU memory, each q4f16 
   }
   // The pocket model only picks tools and writes weak explanations: it says so.
   expect(modelFor('pocket', true)?.limitKeys).toEqual(expect.arrayContaining(['ai.engine.limit.pocket.tools', 'ai.engine.limit.pocket.explain']));
-  expect(EVAL_CANDIDATES.map((m) => m.id)).toEqual(['Qwen3.5-4B-q4f16_1-MLC', 'Qwen3.5-4B-q4f32_1-MLC', 'Qwen3.5-9B-q4f16_1-MLC', 'Qwen3.5-9B-q4f32_1-MLC']);
+  // The Qwen3 builds they replaced stay for the evaluation.
+  expect(EVAL_CANDIDATES.map((m) => m.id)).toEqual(['Qwen3-4B-q4f16_1-MLC', 'Qwen3-4B-q4f32_1-MLC', 'Qwen3-8B-q4f16_1-MLC', 'Qwen3-8B-q4f32_1-MLC']);
   expect(EVAL_CANDIDATES.some((m) => VISITOR_MODELS.includes(m))).toBe(false);
+});
+
+test('pocket writes explanations only (the evaluation: Qwen3 0.6B made no call in any plan); every other tier plans', () => {
+  for (const m of VISITOR_MODELS) expect(m.plans === false, m.id).toBe(m.tier === 'pocket');
+  for (const m of VISITOR_MODELS.filter((x) => x.tier === 'pocket')) expect(m.limitKeys).toContain('ai.engine.limit.pocket.tools');
 });
 
 test('the catalogue matches WebLLM 0.2.86 prebuilt records (GPU memory, context, library) and its AppConfig is complete', async () => {
@@ -293,6 +301,82 @@ test('a JSON plan becomes response_format json_object with the schema as a strin
   expect(prose.response_format).toBeUndefined();
   expect(prose.temperature).toBe(0.3);
   expect(prose.extra_body).toEqual({ enable_thinking: false });
+});
+
+test('XGrammar is given the plan without string lengths (each cost about 10 s to start); the lengths stay in the schema JS checks', () => {
+  const tools = allTools().filter((t) => ['search.knowledge', 'explorer.find_star', 'time.date', 'film.moment'].includes(t.name));
+  const full = planSchema(tools);
+  expect(JSON.stringify(full)).toContain('"maxLength"');
+  const sent = JSON.parse(toCompletionRequest({ messages: [{ role: 'user', content: 'Find Sirius' }], format: { kind: 'json', schema: full }, maxTokens: 300 }).response_format?.schema ?? 'null') as unknown;
+  expect(JSON.stringify(sent)).not.toMatch(/"(?:maxLength|minLength)"/u);
+  // Patterns XGrammar reads otherwise than JavaScript: Unicode property classes (a star's name), long bounded repeats (a moment's id).
+  expect(JSON.stringify(sent)).not.toContain('\\\\p{');
+  expect(JSON.stringify(sent)).not.toContain('{1,48}');
+  // A pattern JSON Schema searches for ("\\S": not blank) would be a whole match in the grammar: one character.
+  expect(JSON.stringify(sent)).not.toContain('"pattern":"\\\\S"');
+  // Number ranges: XGrammar sent a number to its maximum (0.3 in 0–0.95 became 0.95).
+  const lab = allTools().filter((t) => t.name === 'lab.optimise');
+  expect(JSON.stringify(grammarSchema(planSchema(lab)))).not.toMatch(/"(?:minimum|maximum)"/u);
+  // Only a schema's own keywords go: an argument may be named anything.
+  const named: JsonSchema = { type: 'object', properties: { maximum: { type: 'number', maximum: 5 }, pattern: { type: 'string' } }, required: ['maximum', 'pattern'], additionalProperties: false };
+  expect(grammarSchema(named)).toEqual({ type: 'object', properties: { maximum: { type: 'number' }, pattern: { type: 'string' } }, required: ['maximum', 'pattern'], additionalProperties: false });
+  // An anchored pattern both read alike is kept (a date).
+  expect(JSON.stringify(sent)).toContain('"pattern":"^\\\\d{4}-');
+  // Everything else is kept: the enums, patterns, required fields and the shortlist's tool names.
+  expect(sent).toEqual(grammarSchema(full));
+  expect(JSON.stringify(sent)).toContain('"pattern"');
+  for (const t of tools) expect(JSON.stringify(sent)).toContain(`"const":"${t.name}"`);
+  // The schema the orchestrator validates against is not changed.
+  expect(JSON.stringify(full)).toContain('"maxLength"');
+});
+
+test('the empty thinking block WebLLM streams back is taken off the reply, however it is split', () => {
+  const run = (pieces: readonly string[]): string => {
+    const f = thinkFilter();
+    return pieces.map((p) => f.push(p)).join('') + f.end();
+  };
+  // As WebLLM 0.2.86 sent it with Qwen3 and thinking off, in one piece and token by token.
+  expect(run(['<think>\n\n</think>\n\n', 'The escape speed of Mars is 5.03 km/s.'])).toBe('The escape speed of Mars is 5.03 km/s.');
+  expect(run(['<', 'think', '>', '\n\n', '</', 'think', '>', '\n\n', 'The', ' escape speed'])).toBe('The escape speed');
+  expect(run(['<think>\n\n</think>\n\n{"intent": "answer", "calls": []}'])).toBe('{"intent": "answer", "calls": []}');
+  // A block with reasoning in it goes too; one never closed is all reasoning.
+  expect(run(['<think>Let me see.</think>', ' Mars.'])).toBe('Mars.');
+  expect(run(['<think>Let me see, the escape'])).toBe('');
+  // Anything else is the reply from the first character, a lone "<" included.
+  expect(run(['The <think> tag', ' is not at the start.'])).toBe('The <think> tag is not at the start.');
+  expect(run(['<', 'b>bold'])).toBe('<b>bold');
+  expect(run(['<thi'])).toBe('<thi');
+  expect(run(['{"intent": "act"}'])).toBe('{"intent": "act"}');
+});
+
+test('a generation’s text and its streamed pieces never carry the thinking block', async () => {
+  const model = VISITOR_MODELS[0];
+  if (!model) throw new Error('no model');
+  const pacer: Pacer = { gate: () => Promise.resolve(), visible: () => Promise.resolve(), hold: () => () => undefined, dispose: () => undefined };
+  const deltas = ['<think>', '\n\n', '</think>', '\n\n', 'Mars ', 'is red.'];
+  let next = 0;
+  const worker: ModelWorker = {
+    call(request) {
+      if (request.type === 'load') return Promise.resolve({ type: 'loaded', id: 1 });
+      if (request.type === 'generate') return Promise.resolve({ type: 'started', id: 7 });
+      if (request.type === 'pull') {
+        const delta = deltas[next];
+        next += 1;
+        if (delta === undefined) return Promise.resolve({ type: 'piece', id: 0, piece: null, done: true });
+        return Promise.resolve({ type: 'piece', id: 0, piece: { delta, finish: next === deltas.length ? 'stop' : null, usage: null }, done: false });
+      }
+      return Promise.resolve({ type: 'result', id: 0, value: true });
+    },
+    interrupt: () => undefined,
+    terminate: () => undefined,
+  };
+  const engine = await loadWebLLM(model, () => undefined, new AbortController().signal, pacer, () => worker);
+  const streamed: string[] = [];
+  const out = await engine.generate({ messages: [{ role: 'user', content: 'Why is Mars red?' }], format: { kind: 'text' }, maxTokens: 64, onText: (d) => streamed.push(d) });
+  expect(out.text).toBe('Mars is red.');
+  expect(streamed.join('')).toBe('Mars is red.');
+  expect(streamed.join('')).not.toContain('think');
+  await engine.unload();
 });
 
 test('WebLLM progress reads as download bytes, then compile, then ready', () => {

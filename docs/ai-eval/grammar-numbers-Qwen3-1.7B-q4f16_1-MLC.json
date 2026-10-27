@@ -1,0 +1,119 @@
+{
+ "compactOf": ".work/ai-eval/results/grammar-numbers-Qwen3-1.7B-q4f16_1-MLC.json",
+ "spec": "tests/ai-eval/grammar.spec.ts (number ranges)",
+ "model": "Qwen3-1.7B-q4f16_1-MLC",
+ "at": "2026-10-27T06:59:34.239Z",
+ "note": "the same request with and without the JSON Schema minimum and maximum; the number asked for stated in the prompt; max_tokens 40, temperature 0",
+ "results": [
+  {
+   "name": "eccentricity 0.3 in 0–0.95",
+   "ranged": true,
+   "reply": "{\"e\": 0.95}",
+   "grammarInitMs": 257.7000000476837,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "eccentricity 0.3 in 0–0.95",
+   "ranged": false,
+   "reply": "{\"e\": 0.3}",
+   "grammarInitMs": 5.399999976158142,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "mass 1e22 kg in 1e6–1e26",
+   "ranged": true,
+   "reply": "{\"massKg\": 100000000000000004764729344}",
+   "grammarInitMs": 6.100000023841858,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "mass 1e22 kg in 1e6–1e26",
+   "ranged": false,
+   "reply": "{\"massKg\": 1e22}",
+   "grammarInitMs": 3.700000047683716,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "rate 86400 in ±2592000 (integer)",
+   "ranged": true,
+   "reply": "{\"rate\": 86400}",
+   "grammarInitMs": 8.100000023841858,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "rate 86400 in ±2592000 (integer)",
+   "ranged": false,
+   "reply": "{\"rate\": 86400}",
+   "grammarInitMs": 3,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "days 1826 in 1–3650",
+   "ranged": true,
+   "reply": "{\"days\": 1826}",
+   "grammarInitMs": 4.399999976158142,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "days 1826 in 1–3650",
+   "ranged": false,
+   "reply": "{\"days\": 1826}",
+   "grammarInitMs": 4.099999904632568,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "factor 1.1 in 0.01–100",
+   "ranged": true,
+   "reply": "{\"factor\": 1.1}",
+   "grammarInitMs": 5.299999952316284,
+   "loadavg": [
+    6.63,
+    6.87,
+    7.25
+   ]
+  },
+  {
+   "name": "factor 1.1 in 0.01–100",
+   "ranged": false,
+   "reply": "{\"factor\": 1.1}",
+   "grammarInitMs": 2.5,
+   "loadavg": [
+    6.58,
+    6.85,
+    7.24
+   ]
+  }
+ ]
+}

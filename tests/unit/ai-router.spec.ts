@@ -337,6 +337,15 @@ test('every plan goes through registry.validate; a tool missing from the registr
   expect(route('escape speed of mars', CTX.home, without)).toBeNull();
 });
 
+test('a request for a religious ruling is declined in the app’s own words, before any model; other questions are not', () => {
+  for (const q of ['Give me a religious ruling: is it permissible to pray with shoes on?', 'Is it haram to look at the stars?', 'What is the fatwa on fasting while travelling?', 'Is it allowed in Islam to pray on a plane', 'halal or haram: music?', 'Is this permissible?']) {
+    expect(route(q, CTX.home, registry), q).toEqual({ intent: 'decline', calls: [], source: 'router', questionKey: 'ai.mind.guide.noRuling' });
+  }
+  for (const q of ['Is it allowed to remove the Sun in the laboratory?', 'What are the prayer times in Cairo by the Muslim World League?', 'escape speed of mars', 'Which verse speaks of iron?']) {
+    expect(route(q, CTX.home, registry)?.intent, q).not.toBe('decline');
+  }
+});
+
 test('a tool not available here means no plan (the clock outside the explorer)', () => {
   expect(route('set the date to 2030-01-01', CTX.home, registry)).toBeNull();
   expect(route('set the date to 2030-01-01', CTX.explorer, registry)?.calls[0]?.tool).toBe('time.date');

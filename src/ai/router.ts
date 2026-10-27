@@ -637,9 +637,17 @@ const MATCHERS: readonly Matcher[] = [verse, hadith, chapter, experiment, transp
  * A plan for the question, or null when the router is not sure (or the registry would not accept
  * what it would do here). Deterministic: the same question in the same context gives the same plan.
  */
+/**
+ * A request for a religious ruling. The app gives none (its Islamic tools are for learning), and a
+ * model asked for one gave a ruling of its own from memory (Qwen3 4B on praying with shoes on,
+ * docs/AI-EVALUATION.md): it is declined in the app's own words before any model sees it.
+ */
+const RULING = /\b(?:fatwas?|fatawa|religious\s+rulings?|islamic\s+rulings?|sharia\s+rulings?|rulings?\s+(?:on|about|for)|halal\s+or\s+haram|haram\s+or\s+halal)\b|\b(?:is|are)\s+(?:it|this|that|they|we|i)\s+(?:\w+\s+){0,2}(?:permissible|impermissible|permitted|halal|haram|makruh|mustahabb|sinful|forbidden\s+in\s+islam|allowed\s+in\s+islam)\b/u;
+
 export function route(question: string, ctx: AiContext, registry: ToolRegistry, options: RouteOptions = {}): Plan | null {
   const q = normaliseCommand(question);
   if (q.length === 0 || q.length > 200) return null;
+  if (RULING.test(q)) return { intent: 'decline', calls: [], source: 'router', questionKey: 'ai.mind.guide.noRuling' };
   for (const matcher of MATCHERS) {
     const candidate = matcher(q, ctx, options);
     if (!candidate) continue;

@@ -10,7 +10,7 @@ import { problem } from './shared';
  * The shortlist is deterministic: the question's words, lightly stemmed, against each tool's keywords
  * (worth most), the words of its name, and its summary; a tool that fits where the visitor is gains a
  * little. The core is always first: the search of the verified content and the way to move about
- * that fits where the visitor is. Ties are broken by name.
+ * that fits where the visitor is (in a chapter with moments, its moments too). Ties are broken by name.
  */
 
 /** Words that say nothing about which tool is meant. */
@@ -46,7 +46,21 @@ interface Indexed {
   summary: Set<string>;
 }
 
-const WEIGHT = { keyword: 3, name: 2, summary: 1, here: 0.5 } as const;
+const WEIGHT = { keyword: 3, name: 2, summary: 1, here: 0.5, date: 3, verseKey: 3 } as const;
+
+/** A date as a question writes it: 2027-08-02, 1 January 2030, January 1, 2030. */
+const DATE_IN_TEXT = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{3,4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{3,4}\b/iu;
+
+/**
+ * A verse key in the question ("Show me 21:30"): the tool that shows a verse by its key is offered.
+ * Without it, "Show me 21:30" from home was offered only the search and the film, and every model
+ * read it as a time in the film (docs/AI-EVALUATION.md).
+ */
+const VERSE_KEY_IN_TEXT = /(?<![\d:.])(?:[1-9]\d?|10\d|11[0-4]):[1-9]\d{0,2}(?![\d:])/u;
+export const CITE_VERSE = 'cite.verse';
+
+/** Whether a tool takes a date (its arguments name one). */
+const takesDate = (tool: ToolDefinition): boolean => 'properties' in tool.args && Object.hasOwn(tool.args.properties, 'date');
 
 /** The tool for moving about that fits where the visitor is. */
 export function navigationTool(where: AiContext['where']): string {
@@ -90,11 +104,14 @@ export function createToolRegistry(tools: readonly ToolDefinition[]): ToolRegist
       summary: new Set(terms(tool.summary)),
     }));
 
-  const score = (entry: Indexed, words: ReadonlySet<string>, ctx: AiContext): number => {
+  const score = (entry: Indexed, words: ReadonlySet<string>, ctx: AiContext, dated: boolean, keyed: boolean): number => {
     let s = 0;
     for (const k of entry.keywords) if (k.every((w) => words.has(w))) s += WEIGHT.keyword * k.length;
     for (const w of entry.name) if (words.has(w)) s += WEIGHT.name;
     for (const w of entry.summary) if (words.has(w)) s += WEIGHT.summary;
+    // A date in the question is a tool's argument ("Show the sky on 2027-08-02" named no keyword of time.date).
+    if (dated && takesDate(entry.tool)) s += WEIGHT.date;
+    if (keyed && entry.tool.name === CITE_VERSE) s += WEIGHT.verseKey;
     if (s > 0 && HERE[ctx.where].includes(group(entry.tool.name))) s += WEIGHT.here;
     return s;
   };
@@ -106,11 +123,13 @@ export function createToolRegistry(tools: readonly ToolDefinition[]): ToolRegist
     shortlist(question, ctx, limit) {
       const n = Math.max(0, Math.floor(limit));
       const available = indexed.filter((e) => e.tool.available(ctx));
-      const core = [CORE_SEARCH, navigationTool(ctx.where)].map((name) => available.find((e) => e.tool.name === name)?.tool).filter((t): t is ToolDefinition => t !== undefined);
+      // In a chapter its moments are a way about it too: "Show the orrery" names no tool's keyword.
+      const coreNames = [CORE_SEARCH, navigationTool(ctx.where), ...(ctx.where === 'chapter' && ctx.moments?.length ? ['film.moment'] : [])];
+      const core = coreNames.map((name) => available.find((e) => e.tool.name === name)?.tool).filter((t): t is ToolDefinition => t !== undefined);
       const words = new Set(terms(question));
       const ranked = available
         .filter((e) => !core.includes(e.tool))
-        .map((e) => ({ tool: e.tool, s: score(e, words, ctx) }))
+        .map((e) => ({ tool: e.tool, s: score(e, words, ctx, DATE_IN_TEXT.test(question), VERSE_KEY_IN_TEXT.test(question)) }))
         .filter((r) => r.s > 0)
         // Higher scores first; the registry is sorted by name, and the sort is stable, so ties keep that order.
         .sort((a, b) => b.s - a.s)

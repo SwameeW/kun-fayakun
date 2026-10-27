@@ -181,6 +181,16 @@ export function citeTools(catalogue: ScriptureCatalogue = EMPTY): ToolDefinition
 
 const KINDS: readonly PassageKind[] = ['verse', 'hadith', 'prose', 'constant', 'term', 'explore', 'fact', 'source', 'help', 'place'];
 
+/** A hadith reference in a query ("Sahih al-Bukhari 7000"): its collection and number. */
+const HADITH_IN_QUERY = /\b(?:sahih\s+|sunan\s+|jami['’]?\s+)?(?:al-|at-|an-)?(bukhari|muslim|tirmidhi|ab[iu]\s+dawud|nasa['’]?i|ibn\s+majah)\s*,?\s*(?:no\.?\s*|number\s+|#)?(\d{1,5})\b/iu;
+/** A verse named in words in a query ("chapter 36, verse 99"). */
+const VERSE_IN_WORDS = /\b(?:surah|sura|surat|chapter)\s+(\d{1,3})\s*[,:]?\s*(?:verse|ayah|aya)\s+(\d{1,3})\b/iu;
+/** A collection's name as the data's hadith ids begin ("abudawud-4700"). */
+const hadithPrefix = (collection: string): string => {
+  const c = collection.toLowerCase();
+  return /dawud/u.test(c) ? 'abudawud' : /nasa/u.test(c) ? 'nasai' : /majah/u.test(c) ? 'ibnmajah' : c;
+};
+
 /**
  * The search of the verified content (the retriever's index). A verse or hadith it finds comes back
  * as a reference for the interface to render from data (an excluded or withheld one is dropped);
@@ -202,10 +212,24 @@ export const searchKnowledge: ToolDefinition = {
     additionalProperties: false,
   },
   available: () => true,
-  preview: (args, _ctx, i18n) => say(i18n, 'ai.tool.search.preview', { query: str(args, 'query') ?? '' }),
+  // A query with a verse key or a hadith reference is not said back before it is checked (run leaves out one the data does not hold).
+  preview: (args, _ctx, i18n) => {
+    const query = str(args, 'query') ?? '';
+    if (/\d{1,3}:\d{1,3}/u.test(query) || VERSE_IN_WORDS.test(query)) return say(i18n, 'ai.tool.search.previewVerse');
+    return HADITH_IN_QUERY.test(query) ? say(i18n, 'ai.tool.search.previewHadith') : say(i18n, 'ai.tool.search.preview', { query });
+  },
   run(args, env) {
     ensureMessages(env.i18n);
-    const query = str(args, 'query') ?? '';
+    // A verse key or a hadith reference the data does not hold is not searched for, nor said back: "Quran
+    // 2:999" found four other verses "for “Quran 2:999”", and "stars Sahih al-Bukhari 7000" was said back
+    // whole (docs/AI-EVALUATION.md).
+    const query = (str(args, 'query') ?? '')
+      .replace(/(?<![\w.:/-])(\d{1,3}):(\d{1,3})(?![\w:/-])/gu, (key, s: string, a: string) => (env.retriever.get(`verse:${Number(s)}:${Number(a)}`) ? key : ' '))
+      .replace(new RegExp(HADITH_IN_QUERY.source, 'giu'), (ref: string, collection: string, n: string) => (env.retriever.get(`hadith:${hadithPrefix(collection)}-${n}`) ? ref : ' '))
+      .replace(new RegExp(VERSE_IN_WORDS.source, 'giu'), (words: string, s: string, a: string) => (env.retriever.get(`verse:${Number(s)}:${Number(a)}`) ? words : ' '))
+      .replace(/\s+/gu, ' ')
+      .trim();
+    if (!/[\p{L}\p{N}]/u.test(query)) return Promise.resolve(refused(problem('query', 'ai.tool.search.unheld')));
     const list: readonly unknown[] = Array.isArray(args.kinds) ? args.kinds : [];
     const kinds = Array.isArray(args.kinds) ? list.filter((k): k is PassageKind => typeof k === 'string' && (KINDS as readonly string[]).includes(k)) : undefined;
     const ctx = env.context();

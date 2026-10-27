@@ -11,8 +11,11 @@
  * back. There is one assistant per page: later calls return the same one.
  *
  * It also gives the test hook its assistant part (window.__kf.ai): start(); useScripted(), which
- * switches the running assistant to the scripted test engine (labelled as such on screen); and
- * useReport(), which makes detection answer with a canned device (CI has no GPU to find).
+ * switches the running assistant to the scripted test engine (labelled as such on screen);
+ * useReport(), which makes detection answer with a canned device (CI has no GPU to find); and, for
+ * the real-model evaluation alone (tests/ai-eval), evaluate(), which records every generation
+ * (taken with generations()) and can skip the router so a model plans every question. Nothing a
+ * visitor does reaches these.
  */
 import { extendTestHandle, setHook } from '../core/hooks';
 import type { App } from '../core/types';
@@ -23,11 +26,14 @@ import { createScriptedEngine, type ScriptedOptions, type ScriptedReply } from '
 import { createIntelligence, type AiOrchestrator } from './index';
 import { loadRetriever } from './knowledge';
 import { createRegistry, loadScriptureCatalogue, registerToolMessages } from './tools';
-import type { CapabilityReport } from './types';
+import type { CapabilityReport, EvaluationOptions, GenerationRecord } from './types';
 
 let started: Promise<AiOrchestrator> | null = null;
 /** The engine host of the page's assistant, for the test hook's useReport. */
 let engineHost: ReturnType<typeof createEngineHost> | null = null;
+/** The evaluation's settings (null: off, the shipping order) and what it has recorded since last taken. */
+let evaluation: EvaluationOptions | null = null;
+let recorded: GenerationRecord[] = [];
 
 async function build(app: App, announce: (text: string) => void): Promise<AiOrchestrator> {
   const { i18n } = app;
@@ -39,7 +45,19 @@ async function build(app: App, announce: (text: string) => void): Promise<AiOrch
   const registry = createRegistry({ scripture });
   const host = createEngineHost(app);
   engineHost = host;
-  const ai = createIntelligence(app, { registry, host, retriever: () => loadRetriever(app), announce, withheld: scripture.withheld });
+  const ai = createIntelligence(app, {
+    registry,
+    host,
+    retriever: () => loadRetriever(app),
+    announce,
+    withheld: scripture.withheld,
+    evaluation: {
+      options: () => evaluation,
+      record: (entry) => {
+        recorded.push(entry);
+      },
+    },
+  });
   // What tests wait on (docs/CONTRACTS.md, "Test hooks"): the engine in use and the latest turn's state.
   setHook('data-ai-engine', ai.engine().kind);
   ai.events.on('engine', ({ kind }) => {
@@ -79,6 +97,16 @@ export function startIntelligence(app: App, announce: (text: string) => void): P
       async useReport(report: CapabilityReport) {
         await start();
         engineHost?.assume(report);
+      },
+      async evaluate(options: EvaluationOptions | null) {
+        await start();
+        evaluation = options ? { router: options.router === 'skip' ? 'skip' : 'first' } : null;
+        recorded = [];
+      },
+      generations() {
+        const taken = recorded;
+        recorded = [];
+        return taken;
       },
     },
   });

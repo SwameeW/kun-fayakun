@@ -64,6 +64,11 @@ export interface ModelSpec {
   sourceId: string;
   /** Plain limits shown before download ("can lose track of long tasks"). */
   limitKeys: readonly I18nKey[];
+  /**
+   * false: the model writes explanations only, and the guide's router does all tool choice (set from
+   * the evaluation's measurements, docs/AI-EVALUATION.md). Left out: it plans when the router does not.
+   */
+  plans?: boolean;
 }
 
 /** What this device can do, found without downloading anything (src/ai/engine/detect.ts). */
@@ -140,6 +145,12 @@ export interface GenerateResult {
   outputTokens: number;
   prefillMs: number;
   decodeMs: number;
+  /**
+   * The engine's own figures for this generation, where it reports them (WebLLM's usage: its
+   * prefill and decode rates, time to first token, end to end, and its grammar matcher's start for a
+   * schema). Read by the evaluation (tests/ai-eval), never shown to visitors.
+   */
+  engineUsage?: { prefillTokensPerS: number; decodeTokensPerS: number; ttftMs: number; e2eMs: number; grammarInitMs: number | null };
 }
 
 /** A language model the assistant can use (local, browser or scripted). */
@@ -255,6 +266,10 @@ export interface AiContext {
   } | null;
   /** Verses this chapter shows (for "explain this verse"). */
   verses: readonly VerseKey[];
+  /** Today's date (UTC, YYYY-MM-DD): "today" and "tomorrow" are the visitor's, not a model's guess. */
+  today?: string;
+  /** This chapter's Explore Mode moments, by id and title (what film.moment takes). */
+  moments?: readonly { id: string; title: string }[];
   /** At most ~600 characters for the model: where the visitor is and what is on screen. */
   summary: string;
 }
@@ -334,6 +349,13 @@ export interface ToolDefinition {
   keywords: readonly string[];
   /** An object schema for its arguments. */
   args: JsonSchema & { type: 'object' };
+  /**
+   * Its arguments as a model is offered them here, when the context narrows them (film.moment: an
+   * enum of this chapter's moments; the laboratory's tools: its bodies by id, one form per
+   * experiment). The plan's schema and prompt use it (the plan is checked against it too);
+   * validation still uses `args` and `check`, and `run` refuses what the app does not hold.
+   */
+  argsFor?(ctx: AiContext): JsonSchema;
   /** Offered only where it can work (the lab tools in the lab, say). */
   available(ctx: AiContext): boolean;
   /** Checks beyond the schema, against the app's state. */
@@ -411,18 +433,23 @@ export interface Plan {
   source: 'router' | 'model' | 'fallback';
   /** For clarify: the question back to the visitor. */
   question?: string;
-  /** For clarify: the question is the app's own words (this message), not the model's. */
+  /** For clarify, or decline: the app's own words (this message), not the model's. */
   questionKey?: I18nKey;
 }
 
 /** Changes the guards made to a model's words before they were shown. */
 export type GuardFlag =
   | 'arabic-removed'
+  | 'other-script'
   | 'banned-phrase'
   | 'unknown-citation'
   | 'unchecked-number'
   | 'action-claim'
   | 'scripture-quote'
+  | 'scripture-reading'
+  | 'confirm-offer'
+  | 'injected-text'
+  | 'repeated'
   | 'truncated';
 
 /** How much an explanation assumes, chosen by the visitor (the answer prompt says it in one line). */
@@ -478,6 +505,47 @@ export interface IntelligenceEvents {
   /** A turn changed (state, a new block, a streamed word). */
   turn: { turn: Turn };
   engine: { kind: EngineKind; model: string | null; state: 'off' | 'loading' | 'ready' | 'busy' | 'error'; progress?: LoadProgress; error?: EngineError };
+}
+
+/* ------------------------------------------------------------------ */
+/* Evaluation: the test hook's seam for measuring real models           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the real-model evaluation (tests/ai-eval, through the test hook's evaluate()) sets. Never
+ * set for visitors: without it the router always goes first and nothing is recorded.
+ * - router 'first': the shipping order (the deterministic router, then the model);
+ * - router 'skip': a loaded model plans every question, so its own planning is measured.
+ */
+export interface EvaluationOptions {
+  router: 'first' | 'skip';
+}
+
+/** One generation of a turn, as the evaluation records it: what it was for, the raw reply and the engine's figures. */
+export interface GenerationRecord {
+  turnId: string;
+  /** plan: the first plan; repair: the one retry after an unusable plan; answer: the prose. */
+  purpose: 'plan' | 'repair' | 'answer';
+  engine: TextWriter;
+  /** The messages sent, as sent. */
+  messages: readonly ChatMessage[];
+  /** For a plan: the tools offered (the shortlist), by name. */
+  offered?: readonly string[];
+  /** The reply exactly as the engine gave it, before any parsing or guard. */
+  raw: string;
+  finish: GenerateResult['finish'];
+  promptTokens: number;
+  outputTokens: number;
+  prefillMs: number;
+  decodeMs: number;
+  engineUsage: GenerateResult['engineUsage'] | null;
+  /** Wall time of the generation as the orchestrator saw it, ms. */
+  wallMs: number;
+  /** When it began, on the page's clock (performance.now(), ms): the evaluation sets frame times against it. */
+  startedMs?: number;
+  /** For a plan: whether it could be used, and what was wrong with it otherwise (the repair prompt's lines). */
+  valid?: boolean;
+  problems?: readonly string[];
 }
 
 /** The assistant as the interface sees it (src/ai/index.ts → createIntelligence(app)). */
