@@ -16,6 +16,8 @@ Contents
  10. Basis Universal transcoder (Apache License 2.0)
  11. intl-messageformat (BSD-3-Clause) and @formatjs dependencies (MIT)
  12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
+ 13. WebLLM (Apache License 2.0), with loglevel (MIT)
+ 14. Qwen3 and Qwen3.5 language models (Apache License 2.0)
 
 ==============================================================================
 1. This project's own code and content
@@ -940,3 +942,101 @@ Redistribution and use in source and binary forms, with or without modification,
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+==============================================================================
+13. WebLLM (Apache License 2.0), with loglevel (MIT)
+==============================================================================
+
+@mlc-ai/web-llm 0.2.86 (npm, pinned exactly in package.json), by the WebLLM
+Team (MLC AI). Project: https://github.com/mlc-ai/web-llm
+Used by:  the assistant's model worker alone (src/ai/engine/webllm-worker.ts),
+          built into one file the browser fetches only when a visitor chooses
+          to download and run a model on their device. Nothing is sent to any
+          hosted service: it runs the model in the visitor's browser.
+Licence:  Apache License 2.0. The licence's full text is the same as in
+          section 10 above (verbatim copy of
+          https://www.apache.org/licenses/LICENSE-2.0.txt); the package's own
+          LICENSE file (node_modules/@mlc-ai/web-llm/LICENSE) holds that text
+          followed by the lines below, copied verbatim:
+
+   Copyright 2023-2026 WebLLM Team
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+------------------------------------------------------------------------------------
+This product bundles various third-party components under other open source licenses.
+This section summarizes those components and their licenses. See licenses/
+for text of these licenses.
+
+Apache Software Foundation License 2.0
+--------------------------------------
+
+src/openai_api_protocols
+
+WebLLM's built file also carries loglevel 1.9 (Tim Perry), which WebLLM
+depends on. Verbatim copy of node_modules/loglevel/LICENSE-MIT:
+
+Copyright (c) 2013 Tim Perry
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+The compiled model libraries (.wasm) are fetched by WebLLM at run time from
+github.com/mlc-ai/binary-mlc-llm-libs (Apache License 2.0), pinned to commit
+00fe7a40e57e5e8eb9fef87526a4bf28ad5846c0 and served by jsDelivr; they are not
+part of this repository or its build. Details: data/sources.json (web-llm).
+
+==============================================================================
+14. Qwen3 and Qwen3.5 language models (Apache License 2.0)
+==============================================================================
+
+The assistant's optional on-device models: Qwen3 0.6B, 1.7B, 4B and 8B
+(offered to visitors) and Qwen3.5 4B and 9B (evaluation only, not offered), by
+the Qwen Team (Alibaba Cloud), in the MLC builds by MLC AI. They are not part
+of this repository or its build: a visitor's browser downloads one from
+huggingface.co/mlc-ai (a public file store, no account) only when the visitor
+asks, after seeing its size, licence and source, and keeps it in the browser's
+own storage. Each build is pinned to a Hugging Face commit in
+src/ai/engine/catalogue.ts.
+Licence:  Apache License 2.0 (text as in section 10 above). Each base model's
+          licence file, pinned to the commit read on 2026-10-26:
+          https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE
+          https://huggingface.co/Qwen/Qwen3-1.7B/blob/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e/LICENSE
+          https://huggingface.co/Qwen/Qwen3-4B/blob/1cfa9a7208912126459214e8b04321603b3df60c/LICENSE
+          https://huggingface.co/Qwen/Qwen3-8B/blob/b968826d9c46dd6066d109eabc6255188de91218/LICENSE
+          https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/LICENSE
+          https://huggingface.co/Qwen/Qwen3.5-9B/blob/c202236235762e1c871ad0ccb60c8ee5ba337b9a/LICENSE
+Credit:   Qwen3 and Qwen3.5 by the Qwen Team (Alibaba Cloud), Apache License
+          2.0; MLC builds by MLC AI. Details: data/sources.json (qwen3,
+          qwen3-5).
+What they are used for: their words are shown labelled as an explanation by
+the model on this device. Facts, numbers, scripture and actions never come
+from them.

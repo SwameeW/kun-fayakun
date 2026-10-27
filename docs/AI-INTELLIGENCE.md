@@ -55,7 +55,8 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 | Path | Holds |
 |---|---|
 | `src/ai/types.ts` | The contracts |
-| `src/ai/index.ts` | `createIntelligence(app)`: the orchestrator and the task state machine |
+| `src/ai/boot.ts` | `startIntelligence(app, announce)`: registers the message files, builds the registry, the engine host and the retriever, and returns `createIntelligence(app, deps)`, once per page. The shell reaches it only by a dynamic import (`window.__kf.ai.start` until the Ask button exists) |
+| `src/ai/index.ts` | `createIntelligence(app, deps)`: the orchestrator and the task state machine; `placeFrom`, the named-place resolver the router is given |
 | `src/ai/context.ts` | Context adapter: the app's state → `AiContext` (and a ≤600-character summary for the model) |
 | `src/ai/router.ts` | Deterministic intents: go to, show, set the date, faster, chapter n, verse s:a, escape speed of, qibla from, throw a rock at… |
 | `src/ai/prompts.ts` | Plan and answer prompts, kept short (the context window is 4,096 tokens) |
@@ -64,17 +65,29 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 | `scripts/build-ai-index.ts` | Builds that index from content.json, the message files, data/*.json, the atlas, star names and world facts; the validator checks it |
 | `src/ai/tools/` | The registry, a JSON-schema-subset validator, and the tools (§4) |
 | `src/ai/planner/` | Experiment templates → lab commands, the background comparison worker, the optimiser |
-| `src/ai/engine/` | Capability detection, the pinned model catalogue, the WebLLM worker client, the browser-model adapter, the scripted test engine, storage, GPU pacing |
-| `src/ai/ui/` | Ask button, panel, download dialog, storage manager, answer blocks, confirmation cards |
-| `src/i18n/en.ai.json` | Every string (lazy, registered with the validator) |
+| `src/ai/engine/` | Capability detection, the pinned model catalogue, the model worker (`webllm-worker.ts`, the only importer of WebLLM), its message protocol (`protocol.ts`) and its client (`webllm.ts`), the browser-model adapter, the scripted test engine, storage, GPU pacing |
+| `src/ai/ui/` | To come: Ask button, panel, download dialog, storage manager, answer blocks, confirmation cards |
+| `src/i18n/en.ai.engine.json`, `en.ai.tools.json`, `en.ai.mind.json` | Every string: the engines', the tools' and the orchestrator's (lazy, added with `app.i18n.extend` by `boot.ts`, registered with the validator) |
+
+**Loading, in order.**
+1. First visit: nothing of the assistant. The shell holds only a starter (a dynamic import of `src/ai/boot.ts`), and `scripts/check-bundle.ts` keeps every file with `src/ai` code out of the shell.
+2. Start: the assistant's chunks (measured on their own: about 80 KB gzip, budget 120 KB).
+3. First question: the knowledge index, `assets/ai/index.json` (about 120 KB gzip, budget 150 KB).
+4. A comparison or a search: the batch worker (about 31 KB gzip, budget 50 KB).
+5. Only when a visitor chooses a model: the model worker with WebLLM's runtime (about 2.16 MB gzip, budget 2.4 MB), then the model's files from Hugging Face. The worker is the only built file that holds WebLLM's runtime; the bundle check fails otherwise.
 
 ## 3. Engines
 
 **WebLLM 0.2.86** (Apache-2.0), pinned exactly; earlier versions lack interrupt and stream-cancel fixes.
-- **Worker:** runs in a dedicated module worker (`CreateWebWorkerMLCEngine`). The page pulls each streamed chunk, so pacing is in our hands.
+- **Worker:** our own dedicated module worker (`src/ai/engine/webllm-worker.ts`) drives `MLCEngine` directly. It is the only module that imports WebLLM, so the runtime is downloaded once, with the worker, when a model is loaded. The page speaks to it in our own typed messages (`src/ai/engine/protocol.ts`):
+  - `load` (the AppConfig and the model id), answered with `progress` messages, then `loaded`;
+  - `generate`, then one `pull` for each next piece: the worker decodes a piece only when the page asks for it, and the page asks through the pacer (§6), so pacing is in our hands;
+  - `interrupt`, `unload`, `hasModelInCache`, `deleteModelAllInfoInCache`.
+
+  Failures are mapped to EngineError codes in the worker and sent as data.
 - **Weights:** come from `huggingface.co/mlc-ai/<model>/resolve/<commit>/`, pinned to a commit. Hugging Face is a public file store here, not an inference service, and needs no account.
 - **Model libraries:** pinned to a commit of `binary-mlc-llm-libs` through jsDelivr, with SRI hashes where available.
-- **Cache:** the Cache API (`cacheBackend: 'cache'`). Deletion goes through `deleteModelAllInfoInCache`.
+- **Cache:** the Cache API (`cacheBackend: 'cache'`). What is stored is read from the caches directly, at no download. Deletion goes through `deleteModelAllInfoInCache` in the worker, and only when the model's manifest is stored, because otherwise WebLLM would download the manifest to find the files. A sweep of the three caches then removes whatever is left.
 - **Tool calls:** WebLLM's `tools` field is not used, because it is hard-wired to Hermes models and forbids a system prompt. Instead, plans use `response_format: { type: 'json_object', schema }` (XGrammar), with `enable_thinking: false` and temperature 0, and are validated again in JS. Constrained decoding has open bugs (#868, #807).
 
 **Browser model.** Chrome's `LanguageModel` (Prompt API), detected with `availability()` using the same options as `create()`.
@@ -98,15 +111,98 @@ Every tool has a name, a kind, a one-line summary, an argument schema, a state c
 - **view** tools run at once and can be undone.
 - **experiment** tools show a card ("Double the Sun's mass, then integrate 10 years: Confirm / Cancel") and run only after the visitor confirms.
 
-The groups:
-- **film:** open a chapter, play/pause/next/previous, show a moment in Explore Mode.
-- **explorer:** open/close, fly to a body, go to a place, sky layers, walk and end the walk, the stars view, find a star.
-- **time:** pause/play, faster, slower, now, set a date, set a rate.
-- **islamic:** qibla, prayer times by a named convention, the new crescent, the Hijri date.
-- **lab:** open, apply an experiment (confirmed), undo, measure, state, compare in the background, optimise.
-- **calc:** escape and circular speed, orbital period, light time, Hohmann transfer, Roche limit, Hill radius, impact outcome and crater, world facts. Each wraps existing deterministic code (`src/sim`, `src/astro`, `src/explore/about.ts`, `src/explore/islamic`).
-- **cite:** verse by key, hadith by id (reference, grading and summary, never wording), constant, source.
-- **search:** the verified content.
+The tools and their arguments (`src/ai/tools`; the registry's validator checks the schema, then where the tool can work, then its own checks against the app's state). An argument in brackets is optional. A `body` is one of the ten worlds (`sun`, `mercury`, `venus`, `earth`, `moon`, `mars`, `jupiter`, `saturn`, `uranus`, `neptune`). A `place` is the id of a place of the field notes (`everest`, `mecca`, `uyuni`…), and is given instead of `lat` and `lon` (degrees), never with them. A `date` is UTC, `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`. A laboratory body (`lab body`) is a body's id or name in the laboratory.
+
+**film** (view)
+
+| Tool | Arguments | Where |
+|---|---|---|
+| `film.open` | `{ chapter: "ch00"…"ch10", [t]: seconds }` | anywhere |
+| `film.control` | `{ action: "play" \| "pause" \| "next" \| "previous" \| "explore" \| "film" }` (explore: Explore Mode on; film: back to the film) | a chapter |
+| `film.moment` | `{ point: a moment's id }` | a chapter |
+
+**explorer** (view)
+
+| Tool | Arguments | Where |
+|---|---|---|
+| `explorer.open` | `{ [body] }` | outside the explorer and the laboratory |
+| `explorer.close` | `{}` | the explorer or the laboratory |
+| `explorer.fly` | `{ body }` (opens the explorer if needed) | anywhere; in the laboratory, only a body still there |
+| `explorer.place` | `{ place }` or `{ lat, lon }`, `[viewKm]` 1–20,000 | the explorer |
+| `explorer.sky` | `{ layer: "constellations" \| "boundaries" \| "grid" \| "names", on: boolean }` | the explorer or the laboratory |
+| `explorer.stars` | `{}` (out among the stars around the Sun) | the explorer |
+| `explorer.find_star` | `{ name }` (a star's name or catalogue number) | the explorer |
+| `explorer.walk` | `{ [world]: "earth" \| "moon" \| "mars" \| "mercury" \| "venus", [place] or [lat, lon] }` (no place: below the camera; never within Makkah's frame) | the explorer |
+| `explorer.walk_end` | `{}` | while walking |
+
+**time** (view)
+
+| Tool | Arguments | Where |
+|---|---|---|
+| `time.control` | `{ action: "pause" \| "play" \| "faster" \| "slower" \| "reverse" \| "now" }` | the explorer or the laboratory (reverse and now: the explorer only) |
+| `time.date` | `{ date }`, within the span the data covers (refused with the span named) | the explorer |
+| `time.rate` | `{ rate }`: an integer on the clock's ladder (1, 10, 60, 600, 3600, 21600, 86400, 604800, 2592000), negative for backwards (not in the laboratory) | the explorer or the laboratory |
+
+**islamic** (calc; anywhere)
+
+| Tool | Arguments |
+|---|---|
+| `islamic.qibla` | `{ place }` or `{ lat, lon }` |
+| `islamic.prayer_times` | `{ place }` or `{ lat, lon }`, `convention: "mwl" \| "isna" \| "egypt" \| "makkah" \| "karachi" \| "tehran" \| "qum" \| "france" \| "russia" \| "singapore"` (required: the visitor names it), `[date]`, `[asrShadow]: 1 \| 2` |
+| `islamic.crescent` | `{ place }` or `{ lat, lon }`, `[date]` |
+| `islamic.hijri` | `{ [date] }` (else the date shown, or now) |
+
+**lab**
+
+| Tool | Kind | Arguments | Where |
+|---|---|---|---|
+| `lab.open` | view | `{ [seed]: "solar" \| "two" \| "three" }` | outside the laboratory |
+| `lab.state` | read | `{}` | the laboratory |
+| `lab.experiment` | experiment | `{ experiment, …its parameters }` (below), flat, `[horizonDays]` | the laboratory |
+| `lab.undo` | view | `{}` | the laboratory |
+| `lab.measure` | view | `{ from: lab body, to: lab body, [via]: lab body }` | the laboratory |
+| `lab.compare` | read | as `lab.experiment`; integrated ahead in the background worker, nothing on screen changes | anywhere (outside the laboratory, against the solar system seeded now) |
+| `lab.optimise` | read | `{ goal: "escape", [body], [days] }` or `{ goal: "year", [body], targetDays }` | anywhere |
+
+The experiments' parameters (every one required, with its range):
+
+| `experiment` | Parameters |
+|---|---|
+| `scale-mass` | `body`, `factor` 0.01–100 |
+| `remove-body` | `body` (not the Sun) |
+| `kick-body` | `body`, `dvKmS` −50–50 (not 0), `direction: "prograde" \| "retrograde" \| "radial-out" \| "radial-in"` |
+| `impact` | `target`, `diameterKm` 0.01–1,000, `speedKmS` 1–72 (above the target's escape speed), `angleDeg` 15–90 |
+| `add-moon` | `host`, `distanceKm` 1–10¹⁰, `massKg` 10⁶–10²⁶ |
+| `second-star` | `massSun` 0.1–10, `distanceAu` 0.5–1,000 |
+| `change-orbit` | `body`, `aFactor` 0.2–5, `e` 0–0.95 |
+
+`horizonDays` (1–36,525) is how far ahead a comparison integrates; each experiment has its own default.
+
+**calc** (anywhere): each wraps existing deterministic code (`src/sim`, `src/astro`, `src/explore/about.ts`, `src/explore/islamic`).
+
+| Tool | Arguments |
+|---|---|
+| `calc.escape_speed`, `calc.circular_speed` | `{ body, [altitudeKm] }` |
+| `calc.orbital_period` | `{ body }` (a planet about the Sun), or `{ primary, aKm }` |
+| `calc.light_time` | `{ from: body, to: body }`, or `{ distanceKm }`, or `{ distanceAu }` |
+| `calc.hohmann` | `{ from: body, to: body }` (planets about the Sun), or `{ fromKm, toKm }`, `[primary]` |
+| `calc.roche` | `{ primary, satellite }` or `{ primary, satelliteDensity }` |
+| `calc.hill` | `{ body, [primary], [aKm], [e] }` |
+| `calc.impact` | `{ target, diameterKm, speedKmS, [angleDeg], [densityKgM3] }` |
+| `calc.world_facts` | `{ body }` |
+
+**cite** (anywhere)
+
+| Tool | Arguments |
+|---|---|
+| `cite.verse` | `{ key: "surah:ayah" }`, one of the verses data/quran.json holds and the data store shows |
+| `cite.hadith` | `{ id }`, one of data/hadith.json's, never an excluded one; its reference, narrator and grading, never its wording |
+| `cite.constant` | `{ id }` of data/constants.json |
+| `cite.source` | `{ id }` of data/sources.json |
+
+**search** (anywhere): `search.knowledge` `{ query, [kinds], [limit] 1–8 }`, over the verified content.
+
+**The guide's router** (`src/ai/router.ts`) makes exactly these shapes, checked by `tests/unit/ai-router.spec.ts` through the real registry in a realistic context for each place the visitor can be. Named places come from the knowledge index (`placeFrom` in `src/ai/index.ts`): the field notes' own places by their id, then the most populous town of that name by its degrees. Prayer times are planned only when the visitor names a convention. "Throw a rock at the Earth" becomes an `impact` with illustrative numbers shown on the card (a size by the word used, a speed above the world's escape speed, 45 degrees).
 
 For a small model, the registry offers only a shortlist: the core tools plus the best matches for the question and where the visitor is. The plan schema's `tool` field is an enum of that shortlist.
 

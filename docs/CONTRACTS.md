@@ -201,6 +201,11 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `ui.disclaimer` = the spec's disclaimer, verbatim.
 - `src/i18n/en.chapters.json` (content builder): `ch00.*` to `ch10.*`.
 - `createI18n(locale)` in `src/i18n/index.ts` merges both and throws on a duplicate key.
+- Lazy parts add their own file with `app.i18n.extend(name, messages)` when their chunk loads (the
+  same name again is ignored), e.g. `en.discover.json` with Explore Mode's dock and the assistant's
+  three: `en.ai.engine.json`, `en.ai.tools.json` and `en.ai.mind.json` (see "Kun Fayakun
+  Intelligence" below). Every file is registered with the validator (`scripts/lib/context.ts`), and
+  rule g fails a key defined in two of them.
 - Honorifics per spec §1.5. Hadith summaries (if any) are labelled as summaries, never quotes.
 
 ## Module entry points
@@ -252,8 +257,12 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-travel="flying|arrived|stopped"` (the explorer's trips; removed when it leaves),
   `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
   and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
-  that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts).
+  that offers it, 1.5 s after the chapter is ready; only the code, never its maps). Once the
+  assistant has started: `data-ai-engine="guide|local|browser|scripted"` (the engine in use) and
+  `data-ai-turn` (its latest turn's TaskState: `planning`, `awaiting-confirmation`, `answering`,
+  `done`, `cancelled`…).
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts),
+  `ai: { start(): Promise<Intelligence>, useScripted(script, options?): Promise<void> }` (the assistant: see "Kun Fayakun Intelligence" below).
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
   `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,
@@ -655,6 +664,56 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
 - **Budget.** `scripts/check-bundle.ts` holds walking's lazy files to 30,000 bytes gzipped.
 - **Tests** (mocked terrain): `tests/support/live.ts` serves `tests/support/terrain-1000m.png`, flat
   at `MOCK_GROUND_M` (1,000 m), for every terrain tile.
+
+## Kun Fayakun Intelligence (the assistant)
+
+The design is docs/AI-INTELLIGENCE.md; the contracts are `src/ai/types.ts`. It runs in the
+visitor's browser only: no API key, account, subscription or hosted inference.
+
+- **Entry.** `startIntelligence(app, announce): Promise<Intelligence>` in `src/ai/boot.ts`: adds
+  the message files, builds the tool registry (with the scripture catalogue read from
+  data/quran.json and data/hadith.json), the engine host (`createEngineHost(app)`) and the
+  knowledge retriever (`loadRetriever(app)`), and returns `createIntelligence(app, deps)`. One per
+  page: later calls return the same one. The shell imports nothing from `src/ai` statically; its
+  only reference is a dynamic import (the test hook's starter, later the Ask button).
+  `scripts/check-bundle.ts` fails if any file with `src/ai` code is in the shell.
+- **Message files.** `src/i18n/en.ai.engine.json` (engines: devices, models, downloads, errors),
+  `src/i18n/en.ai.tools.json` (the tools: previews, outcomes, problems) and
+  `src/i18n/en.ai.mind.json` (the orchestrator, the guide's templates, the knowledge index's
+  templates). Added with `app.i18n.extend` by `boot.ts` (and by the module that owns each, so a
+  part used alone still speaks); registered in `scripts/lib/context.ts`.
+- **Render budget.** `app.requestRenderBudget(reason, { maxScale }): () => void` (AppCommands):
+  while any budget is held, the render scale is capped at the smallest `maxScale` held (the film's
+  dynamic resolution, or the explorer's scene pass) and the film's and the explorer's quality
+  governors rest, so the model's load on the GPU is not read as the scene's (no tier drops, none is
+  locked). The returned function releases it (idempotent); the picture goes back to what the
+  governors chose. The assistant's pacer (`src/ai/engine/pacing.ts`) holds one at scale 0.75 for
+  each generation, prefill included.
+- **`UniverseGraphics.held: () => boolean`.** What the explorer's quality governor reads: true
+  while a render budget is held, and then it ignores every frame.
+- **The model worker.** `src/ai/engine/webllm-worker.ts` is the only module that imports
+  `@mlc-ai/web-llm`; the page talks to it in the messages of `src/ai/engine/protocol.ts` (load with
+  progress, generate then pull each piece, interrupt, unload, hasModelInCache,
+  deleteModelAllInfoInCache; failures as EngineError data). Its file is fetched only when a model
+  loads (or a stored one is deleted).
+- **Test hook.** `window.__kf.ai.start()` loads the assistant (the shell's starter) and resolves to
+  its Intelligence; the assistant's own chunk then replaces `window.__kf.ai` with
+  `{ start, useScripted(script, options?) }`. `useScripted` switches the running assistant to the
+  scripted engine (`src/ai/engine/scripted.ts`: replies written in the test, matched on the last
+  user message and the format; `options.delayMs` between streamed words), labelled `scripted`.
+  `<html>` gets `data-ai-engine` and `data-ai-turn` (Test hooks, above).
+- **Model hosts in tests.** Every page's requests to huggingface.co, hf.co (and their
+  subdomains: the file CDNs), cdn.jsdelivr.net and raw.githubusercontent.com are answered 404 in the
+  browser (`tests/support/live.ts`, `mockModelHosts`, registered before the live hosts, so a test's
+  own route wins); `modelRequests(page)` counts them. No test downloads a model.
+  `tests/ai-engine.spec.ts` also resolves those hosts to nothing.
+- **Budgets** (`scripts/check-bundle.ts`, gzip): the assistant's chunks on start 120,000 B; the
+  model worker 2,400,000 B (and the only built file holding WebLLM's runtime); the comparison
+  worker 50,000 B; `assets/ai/index.json` 150,000 B.
+- **Tests.** `tests/unit/ai-*.spec.ts` (schema, router through the real registry, guards,
+  retrieval, planner, tools, orchestrator, engines, render budget); `tests/ai-engine.spec.ts` (the
+  engine host on the real page, webgpu); `tests/ai-pipeline.spec.ts` (the whole pipeline through
+  the hook, webgpu and webgl2).
 
 ## Browsers and local testing (measured on this machine)
 
