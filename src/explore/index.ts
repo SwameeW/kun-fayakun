@@ -95,7 +95,7 @@ import { lensFor, LENS, nearestAltitude, type Lens, type Sphere } from './space/
 import { FloatingOrigin, km, renderToEcliptic, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
 import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretchedDistance, stretchedLight } from './stretch';
-import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile } from './sky';
+import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile, type StarHold } from './sky';
 import { createSoundscape, type Soundscape, type SoundState } from './sound';
 import { createSolarSystem, type SolarSystem } from './system';
 import { advanceClock, applyTimeCommand, FOOT_MAX_RATE, heldRate, LAB_DATE_SPAN_S, validTimeCommand } from './time';
@@ -370,6 +370,8 @@ export default function create(): UniverseModule {
   let rawDecoder: RawDecoder | null = null;
   /** The real sky (./sky): the Bright Star Catalogue's stars, and the constellations and grid when asked for. */
   let stars: Sky | null = null;
+  /** The hold on the sky's stars on foot (./sky StarHold), rewritten each frame it applies. */
+  const starHold: StarHold = { peak: 0, weight: 0, dpr: 1 };
   let orbits: Orbits | null = null;
   let orbitPaths: OrbitPath[] = [];
   const orbitWeights: number[] = [];
@@ -2174,9 +2176,17 @@ export default function create(): UniverseModule {
 
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
-    // On foot by day, the sky hides the stars (and through twilight lets them through).
+    // On foot by day, the sky hides the stars (and through twilight lets them through); on an airless
+    // world the sunlit ground's glare holds them under a peak on the screen (the exposure multiplies
+    // what they draw), eased in as the eye adapts to the day.
     const starlight = walking ? (walk?.starlight() ?? 1) : descending ? (descent?.starlight() ?? 1) : 1;
-    stars.setLight(STARS.light * adapted ** (STARS.follow - 1) * starlight);
+    const dayGlare = walking ? (walk?.starHold() ?? null) : null;
+    if (dayGlare) {
+      starHold.peak = dayGlare.peak / adapted;
+      starHold.weight = dayGlare.weight;
+      starHold.dpr = (c.renderer.domElement.height * renderScale) / viewportPx;
+    }
+    stars.setLight(STARS.light * adapted ** (STARS.follow - 1) * starlight, dayGlare ? starHold : null);
     stars.update(dt);
 
     // Orbit lines: the focus's own (and the Moon's around the Earth) up close, the rest as the view

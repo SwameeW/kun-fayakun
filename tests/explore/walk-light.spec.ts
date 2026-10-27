@@ -5,7 +5,8 @@
  * disc at 50, 20, 5 and 1.5 degrees up, at 1280 x 800 and 2000 x 1300), the ground near middle grey; at
  * sunset the Sun and the sky under it reddened, the land still seen; at night dark; a day passing in ten
  * minute steps with no pumping; the Earth's ground with no dark streaks (no stones' shadows) at a low or a
- * high Sun; on the Moon and Mars the ground near middle grey too (the eye's meter), the Moon's night dark;
+ * high Sun; on the Moon and Mars the ground near middle grey too (the eye's meter), and on the Moon by day
+ * only the brightest stars (the sunlit ground's glare), none near white; the Moon's night dark, its stars out;
  * a cliff's shadow over the ground below it (horizon mapping); and the ground's heights decoded to the
  * metre (this spec runs in Brave too, whose canvas read-backs are tampered with). Mocked flat terrain at
  * 1,000 m (or a cliff made per tile) and a one-pixel imagery tile.
@@ -101,6 +102,8 @@ interface Shot {
    * luma at 14 to 30 px (the sky round it), and the farthest pixel at luma 200 or more above the horizon.
    */
   sun: { disc: number; ring: [number, number, number]; ringLuma: number; reach200: number; glint: number; beside: number } | null;
+  /** The stars (and the planets' points) above the horizon: separate lit spots, luma 64 or more touching eight ways, beyond 30 px of the Sun's centre. */
+  stars: number;
 }
 
 /** The canvas alone (the interface hidden), as luma statistics; `pitchDeg` the look, for where the horizon lies. */
@@ -196,6 +199,33 @@ async function shot(page: Page, pitchDeg = 0): Promise<Shot> {
           hp2 += v * v;
           hpN += 1;
         }
+      // The lit spots above the horizon, each counted once (flood-filled), none starting within 30 px of the Sun.
+      const above = Math.max(0, Math.min(height, Math.floor((horizon - 4) * scale)));
+      const seen = new Uint8Array(width * above);
+      const stack: number[] = [];
+      let stars = 0;
+      for (let y = 0; y < above; y += 1)
+        for (let x = 0; x < width; x += 1) {
+          const start = y * width + x;
+          if (seen[start] || (luma[start] ?? 0) < 64 || (s?.inView && Math.hypot(x / scale - s.x, y / scale - s.y) < 30)) continue;
+          stars += 1;
+          seen[start] = 1;
+          stack.push(start);
+          while (stack.length > 0) {
+            const i = stack.pop() ?? 0;
+            const px = i % width;
+            const py = (i - px) / width;
+            for (let dy = -1; dy <= 1; dy += 1)
+              for (let dx = -1; dx <= 1; dx += 1) {
+                const qx = px + dx;
+                const qy = py + dy;
+                const j = qy * width + qx;
+                if (qx < 0 || qy < 0 || qx >= width || qy >= above || seen[j] || (luma[j] ?? 0) < 64) continue;
+                seen[j] = 1;
+                stack.push(j);
+              }
+          }
+        }
       const n = width * height;
       const near = ring.map((v) => v / Math.max(ringN, 1)) as [number, number, number];
       return {
@@ -206,6 +236,7 @@ async function shot(page: Page, pitchDeg = 0): Promise<Shot> {
         top: top / Math.max(topN, 1),
         half: { median, p99, dark, detail: Math.sqrt(Math.max(0, hp2 / Math.max(hpN, 1) - (hp / Math.max(hpN, 1)) ** 2)) },
         sun: s && s.inView ? { disc, ring: near, ringLuma: 0.2126 * near[0] + 0.7152 * near[1] + 0.0722 * near[2], reach200: reach, glint, beside: beside / Math.max(besideN, 1) } : null,
+        stars,
       };
     },
     { b64: btoa(binary), s: sun, pitch: pitchDeg },
@@ -399,7 +430,11 @@ for (const [world, at, sunDeg, span, stepDays, ceiling] of [
     expect(away.clipped).toBe(0);
     await face(page, at, jd, 0, sunDeg - 10);
     const toward = await shot(page, sunDeg - 10);
+    test.info().annotations.push({ type: 'light', description: JSON.stringify({ toward }) });
     expect(toward.sun?.reach200 ?? 0).toBeLessThan(84);
+    // Only the brightest stars by day, under the sunlit ground's glare (or the sky): a dozen lit spots at
+    // most. The star light alone lit 312 on the Moon here, some near white, 593 px from the Sun.
+    expect(toward.stars).toBeLessThanOrEqual(12);
     expect(toward.clipped).toBeLessThan(0.0005);
     expect(pageErrors).toEqual([]);
   });
@@ -414,8 +449,10 @@ test('the Moon after sunset: its ground dark, however the eye opens', async ({ p
   expect(jd).not.toBeNaN();
   await face(page, APOLLO, jd, 180, -20);
   const s = await shot(page, -20);
-  test.info().annotations.push({ type: 'light', description: JSON.stringify(s.half) });
+  test.info().annotations.push({ type: 'light', description: JSON.stringify({ half: s.half, stars: s.stars }) });
   expect(s.half.p99).toBeLessThanOrEqual(20);
+  // The stars out over it (no glare held by night): 220 lit spots when measured.
+  expect(s.stars).toBeGreaterThan(100);
   expect(pageErrors).toEqual([]);
 });
 

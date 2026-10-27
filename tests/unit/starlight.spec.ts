@@ -1,10 +1,14 @@
 /**
  * Star light (src/explore/starlight.ts): the error function the shader approximates, each pixel's
  * share of a star integrated over its square, the same light wherever a star falls in a pixel and at
- * any pixel density, the faintest stars kept above the tone curve's black, and the visitor's settings.
+ * any pixel density, the faintest stars kept above the tone curve's black, and the visitor's settings;
+ * a hold on the light (the brightest star held at a peak, the rest dimmed with it), and the walk's hold
+ * by day on an airless world (src/explore/walk/daylight AIRLESS_DAY): only the brightest stars, none
+ * near white.
  */
 import { expect, test } from '@playwright/test';
-import { erf, pixelShare, setStarlight, starLight, starlightUniforms, starPixels, starSharpness, STARLIGHT_DEFAULTS, STARLIGHT_RANGE } from '../../src/explore/starlight';
+import { erf, heldStarLight, pixelShare, setStarlight, STARLIGHT, starLight, starlightUniforms, starPeakPerLight, starPixels, starSharpness, STARLIGHT_DEFAULTS, STARLIGHT_RANGE } from '../../src/explore/starlight';
+import { AIRLESS_DAY } from '../../src/explore/walk/daylight';
 
 /** erf by its series (exact to 1e-15 here). */
 function erfExact(x: number): number {
@@ -116,4 +120,61 @@ test('brighter stars are brighter, fainter than the faintest are not drawn, and 
   setStarlight(Number.NaN, Number.POSITIVE_INFINITY);
   expect(starlightUniforms.brightness.value).toBe(STARLIGHT_DEFAULTS.brightness);
   expect(starlightUniforms.faintest.value).toBe(STARLIGHT_DEFAULTS.faintest);
+});
+
+/** The Bright Star Catalogue's brightest star (Sirius, V -1.46), the explorer's sky's brightest. */
+const SIRIUS = -1.46;
+
+test('a hold on the stars’ light: the brightest star held at its peak at any pixel density, every other dimmed with it in its order, eased in, never raised', () => {
+  const brightest = starLight(SIRIUS);
+  for (const dpr of [0.75, 1, 1.5, 2, 3]) {
+    // While a core is under its cap, its peak is in proportion to its light.
+    expect(starPixels(1e-3, dpr).peak / 1e-3).toBeCloseTo(starPeakPerLight(dpr), 9);
+    for (const peak of [0.01, 0.1, 0.5]) {
+      const held = heldStarLight(10, brightest, peak, 1, dpr);
+      expect(held).toBeLessThan(10);
+      expect(starPixels(brightest * held, dpr).peak).toBeCloseTo(peak, 9);
+      // One multiple for all: a fainter star under it, and in the same proportion to it as before.
+      const fainter = starPixels(starLight(2) * held, dpr).peak;
+      expect(fainter).toBeLessThan(peak);
+      expect(fainter / peak).toBeCloseTo(starLight(2) / brightest, 9);
+    }
+  }
+  // Eased in log terms: half its weight, half the way; none, the light as it was; a light already under the hold, never raised.
+  const full = heldStarLight(10, brightest, 0.1, 1, 1);
+  expect(heldStarLight(10, brightest, 0.1, 0.5, 1)).toBeCloseTo(Math.sqrt(10 * full), 9);
+  expect(heldStarLight(10, brightest, 0.1, 0, 1)).toBe(10);
+  expect(heldStarLight(full / 2, brightest, 0.1, 1, 1)).toBe(full / 2);
+  // A peak above the core's cap holds the core at its cap: no held star spreads into a halo.
+  expect(starPixels(brightest * heldStarLight(1e6, brightest, 50, 1, 1), 1).peak).toBeCloseTo(STARLIGHT.coreMax, 9);
+  // Nonsense leaves the light alone.
+  expect(heldStarLight(2, 0, 0.1, 1, 1)).toBe(2);
+  expect(heldStarLight(2, brightest, Number.NaN, 1, 1)).toBe(2);
+});
+
+test('by day on an airless world, the sunlit ground’s glare: the brightest star under the sky’s white and the faint ones gone, at any exposure the eye takes there and at one or two pixels a CSS pixel', () => {
+  const brightest = starLight(SIRIUS);
+  for (const exposure of [0.3, 1, 4, 9.7, 64, 384]) {
+    for (const dpr of [1, 2]) {
+      // The sky's light as the explorer would have it without the hold (a share of the night's), from far too dim to far too bright.
+      for (const share of [1e-4, 1e-2, 1, 100]) {
+        const light = heldStarLight(share / exposure, brightest, AIRLESS_DAY.starPeak / exposure, 1, dpr);
+        // On the screen (the exposure multiplies what the stars draw), at worst placed: centred on a pixel.
+        const shown = (v: number): number => display(starPixels(starLight(v) * light, dpr).peak * exposure);
+        const at = `exposure ${String(exposure)}, ${String(dpr)} px, share ${String(share)}`;
+        expect(shown(SIRIUS), at).toBeLessThan(200);
+        // Magnitude 6.5, kept at 30 or more of 255 by night, is not seen (the tone curve's black).
+        expect(shown(6.5), at).toBeLessThan(5);
+        // Where the hold is what dims them, the brightest stars are still seen: Sirius at the peak (or, where
+        // the eye is stopped far down, at its core's cap), a first-magnitude star plainly.
+        if (share >= 1) {
+          expect(Math.abs(shown(SIRIUS) - display(Math.min(AIRLESS_DAY.starPeak, STARLIGHT.coreMax * exposure))), at).toBeLessThanOrEqual(1);
+          expect(shown(SIRIUS), at).toBeGreaterThan(160);
+          expect(shown(1), at).toBeGreaterThan(60);
+        }
+      }
+    }
+  }
+  // The star light by night is untouched (no hold): magnitude 6.5 still seen there.
+  expect(display(starPixels(starLight(6.5), 1, 0.5, 0.5).peak)).toBeGreaterThanOrEqual(30);
 });

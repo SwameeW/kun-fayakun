@@ -323,7 +323,13 @@ sunset.
   standard clear sky has it), and at sunset the reds under the Sun, the Earth's shadow rising opposite,
   then the twilight as only the upper air is still lit. No clouds.
 - **The Moon and Mercury.** No sky: the black sky and the explorer's real stars. By day the sunlit
-  ground's glare leaves the eye about a third of the stars' light.
+  ground's glare leaves the eye only the brightest stars (`AIRLESS_DAY` in
+  `src/explore/walk/daylight.ts`): the sky's brightest star is held at 0.4 in linear light on the
+  screen (about 184 of 255), short of white, and every other star is dimmed with it. The hold is eased
+  in as the eye adapts to the day. The planets' points and names keep about a third of their light. A
+  share of the light alone no longer did it: the explorer's star light keeps faint stars above the tone
+  curve's black and put the brightest near white (312 lit spots facing the Sun at Apollo 11's site,
+  where there are now 2).
 - **Venus** (illustrative): the underside of its cloud deck, brightest overhead by day, dark by
   night, its light dim and orange (the deep air takes the blue out of what the clouds let down).
   Neither the Sun's disc nor any star is drawn; the readout says where the Sun is.

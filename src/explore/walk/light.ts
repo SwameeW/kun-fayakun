@@ -139,10 +139,20 @@ export function groundIlluminance(kind: LightKind, sunDeg: number, light: number
 export function walkExposure(illuminance: number, light = 1, seen: number | null = null): number {
   if (Number.isNaN(illuminance) || !(light > 0)) return 1;
   const e = Math.max(illuminance / light, EXPOSURE.floorE);
-  const adapt = EXPOSURE.night + (EXPOSURE.adapt - EXPOSURE.night) * smoothstep(Math.log(EXPOSURE.floorE), Math.log(EXPOSURE.dayE), Math.log(e));
+  const adapt = EXPOSURE.night + (EXPOSURE.adapt - EXPOSURE.night) * dayAdaptation(illuminance, light);
   // Opened for ground darker than grey, stopped down for ground brighter than level ground can be, else left.
   const key = seen !== null && seen > 0 ? Math.min(METER.most, Math.max(1 / METER.most, Math.min(Math.max(1, (METER.reference / seen) ** METER.power), (METER.bright / seen) ** METER.power))) : 1;
   return Math.min(EXPOSURE.max * key, Math.max(EXPOSURE.min, (e ** -adapt * key) / light));
+}
+
+/**
+ * How far the eye has adapted to the day (EXPOSURE), for an illuminance on level ground under the world's
+ * sunlight `light`: 0 at the night's floor (`floorE`) and below, 1 from a full day's (`dayE`), eased
+ * between them in log terms. walkExposure's power follows it.
+ */
+export function dayAdaptation(illuminance: number, light = 1): number {
+  if (Number.isNaN(illuminance) || !(light > 0)) return 0;
+  return smoothstep(Math.log(EXPOSURE.floorE), Math.log(EXPOSURE.dayE), Math.log(Math.max(illuminance / light, EXPOSURE.floorE)));
 }
 
 /**
