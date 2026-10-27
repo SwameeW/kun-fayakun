@@ -71,7 +71,7 @@ Code (all lazy; nothing loads until the visitor presses Ask):
 
 **Loading, in order.**
 1. First visit: nothing of the assistant. The shell holds only the Ask button, the / shortcut and a starter for the test hook (dynamic imports of `src/ai/ui` and `src/ai/boot.ts`), and `scripts/check-bundle.ts` keeps every file with `src/ai` code out of the shell.
-2. Start (Ask pressed): the assistant's chunks with its panel (measured on their own by `scripts/check-bundle.ts`: about 94 KB gzip, budget 120 KB), and what it reads at once: data/quran.json and data/hadith.json for the scripture catalogue, and the plain words. In all about 113 KB as served (measured on the page by `tests/ai-panel.spec.ts`, which fails above 130 KB). The Arabic typeface (about 63 KB) is fetched only when the first verse is shown.
+2. Start (Ask pressed): the assistant's chunks with its panel (measured on their own by `scripts/check-bundle.ts`: about 98 KB gzip, budget 120 KB), and what it reads at once: data/quran.json and data/hadith.json for the scripture catalogue, and the plain words. In all about 113 KB as served (measured on the page by `tests/ai-panel.spec.ts`, which fails above 130 KB). The Arabic typeface (about 63 KB) is fetched only when the first verse is shown.
 3. First question: the knowledge index, `assets/ai/index.json` (about 120 KB gzip, budget 150 KB).
 4. A comparison or a search: the batch worker (about 31 KB gzip, budget 50 KB).
 5. Only when a visitor chooses a model: the model worker with WebLLM's runtime (about 2.16 MB gzip, budget 2.4 MB), then the model's files from Hugging Face. The worker is the only built file that holds WebLLM's runtime; the bundle check fails otherwise.
