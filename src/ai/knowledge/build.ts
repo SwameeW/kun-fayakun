@@ -481,7 +481,8 @@ export function buildAiIndex(inputs: AiIndexInputs): AiIndexFile {
       }
     }
     if (facts.tiltDeg !== null) lines.push(line(facts.kind === 'planet' ? 'ui.universe.about.tilt' : 'ui.universe.about.tiltEcliptic', w.must('ui.universe.about.degrees', { value: sig(facts.tiltDeg, 3) })));
-    add({ id: `fact:world.${id}`, kind: 'fact', title: w.must('ai.mind.index.worldTitle', { body }), text: `${lines.join('. ')}.`, sourceIds: [...facts.sources].sort(), knowledge: 'observed' });
+    const title = w.must('ai.mind.index.worldTitle', { body });
+    add({ id: `fact:world.${id}`, kind: 'fact', title, text: `${title}. ${lines.join('. ')}.`, sourceIds: [...facts.sources].sort(), knowledge: 'observed' });
   }
 
   // The field notes: the atlas and the prophets' lands (by tradition).
