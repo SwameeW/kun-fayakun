@@ -173,8 +173,8 @@ const base: AiContext = { where: 'home', chapter: null, chapterT: null, mode: 'c
 const CTX: Record<'home' | 'explorer' | 'lab' | 'chapter', AiContext> = {
   home: base,
   chapter: { ...base, where: 'chapter', chapter: 'ch01', chapterT: 30, verses: ['21:30'], summary: 'Watching Chapter 1.' },
-  explorer: { ...base, where: 'explorer', explorer: { focus: 'earth', distanceKm: 2e4, date: '2026-10-26', rate: 1, paused: false, walking: null, stars: false }, summary: 'In the explorer near the Earth.' },
-  lab: { ...base, where: 'lab', explorer: { focus: 'sun', distanceKm: 3e8, date: '2026-10-26', rate: 86_400, paused: false, walking: null, stars: false }, lab: { bodies: [], status: 'running', days: 0, events: 0 }, summary: 'In the orbital laboratory.' },
+  explorer: { ...base, where: 'explorer', explorer: { focus: 'earth', world: null, distanceKm: 2e4, date: '2026-10-26', rate: 1, paused: false, walking: null, stars: false }, summary: 'In the explorer near the Earth.' },
+  lab: { ...base, where: 'lab', explorer: { focus: 'sun', world: null, distanceKm: 3e8, date: '2026-10-26', rate: 86_400, paused: false, walking: null, stars: false }, lab: { bodies: [], status: 'running', days: 0, events: 0 }, summary: 'In the orbital laboratory.' },
 };
 
 const SPEC: ModelSpec = {
@@ -786,5 +786,25 @@ test.describe('the context, read from the app', () => {
     expect(inLab.lab).toMatchObject({ status: 'running', days: 10, events: 2 });
     expect(inLab.lab?.bodies[0]).toEqual({ id: 'b0', name: 'A body with a long name 0', massKg: 1e20, centralId: 'sun', aKm: 1e8, e: 0.1 });
     expect(inLab.summary.length).toBeLessThanOrEqual(SUMMARY_MAX);
+  });
+
+  test('at a small world: the body it goes round, and the world by name', () => {
+    const list = [
+      { id: 'w:Charon', name: 'Charon', kind: 'moon', host: 'w:Pluto' },
+      { id: 'w:Pluto', name: 'Pluto', kind: 'dwarf', host: 'sun' },
+      { id: 'w:Io', name: 'Io', kind: 'moon', host: 'jupiter' },
+    ];
+    const at = (id: string, name: string): App => {
+      const view = {
+        focus: id, distanceKm: 5000, unixMs: Date.UTC(2026, 9, 26), time: { rate: 1, paused: false }, walk: null, neighbourhood: null, lab: null,
+        worlds: { list, focus: { id, name } },
+      };
+      return { experience: 'universe', chapter: null, time: 0, mode: 'cinematic', i18n, content: null, universe: () => view } as unknown as App;
+    };
+    const io = readContext(at('w:Io', 'Io'));
+    expect(io.explorer).toMatchObject({ focus: 'jupiter', world: { id: 'w:Io', name: 'Io' } });
+    expect(io.summary).toContain('near Io, which goes round Jupiter');
+    // A moon of a dwarf planet: its host's host, the Sun.
+    expect(readContext(at('w:Charon', 'Charon')).explorer).toMatchObject({ focus: 'sun', world: { id: 'w:Charon', name: 'Charon' } });
   });
 });

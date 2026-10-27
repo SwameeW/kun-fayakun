@@ -26,6 +26,9 @@ platform.
 | EX-7 | The real sky (SE planetarium) | BSC5 directions, B-V colours, IAU names, constellations | `tests/unit/sky.spec.ts`, `tests/explore/sky.spec.ts` | implemented (directions only: see IS-2) |
 | EX-8 | Living Earth (daily imagery, satellites, earthquakes) | GIBS, CelesTrak SGP4, USGS | `tests/unit/living-earth.spec.ts`, `tests/explore/living-earth.spec.ts` | implemented |
 | EX-9 | Detail tiers with a governor | Low to Ultra | `tests/unit/detail-governor.spec.ts`, `tests/explore/quality.spec.ts` | implemented |
+| EX-10 | More worlds: the asteroids, comets, major moons and dwarf planets, flown to by name | JPL's Small-Body Database (500,000 asteroids, the periodic comets, 38 named objects), JPL's satellite mean elements fitted to Horizons, NSSDCA's fact sheets, USGS mosaics; Kepler's equation on the GPU; the H, G law | `tests/unit/small-bodies.spec.ts` (Horizons on two dates), `tests/explore/small-worlds.spec.ts` | implemented (2026-10-26; `src/explore/worlds`; the review's fixes 2026-10-27): positions two-body (drifting by a tenth of a degree or so over the decade, up to two for the Hildas, more for comets near Jupiter; points of the files checked against Horizons as quantised, and the GPU's own places read back against the CPU's); asteroids' light enhanced in wide views, the arrangement by orbit size (a diagram of the Kirkwood gaps), comets' tails' lengths and light, the plain surfaces of worlds without maps and the grey grid where no spacecraft imaged, all labelled. Not yet: "Jupiter's frame" (a view turning with Jupiter) |
+| EX-11 | Uranus's and Neptune's rings; shadows of one body on another | NSSDCA's ring tables (radii, widths, optical depths, albedos); the overlap of the Sun's disc with the occluder's from each point | `tests/explore/small-worlds.spec.ts` (the lunar eclipse of 2026-03-03, the solar eclipse of 2026-08-12) | implemented (2026-10-26): the rings shown ten times brighter than they are (labelled); Neptune's Adams arcs not placed; the eclipsed Moon's copper shown brighter (labelled) |
+| EX-12 | The solar-system sky's glows: the Milky Way and the zodiacal light | Models: Bland-Hawthorn and Gerhard 2016's discs and bulge with dust; Kelsall et al. 1998's cloud and Hong 1985's phase function; scaled after Leinert et al. 1998 | `tests/unit/small-bodies.spec.ts` | implemented as a labelled model (2026-10-26); an all-sky photograph waits for one with a clear licence |
 
 ## Islamic astronomy (explorer, real data)
 
@@ -200,6 +203,7 @@ tests and what remains open (the translation's licence above all): docs/REFINEME
 | Photo mode's controls (lazy) | 10,000 B gzipped | 2,826 |
 | The film's sound (lazy: voices and score) | 12,000 B gzipped | 5,598 |
 | Explore Mode's dock (lazy: dock, styles, strings) | 20,000 B gzipped | 10,919 |
+| More worlds (lazy: the small worlds' engine, the Small worlds panel, its strings) | 30,000 B gzipped | 19,800 |
 | Worker | 8 ms of steps and 3 ms of prediction per 16 ms tick | solar fork: about 130,000 steps a second in Node |
 | GPU | No growth over round trips | level over three (`lab.spec`) |
 

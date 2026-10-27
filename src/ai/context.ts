@@ -3,7 +3,7 @@
  * the chapter and its verses, the explorer's focus, date and clock, the laboratory's bodies. The
  * summary is a few plain English lines (at most 600 characters) for the model's prompt.
  */
-import type { App, BodyId, ChapterId, VerseKey } from '../core/types';
+import { BODY_IDS, type App, type BodyId, type ChapterId, type FocusId, type UniverseView, type VerseKey } from '../core/types';
 import type { AiContext } from './types';
 
 export const SUMMARY_MAX = 600;
@@ -44,6 +44,19 @@ function distanceText(km: number): string {
   return `${Math.round(km).toLocaleString('en')} km`;
 }
 
+const isBody = (id: FocusId): id is BodyId => (BODY_IDS as readonly string[]).includes(id);
+
+/** The body the view is around: the focus, or for a small world the body it goes round (its host's, for a moon's moon). */
+export function bodyAround(view: UniverseView): BodyId {
+  let id: FocusId = view.focus;
+  for (let hops = 0; !isBody(id) && hops < 3; hops += 1) {
+    const world = view.worlds?.list.find((w) => w.id === id);
+    if (!world) break;
+    id = world.host;
+  }
+  return isBody(id) ? id : 'sun';
+}
+
 /** The context now. Cheap: reads the app's getters and the explorer's last view. */
 export function readContext(app: App): AiContext {
   const view = app.experience === 'universe' ? app.universe() : null;
@@ -55,7 +68,8 @@ export function readContext(app: App): AiContext {
 
   const explorer: AiContext['explorer'] = view
     ? {
-        focus: view.focus,
+        focus: bodyAround(view),
+        world: view.worlds?.focus ? { id: view.worlds.focus.id, name: view.worlds.focus.name } : null,
         distanceKm: view.distanceKm,
         date: isoDate(view.unixMs),
         rate: view.time.rate,
@@ -103,7 +117,8 @@ export function summarise(ctx: Omit<AiContext, 'summary'>, app?: Pick<App, 'i18n
   if (ctx.explorer) {
     const e = ctx.explorer;
     const clock = e.paused ? 'the clock paused' : e.rate === 1 ? 'the clock at real time' : `the clock at ${Math.abs(e.rate).toLocaleString('en')}× ${e.rate < 0 ? 'backwards' : 'speed'}`;
-    lines.push(`In the solar-system explorer near ${bodyName(e.focus)}, ${distanceText(e.distanceKm)} from its centre, on ${e.date}, ${clock}.`);
+    const near = e.world ? `${e.world.name}, which goes round ${bodyName(e.focus)}` : bodyName(e.focus);
+    lines.push(`In the solar-system explorer near ${near}, ${distanceText(e.distanceKm)} from its centre, on ${e.date}, ${clock}.`);
     if (e.walking) lines.push(`Walking on ${bodyName(e.walking)}.`);
     if (e.stars) lines.push('Out among the stars around the Sun.');
   }

@@ -1,4 +1,4 @@
-import { BODY_IDS, type App, type BodyId, type UniverseView } from '../../core/types';
+import { BODY_IDS, type App, type BodyId, type FocusId, type UniverseView } from '../../core/types';
 import { h, uniqueId } from '../dom';
 import { icon } from '../icons';
 import { sound as soundChoice } from '../sound-preference';
@@ -149,9 +149,12 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   const aboutSummary = h('summary', {}, i18n.t('ui.universe.about.title', { body: f.name('earth') }));
   const aboutSection = h('details', { class: 'kf-nav-about', 'data-testid': 'universe-about' }, aboutSummary);
   const about = lazySection(aboutSection, sections, (m) => m.createAbout(app, f), (p) => p.body);
-  let aboutFor: BodyId = 'earth';
+  let aboutFor: FocusId = 'earth';
   const skySection = h('details', { class: 'kf-nav-about kf-nav-sky', 'data-testid': 'universe-sky' }, h('summary', {}, i18n.t('ui.universe.sky.title')));
   const sky = lazySection(skySection, sections, (m) => m.createSkyPanel(app, f), (p) => p.body);
+  // The small worlds (the asteroids' layer, a world to fly to): a chunk of its own (./worlds-panel).
+  const worldsSection = h('details', { class: 'kf-nav-about kf-nav-worlds', 'data-testid': 'universe-worlds' }, h('summary', {}, i18n.t('ui.universe.worlds.title')));
+  const worlds = lazySection(worldsSection, once(() => import('./worlds-panel')), (m) => m.createWorldsPanel(app, f), (p) => p.body);
 
   /** A panel has just come, or its mode been entered: brought into view from its top on the next update. */
   let toPanel = false;
@@ -322,7 +325,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   const foot = h('div', { class: 'kf-nav-foot' }, keys, h('div', { class: 'kf-nav-foot-row' }, quality.element, sound));
   // On a phone's sheet the time machine's date sits under the list (its buttons stay above the scrolling part).
   const daySlot = h('div', { class: 'kf-nav-day' });
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, daySlot, aboutSection, walkEntry, descentEntry, skySection, savedSection, starsEntry, labEntry, living, islamic, seen);
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, daySlot, aboutSection, walkEntry, descentEntry, skySection, worldsSection, savedSection, starsEntry, labEntry, living, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -357,6 +360,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     set(map, !expanded || inStars);
     set(listHead, !expanded || inStars);
     set(skySection, !expanded || inStars);
+    set(worldsSection, !expanded || aside);
     for (const el of [aboutSection, savedSection, starsEntry, labEntry, living, islamic]) set(el, !expanded || aside);
     set(walkEntry, !expanded || aside || !walkHere);
     set(descentEntry, !expanded || aside || !descentHere);
@@ -491,6 +495,7 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
         }
         about.part?.update(view, slow, aboutSection.open);
         sky.part?.update(view, slow);
+        worlds.part?.update(view, slow);
         livingPanel.part?.update(view, slow, living.open);
         if (islamic.open) islamicPanel.part?.update(view, slow);
       }

@@ -25,7 +25,7 @@
  * already fills much of the view (none with reduced motion).
  */
 
-import type { BodyId } from '../core/types';
+import type { FocusId } from '../core/types';
 import {
   angles,
   clamp,
@@ -67,7 +67,7 @@ export interface ViewPreference {
 }
 
 export interface NavBody {
-  readonly id: BodyId;
+  readonly id: FocusId;
   readonly radiusKm: number;
   readonly boundKm: number;
   readonly minAltitudeKm: number;
@@ -81,7 +81,7 @@ export interface NavBody {
 }
 
 export interface NavWorld {
-  body(id: BodyId): NavBody;
+  body(id: FocusId): NavBody;
   /** Every body, to keep the camera out of them all. */
   readonly all: readonly NavBody[];
   /** The Sun's centre (for the sunlit side). */
@@ -123,7 +123,7 @@ export interface NavOutput extends CameraPose {
   /** 0 at the start of a trip, 1 when the camera has arrived (1 while orbiting or flying). */
   progress: number;
   /** The body the trip left, while travelling. */
-  from: BodyId | null;
+  from: FocusId | null;
   mode: NavMode;
   /** Camera speed, km/s (relative to the body it is near). */
   speedKmS: number;
@@ -188,8 +188,8 @@ interface Trip {
    * Esc stopped before it moved the camera: the light comes back where the visitor was.
    */
   kind: 'travel' | 'cut' | 'approach' | 'uncut';
-  from: BodyId;
-  to: BodyId;
+  from: FocusId;
+  to: FocusId;
   elapsed: number;
   seconds: number;
   /** Travel: its plan. */
@@ -201,13 +201,13 @@ interface Trip {
   lnTo: number;
   /** Cut: how the camera moved and what it orbited before it (an uncut hands back to them). */
   modeBefore: NavMode;
-  focusBefore: BodyId;
+  focusBefore: FocusId;
   /** Uncut: the dim it starts from. */
   dimFrom: number;
 }
 
 export class Navigator {
-  focus: BodyId;
+  focus: FocusId;
   reducedMotion = false;
   /** The camera's pose changed this frame. */
   moving = false;
@@ -218,7 +218,7 @@ export class Navigator {
   /** Held orbit keys: [azimuth, elevation, zoom], -1 to 1. */
   private readonly orbitKeys: [number, number, number] = [0, 0, 0];
   private trip: Trip | null = null;
-  private queued: BodyId | null = null;
+  private queued: FocusId | null = null;
   /** The gaze and "up" the camera had when it handed back from free flight, and how far it has eased from them (0 to 1). */
   private handoff: { forward: Km; up: Km; blend: ReturnType<typeof springOf> } | null = null;
   private readonly bank = springOf();
@@ -244,9 +244,9 @@ export class Navigator {
   private readonly pose = rigPose();
   private readonly scratch = { a: km(), b: km(), c: km(), d: km(), e: km(), before: km() };
   /** tripState's object, rewritten on each read (no garbage per frame). */
-  private readonly tripView: { from: BodyId; to: BodyId; progress: number; endKm: number } = { from: 'earth', to: 'earth', progress: 0, endKm: 0 };
+  private readonly tripView: { from: FocusId; to: FocusId; progress: number; endKm: number } = { from: 'earth', to: 'earth', progress: 0, endKm: 0 };
 
-  constructor(focus: BodyId) {
+  constructor(focus: FocusId) {
     this.focus = focus;
   }
 
@@ -360,7 +360,7 @@ export class Navigator {
   }
 
   /** The trip under way: where from and to, its progress (0 to 1) and the height above the destination it ends at, km. */
-  get tripState(): { from: BodyId; to: BodyId; progress: number; endKm: number } | null {
+  get tripState(): { from: FocusId; to: FocusId; progress: number; endKm: number } | null {
     const t = this.trip;
     if (!t || t.kind === 'approach' || t.kind === 'uncut') return null;
     const v = this.tripView;
@@ -430,7 +430,7 @@ export class Navigator {
   }
 
   /** Starts at a body: with `approach`, a glide in from far away (the entry), else straight at its framing distance. */
-  begin(world: NavWorld, id: BodyId, approach: boolean): void {
+  begin(world: NavWorld, id: FocusId, approach: boolean): void {
     const body = world.body(id);
     this.focus = id;
     this.queued = null;
@@ -459,7 +459,7 @@ export class Navigator {
   }
 
   /** Flies to a body from wherever the camera is now (after the current trip, if one is under way). */
-  flyTo(world: NavWorld, id: BodyId): void {
+  flyTo(world: NavWorld, id: FocusId): void {
     if (this.trip && this.trip.kind !== 'approach') {
       this.queued = id === this.trip.to ? null : id;
       return;
@@ -569,7 +569,7 @@ export class Navigator {
   }
 
   /** Puts the camera at once (tests, captures): no trip, no easing. */
-  place(id: BodyId, dir: Km, distanceKm: number, world: NavWorld): void {
+  place(id: FocusId, dir: Km, distanceKm: number, world: NavWorld): void {
     this.resetLens();
     this.focus = id;
     this.trip = null;
@@ -787,7 +787,7 @@ export class Navigator {
       this.flight.position(pose.position);
       copy(pose.forward, this.flight.forward);
       copy(pose.up, this.flight.up);
-      if (this.flight.ref) this.focus = this.flight.ref.id as BodyId;
+      if (this.flight.ref) this.focus = this.flight.ref.id as FocusId;
     } else {
       const body = world.body(this.focus);
       const rate = this.dragRate(world) / DRAG_RADIANS_PER_PX;

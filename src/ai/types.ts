@@ -16,6 +16,7 @@ import type {
   I18nKey,
   LabCommand,
   VerseKey,
+  WorldId,
 } from '../core/types';
 
 /* ------------------------------------------------------------------ */
@@ -232,7 +233,10 @@ export interface AiContext {
   chapterT: number | null;
   mode: 'cinematic' | 'explore';
   explorer: {
+    /** The body the view is around: one of the ten, or the planet a small world in view goes round (the Sun for one that goes round it). */
     focus: BodyId;
+    /** The small world in view (an asteroid, comet, moon or dwarf planet of src/explore/worlds), or null. */
+    world: { id: WorldId; name: string } | null;
     distanceKm: number;
     /** ISO date (UTC) shown. */
     date: string;

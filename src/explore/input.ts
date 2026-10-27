@@ -26,7 +26,7 @@
  * shared as above; ? still opens the shortcuts list.
  */
 
-import type { BodyId } from '../core/types';
+import type { FocusId } from '../core/types';
 import { km, type Km } from './space/origin';
 
 /** Lines and pages in wheel deltas, as pixels. */
@@ -91,9 +91,9 @@ export interface InputTarget {
   /** O: orbit the body the camera is near. */
   orbit(): void;
   /** The body under a point of the canvas (client px), or null. */
-  pick(clientX: number, clientY: number): BodyId | null;
+  pick(clientX: number, clientY: number): FocusId | null;
   /** A double tap or click on a body. */
-  travel(body: BodyId): void;
+  travel(body: FocusId): void;
   /** A press at a point (client px): true when something there takes the drag (then it moves that, not the camera, until let go). */
   grab?(clientX: number, clientY: number): boolean;
   grabMove?(clientX: number, clientY: number): void;

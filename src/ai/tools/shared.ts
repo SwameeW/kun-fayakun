@@ -1,4 +1,5 @@
-import { BODY_IDS, type BodyId, type I18n, type I18nKey, type UniverseView } from '../../core/types';
+import { BODY_IDS, type App, type BodyId, type I18n, type I18nKey, type UniverseView } from '../../core/types';
+import { bodyAround } from '../context';
 import messages from '../../i18n/en.ai.tools.json' with { type: 'json' };
 import type { Fact, JsonSchema, KnowledgeKind, ToolEnv, ToolOutcome, ToolProblem } from '../types';
 
@@ -83,6 +84,33 @@ export function isoUtc(ms: number, withTime = true): string {
 
 /** The explorer's view now, or null while it is not on screen. */
 export const view = (env: ToolEnv): UniverseView | null => env.app.universe();
+
+/** Where the explorer's view is, so an undo can come back to it: one of the ten bodies, and the small world in view (by its name, the worlds' way in) if any. */
+export interface Focus {
+  body: BodyId;
+  world: string | null;
+}
+
+export function focusOf(v: UniverseView | null): Focus | null {
+  return v ? { body: bodyAround(v), world: v.worlds?.focus?.name ?? null } : null;
+}
+
+/**
+ * Back to a focus: the explorer opened on its body if it is not on screen (the worlds' command is
+ * sent once it is, since one sent before is dropped), then the small world flown to by its name.
+ */
+export function returnTo(app: App, focus: Focus): void {
+  const world = focus.world;
+  if (app.universe() === null) app.openUniverse(focus.body);
+  else app.focusBody(focus.body);
+  if (world === null) return;
+  const started = performance.now();
+  const send = (): void => {
+    if (app.universe() !== null) app.earthCommand({ kind: 'world', name: world });
+    else if (performance.now() - started < 10_000) setTimeout(send, 100);
+  };
+  send();
+}
 
 /** Waits on the app's state; a predicate that throws counts as not holding yet. */
 export function waitFor(env: ToolEnv, predicate: () => boolean, timeoutMs: number): Promise<boolean> {

@@ -42,7 +42,7 @@ const place = (name: string): NamedPlace | null => placeFrom(retriever, name);
 /* ----- Where the visitor can be, as src/ai/context.ts reads it ----- */
 
 const base: AiContext = { where: 'home', chapter: null, chapterT: null, mode: 'cinematic', explorer: null, lab: null, verses: [], summary: 'On the home screen.' };
-const EXPLORER_VIEW = { focus: 'earth', distanceKm: 20_000, date: '2026-10-26', rate: 1, paused: false, walking: null, stars: false } as const;
+const EXPLORER_VIEW = { focus: 'earth', world: null, distanceKm: 20_000, date: '2026-10-26', rate: 1, paused: false, walking: null, stars: false } as const;
 /** The laboratory as it opens: a copy of the solar system (masses in kg, orbits in km about each primary). */
 const SOLAR_LAB: NonNullable<AiContext['lab']> = {
   bodies: [

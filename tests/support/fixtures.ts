@@ -53,6 +53,10 @@ export interface KfHook {
       useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<void>;
       useReport(report: CapabilityReport): Promise<void>;
     };
+    /** The explorer's more worlds, once come (src/explore/worlds): the GPU's own places of the first asteroids, read back, and their date. */
+    worlds?: {
+      probe(count: number, drawn?: boolean): Promise<{ days: number; places: number[] }>;
+    };
   };
 }
 

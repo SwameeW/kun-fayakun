@@ -1,6 +1,6 @@
-import type { App, BodyId, ChapterId } from '../../core/types';
+import type { App, ChapterId } from '../../core/types';
 import type { ToolDefinition, ToolEnv } from '../types';
-import { done, ensureMessages, failed, notConfirmed, num, problem, refused, say, str, waitFor } from './shared';
+import { done, ensureMessages, failed, focusOf, notConfirmed, num, problem, refused, returnTo, say, str, waitFor, type Focus } from './shared';
 
 /**
  * The film: open a chapter (at a time), play, pause, the next or previous chapter, Explore Mode and
@@ -22,17 +22,18 @@ interface FilmState {
   paused: boolean;
   mode: App['mode'];
   exploreTime: number | null;
-  focus: BodyId | null;
+  focus: Focus | null;
 }
 
 function filmState(app: App): FilmState {
-  return { experience: app.experience, chapter: app.chapter, time: app.time, paused: app.paused, mode: app.mode, exploreTime: app.exploreTime, focus: app.universe()?.focus ?? null };
+  return { experience: app.experience, chapter: app.chapter, time: app.time, paused: app.paused, mode: app.mode, exploreTime: app.exploreTime, focus: focusOf(app.universe()) };
 }
 
 /** Puts the film back as it was: the chapter and time (paused if it was), its mode; or home; or the explorer on its world. */
 async function restoreFilm(app: App, s: FilmState): Promise<void> {
   if (s.experience === 'universe') {
-    app.openUniverse(s.focus);
+    if (s.focus) returnTo(app, s.focus);
+    else app.openUniverse(null);
     return;
   }
   if (s.chapter === null) {

@@ -441,6 +441,10 @@ async function namesClear(page: Page, at: string): Promise<void> {
     for (const el of [-20, 25]) {
       await place(page, { body: 'earth', distanceKm: 30_000, azimuthDeg: az, elevationDeg: el });
       await step(page, 25);
+      // (The readout is written in the interface's own frames, which the manual clock's steps do not run:
+      // a note it gains as the view turns, the sky's glow coming into view, takes a line across a phone's
+      // top, and what covers the view is measured again in the next of them.)
+      await frames(page, 3);
       expect(await namesInTheWay(page), `${at} azimuth ${String(az)} elevation ${String(el)}`).toEqual([]);
     }
   }

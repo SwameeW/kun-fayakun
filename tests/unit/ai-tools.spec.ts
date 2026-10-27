@@ -109,7 +109,7 @@ function fakeApp(react: (command: unknown, view: UniverseView | null) => void = 
 }
 
 const BASE: AiContext = { where: 'home', chapter: null, chapterT: null, mode: 'cinematic', explorer: null, lab: null, verses: [], summary: '' };
-const EXPLORER: AiContext = { ...BASE, where: 'explorer', explorer: { focus: 'earth', distanceKm: 20_000, date: '2026-10-26T00:00:00Z', rate: 1, paused: false, walking: null, stars: false } };
+const EXPLORER: AiContext = { ...BASE, where: 'explorer', explorer: { focus: 'earth', world: null, distanceKm: 20_000, date: '2026-10-26T00:00:00Z', rate: 1, paused: false, walking: null, stars: false } };
 const LAB: AiContext = {
   ...BASE,
   where: 'lab',

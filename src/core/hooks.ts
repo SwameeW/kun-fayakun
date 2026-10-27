@@ -59,6 +59,16 @@ export interface KfTestHandle {
    * makes the engine host's detection answer with a canned device from then on.
    */
   ai?: KfAiHandle | Pick<KfAiHandle, 'start'>;
+  /**
+   * The explorer's more worlds (src/explore/worlds), once they have come (they add this themselves,
+   * not through extendTestHandle, which only the shell's own parts use): the GPU's own places of the
+   * first `count` asteroids (x, y, z au from the Sun in the render frame, and the index, four numbers
+   * each: on their orbits, or `drawn` as drawn, arranged by orbit size or not) and the date they are
+   * for (days after the files' epoch, TDB).
+   */
+  worlds?: {
+    probe(count: number, drawn?: boolean): Promise<{ days: number; places: number[] }>;
+  };
   /** The solar-system explorer: its state (null when it is not on screen) and an instant camera placement. */
   universe: {
     state(): UniverseView | null;

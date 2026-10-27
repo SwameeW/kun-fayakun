@@ -1,4 +1,4 @@
-import type { App, BodyId, UniverseIllustration, UniverseView } from '../../core/types';
+import type { App, BodyId, FocusId, UniverseIllustration, UniverseView } from '../../core/types';
 import { PLANETS_MANIFEST_URL, planetCredits, type PlanetCredit, type PlanetsManifest } from '../../explore/assets/planets';
 import { externalLink, h } from '../dom';
 import type { Formatters } from './format';
@@ -34,7 +34,7 @@ const TIMES_FROM = 2;
 /** Below this speed (km/s, 1 m/s) free flight is "holding still"; below 1 km/s a speed is in m/s (never "0 km/s"). */
 const STILL_KM_S = 0.001;
 
-export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId) => string, fallbackFocus: () => HTMLElement): FlightHud {
+export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: FocusId) => string, fallbackFocus: () => HTMLElement): FlightHud {
   const { i18n } = app;
   const coarse = window.matchMedia('(pointer: coarse)');
 
@@ -161,7 +161,7 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
   let scaleFor = '';
   let hi = 1;
   let lo = 0;
-  const buildScale = (startKm: number, endKm: number, to: BodyId): void => {
+  const buildScale = (startKm: number, endKm: number, to: FocusId): void => {
     const key = `${startKm.toPrecision(3)}:${endKm.toPrecision(3)}:${to}`;
     if (key === scaleFor) return;
     scaleFor = key;
@@ -237,7 +237,7 @@ export function createFlightHud(app: App, f: Formatters, surfaceKey: (id: BodyId
       const note = illustrativeNote(view.illustrative);
       illustrative.hidden = note === '';
       write(illustrative, note);
-      const lines = credits[view.focus];
+      const lines = credits[view.focus as BodyId];
       imagery.hidden = !lines;
       write(imageryText, lines?.short ?? '');
       if (creditsShown !== lines) {

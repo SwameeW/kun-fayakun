@@ -1,6 +1,7 @@
 import type { PlanetsFile } from '../../astro/ephemeris';
 import type { PhysicalFile } from '../../astro/physical';
-import type { App, BodyId, UniverseView } from '../../core/types';
+import worldsMessages from '../../i18n/en.worlds.json';
+import type { App, BodyId, FocusId, UniverseView } from '../../core/types';
 import { worldFacts, type WorldFacts } from '../../explore/about';
 import { h, svg } from '../dom';
 import type { Formatters } from './format';
@@ -14,6 +15,12 @@ import { helpButton } from './help';
  * with its sources named. A definition list, rewritten when the world in view changes; the live
  * distance only on the navigator's slow ticks. Its own chunk (./sections), loaded the first time the
  * section opens: the section and its summary (the world's name) are the navigator's.
+ *
+ * A small world flown to (src/explore/worlds) gets its own short list from the view: what it is (and
+ * what it goes round: Charon, Pluto), its size (an ellipsoid's three axes where measured; where its
+ * shape is not, a sphere of its mean radius stands in, and it says so), albedo, day and distance from
+ * the Sun, beside the Moon to scale; its map's credit and the share of it never imaged. Its strings come
+ * with the small worlds' (src/i18n/en.worlds.json).
  */
 
 export interface About {
@@ -34,7 +41,8 @@ export function createAbout(app: App, f: Formatters): About {
   const { i18n } = app;
   let files: { physical: PhysicalFile; planets: PlanetsFile } | null = null;
   /** The world the list was built for (null: build it again on the next update). */
-  let shown: BodyId | null = null;
+  let shown: FocusId | null = null;
+  i18n.extend('en.worlds.json', worldsMessages);
   void Promise.all([app.assets.json<PhysicalFile>(PHYSICAL_URL), app.assets.json<PlanetsFile>(PLANETS_URL)])
     .then(([physical, planets]) => {
       files = { physical, planets };
@@ -76,9 +84,9 @@ export function createAbout(app: App, f: Formatters): About {
   const row = (term: string, detail: string, testId: string, topic?: string): HTMLElement[] => [h('dt', {}, term, topic ? helpButton(app, topic, term) : null), h('dd', { 'data-testid': `about-${testId}` }, detail)];
 
   /** The world beside its comparison, both to the same scale. */
-  const compare = (a: WorldFacts, b: WorldFacts): void => {
+  const compare = (a: Pick<WorldFacts, 'meanRadiusKm'> & { id: FocusId }, b: Pick<WorldFacts, 'meanRadiusKm'> & { id: FocusId }): void => {
     const big = Math.max(a.meanRadiusKm, b.meanRadiusKm);
-    const r = (x: WorldFacts): number => Math.max(MIN_DISC, (DISC / 2) * (x.meanRadiusKm / big));
+    const r = (x: { meanRadiusKm: number }): number => Math.max(MIN_DISC, (DISC / 2) * (x.meanRadiusKm / big));
     const ra = r(a);
     const rb = r(b);
     const cy = DISC / 2 + 4;
@@ -154,10 +162,44 @@ export function createAbout(app: App, f: Formatters): About {
     writeNow(view);
   };
 
+  /** A small world: what it is, its size and shape, albedo, day and distance from the Sun (live), beside the Moon. */
+  const buildWorld = (w: NonNullable<NonNullable<UniverseView['worlds']>['focus']>): void => {
+    shown = w.id;
+    plain.replaceChildren(h('span', {}, i18n.t('ui.universe.worlds.about.plain', { body: w.name, kind: w.kind, host: f.name(w.host) })));
+    const [a = 0, b = 0, c = 0] = [...w.axesKm].sort((x, y) => y - x);
+    const size = w.sizeFromH
+      ? i18n.t('ui.universe.worlds.about.fromH', { radius: km(w.radiusKm) })
+      : !w.shaped
+        ? i18n.t('ui.universe.worlds.about.sphere', { radius: km(w.radiusKm) })
+        : a - c < 0.01 * a
+          ? i18n.t('ui.universe.worlds.about.radius', { radius: km(w.radiusKm) })
+          : i18n.t('ui.universe.worlds.about.axes', { a: km(2 * a), b: km(2 * b), c: km(2 * c) });
+    const day = w.kind === 'moon' && w.rotationHours === null ? i18n.t('ui.universe.worlds.about.facesHost', { body: f.name(w.host) }) : w.rotationHours === null ? '—' : period(w.rotationHours / 24);
+    const items = [
+      ...row(i18n.t('ui.universe.worlds.about.size'), size, 'size'),
+      ...row(i18n.t('ui.universe.worlds.about.albedo'), w.albedo === null ? i18n.t('ui.universe.worlds.about.albedoUnknown') : i18n.t('ui.universe.worlds.about.albedoValue', { value: f.number(w.albedo, 3) }), 'albedo'),
+      ...row(i18n.t('ui.universe.worlds.about.day'), day, 'day'),
+    ];
+    const now = row(i18n.t('ui.universe.worlds.about.sunNow'), '', 'now');
+    nowDetail = now[1] ?? null;
+    items.push(...now);
+    facts.replaceChildren(...items);
+    compare({ id: w.id, meanRadiusKm: w.radiusKm }, { id: 'moon', meanRadiusKm: files ? worldFacts('moon', files.physical, files.planets).meanRadiusKm : 1737.4 });
+    const surface = w.map ? i18n.t('ui.universe.worlds.about.map', { credit: w.map }) : i18n.t('ui.universe.worlds.about.surface');
+    const gaps = w.map && w.unimaged >= 0.02 ? ` ${i18n.t('ui.universe.worlds.about.unimaged', { percent: Math.round(w.unimaged * 100) })}` : '';
+    sources.textContent = `${surface}${gaps} ${i18n.t('ui.universe.worlds.about.sources')}`;
+  };
+
   const writeNow = (view: UniverseView): void => {
-    if (!nowDetail || !files) return;
+    const world = view.worlds?.focus;
+    if (world && nowDetail) {
+      const text = f.keep(i18n.t('ui.hud.unit.au', { value: f.number(world.sunAu, 3) }));
+      if (nowDetail.textContent !== text) nowDetail.textContent = text;
+      return;
+    }
+    if (!nowDetail || !files || view.focus.startsWith('w:')) return;
     const at = (id: BodyId): { x: number; y: number; z: number } | undefined => view.bodies.find((b) => b.id === id)?.ecliptic;
-    const body = at(view.focus);
+    const body = at(view.focus as BodyId);
     const earth = at('earth');
     if (!body || !earth) return;
     const km = view.focus === 'moon' || view.focus === 'sun' ? Math.hypot(body.x - earth.x, body.y - earth.y, body.z - earth.z) : Math.hypot(body.x, body.y, body.z);
@@ -168,7 +210,12 @@ export function createAbout(app: App, f: Formatters): About {
   return {
     body,
     update(view, slow, open) {
-      if (view.focus !== shown) build(view.focus, view);
+      const world = view.worlds?.focus;
+      if (world) {
+        if (world.id !== shown) buildWorld(world);
+        if (slow && open) writeNow(view);
+      } else if (view.focus.startsWith('w:')) return;
+      else if (view.focus !== shown) build(view.focus as BodyId, view);
       else if (slow && open) writeNow(view);
     },
   };

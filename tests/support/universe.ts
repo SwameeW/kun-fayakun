@@ -4,7 +4,7 @@
  * the browser per trip, so a several-second flight is checked at every one of its frames).
  */
 import type { Page } from '@playwright/test';
-import type { BodyId, UniversePose, UniverseView } from '../../src/core/types';
+import type { BodyId, FocusId, UniversePose, UniverseView } from '../../src/core/types';
 import { expect, type KfHook } from './fixtures';
 import { SLOW } from './env';
 
@@ -44,7 +44,7 @@ export interface TripRecord {
   startKm: number;
   endKm: number;
   plannedEndKm: number;
-  focus: BodyId;
+  focus: FocusId;
 }
 
 /**

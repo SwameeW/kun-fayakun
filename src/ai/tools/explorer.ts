@@ -2,7 +2,7 @@ import type { BodyId, SkyLayerName, WalkableWorld } from '../../core/types';
 import { ATLAS, MAKKAH_FRAME, SITES, type FieldPlace } from '../../explore/field-notes/data';
 import { centralAngleDeg, qiblaDistanceKm } from '../../explore/islamic/astronomy';
 import type { AiContext, ToolDefinition, ToolEnv, ToolProblem } from '../types';
-import { BODY, bodyName, bool, done, ensureExplorer, ensureMessages, isBodyId, LAT, LON, notConfirmed, num, OPEN_MS, problem, refused, say, str, view, waitFor } from './shared';
+import { BODY, bodyName, bool, done, ensureExplorer, ensureMessages, focusOf, isBodyId, LAT, LON, notConfirmed, num, OPEN_MS, problem, refused, returnTo, say, str, view, waitFor } from './shared';
 
 /**
  * The explorer: open and close it, fly to a world, go to a place on the Earth (degrees, or a place of
@@ -87,11 +87,12 @@ export const explorerClose: ToolDefinition = {
   preview: (_args, _ctx, i18n) => say(i18n, 'ai.tool.explorer.close.preview'),
   async run(_args, env) {
     ensureMessages(env.i18n);
-    const focus = view(env)?.focus ?? null;
+    const focus = focusOf(view(env));
     env.app.closeUniverse();
     const seen = await waitFor(env, () => env.app.universe() === null, 10_000);
     const undo = (): void => {
-      env.app.openUniverse(focus);
+      if (focus) returnTo(env.app, focus);
+      else env.app.openUniverse(null);
     };
     return seen ? done('ai.tool.explorer.close.observed', {}, { undo }) : notConfirmed('ai.tool.explorer.close.notSeen', {}, { undo });
   },
@@ -113,7 +114,7 @@ export const explorerFly: ToolDefinition = {
   async run(args, env) {
     ensureMessages(env.i18n);
     const body = str(args, 'body') as BodyId;
-    const before = view(env)?.focus ?? null;
+    const before = focusOf(view(env));
     if (before === null) {
       env.app.openUniverse(body);
       if (!(await waitFor(env, () => env.app.universe() !== null, OPEN_MS))) return notConfirmed('ai.tool.explorer.open.notSeen');
@@ -123,7 +124,7 @@ export const explorerFly: ToolDefinition = {
     const seen = await waitFor(env, () => view(env)?.focus === body, TRIP_MS);
     const undo = (): void => {
       if (before === null) env.app.closeUniverse();
-      else env.app.focusBody(before);
+      else returnTo(env.app, before);
     };
     const values = { body: bodyName(env.i18n, body), travelling: view(env)?.travelling ? 1 : 0 };
     return seen ? done('ai.tool.explorer.fly.observed', values, { undo }) : notConfirmed('ai.tool.explorer.fly.notSeen', values, { undo });
@@ -157,7 +158,7 @@ export const explorerPlace: ToolDefinition = {
     if (!(await ensureExplorer(env, 'earth'))) return notConfirmed('ai.tool.explorer.open.notSeen');
     const before = view(env);
     const prior = before?.place ? { ...before.place } : null;
-    const priorFocus = before?.focus ?? 'earth';
+    const priorFocus = focusOf(before) ?? { body: 'earth' as const, world: null };
     // Makkah is seen as a city in its valley, never closer (the explorer holds to it too).
     const viewKm = Math.max(num(args, 'viewKm') ?? target.viewKm, nearKaaba(target.lat, target.lon) ? MAKKAH_FRAME.minWidthKm : 0);
     env.app.earthCommand({ kind: 'goto', lat: target.lat, lon: target.lon, viewKm });
@@ -168,7 +169,7 @@ export const explorerPlace: ToolDefinition = {
     }, GLIDE_MS);
     const undo = (): void => {
       if (prior) env.app.earthCommand({ kind: 'view', body: prior.body, lat: prior.lat, lon: prior.lon, altitudeKm: prior.altitudeKm });
-      else env.app.focusBody(priorFocus);
+      else returnTo(env.app, priorFocus);
     };
     const values = { place: target.name ?? '', lat: Math.round(target.lat * 100) / 100, lon: Math.round(target.lon * 100) / 100, viewKm: Math.round(viewKm) };
     return seen ? done('ai.tool.explorer.place.observed', values, { undo }) : notConfirmed('ai.tool.explorer.place.notSeen', values, { undo });

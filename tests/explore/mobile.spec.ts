@@ -493,6 +493,46 @@ test('the qibla and the new moon on a phone: opened from the sheet, every contro
   expect(pageErrors).toEqual([]);
 });
 
+test('the small worlds on a phone: opened from the sheet, searched, a world flown to by a tap, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('universe-nav-toggle').click();
+  const section = page.getByTestId('universe-worlds');
+  await section.locator('summary').scrollIntoViewIfNeeded();
+  await section.locator('summary').tap();
+  await expect(page.getByTestId('worlds-intro')).toContainText(/asteroids? drawn/u, { timeout: 60_000 * SLOW });
+  // As many as the detail level running draws (the largest first).
+  const v = await view(page);
+  expect(v?.worlds?.asteroids).toBe({ low: 20_000, medium: 80_000, high: 250_000, ultra: 500_000 }[v?.detail.tier ?? 'low']);
+  await page.getByTestId('worlds-search').fill('europa');
+  const go = page.getByTestId('worlds-go-Europa');
+  await go.scrollIntoViewIfNeeded();
+  const width = page.viewportSize()?.width ?? 0;
+  const problems = await page.evaluate((w) => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid="universe-worlds"] button, [data-testid="universe-worlds"] input, [data-testid="universe-worlds"] summary')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.height < 43.5) out.push(`${el.dataset.testid ?? el.tagName} ${Math.round(r.height)}px tall`);
+      if (r.right > w + 0.5) out.push(`${el.dataset.testid ?? el.tagName} past the screen's edge`);
+    }
+    return out;
+  }, width);
+  expect(problems).toEqual([]);
+  const wide = await overflow(page);
+  expect(wide.offenders).toEqual([]);
+  expect(wide.scroll).toBeLessThanOrEqual(wide.client);
+  const results = await new AxeBuilder({ page }).include('[data-testid="universe-worlds"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+  await go.tap();
+  await expect.poll(async () => {
+    const v = await view(page);
+    return v?.focus === 'w:Europa' && !v.travelling;
+  }, { timeout: 60_000 * SLOW }).toBe(true);
+  expect(pageErrors).toEqual([]);
+});
+
 test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
   // In software rendering (CI) on a phone's screen every frame of the walk is slow: about fifteen minutes in all.
   test.setTimeout(450_000 * SLOW);
@@ -678,5 +718,37 @@ test('the time machine stays in reach on the sheet: its buttons above the list f
   expect(await reach()).toEqual([]);
   const sides = await overflow(page);
   expect(sides.scroll).toBeLessThanOrEqual(sides.client);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the small worlds at Low on a phone: frame rate and slowest frames in four views (recorded)', { tag: '@perf' }, async ({ page, kf, pageErrors }, testInfo) => {
+  test.setTimeout(300_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD, detail: 'low', profile: '1' } });
+  await waitForUniverse(page);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'smallBodies', on: true });
+  });
+  await expect.poll(async () => (await view(page))?.worlds?.asteroids ?? 0, { timeout: 60_000 * SLOW }).toBe(20_000);
+  const results: Record<string, { fps: number; p99: number }> = {};
+  for (const [name, pose] of [
+    ['earth', { body: 'earth', distanceKm: 26_000 }],
+    ['belt from above', { body: 'sun', distanceKm: 1.1e9, elevationDeg: 85 }],
+    ['jupiter system', { body: 'jupiter', distanceKm: 3.2e6, elevationDeg: 5 }],
+    ['sun', { body: 'sun', distanceKm: 4e6 }],
+  ] as const) {
+    await place(page, pose);
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.resetFrameStats();
+    });
+    await page.waitForTimeout(5000);
+    const s = await page.evaluate(() => (window as unknown as KfHook).__kf.frameStats());
+    results[name] = { fps: +s.medianFps.toFixed(2), p99: +s.p99FrameMs.toFixed(2) };
+  }
+  // An emulated phone on this machine's GPU (the CPU and GPU are not a phone's): recorded, against the
+  // phone budget of 30 frames a second at Low (SPEC.md), which it must at least hold here.
+  console.log(`[perf] ${testInfo.project.name} low: ${JSON.stringify(results)}`);
+  testInfo.annotations.push({ type: 'perf', description: JSON.stringify({ tier: 'low', results }) });
+  for (const [name, r] of Object.entries(results)) expect(r.fps, `${name}: median frame rate`).toBeGreaterThanOrEqual(30);
   expect(pageErrors).toEqual([]);
 });

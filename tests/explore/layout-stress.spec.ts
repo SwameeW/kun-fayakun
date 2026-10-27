@@ -9,10 +9,14 @@
  * after each, every control is inside the window (or its
  * own scroller), nothing is wider than the window, no two controls overlap, no text is cut off, and
  * nothing was logged as an error. On foot and going down through clouds, the HUDs fit as well, their
- * readouts opened and closed, the navigator folded and unfolded over them. Reduced motion, so trips land
- * at once and nothing is caught halfway through a transition.
+ * readouts opened and closed, the navigator folded and unfolded over them. The small worlds' names
+ * (Jupiter's, Saturn's and Uranus's moons, from their planets and from Io), with the navigator unfolded
+ * and folded, never under the interface, over one another, or over a disc (the ten bodies', the world
+ * flown to's, Saturn's rings). Reduced motion, so trips land at once and nothing is caught halfway
+ * through a transition.
  */
 import type { Page } from '@playwright/test';
+import type { UniversePose } from '../../src/core/types';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { SLOW } from '../support/env';
 import { everyInsideViewport, frames, noClippedText, noHorizontalOverflow, noOverlappingTargets, spam } from '../support/layout';
@@ -149,7 +153,7 @@ for (const size of SIZES) {
       await expectLayout(page, 'navigator open');
 
       // Every section, opened and closed again and again; the detail menu and the keys too.
-      for (const id of ['universe-about', 'universe-sky', 'saved-views', 'living-earth', 'universe-islamic', 'universe-seen']) await section(page, page.getByTestId(id), id);
+      for (const id of ['universe-about', 'universe-sky', 'universe-worlds', 'saved-views', 'living-earth', 'universe-islamic', 'universe-seen']) await section(page, page.getByTestId(id), id);
       await section(page, page.locator('.kf-nav-keys'), 'keys');
       // A section within a section: the Living Earth's field notes on the prophets.
       const living = page.getByTestId('living-earth').locator(':scope > summary');
@@ -176,6 +180,7 @@ for (const size of SIZES) {
       for (const [id, part] of [
         ['universe-about', '.kf-about-body'],
         ['universe-sky', '.kf-about-body'],
+        ['universe-worlds', '.kf-about-body'],
         ['saved-views', '.kf-living-body'],
         ['living-earth', '.kf-living-body'],
         ['universe-islamic', '[data-testid="islamic-panel"]'],
@@ -390,3 +395,84 @@ test.describe('on foot and going down', () => {
     });
   }
 });
+
+/**
+ * The worlds' names (the small worlds', by their names in the view's list) on show over the way back,
+ * the readout or the navigator, over one another, over any of the ten bodies' discs or the world flown
+ * to's, or (on Saturn) inside the rings' outline seen at their opening: each as its text and where.
+ */
+async function worldNamesInTheWay(page: Page): Promise<string[]> {
+  const v = await view(page);
+  const names = (v?.worlds?.list ?? []).map((w) => w.name);
+  const discs: Array<{ id: string; x: number; y: number; r: number; ring: number }> = (v?.bodies ?? []).filter((b) => b.screen.inView && b.screen.radiusPx > 1.5).map((b) => ({ id: b.id, x: b.screen.x, y: b.screen.y, r: b.screen.radiusPx * (b.id === 'saturn' ? 2.33 : 1), ring: b.id === 'saturn' ? Math.max(Math.abs(Math.sin(b.ringOpening)), 1 / 2.33) : 1 }));
+  const f = v?.worlds?.focus;
+  if (f && f.screen.inView) discs.push({ id: f.name, x: f.screen.x, y: f.screen.y, r: f.screen.radiusPx, ring: 1 });
+  return page.evaluate(
+    ([list, ds]) => {
+      const covers = ['universe-back', 'universe-readout', 'universe-bodies']
+        .map((id) => ({ id, r: document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect() }))
+        .filter((c): c is { id: string; r: DOMRect } => c.r !== undefined && c.r.width > 0);
+      const meet = (a: DOMRect, b: DOMRect): boolean => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
+      const tags = [...document.querySelectorAll<HTMLElement>('.kf-hud-tag')].filter((t) => Number(t.style.opacity || '1') > 0.1).map((t) => ({ text: t.textContent, r: t.getBoundingClientRect() }));
+      const out: string[] = [];
+      for (const [k, t] of tags.entries()) {
+        if (!list.includes(t.text)) continue;
+        const where = `${t.text} ${String(Math.round(t.r.left))},${String(Math.round(t.r.top))}`;
+        for (const c of covers) if (meet(t.r, c.r)) out.push(`${where} under ${c.id}`);
+        for (const [j, u] of tags.entries()) if (j !== k && meet(t.r, u.r)) out.push(`${where} over ${u.text}`);
+        for (const d of ds) {
+          if (d.id === t.text) continue;
+          // The nearest point of the tag to the disc's centre, inside it (Saturn's rings: inside the circle
+          // their outline's narrowest width makes, the planet's own at least, which they always cover).
+          const nx = Math.max(t.r.left, Math.min(d.x, t.r.right)) - d.x;
+          const ny = Math.max(t.r.top, Math.min(d.y, t.r.bottom)) - d.y;
+          if (Math.hypot(nx, ny) < d.r * d.ring - 1) out.push(`${where} over ${d.id}`);
+        }
+      }
+      return out;
+    },
+    [names, discs] as const,
+  );
+}
+
+for (const size of [...SIZES, { width: 768, height: 1024, touch: true }, { width: 1920, height: 1080, touch: false }]) {
+  const at = `${String(size.width)}x${String(size.height)}${size.touch ? ' (touch)' : ''}`;
+  test(`the small worlds' names keep clear of the interface, of one another and of every disc at ${at}`, async ({ page, kf, pageErrors }) => {
+    test.setTimeout(300_000 * SLOW);
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await kf.open('/universe/jupiter', { query: { jd: JD, detail: 'high' } });
+    await waitForUniverse(page);
+    await expect.poll(async () => (await view(page))?.worlds?.shown ?? 0, LIVE).toBeGreaterThan(0.99);
+    let named = 0;
+    for (const unfolded of [true, false]) {
+      await setExpanded(page, unfolded);
+      for (const poses of [
+        // Jupiter's system, from Io (Jupiter behind it, then the Sun), Saturn's and Uranus's.
+        [
+          { body: 'jupiter', distanceKm: 1.6e6, elevationDeg: 4 },
+          { body: 'jupiter', distanceKm: 6e5, azimuthDeg: 40, elevationDeg: 10 },
+        ],
+        [
+          { body: 'w:Io', distanceKm: 9000, from: 'jupiter', azimuthDeg: 20 },
+          { body: 'w:Io', distanceKm: 2.5e5, from: 'sun', azimuthDeg: 30 },
+        ],
+        [
+          { body: 'saturn', distanceKm: 1.4e6, elevationDeg: 12 },
+          { body: 'saturn', distanceKm: 3e6, azimuthDeg: 70, elevationDeg: 25 },
+        ],
+        [{ body: 'uranus', distanceKm: 7e5, elevationDeg: 20 }],
+      ] satisfies UniversePose[][]) {
+        for (const pose of poses) {
+          await place(page, pose);
+          // The names settle (in a third of a second, out at once where they are in the way).
+          await page.waitForTimeout(900);
+          expect(await worldNamesInTheWay(page), `${at} ${unfolded ? 'unfolded' : 'folded'}: ${JSON.stringify(pose)}`).toEqual([]);
+          named += await page.evaluate((list) => [...document.querySelectorAll<HTMLElement>('.kf-hud-tag')].filter((t) => Number(t.style.opacity || '1') > 0.5 && list.includes(t.textContent)).length, ((await view(page))?.worlds?.list ?? []).map((w) => w.name));
+        }
+      }
+    }
+    // Names do show, where there is room for them.
+    if (size.width >= 768) expect(named).toBeGreaterThan(3);
+    expect(pageErrors).toEqual([]);
+  });
+}
