@@ -47,7 +47,7 @@ const constants = (read('data/constants.json') as { constants: Constant[] }).con
 const quran = (read('data/quran.json') as { ayat: Ayah[] }).ayat;
 const hadithFile = read('data/hadith.json') as { hadith: Hadith[]; excluded: Excluded[] };
 const sources = (read('data/sources.json') as { sources: { id: string }[] }).sources;
-const index = read('public/assets/ai/index.json') as { passages: { id: string }[] };
+const index = read('public/assets/ai/index.json') as { passages: { id: string; kind: string; ref?: string; text: string }[] };
 const physical = read('public/assets/jpl/physical.json') as PhysicalFile;
 const planets = read('public/assets/jpl/planets.json') as PlanetsFile;
 
@@ -130,6 +130,11 @@ export const PASSAGE_IDS: ReadonlySet<string> = new Set(index.passages.map((p) =
 
 /** The verses' English translations and transliterations (to find text copied from them). */
 export const VERSE_TEXTS: readonly string[] = quran.flatMap((a) => [a.translation, a.translit]);
+/** Each verse's translation, by key, and the app's plain words for it (an explanation, not a translation). */
+export const VERSE_BY_KEY: ReadonlyMap<string, string> = new Map(quran.map((a) => [a.key, a.translation]));
+export const PLAIN_BY_KEY: ReadonlyMap<string, string> = new Map(index.passages.filter((p) => p.id.startsWith('plain:')).map((p) => [p.id.slice('plain:'.length), p.text]));
+/** Each hadith's sourced summary, by id, as the knowledge index holds it. */
+export const HADITH_SUMMARIES: ReadonlyMap<string, string> = new Map(index.passages.filter((p) => p.kind === 'hadith' && p.ref).map((p) => [p.ref ?? '', p.text]));
 
 /**
  * The narrations data/hadith.json excludes, as the patterns that would name one: its collection key and

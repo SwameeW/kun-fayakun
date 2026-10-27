@@ -3,7 +3,8 @@
  * docs/AI-EVALUATION.md can be generated again from the repository by scripts/ai-eval/report.ts. The raw
  * files (.work/ai-eval/results, gitignored) keep every prompt and every reply as the model wrote it;
  * the compact copy keeps what the report reads and what a reader needs to check a case:
- * - the run: model, mode, machine, loads, frame statistics (not the raw intervals), load averages;
+ * - the run: model, mode, machine, loads, frame statistics and every frame over 50 ms (not the raw
+ *   intervals), load averages and the other browsers' GPU processes, the hosts the browser reached;
  * - each case: its result, its checks, the plan's tools and arguments, the guards' flags, the types of
  *   any violation, citations, labels, timings and load averages; and the answer as it was shown, after
  *   the guards, only when the scorer found nothing wrong in it.
@@ -44,6 +45,7 @@ interface RawCase {
   };
   timings?: unknown;
   loadavg?: unknown;
+  reloaded?: unknown;
 }
 
 interface RawRun {
@@ -61,6 +63,9 @@ interface RawRun {
   cases: RawCase[];
   frames: { where: string; idle: Record<string, unknown>; generating: Record<string, unknown> } | null;
   unexpectedRequests: string[];
+  unservedModelHosts?: string[];
+  externalHosts?: Record<string, number>;
+  gpuClientsStart?: unknown;
   pageErrors: string[];
   loadError?: unknown;
 }
@@ -99,6 +104,7 @@ function compactCase(c: RawCase): Record<string, unknown> {
           },
         }
       : {}),
+    ...(c.reloaded !== undefined ? { reloaded: c.reloaded } : {}),
     ...(c.timings !== undefined ? { timings: c.timings } : {}),
     ...(c.loadavg !== undefined ? { loadavg: c.loadavg } : {}),
   };
@@ -121,6 +127,9 @@ function compact(run: RawRun, file: string): Record<string, unknown> {
     ...(run.loadError !== undefined ? { loadError: run.loadError } : {}),
     frames: run.frames ? { where: run.frames.where, idle: run.frames.idle, generating: run.frames.generating } : null,
     unexpectedRequests: run.unexpectedRequests,
+    ...(run.unservedModelHosts !== undefined ? { unservedModelHosts: run.unservedModelHosts } : {}),
+    ...(run.externalHosts !== undefined ? { externalHosts: run.externalHosts } : {}),
+    ...(run.gpuClientsStart !== undefined ? { gpuClientsStart: run.gpuClientsStart } : {}),
     pageErrors: run.pageErrors.map((e) => e.slice(0, 300)),
     cases: run.cases.map(compactCase),
   };

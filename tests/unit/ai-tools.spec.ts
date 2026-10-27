@@ -256,6 +256,12 @@ test('shortlist: the core first, then the best matches here, deterministic', () 
   expect(names('Set it to 1 January 2030 at noon', EXPLORER, 9)).toContain('time.date');
   expect(names('Show me the Salar de Uyuni', EXPLORER, 9)).toContain('explorer.place');
   expect(names('Show me the Grand Canyon from 50 km up', EXPLORER, 9)).toContain('explorer.place');
+  // "Throw a rock at the Earth" in the laboratory: its own experiment is offered, not only the calculator (docs/AI-EVALUATION.md).
+  expect(names('Throw a rock at the Earth', LAB, 9)).toContain('lab.experiment');
+  // A verse key in the question offers the tool that shows a verse by its key ("Show me 21:30" was read as a time in the film).
+  const scripture = createRegistry({ scripture: { verses: ['21:30', '36:38'], hadith: ['bukhari-3199'], withheld: [] } });
+  expect(scripture.shortlist('Show me 21:30', BASE, 9).map((t) => t.name)).toContain('cite.verse');
+  expect(scripture.shortlist('Show me the orbit', BASE, 9).map((t) => t.name)).not.toContain('cite.verse');
   // Ties are broken by name.
   const twin = (name: string): ToolDefinition => ({ ...tool('calc.hill'), name, keywords: ['zebra'], summary: 'Nothing.' });
   const tie = createToolRegistry([twin('b.second'), twin('a.first'), twin('c.third')]);

@@ -90,7 +90,7 @@ Do not use: Sahih Muslim 2789 (the “soil on Saturday” hadith). Al-Bukhari, A
 ### Chapter 1: The beginning
 Text: Quran 21:30 (the heavens and earth were joined, ratqan, then We parted them, fa-fataqnahuma).
 
-Scholarly layer: Ibn Kathir, citing Ibn Abbas, Sa’id ibn Jubayr and Qatadah: they were joined, then separated by raising the sky. Another early report: the sky gave no rain and the earth no plants until both were opened. Then: “Some modern writers read this as resembling the Big Bang.”
+Scholarly layer: Ibn Kathir, citing Ibn Abbas, Sa’id ibn Jubayr and Qatadah: they were joined, then separated by raising the sky. Another early report: the sky gave no rain and the earth no plants until both were opened. Then: “Some modern writers read 21:30 as resembling the Big Bang.”
 
 Science: about 13.8 billion years ago (Planck 2018: 13.787 ± 0.020 Gyr, assuming the standard ΛCDM model). Hot, dense early universe; inflation (well supported but not directly confirmed).
 

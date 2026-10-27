@@ -3,6 +3,7 @@ import type { Baseline } from '../planner/compare';
 import { EXPERIMENT_IDS, EXPERIMENT_PARAMS, experimentPreview, experimentProblems, HORIZON_DAYS, isPlan, planExperiment, resolveBody, worldFromContext, worldFromLab, type PlanNames, type PlanWorld } from '../planner/experiments';
 import type { OptimiseSearch } from '../planner/optimise';
 import type { AiContext, ExperimentId, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolOutcome, UndoOutcome } from '../types';
+import { labForAssistant } from '../context';
 import { dateJdTdb, jplData } from './data';
 import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfirmed, num, OPEN_MS, problem, refused, say, settle, sig, str, view, waitFor } from './shared';
 
@@ -23,7 +24,11 @@ import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfir
 const QUICK_MS = 5000;
 
 const inLab = (ctx: AiContext): boolean => ctx.where === 'lab';
-const labView = (env: ToolEnv): UniverseLab | null => view(env)?.lab ?? null;
+/** The laboratory as the assistant reads it: a body the visitor renamed by its own name (../context.ts labForAssistant). */
+const labView = (env: ToolEnv): UniverseLab | null => {
+  const lab = view(env)?.lab ?? null;
+  return lab ? labForAssistant(lab) : null;
+};
 
 /** Names the planner gives new bodies, in the visitor's language. */
 const planNames = (env: ToolEnv): PlanNames => ({ moon: say(env.i18n, 'ai.tool.experiment.name.moon'), star: say(env.i18n, 'ai.tool.experiment.name.star'), impactor: say(env.i18n, 'ai.tool.experiment.name.impactor') });
@@ -258,7 +263,8 @@ export const labExperiment: ToolDefinition = {
   name: 'lab.experiment',
   kind: 'experiment',
   summary: 'Change the laboratory: scale-mass, remove-body, kick-body, impact, add-moon, second-star or change-orbit, with its numbers (shown first for the visitor to confirm).',
-  keywords: ['what if', 'double', 'mass', 'remove', 'delete', 'kick', 'push', 'impact', 'asteroid', 'moon', 'add a moon', 'second sun', 'binary star', 'change orbit', 'heavier', 'lighter', 'without'],
+  // "Throw a rock at the Earth" in the laboratory named none of these, and the laboratory's own experiment was not offered (docs/AI-EVALUATION.md).
+  keywords: ['what if', 'double', 'mass', 'remove', 'delete', 'kick', 'push', 'impact', 'asteroid', 'moon', 'add a moon', 'second sun', 'binary star', 'change orbit', 'heavier', 'lighter', 'without', 'throw', 'hurl', 'rock', 'comet', 'crash into', 'smash into'],
   args: EXPERIMENT_ARGS,
   argsFor: experimentForms,
   available: inLab,

@@ -27,7 +27,7 @@ interface Record_ {
 }
 
 for (const file of process.argv.slice(2)) {
-  const run = JSON.parse(readFileSync(file, 'utf8')) as { cases: Record_[] };
+  const run = JSON.parse(readFileSync(file, 'utf8')) as { model: string; cases: Record_[] };
   let changed = 0;
   let skipped = 0;
   for (const r of run.cases) {
@@ -37,7 +37,7 @@ for (const file of process.argv.slice(2)) {
       skipped += 1;
       continue;
     }
-    const s = score(c, { turn: r.turn, generations: r.generations, ...r.observed, clarifyText: mind['ai.mind.clarify.convention'] ?? '', declineText: mind['ai.mind.guide.decline'] ?? '' });
+    const s = score(c, { turn: r.turn, generations: r.generations, ...r.observed, clarifyText: mind['ai.mind.clarify.convention'] ?? '', declineText: mind['ai.mind.guide.decline'] ?? '', sideBySideText: mind['ai.mind.guard.sideBySide'] ?? '', modelId: run.model });
     r.scoredAtRun ??= r.scored;
     if (JSON.stringify(s) !== JSON.stringify(r.scored)) changed += 1;
     r.scored = s;

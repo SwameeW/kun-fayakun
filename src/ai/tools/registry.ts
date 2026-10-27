@@ -46,10 +46,18 @@ interface Indexed {
   summary: Set<string>;
 }
 
-const WEIGHT = { keyword: 3, name: 2, summary: 1, here: 0.5, date: 3 } as const;
+const WEIGHT = { keyword: 3, name: 2, summary: 1, here: 0.5, date: 3, verseKey: 3 } as const;
 
 /** A date as a question writes it: 2027-08-02, 1 January 2030, January 1, 2030. */
 const DATE_IN_TEXT = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{3,4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{3,4}\b/iu;
+
+/**
+ * A verse key in the question ("Show me 21:30"): the tool that shows a verse by its key is offered.
+ * Without it, "Show me 21:30" from home was offered only the search and the film, and every model
+ * read it as a time in the film (docs/AI-EVALUATION.md).
+ */
+const VERSE_KEY_IN_TEXT = /(?<![\d:.])(?:[1-9]\d?|10\d|11[0-4]):[1-9]\d{0,2}(?![\d:])/u;
+export const CITE_VERSE = 'cite.verse';
 
 /** Whether a tool takes a date (its arguments name one). */
 const takesDate = (tool: ToolDefinition): boolean => 'properties' in tool.args && Object.hasOwn(tool.args.properties, 'date');
@@ -96,13 +104,14 @@ export function createToolRegistry(tools: readonly ToolDefinition[]): ToolRegist
       summary: new Set(terms(tool.summary)),
     }));
 
-  const score = (entry: Indexed, words: ReadonlySet<string>, ctx: AiContext, dated: boolean): number => {
+  const score = (entry: Indexed, words: ReadonlySet<string>, ctx: AiContext, dated: boolean, keyed: boolean): number => {
     let s = 0;
     for (const k of entry.keywords) if (k.every((w) => words.has(w))) s += WEIGHT.keyword * k.length;
     for (const w of entry.name) if (words.has(w)) s += WEIGHT.name;
     for (const w of entry.summary) if (words.has(w)) s += WEIGHT.summary;
     // A date in the question is a tool's argument ("Show the sky on 2027-08-02" named no keyword of time.date).
     if (dated && takesDate(entry.tool)) s += WEIGHT.date;
+    if (keyed && entry.tool.name === CITE_VERSE) s += WEIGHT.verseKey;
     if (s > 0 && HERE[ctx.where].includes(group(entry.tool.name))) s += WEIGHT.here;
     return s;
   };
@@ -120,7 +129,7 @@ export function createToolRegistry(tools: readonly ToolDefinition[]): ToolRegist
       const words = new Set(terms(question));
       const ranked = available
         .filter((e) => !core.includes(e.tool))
-        .map((e) => ({ tool: e.tool, s: score(e, words, ctx, DATE_IN_TEXT.test(question)) }))
+        .map((e) => ({ tool: e.tool, s: score(e, words, ctx, DATE_IN_TEXT.test(question), VERSE_KEY_IN_TEXT.test(question)) }))
         .filter((r) => r.s > 0)
         // Higher scores first; the registry is sorted by name, and the sort is stable, so ties keep that order.
         .sort((a, b) => b.s - a.s)

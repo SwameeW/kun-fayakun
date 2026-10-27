@@ -171,8 +171,14 @@ const ANSWER_SYSTEM = [
   'Cite what you use with its marker exactly as given: [[verse:21:30]], [[hadith:ID]], [[fact:ID]], [[passage:ID]].',
   'Never quote the Quran or a hadith: refer to a verse or hadith by its marker and say in your own words what the passages say of it. Add no reading of your own: not whether it is literal or a metaphor, scientific or not, or what Allah intends. Never write Arabic.',
   'Never say that a text predicted, foretold or proves anything, or call anything a scientific miracle. Science and scripture are set side by side for reflection.',
-  'Only numbers that appear in the data. Mention an action only if the actions block says it is done; if it is awaiting confirmation, say the visitor can confirm it.',
+  'Only numbers that appear in the data. Mention an action only if the actions block says it is done.',
 ].join('\n');
+
+/**
+ * Said only when a card waits for the visitor: given always, Qwen3.5 9B told the visitor they could
+ * confirm something in about a fifth of its answers with nothing waiting (docs/AI-EVALUATION.md).
+ */
+const AWAITING_LINE = 'An action marked awaiting confirmation waits for the visitor: say they can confirm it on its card.';
 
 /**
  * Said only when a laboratory tool reported a result: given always, Qwen3 0.6B wrote the phrase back
@@ -197,8 +203,10 @@ export function buildAnswerMessages(
   history: readonly HistoryItem[],
   level: ExplanationLevel = 'standard',
 ): ChatMessage[] {
-  const labResult = actions.some((a) => a.tool.startsWith('lab.') && a.status === 'done');
-  const system = `${ANSWER_SYSTEM}\n${labResult ? `${LAB_LINE}\n` : ''}${LEVEL_LINES[level]}`;
+  // A result is a comparison's, a search's or an experiment's; reading the laboratory as it is gives none.
+  const labResult = actions.some((a) => (a.tool === 'lab.compare' || a.tool === 'lab.optimise' || a.tool === 'lab.experiment') && a.status === 'done');
+  const awaiting = actions.some((a) => a.status === 'awaiting');
+  const system = `${ANSWER_SYSTEM}\n${awaiting ? `${AWAITING_LINE}\n` : ''}${labResult ? `${LAB_LINE}\n` : ''}${LEVEL_LINES[level]}`;
   const budget = CONTEXT_TOKENS - ANSWER_MAX_TOKENS - TEMPLATE_TOKENS;
   const fixed: string[] = [block('context', ctx.summary || ctx.where)];
   if (facts.length > 0) {

@@ -442,6 +442,9 @@ export type GuardFlag =
   | 'unchecked-number'
   | 'action-claim'
   | 'scripture-quote'
+  | 'scripture-reading'
+  | 'confirm-offer'
+  | 'injected-text'
   | 'repeated'
   | 'truncated';
 
@@ -534,6 +537,8 @@ export interface GenerationRecord {
   engineUsage: GenerateResult['engineUsage'] | null;
   /** Wall time of the generation as the orchestrator saw it, ms. */
   wallMs: number;
+  /** When it began, on the page's clock (performance.now(), ms): the evaluation sets frame times against it. */
+  startedMs?: number;
   /** For a plan: whether it could be used, and what was wrong with it otherwise (the repair prompt's lines). */
   valid?: boolean;
   problems?: readonly string[];

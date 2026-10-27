@@ -29,7 +29,7 @@
 import type { App, BodyId, I18n } from '../core/types';
 import { createEventBus } from '../core/events';
 import messages from '../i18n/en.ai.mind.json' with { type: 'json' };
-import { readContext } from './context';
+import { readContext, withoutCameraDistance } from './context';
 import { guardInput, guardOutput, removeArabic, removeOtherScripts, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
@@ -201,6 +201,19 @@ function isEngineError(value: unknown): value is EngineError {
   return typeof value === 'object' && value !== null && typeof (value as EngineError).code === 'string' && typeof (value as EngineError).messageKey === 'string';
 }
 
+/**
+ * The verses a quotation might be, for the guards: by their translations, and by the app's plain words
+ * for them (an explanation, not a translation, which a model may still put in quotation marks as the
+ * verse's own words: Qwen3.5 4B and 9B on 41:11).
+ */
+function verseTexts(retriever: Retriever, quote: string): { key: string; text: string; plain?: boolean }[] {
+  const out: { key: string; text: string; plain?: boolean }[] = retriever.search(quote, { kinds: ['verse'], limit: 4 }).map((r) => ({ key: r.passage.ref ?? r.passage.id.slice('verse:'.length), text: r.passage.text }));
+  for (const r of retriever.search(quote, { kinds: ['prose'], limit: 8 })) {
+    if (r.passage.id.startsWith('plain:')) out.push({ key: r.passage.id.slice('plain:'.length), text: r.passage.text, plain: true });
+  }
+  return out;
+}
+
 function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
@@ -350,6 +363,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       decodeMs: result.decodeMs,
       engineUsage: result.engineUsage ?? null,
       wallMs,
+      // When it began on the page's clock (performance.now()), so frames can be set against it.
+      startedMs: now() - wallMs,
       ...extra,
     });
   };
@@ -784,8 +799,9 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     }
   }
 
+  /** What each call of the turn reported, and the cards still waiting for the visitor. */
   function outcomesFor(rec: TurnRecord): OutcomeSummary[] {
-    return rec.done.map((d) => ({ tool: d.tool.name, kind: d.tool.kind, status: d.outcome.status }));
+    return [...rec.done.map((d): OutcomeSummary => ({ tool: d.tool.name, kind: d.tool.kind, status: d.outcome.status })), ...[...rec.pending.values()].map((p): OutcomeSummary => ({ tool: p.tool.name, kind: p.tool.kind, status: 'awaiting' }))];
   }
 
   function actionLines(rec: TurnRecord): ActionLine[] {
@@ -873,12 +889,15 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const msgs = buildAnswerMessages(question, rec.ctx, passages, rec.facts, actionLines(rec), history(rec), explanationLevel);
     const factIds = new Set(rec.facts.map((f) => f.id));
     const passageIds = new Set(passages.map((p) => p.id));
-    const given = [question, rec.ctx.summary, ...rec.done.map((d) => JSON.stringify(d.call.args)), ...actionLines(rec).map((a) => a.observed ?? '')];
+    // The camera's distance is where the visitor stands, not a quantity of anything asked about: Qwen3.5 9B
+    // gave it as the radius of an orbit (docs/AI-EVALUATION.md), so it backs no number.
+    const given = [question, withoutCameraDistance(rec.ctx.summary), ...rec.done.map((d) => JSON.stringify(d.call.args)), ...actionLines(rec).map((a) => a.observed ?? '')];
     const guard = (text: string, truncated: boolean, streaming = false): ReturnType<typeof guardOutput> =>
       guardOutput(text, {
         facts: rec.facts,
         passages,
         given,
+        question,
         outcomes: outcomesFor(rec),
         known: {
           verse: (key) => retriever.get(`verse:${key}`) !== null,
@@ -886,10 +905,13 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
           fact: (id) => factIds.has(id),
           passage: (id) => passageIds.has(id) || retriever.get(id) !== null,
         },
-        verses: (quote) =>
-          retriever
-            .search(quote, { kinds: ['verse'], limit: 4 })
-            .map((r) => ({ key: r.passage.ref ?? r.passage.id.slice('verse:'.length), text: r.passage.text })),
+        verses: (quote) => verseTexts(retriever, quote),
+        hadith: (id) => retriever.get(`hadith:${id}`)?.text ?? null,
+        verseText: (key) => {
+          const v = retriever.get(`verse:${key}`);
+          return v ? `${v.text} ${retriever.get(`plain:${key}`)?.text ?? ''}` : null;
+        },
+        sideBySide: i18n.t('ai.mind.guard.sideBySide'),
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         truncated,
         withheld,
@@ -1036,7 +1058,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         given: [input.text],
         outcomes: [],
         known: { verse: () => false, hadith: () => false, fact: () => false, passage: () => false },
-        verses: (q) => retriever.search(q, { kinds: ['verse'], limit: 4 }).map((r) => ({ key: r.passage.ref ?? '', text: r.passage.text })),
+        verses: (q) => verseTexts(retriever, q),
+        question: input.text,
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         withheld,
       });

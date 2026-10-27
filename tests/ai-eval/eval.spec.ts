@@ -27,6 +27,7 @@
  * generation's raw text and WebLLM's own usage figures, go to .work/ai-eval/results/.
  */
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { arch, cpus, loadavg, release, totalmem } from 'node:os';
 import { findModel, VISITOR_MODELS } from '../../src/ai/engine/catalogue';
@@ -34,10 +35,10 @@ import type { GenerationRecord, Intelligence, ModelSpec, ToolKind } from '../../
 import type { App, BodyId, UniverseView } from '../../src/core/types';
 import { manifestVerified, modelsDir, readManifest, type ModelManifest } from '../../scripts/ai-eval/store';
 import { env } from '../support/env';
-import { isModelHost, mockLiveHosts } from '../support/live';
+import { isModelHost, LIVE_HOSTS, mockLiveHosts } from '../support/live';
 import { selectCases, type Start } from './cases';
 import { score, type LabSnapshot, type Observation, type Scored, type TurnData } from './score';
-import { serveModel } from './serve';
+import { SERVED_HOSTS, serveModel } from './serve';
 
 const MODEL_ID = env('KF_AI_EVAL_MODEL') ?? 'Qwen3-0.6B-q4f16_1-MLC';
 const MODE: 'pipeline' | 'model' = env('KF_AI_EVAL_MODE') === 'model' ? 'model' : 'pipeline';
@@ -62,6 +63,25 @@ interface Hook {
 }
 
 const load = (): number[] => loadavg().map((x) => Math.round(x * 100) / 100);
+
+/**
+ * The machine beside the load average: the GPU processes of other browsers running now (other agents'
+ * Chromium suites, say) and their CPU share, apart from this run's own (its profile is in its command
+ * line). The load average alone did not show GPU contention (docs/AI-EVALUATION.md).
+ */
+function gpuClients(profile: string): { others: number; othersCpu: number; ownCpu: number | null } {
+  try {
+    const rows = execFileSync('ps', ['-axo', 'pcpu=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+      .split('\n')
+      .filter((l) => l.includes('--type=gpu-process'))
+      .map((l) => ({ cpu: Number(l.trim().split(/\s+/u)[0] ?? 0), own: l.includes(profile) }));
+    const others = rows.filter((r) => !r.own);
+    const own = rows.find((r) => r.own);
+    return { others: others.length, othersCpu: Math.round(others.reduce((a, r) => a + r.cpu, 0) * 10) / 10, ownCpu: own ? own.cpu : null };
+  } catch {
+    return { others: -1, othersCpu: -1, ownCpu: null };
+  }
+}
 
 /** How many of the model's files the Cache API holds (WebLLM's three caches). */
 async function cached(page: Page, manifest: ModelManifest): Promise<{ stored: number; of: number }> {
@@ -227,15 +247,18 @@ async function labSnapshot(page: Page): Promise<LabSnapshot | null> {
   });
 }
 
-/** requestAnimationFrame intervals while `during` runs (or for `ms`), ms. */
-async function frames(page: Page, during: (() => Promise<void>) | number): Promise<number[]> {
+/** requestAnimationFrame intervals while `during` runs (or for `ms`), ms, and when each frame came (performance.now()). */
+async function frames(page: Page, during: (() => Promise<void>) | number): Promise<{ intervals: number[]; at: number[] }> {
   await page.evaluate(() => {
-    const w = window as unknown as { __evalFrames?: { intervals: number[]; on: boolean } };
-    const state = { intervals: [] as number[], on: true };
+    const w = window as unknown as { __evalFrames?: { intervals: number[]; at: number[]; on: boolean } };
+    const state = { intervals: [] as number[], at: [] as number[], on: true };
     w.__evalFrames = state;
     let last = -1;
     const tick = (now: number): void => {
-      if (last >= 0) state.intervals.push(now - last);
+      if (last >= 0) {
+        state.intervals.push(now - last);
+        state.at.push(now);
+      }
       last = now;
       if (state.on) requestAnimationFrame(tick);
     };
@@ -244,11 +267,29 @@ async function frames(page: Page, during: (() => Promise<void>) | number): Promi
   if (typeof during === 'number') await page.waitForTimeout(during);
   else await during();
   return page.evaluate(() => {
-    const w = window as unknown as { __evalFrames?: { intervals: number[]; on: boolean } };
-    if (!w.__evalFrames) return [];
+    const w = window as unknown as { __evalFrames?: { intervals: number[]; at: number[]; on: boolean } };
+    if (!w.__evalFrames) return { intervals: [], at: [] };
     w.__evalFrames.on = false;
-    return w.__evalFrames.intervals;
+    return { intervals: w.__evalFrames.intervals, at: w.__evalFrames.at };
   });
+}
+
+/** Frames over 50 ms, each set against the generations of the turn: in a prefill (before its first token), in a decode, or between them. */
+function longFrames(f: { intervals: number[]; at: number[] }, gens: readonly GenerationRecord[]): { ms: number; at: number; phase: string }[] {
+  const out: { ms: number; at: number; phase: string }[] = [];
+  f.intervals.forEach((ms, i) => {
+    if (ms <= 50) return;
+    const end = f.at[i] ?? 0;
+    const start = end - ms;
+    const g = gens.find((x) => x.startedMs !== undefined && start < x.startedMs + x.wallMs && end > x.startedMs);
+    let phase = 'between';
+    if (g?.startedMs !== undefined) {
+      const first = g.startedMs + (g.engineUsage?.ttftMs ?? g.prefillMs);
+      phase = `${g.purpose} ${start < first ? 'prefill' : 'decode'}`;
+    }
+    out.push({ ms: Math.round(ms), at: Math.round(end), phase });
+  });
+  return out;
 }
 
 function stats(xs: readonly number[]): { n: number; p50: number | null; p95: number | null; max: number | null; meanFps: number | null } {
@@ -374,6 +415,24 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
   // The model hosts go to the network, which resolves them to the local server above.
   const toServer = (url: URL): boolean => isModelHost(url.hostname);
   await context.route(toServer, (route) => route.continue());
+  // Every request the browser makes, whatever answers it: a model host the local server does not serve
+  // (resolved to nothing, so it never reaches the server's own log) fails the run; any other host off this
+  // origin is counted and written down.
+  const origin = new URL(baseURL ?? 'http://127.0.0.1:4173/').host;
+  const externalHosts: Record<string, number> = {};
+  const unservedModelHosts: string[] = [];
+  context.on('request', (r) => {
+    let u: URL;
+    try {
+      u = new URL(r.url());
+    } catch {
+      return;
+    }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+    if (u.host === origin || (LIVE_HOSTS as readonly string[]).includes(u.hostname) || (SERVED_HOSTS as readonly string[]).includes(u.hostname)) return;
+    if (isModelHost(u.hostname)) unservedModelHosts.push(`${r.method()} ${u.origin}${u.pathname}`);
+    else externalHosts[u.hostname] = (externalHosts[u.hostname] ?? 0) + 1;
+  });
   const pageErrors: string[] = [];
   try {
     const page = context.pages()[0] ?? (await context.newPage());
@@ -458,6 +517,9 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
       cases: [] as unknown[],
       frames: null as unknown,
       unexpectedRequests: unexpected,
+      unservedModelHosts,
+      externalHosts,
+      gpuClientsStart: gpuClients(profile),
       pageErrors,
       finishedAt: null as string | null,
     };
@@ -468,13 +530,16 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
 
     for (const c of cases) {
       const loadBefore = load();
+      const gpuBefore = gpuClients(profile);
       let record: Record<string, unknown>;
+      let reloaded: { reason: string; ms: number } | null = null;
       try {
         await enter(page, c.start);
         const now = await page.evaluate(async () => (await (window as unknown as Hook).__kf.ai.start()).engine());
         if (now.kind !== 'local' || now.model !== MODEL_ID) {
           // The model was unloaded (an error, a lost device): load it again, and say so in the record.
-          await loadModel(page, spec, visitor);
+          const r = await loadModel(page, spec, visitor);
+          reloaded = { reason: `engine was ${now.kind}/${now.model ?? '-'} (${now.state})`, ms: r.ms };
         }
         await page.evaluate(async () => {
           (await (window as unknown as Hook).__kf.ai.start()).clear();
@@ -495,6 +560,8 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
           modelName: spec.name,
           clarifyText: mind['ai.mind.clarify.convention'] ?? '',
           declineText: mind['ai.mind.guide.decline'] ?? '',
+          sideBySideText: mind['ai.mind.guard.sideBySide'] ?? '',
+          modelId: MODEL_ID,
         };
         const scored: Scored = score(c, obs);
         const plan = read.generations.find((g) => g.purpose === 'plan');
@@ -514,13 +581,14 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
           turn: read.turn,
           // What the scorer read besides the turn and the generations, so scripts/ai-eval/rescore.ts can score again without a model.
           observed: { kinds: obs.kinds, dom: obs.dom, lab: obs.lab, walking: obs.walking, modelName: obs.modelName },
+          ...(reloaded ? { reloaded } : {}),
           timings: { totalMs: asked.ms, turn: read.turn.timings, plan: timing(plan), repair: timing(repair), answer: timing(answer) },
           generations: read.generations,
-          loadavg: { before: loadBefore, after: load() },
+          loadavg: { before: loadBefore, after: load(), gpuClients: gpuBefore },
         };
         await tidy(page, read.turn);
       } catch (err) {
-        record = { id: c.id, category: c.category, tag: c.tag, start: c.start, question: c.question, pass: false, error: err instanceof Error ? err.message.slice(0, 2000) : String(err), loadavg: { before: loadBefore, after: load() } };
+        record = { id: c.id, category: c.category, tag: c.tag, start: c.start, question: c.question, pass: false, error: err instanceof Error ? err.message.slice(0, 2000) : String(err), ...(reloaded ? { reloaded } : {}), loadavg: { before: loadBefore, after: load(), gpuClients: gpuBefore } };
         await tidy(page, null).catch(() => undefined);
       }
       const kept = redact(record, c.redact) as Record<string, unknown>;
@@ -533,22 +601,35 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     await enter(page, { at: 'explorer', body: 'earth' });
     await page.waitForTimeout(2000);
     const idleLoad = load();
+    const idleGpu = gpuClients(profile);
     const idle = await frames(page, 8000);
     await page.evaluate(async () => {
-      await (window as unknown as Hook).__kf.ai.evaluate({ router: 'skip' });
+      const hook = (window as unknown as Hook).__kf.ai;
+      await hook.evaluate({ router: 'skip' });
+      hook.generations();
     });
     const genLoad = load();
+    const genGpu = gpuClients(profile);
     let genMs = 0;
     const generating = await frames(page, async () => {
       const r = await askInPanel(page, 'Describe in a few sentences what the Earth looks like from here, and why its sky is blue.');
       genMs = r.ms;
     });
     const genRecords = await page.evaluate(() => JSON.parse(JSON.stringify((window as unknown as Hook).__kf.ai.generations())) as GenerationRecord[]);
+    const long = longFrames(generating, genRecords);
     run.frames = {
       where: 'explorer, the Earth in view, the scene at rest',
-      idle: { ...stats(idle), ms: 8000, loadavg: idleLoad },
-      generating: { ...stats(generating), ms: genMs, generations: genRecords.map((g) => ({ purpose: g.purpose, outputTokens: g.outputTokens, wallMs: g.wallMs, decodeTokensPerS: g.engineUsage?.decodeTokensPerS ?? null })), loadavg: genLoad },
-      raw: { idle, generating },
+      idle: { ...stats(idle.intervals), ms: 8000, loadavg: idleLoad, gpuClients: idleGpu, long: longFrames(idle, []) },
+      generating: {
+        ...stats(generating.intervals),
+        ms: genMs,
+        generations: genRecords.map((g) => ({ purpose: g.purpose, outputTokens: g.outputTokens, wallMs: g.wallMs, startedMs: g.startedMs ?? null, ttftMs: g.engineUsage?.ttftMs ?? null, decodeTokensPerS: g.engineUsage?.decodeTokensPerS ?? null })),
+        loadavg: genLoad,
+        gpuClients: genGpu,
+        // Every frame over 50 ms, when it came and in which generation's prefill or decode.
+        long,
+      },
+      raw: { idle: idle.intervals, generating: generating.intervals, generatingAt: generating.at },
     };
     run.finishedAt = new Date().toISOString();
     save();
@@ -559,4 +640,5 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     await server.close();
   }
   expect(unexpected, 'requests to a model host that are not pinned files').toEqual([]);
+  expect(unservedModelHosts, 'requests to a model host the local server does not serve').toEqual([]);
 });
