@@ -532,9 +532,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
 Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Earth.
 
 - **Imagery** (`src/explore/earth-tiles`). Tiles stream into toroidal clipmaps: ranks from coarse
-  to fine, each an atlas of k x k tiles addressed modulo k, with an index texture of the tiles
-  loaded (`clipmap.ts`, `atlas.ts`: GPU textures made from a one-texel stub, tiles copied in with
-  `copyExternalImageToTexture` or `texSubImage2D`). The Earth's surface shader samples them at the
+  to fine, each a layer of the clipmap's one atlas (a 2D array texture) of k x k tiles addressed
+  modulo k, with one index texture of the tiles loaded, k rows a level (`clipmap.ts`, `atlas.ts`: GPU
+  textures created at full size with nothing uploaded, tiles copied in with
+  `copyExternalImageToTexture` or `texSubImage3D`). Two texture bindings a clipmap, whatever has
+  streamed in (three.js r186 notes: the 16 a stage). The Earth's surface shader samples them at the
   exact ray-sphere point (`sample.ts`) and weighs each rank by footprint, window edge and no-data.
   Two layers: EOX Sentinel-2 cloudless 2016 (WGS84, 256 px, z0 to z13) and NASA GIBS VIIRS NOAA-20
   for the last whole UTC day (EPSG:4326 "250m", 512 px, z0 to z8, plus a fixed z2 globe). The
@@ -1013,6 +1015,13 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   `webgpu_instance_points` example (check node_modules/three/examples). Must also run on WebGL2.
 - No compute shaders in M1 unless there is a non-compute WebGL2 path; prefer analytic
   vertex-stage animation (positions as a function of time) which runs on both backends.
+- At most 16 sampled textures and 16 samplers in any one stage of a material: WebGPU's default
+  limits (which the renderer keeps to), all many phones and integrated GPUs offer, and WebGL2's 16
+  texture units on many GPUs. Past them the pipeline fails and the mesh is not drawn. Texture nodes
+  that hold the same texture when a material is built share one binding for good, so a node whose
+  texture is swapped later (a streamed map, a clipmap's atlas) needs a placeholder of its own, and a
+  material is counted at its largest: `tests/explore/gpu-limits.spec.ts` counts every pipeline's
+  bindings per stage over a tour that streams first and builds after (the Earth's surface binds 13).
 
 ### Five-planet extension
 

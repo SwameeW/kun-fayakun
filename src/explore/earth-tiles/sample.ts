@@ -14,6 +14,9 @@ import type { Clipmap } from './clipmap';
  * A rank shows only where its texels are not much smaller than a screen pixel (the atlases have no
  * mip chain: a minified rank would shimmer, so it fades out and a coarser one shows instead), and it
  * fades out toward its window's edge, so the window's border never shows as a seam.
+ *
+ * Every rank reads the clipmap's one atlas (its own layer) and one index (its own band of rows): two
+ * texture bindings a clipmap, whatever has streamed in (./clipmap says why that matters).
  */
 
 
@@ -25,9 +28,9 @@ export interface ClipmapShader {
   dispose(): void;
 }
 
-/** Placeholders the texture nodes hold before (and while) a rank has no atlas: the same formats as the real ones. */
+/** Placeholders the texture nodes hold until the clipmap has its atlas: the same kinds and formats as the real ones. */
 function placeholders(renderer: WebGPURenderer, colour: boolean): { atlas: Texture; index: DataTexture } {
-  const atlas = createAtlas(renderer, 1, 1, colour, 'earth-tiles-placeholder').texture;
+  const atlas = createAtlas(renderer, 1, 1, 1, colour, 'earth-tiles-placeholder').texture;
   const index = new DataTexture(new Float32Array([-1, -1, -1, -1]), 1, 1, RGBAFormat, FloatType);
   index.magFilter = NearestFilter;
   index.minFilter = NearestFilter;
@@ -39,15 +42,17 @@ function placeholders(renderer: WebGPURenderer, colour: boolean): { atlas: Textu
 export function clipmapShader(renderer: WebGPURenderer, clipmap: Clipmap): ClipmapShader {
   const { grid } = clipmap.source;
   const k = clipmap.options.k;
+  const count = clipmap.ranks.length;
   const empty = placeholders(renderer, clipmap.source.colour);
+  const atlas = texture(empty.atlas);
+  const index = texture(empty.index);
   // One rank's shader inputs; `sync` copies the clipmap's rank state into them each frame. window:
   // originX, originY, scale, wrap. aux: originModX, originModY, texel (radians per texel at the
-  // equator), zoom (negative: off).
+  // equator), zoom (negative: off). layer: its level's layer of the atlas and band of the index.
   const rankNodes = () => ({
-    atlas: texture(empty.atlas),
-    index: texture(empty.index),
     window: uniform(new Vector4(0, 0, 1, 0)),
     aux: uniform(new Vector4(0, 0, 1, -1)),
+    layer: uniform(0),
   });
   const ranks = clipmap.ranks.map(rankNodes);
 
@@ -83,7 +88,7 @@ export function clipmapShader(renderer: WebGPURenderer, clipmap: Clipmap): Clipm
       const tileXRaw = r.window.x.add(cellX);
       const tileX = mix(tileXRaw, tileXRaw.sub(floor(tileXRaw.div(max(wrap, 1))).mul(wrap)), clamp(wrap, 0, 1));
       const tileY = r.window.y.add(cellY);
-      const held = r.index.sample(vec2(slotX.add(0.5), slotY.add(0.5)).div(k)) as unknown as Vec4Node;
+      const held = index.sample(vec2(slotX.add(0.5), slotY.add(0.5).add(r.layer.mul(k))).div(vec2(k, k * count))) as unknown as Vec4Node;
       const match = smoothstep(0.5, 0.6, held.w)
         .mul(float(1).sub(smoothstep(0.25, 0.5, abs(held.x.sub(tileX)))))
         .mul(float(1).sub(smoothstep(0.25, 0.5, abs(held.y.sub(tileY)))))
@@ -95,7 +100,7 @@ export function clipmapShader(renderer: WebGPURenderer, clipmap: Clipmap): Clipm
       const edge = smoothstep(0.05, 0.75, min(min(dx, float(k).sub(dx)), min(dy, float(k).sub(dy))));
       const on = smoothstep(-0.5, 0, r.aux.w);
       const uv = vec2(r.aux.x.add(dx), r.aux.y.add(dy)).div(k);
-      const texelColour = (r.atlas.sample(uv) as unknown as Vec4Node).rgb;
+      const texelColour = (atlas.sample(uv).depth(r.layer) as unknown as Vec4Node).rgb;
       // Black is "no pass imaged this" in the day's mosaic (and never real ground in the cloudless one).
       const seen = smoothstep(0.0012, 0.005, dot(texelColour, vec3(0.2126, 0.7152, 0.0722)));
       const w = inside.mul(match).mul(sharp).mul(edge).mul(on).mul(seen) as unknown as FloatNode;
@@ -106,17 +111,18 @@ export function clipmapShader(renderer: WebGPURenderer, clipmap: Clipmap): Clipm
   };
 
   const sync = (): void => {
+    // The atlas and index are made together, on the clipmap's first need.
+    const made = clipmap.atlas;
+    atlas.value = made?.texture ?? empty.atlas;
+    index.value = clipmap.index ?? empty.index;
     clipmap.ranks.forEach((state, i) => {
       const r = ranks[i];
       if (!r) return;
-      if (state.on && state.atlas && state.index) {
-        r.atlas.value = state.atlas.texture;
-        r.index.value = state.index;
+      if (state.on && made) {
         r.window.value.set(state.originX, state.originY, state.scale, state.wrap);
         r.aux.value.set(state.originModX, state.originModY, state.texel, state.zoom);
+        r.layer.value = state.layer;
       } else {
-        r.atlas.value = empty.atlas;
-        r.index.value = empty.index;
         r.aux.value.w = -1;
       }
     });
