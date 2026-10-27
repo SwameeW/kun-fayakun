@@ -57,11 +57,25 @@ export function starSigma(dpr: number): number {
   return Math.max(STARLIGHT.sigmaMin, STARLIGHT.sigmaCss * dpr);
 }
 
+/**
+ * Coarse pixels flatten a star's peak: its brightest pixel holds less than the Gaussian's own peak
+ * density over its area (on average over where the star falls, 30% of the light, not 44%, at 0.6 px).
+ * The star's light is raised by that ratio (1.49 at one device pixel per CSS pixel, 1.12 at two), so
+ * its brightest pixel, and so which faint stars are seen, is the same at any density (its light per CSS
+ * pixel then differs by a third: a coarse screen's stars are its pixels).
+ */
+export function starSharpness(dpr: number): number {
+  const sigma = starSigma(dpr);
+  // The brightest pixel's share on average over where the star falls: along each axis, 0.65 of the share of a star on a pixel's middle and 0.35 of one on its edge (within 1% of the average for 0.6 to 3 px).
+  const mean = 0.65 * pixelShare(0, sigma) + 0.35 * pixelShare(0.5, sigma);
+  return 1 / (2 * Math.PI * sigma * sigma * mean * mean);
+}
+
 /** What the pixels of a star show (device pixels, for a ratio): the brightest pixel's light, and the sum over all of them per CSS pixel squared. */
 export function starPixels(light: number, dpr: number, offsetX = 0, offsetY = 0): { peak: number; perCss: number } {
   const sigma = starSigma(dpr);
-  const total = light * dpr * dpr;
   const centre = pixelShare(0, sigma) ** 2;
+  const total = light * dpr * dpr * starSharpness(dpr);
   const core = Math.min(total, STARLIGHT.coreMax / centre);
   let peak = 0;
   let sum = 0;
@@ -113,10 +127,13 @@ export function starMaterial(position: Node<'vec3'>, magnitude: Node<'float'>, c
   const sigma = max(float(STARLIGHT.sigmaMin), dpr.mul(STARLIGHT.sigmaCss));
   const fade = smoothstep(faintest, faintest.sub(1), magnitude);
   const css = brightness.mul(STARLIGHT.faintLight).mul(exp(magnitude.sub(faintest.sub(1)).mul(-0.4 * STARLIGHT.contrast * Math.LN10))).mul(fade).mul(light);
-  const total = css.mul(dpr.mul(dpr));
-  // The core's capacity: CORE_MAX at the peak of a star centred on a pixel; the rest to the halo.
+  // The core's capacity: CORE_MAX at the peak of a star centred on a pixel; the rest to the halo. Its light raised as coarse pixels flatten it (sharpness).
   const centre = shaderErf(float(0.5).div(sigma.mul(SQRT2)));
-  const core = min(total, float(STARLIGHT.coreMax).div(centre.mul(centre)));
+  const centreShare = centre.mul(centre);
+  const k = float(1).div(sigma.mul(SQRT2));
+  const mean = centre.mul(0.65).add(shaderErf(k).mul(0.5 * 0.35));
+  const total = css.mul(dpr.mul(dpr)).div(sigma.mul(sigma).mul(2 * Math.PI).mul(mean.mul(mean)));
+  const core = min(total, float(STARLIGHT.coreMax).div(centreShare));
   const excess = total.sub(core);
   const haloMax = dpr.mul(STARLIGHT.haloCssMax);
   const haloSigma = sqrt(excess.div(2 * Math.PI * STARLIGHT.haloPeak)).clamp(sigma.mul(1.5), haloMax);

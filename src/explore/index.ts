@@ -1650,7 +1650,8 @@ export default function create(): UniverseModule {
       if (!hdip.switched && hdip.t >= WALK_DIP.downS) {
         hdip.switched = true;
         hoodCut = true;
-        hoodHeld = performance.now() + 600;
+        // Back in the solar system: Esc held a moment (a burst goes no further than the way back).
+        if (!hdip.into) hoodHeld = performance.now() + 600;
         hoodShown = hdip.into;
         if (!hdip.into) hood?.exit();
         root.visible = !hoodShown;
@@ -3224,8 +3225,9 @@ export default function create(): UniverseModule {
           // Among the stars, or on the way in or out: Esc stops a flight, then goes back to the solar
           // system; on the way in it turns round, while they load it calls them off. A switch holds Esc a
           // little while (a burst or a held key goes no further).
+          if (performance.now() < hoodHeld) return true;
           if (hoodShown || hoodDip || hoodLoading) {
-            if (performance.now() < hoodHeld || (hoodDip && !hoodDip.into)) return true;
+            if (hoodDip && !hoodDip.into) return true;
             if (hoodDip && !hoodDip.switched) {
               hoodDip = { into: false, t: WALK_DIP.downS + WALK_DIP.upS * (1 - hoodDip.t / WALK_DIP.downS), switched: true };
               hood?.exit();

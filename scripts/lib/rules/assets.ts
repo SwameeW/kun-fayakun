@@ -448,11 +448,11 @@ function checkCatalogue(ctx: ValidationContext, log: RuleLog): void {
       problems.push(`${path}: every pack needs its file, count, record size and sha256`);
       continue;
     }
-    const bytes = readBytes(join(dir, pack.file));
-    if (!bytes) {
+    if (!fileExists(join(dir, pack.file))) {
       problems.push(`${path}: ${pack.file} is missing`);
       continue;
     }
+    const bytes = readBytes(join(dir, pack.file));
     if (bytes.length !== pack.count * pack.record) problems.push(`${path}: ${pack.file} is ${bytes.length} bytes, not ${pack.count} records of ${pack.record}`);
     if (sha256Hex(bytes) !== pack.sha256) problems.push(`${path}: ${pack.file}'s sha256 is not the manifest's`);
     stars += pack.count;
@@ -482,7 +482,7 @@ function checkCatalogue(ctx: ValidationContext, log: RuleLog): void {
   }
   const band: unknown = isRecord(file) ? file.band : null;
   if (isRecord(band) && typeof band.file === 'string' && isFiniteNumber(band.width) && isFiniteNumber(band.height)) {
-    const bytes = readBytes(join(dir, band.file));
+    const bytes = fileExists(join(dir, band.file)) ? readBytes(join(dir, band.file)) : null;
     if (!bytes || bytes.length !== band.width * band.height * 2) problems.push(`${path}: ${band.file} must be ${band.width} by ${band.height}, density then colour`);
     else if (sha256Hex(bytes) !== band.sha256) problems.push(`${path}: ${band.file}'s sha256 is not the manifest's`);
   } else problems.push(`${path}: the band needs its file and size`);

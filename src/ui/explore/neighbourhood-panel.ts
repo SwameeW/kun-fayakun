@@ -385,7 +385,7 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
       }
       const bh = n.blackHole;
       holeHere.hidden = bh === null;
-      if (bh) write(holeHere, i18n.t('ui.universe.stars.hole.here', { n: f.number(bh.cameraRs, bh.cameraRs < 10 ? 2 : 1), d: bh.rsKm * bh.cameraRs < 1e7 ? i18n.t('ui.universe.stars.hole.rsKm', { km: lyWordsPlain(Math.round(bh.rsKm * bh.cameraRs)) }) : i18n.t('ui.universe.stars.hole.rsAu', { au: f.number(bh.rsAu * bh.cameraRs, 2), km: f.number((bh.rsKm * bh.cameraRs) / 1e6, 1) }) }));
+      if (bh) write(holeHere, i18n.t('ui.universe.stars.hole.here', { deg: f.number(2 * bh.shadowDeg, bh.shadowDeg < 0.5 ? 3 : 1), n: f.number(bh.cameraRs, bh.cameraRs < 10 ? 2 : 1), d: bh.rsKm * bh.cameraRs < 1e7 ? i18n.t('ui.universe.stars.hole.rsKm', { km: lyWordsPlain(Math.round(bh.rsKm * bh.cameraRs)) }) : i18n.t('ui.universe.stars.hole.rsAu', { au: f.number(bh.rsAu * bh.cameraRs, 2), km: f.number((bh.rsKm * bh.cameraRs) / 1e6, 1) }) }));
       write(where, n.fromSunPc < 1000 ? i18n.t('ui.universe.stars.where', { ly: f.number(n.fromSunLy, n.fromSunLy < 10 ? 2 : 1), pc: pc(n.fromSunPc) }) : i18n.t('ui.universe.stars.whereFar', { ly: lyWords(n.fromSunLy), pc: pcWords(n.fromSunPc) }));
       write(scaleNote, n.scale === 'stars' ? '' : n.scale === 'universe' && n.webGalaxies === 0 ? i18n.t('ui.universe.stars.beyond.scale.loading') : i18n.t(`ui.universe.stars.beyond.scale.${n.scale}`, { count: f.number(n.webGalaxies, 0) }));
       const pk = n.places.map((x) => x.id).join('|');
@@ -455,7 +455,6 @@ export function createNeighbourhoodPanel(app: App, f: Formatters): Neighbourhood
         ];
         if (bh.redshift !== null && bh.lookbackGyr !== null) rows.push(...row('z', i18n.t('ui.universe.stars.hole.redshift', { z: f.number(bh.redshift, 3), gyr: f.number(bh.lookbackGyr, 2) }), 'bh-redshift'));
         rows.push(...row(i18n.t('ui.universe.stars.hole.rs'), bh.rsKm < 1e7 ? i18n.t('ui.universe.stars.hole.rsKm', { km: f.number(bh.rsKm, 1) }) : i18n.t('ui.universe.stars.hole.rsAu', { au: f.number(bh.rsAu, bh.rsAu < 1 ? 3 : 0), km: f.number(bh.rsKm / 1e6, 1) }), 'bh-rs'));
-        rows.push(...row(i18n.t('ui.universe.stars.hole.shadow'), i18n.t('ui.universe.stars.hole.shadowValue', { deg: f.number(2 * bh.shadowDeg, 1) }), 'bh-shadow'));
         rows.push(...row(i18n.t('ui.universe.stars.hole.fromEarth'), i18n.t('ui.universe.stars.hole.fromEarthValue', { uas: f.number(bh.shadowFromEarthMicroArcsec, bh.shadowFromEarthMicroArcsec < 10 ? 3 : 1) }), 'bh-from-earth'));
         facts.replaceChildren(...rows);
         write(holeModel, i18n.t(`ui.universe.stars.hole.model.${bh.model}`));

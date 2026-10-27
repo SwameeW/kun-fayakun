@@ -1,5 +1,5 @@
 import { BackSide, CubeCamera, CubeRenderTarget, DataTexture, FloatType, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicNodeMaterial, NoBlending, RGBAFormat, SphereGeometry, Vector3, type Node, type Scene, type WebGPURenderer } from 'three/webgpu';
-import { abs, atan, Break, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, cross, cubeTexture, Discard, dot, exp, float, Fn, fwidth, If, int, length, log2, Loop, max, mix, normalize, positionWorld, pow, select, sin, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4, viewportSharedTexture } from 'three/tsl';
+import { abs, atan, Break, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, cross, cubeTexture, Discard, dot, exp, float, Fn, fwidth, If, int, length, log2, Loop, max, mix, normalize, positionWorld, pow, select, sin, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4, viewportSharedTexture, viewportSize } from 'three/tsl';
 import { blackbodyRgb } from '../../chapters/shared/blackbody';
 import { CRITICAL_B, TRACE } from './lens';
 
@@ -64,7 +64,7 @@ export function createLensView(): LensView {
   const cubeCamera = new CubeCamera(1e-9, 1e13, target);
   const colours = colourTable();
   /** A thin disc's display temperature at its hottest (K), and its outer edge (r_s): illustrative. */
-  const DISC_KELVIN = 6500;
+  const DISC_KELVIN = 6000;
   const DISC_OUTER = 14;
 
   const material = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: false, depthTest: false, transparent: true, blending: NoBlending, fog: false });
@@ -130,8 +130,8 @@ export function createLensView(): LensView {
               const kelvin = g.mul(t).mul(DISC_KELVIN);
               const tint = texture(colours, vec2(log2(kelvin.div(1000).clamp(1, 40)).div(Math.log2(40)), 0.5)).rgb;
               const edge = smoothstep(DISC_OUTER, DISC_OUTER * 0.65, r);
-              // Its whole light as g^4 T^4 (the hottest seen face on about 0.4), its colour the shifted temperature's.
-              gas.addAssign(tint.mul(pow(g.mul(t), 4)).mul(0.4).mul(edge));
+              // Its whole light as g^4 T^4 (the hottest seen face on about 0.55), its colour the shifted temperature's.
+              gas.addAssign(tint.mul(pow(g.mul(t), 4)).mul(0.55).mul(edge));
               opaque.assign(edge);
             });
           }).Else(() => {
@@ -160,7 +160,8 @@ export function createLensView(): LensView {
     // The picture where its direction is on the screen, handing over to the capture as the lens squeezes it (between 1.5 and 3.5 pixels a pixel).
     const onScreen = clip.w.greaterThan(0).and(max(abs(ndc.x), abs(ndc.y)).lessThan(0.985));
     const share = onScreen.select(smoothstep(3.5, 1.5, spread.div(uPixel)), float(0));
-    const picture = viewportSharedTexture(vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5)))).level(float(0)).rgb;
+    // (At the middle of its pixel: a star bent by a pixel or so moves whole, not smeared over four.)
+    const picture = viewportSharedTexture(vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5))).mul(viewportSize).floor().add(0.5).div(viewportSize)).level(float(0)).rgb;
     const level = log2(spread.div(uTexel)).clamp(0, 9);
     const sky = cubeTexture(target.texture, out, level).rgb.mul(uHasCapture);
     const behind = select(end.lessThan(0), vec3(0), mix(sky, picture, share));

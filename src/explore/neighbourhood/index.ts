@@ -647,7 +647,12 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
         rigZoom(rig, dLn, unitOf(sub(target, camera)), Math.max(0, length(sub(target, camera)) - reachOf(under)));
         return;
       }
-      rigZoom(rig, dLn, pointer ? rayAt(pointer.x, pointer.y, pointer.w, pointer.h) : null, Math.max(nearestPc * 2, 1e-15));
+      // Its step a share of the nearest star's distance, found afresh (a quick turn of the wheel outruns the frames); out, at least its distance from the star in view, so it draws back from it as an orbit would.
+      camera = cameraOf(rig);
+      nearestPc = findNearest();
+      nearestAge = 0;
+      const step = dLn > 0 ? Math.max(nearestPc * 2, length(relTo(posOf(focus)))) : nearestPc * 2;
+      rigZoom(rig, dLn, pointer ? rayAt(pointer.x, pointer.y, pointer.w, pointer.h) : null, Math.max(step, 1e-15));
     },
     keys(move, roll, boost) {
       rig.keys.move = [Math.sign(move.x), Math.sign(move.y), Math.sign(move.z)];

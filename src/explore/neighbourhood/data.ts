@@ -141,8 +141,19 @@ export function readNeighbours(file: NeighbourhoodFile, obliquity: number, sunFi
       return [...starts.sort(order), ...within.sort(order)].slice(0, limit);
     },
     nearest(point, count) {
-      const d = (s: Star): number => (s.position ? Math.hypot(s.position[0] - point[0], s.position[1] - point[1], s.position[2] - point[2]) : Infinity);
-      return [sun, ...stars].filter((s) => s.position).sort((a, b) => d(a) - d(b)).slice(0, count);
+      // One pass, keeping the nearest `count` in order (squared distances; ties keep the file's order).
+      const best: Array<{ s: Star; d2: number }> = [];
+      for (const s of [sun, ...stars]) {
+        const p = s.position;
+        if (!p) continue;
+        const d2 = (p[0] - point[0]) ** 2 + (p[1] - point[1]) ** 2 + (p[2] - point[2]) ** 2;
+        if (best.length >= count && d2 >= (best[best.length - 1]?.d2 ?? Infinity)) continue;
+        let k = best.length;
+        while (k > 0 && (best[k - 1]?.d2 ?? 0) > d2) k -= 1;
+        best.splice(k, 0, { s, d2 });
+        if (best.length > count) best.pop();
+      }
+      return best.map((b) => b.s);
     },
   };
 }

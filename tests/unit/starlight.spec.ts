@@ -4,7 +4,7 @@
  * any pixel density, the faintest stars kept above the tone curve's black, and the visitor's settings.
  */
 import { expect, test } from '@playwright/test';
-import { erf, pixelShare, setStarlight, starLight, starlightUniforms, starPixels, STARLIGHT_DEFAULTS, STARLIGHT_RANGE } from '../../src/explore/starlight';
+import { erf, pixelShare, setStarlight, starLight, starlightUniforms, starPixels, starSharpness, STARLIGHT_DEFAULTS, STARLIGHT_RANGE } from '../../src/explore/starlight';
 
 /** erf by its series (exact to 1e-15 here). */
 function erfExact(x: number): number {
@@ -62,20 +62,29 @@ test('the same light wherever a star falls inside a pixel, at any pixel density 
     for (let k = 0; k < 100; k += 1) sums.push(starPixels(light, dpr, next() - 0.5, next() - 0.5).perCss);
     const mean = sums.reduce((a, b) => a + b, 0) / sums.length;
     for (const s of sums) expect(Math.abs(s - mean) / mean).toBeLessThan(0.05);
-    expect(Math.abs(mean - light) / light).toBeLessThan(0.01);
+    // All of it, raised only by the documented sharpness (coarse pixels flatten a peak: at most a half more).
+    expect(Math.abs(mean - light * starSharpness(dpr)) / light).toBeLessThan(0.01);
+    expect(starSharpness(dpr)).toBeGreaterThanOrEqual(1);
+    expect(starSharpness(dpr)).toBeLessThanOrEqual(1.5);
   }
 });
 
-test('the light on the same area of screen is the same at one and two device pixels per CSS pixel', () => {
-  for (const v of [2, 4, 6.5, 8]) {
+test('the same faint stars seen at one and two device pixels per CSS pixel: the brightest pixel the same on average, the light on the same area of screen within a third', () => {
+  const next = random(11);
+  for (const v of [5, 6.5, 8]) {
     const light = starLight(v);
     const ratio = starPixels(light, 1).perCss / starPixels(light, 2).perCss;
     expect(ratio).toBeGreaterThan(0.8);
-    expect(ratio).toBeLessThan(1.25);
-    // And the brightest pixels close: the same stars are seen.
-    const peaks = starPixels(light, 1).peak / starPixels(light, 2).peak;
-    expect(peaks).toBeGreaterThan(0.75);
-    expect(peaks).toBeLessThan(1.33);
+    expect(ratio).toBeLessThan(1.4);
+    // The brightest pixel, on average over where the star falls, within a tenth: the same faint stars cross the tone curve's black.
+    let one = 0;
+    let two = 0;
+    for (let k = 0; k < 200; k += 1) {
+      one += starPixels(light, 1, next() - 0.5, next() - 0.5).peak;
+      two += starPixels(light, 2, next() - 0.5, next() - 0.5).peak;
+    }
+    expect(one / two).toBeGreaterThan(0.9);
+    expect(one / two).toBeLessThan(1.1);
   }
 });
 
