@@ -7,11 +7,15 @@
  */
 import { deleteModelAllInfoInCache, hasModelInCache, MLCEngine, type AppConfig, type ChatCompletionChunk } from '@mlc-ai/web-llm';
 import { toEngineError } from './errors';
+import { applyPrefill, chunkOf, pipelineOf } from './prefill';
+import type { PrefillReport } from '../types';
 import type { FromModelWorker, ModelPiece, ToModelWorker } from './protocol';
 
 const scope = self as unknown as { onmessage: ((event: MessageEvent<ToModelWorker>) => void) | null; postMessage(message: FromModelWorker): void };
 
 let engine: MLCEngine | null = null;
+/** The model loaded last (its pipeline's prompt chunk is read into each reply's usage). */
+let loaded: string | null = null;
 /** The reply being streamed: its id and where its pieces come from. */
 let stream: { id: number; pieces: AsyncIterator<ChatCompletionChunk> } | null = null;
 
@@ -28,6 +32,15 @@ const fail = (id: number, err: unknown): void => {
 /** Our AppConfig is structurally WebLLM's (src/ai/engine/catalogue.ts). */
 const appConfigOf = (config: unknown): AppConfig => config as AppConfig;
 
+/** The loaded pipeline's prompt chunk now (./prefill.ts), null where WebLLM holds none; never throws. */
+function prefillChunk(): number | null {
+  try {
+    return loaded === null ? null : chunkOf(pipelineOf(engine, loaded));
+  } catch {
+    return null;
+  }
+}
+
 function pieceOf(chunk: ChatCompletionChunk): ModelPiece {
   const choice = chunk.choices[0];
   const usage = chunk.usage;
@@ -43,6 +56,7 @@ function pieceOf(chunk: ChatCompletionChunk): ModelPiece {
           prefillTokensPerS: usage.extra.prefill_tokens_per_s,
           decodeTokensPerS: usage.extra.decode_tokens_per_s,
           grammarInitMs: usage.extra.grammar_init_s !== undefined ? usage.extra.grammar_init_s * 1000 : null,
+          prefillChunk: prefillChunk(),
         }
       : null,
   };
@@ -58,8 +72,18 @@ async function handle(message: ToModelWorker): Promise<void> {
         engine.setInitProgressCallback((report) => {
           post({ type: 'progress', id, progress: report.progress, text: report.text });
         });
+        loaded = null;
         await engine.reload(message.model);
-        post({ type: 'loaded', id });
+        loaded = message.model;
+        // Each load makes a new pipeline: the prompt's chunk is set on it every time. applyPrefill never
+        // throws; were it to, the model is still loaded, as compiled, and the report says so.
+        let prefill: PrefillReport;
+        try {
+          prefill = applyPrefill(engine, message.model, message.prefill);
+        } catch {
+          prefill = { outcome: 'failed', compiled: null, chunkTokens: prefillChunk(), yieldBetween: false };
+        }
+        post({ type: 'loaded', id, prefill });
       } catch (err) {
         fail(id, err);
       }
@@ -111,6 +135,7 @@ async function handle(message: ToModelWorker): Promise<void> {
         // Also ends a load in flight (WebLLM aborts its reload).
         await engine?.unload();
         engine = null;
+        loaded = null;
         post({ type: 'result', id, value: true });
       } catch (err) {
         fail(id, err);

@@ -13,16 +13,19 @@
  *   next one only when the page asks, and the page asks through the pacer, so decoding yields to
  *   the scene.
  * - Crash markers before device creation, weight upload and the first prefill (detect.ts).
+ * - How the prompt is read (prefill.ts): the worker sets the loaded pipeline's prompt chunk after
+ *   every load and reports what happened, which each generation's engine usage carries.
  * - The render budget (pacing.ts) is held from the weights' upload to the end of the load (the
  *   upload syncs the device for every tensor, then the shaders compile), and for each generation, so
  *   the scene's governors never read the model's work as the scene's.
  */
 import type { ChatCompletionMessageParam, ChatCompletionRequestStreaming, InitProgressReport } from '@mlc-ai/web-llm';
-import type { EngineError, GenerateRequest, GenerateResult, JsonSchema, LanguageEngine, LoadProgress, ModelSpec } from '../types';
+import type { EngineError, GenerateRequest, GenerateResult, JsonSchema, LanguageEngine, LoadProgress, ModelSpec, PrefillReport } from '../types';
 import { buildAppConfig } from './catalogue';
 import { clearStage, markStage } from './detect';
 import { engineError, throwIfAborted, toEngineError, type EngineFailure } from './errors';
 import type { Pacer } from './pacing';
+import { prefillFor, type PrefillSetting } from './prefill';
 import type { FromModelWorker, ModelPiece, ToModelWorker } from './protocol';
 
 /** A loaded WebLLM model: a LanguageEngine that also says why its last generation failed. */
@@ -30,6 +33,8 @@ export interface WebLlmEngine extends LanguageEngine {
   readonly kind: 'local';
   /** The failure behind the last finish 'error' (device lost, say), or null. */
   readonly lastError: EngineError | null;
+  /** How the model reads its prompt, as its worker set it after the load (prefill.ts). */
+  readonly prefill: PrefillReport;
 }
 
 /**
@@ -282,9 +287,10 @@ export async function deleteModelInWorker(model: ModelSpec): Promise<void> {
 /**
  * Downloads (if needed), compiles and readies `model` in its worker. Rejects with an EngineError:
  * aborted, network, quota, integrity, device-lost, out-of-memory, unsupported, no-webgpu or unknown.
- * `start` makes the worker (a test gives its own).
+ * `start` makes the worker (a test gives its own); `prefill` is how it reads its prompt (the model's
+ * own setting unless the evaluation gives another).
  */
-export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress) => void, signal: AbortSignal, pacer: Pacer, start: () => ModelWorker = startModelWorker): Promise<WebLlmEngine> {
+export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress) => void, signal: AbortSignal, pacer: Pacer, start: () => ModelWorker = startModelWorker, prefill: PrefillSetting = prefillFor(model)): Promise<WebLlmEngine> {
   throwIfAborted(signal);
   // A hidden tab starts nothing (§6).
   await pacer.visible();
@@ -319,8 +325,9 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
   markStage('device', model.id);
   /** The render budget, from the weights' upload (or the shaders' compilation) to the load's end. */
   let release: (() => void) | null = null;
+  let prefillReport: PrefillReport = { outcome: 'failed', compiled: null, chunkTokens: null, yieldBetween: false };
   try {
-    const loading = worker.call({ type: 'load', appConfig: buildAppConfig([model]), model: model.id }, (report) => {
+    const loading = worker.call({ type: 'load', appConfig: buildAppConfig([model]), model: model.id, prefill }, (report) => {
       if (stage === 'device' && PARAMS_TEXT.test(report.text)) {
         clearStage();
         stage = 'download';
@@ -332,9 +339,10 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
       if (release === null && COMPILE_TEXT.test(report.text)) release = pacer.hold();
       progress(toLoadProgress(report, model.downloadBytes));
     });
-    await guarded(loading, signal);
+    const answer = await guarded(loading, signal);
     // WebLLM ends an aborted reload quietly; the signal says what happened.
     throwIfAborted(signal);
+    if (answer.type === 'loaded') prefillReport = answer.prefill;
   } catch (err) {
     clearStage();
     await stop();
@@ -425,7 +433,16 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
       prefillMs: ttft,
       decodeMs: Math.max(0, total - ttft),
       ...(usage
-        ? { engineUsage: { prefillTokensPerS: usage.prefillTokensPerS, decodeTokensPerS: usage.decodeTokensPerS, ttftMs: usage.ttftMs, e2eMs: usage.e2eMs, grammarInitMs: usage.grammarInitMs } }
+        ? {
+            engineUsage: {
+              prefillTokensPerS: usage.prefillTokensPerS,
+              decodeTokensPerS: usage.decodeTokensPerS,
+              ttftMs: usage.ttftMs,
+              e2eMs: usage.e2eMs,
+              grammarInitMs: usage.grammarInitMs,
+              prefill: { ...prefillReport, chunkAtGeneration: usage.prefillChunk },
+            },
+          }
         : {}),
     };
   };
@@ -436,6 +453,7 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     get lastError() {
       return lastError;
     },
+    prefill: prefillReport,
     generate,
     interrupt() {
       interrupted = true;

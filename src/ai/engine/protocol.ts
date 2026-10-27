@@ -11,13 +11,17 @@
  * text it was read from (./errors.ts), never an Error object.
  */
 import type { ChatCompletionRequestStreaming } from '@mlc-ai/web-llm';
-import type { EngineError } from '../types';
+import type { EngineError, PrefillReport } from '../types';
 import type { WebLlmAppConfig } from './catalogue';
+import type { PrefillSetting } from './prefill';
 
 /** What the page asks of the worker. */
 export type ToModelWorker =
-  /** Downloads (if needed), compiles and readies a model; progress follows under the same id. */
-  | { type: 'load'; id: number; appConfig: WebLlmAppConfig; model: string }
+  /**
+   * Downloads (if needed), compiles and readies a model, then sets how it reads its prompt
+   * (./prefill.ts); progress follows under the same id.
+   */
+  | { type: 'load'; id: number; appConfig: WebLlmAppConfig; model: string; prefill: PrefillSetting }
   /** Starts a streamed completion; the worker answers `started`, then a piece per `pull`. */
   | { type: 'generate'; id: number; request: ChatCompletionRequestStreaming }
   /** The next piece of the generation started by request `stream` (decoded only now). */
@@ -44,13 +48,24 @@ export interface ModelPiece {
    * Token counts and timings, on the last piece (stream_options.include_usage), with WebLLM's own
    * prefill and decode rates and the time its grammar matcher took to start (a plan's schema).
    */
-  usage: { promptTokens: number; outputTokens: number; ttftMs: number; e2eMs: number; prefillTokensPerS: number; decodeTokensPerS: number; grammarInitMs: number | null } | null;
+  usage: {
+    promptTokens: number;
+    outputTokens: number;
+    ttftMs: number;
+    e2eMs: number;
+    prefillTokensPerS: number;
+    decodeTokensPerS: number;
+    grammarInitMs: number | null;
+    /** The chunk WebLLM's pipeline reads prompts in as the reply ends (tokens), null where it holds none. */
+    prefillChunk: number | null;
+  } | null;
 }
 
 /** What the worker sends back. */
 export type FromModelWorker =
   | { type: 'progress'; id: number; progress: number; text: string }
-  | { type: 'loaded'; id: number }
+  /** The model is ready; how it reads its prompt now (./prefill.ts). */
+  | { type: 'loaded'; id: number; prefill: PrefillReport }
   | { type: 'started'; id: number }
   /** The answer to a pull: the next piece, or done when the stream has ended (or is not the one in progress). */
   | { type: 'piece'; id: number; piece: ModelPiece | null; done: boolean }

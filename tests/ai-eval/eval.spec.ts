@@ -11,6 +11,12 @@
  *   router bypassed through the test hook, so the model plans every case).
  * - KF_AI_EVAL_CASES: only these case ids or categories (comma-separated); KF_AI_EVAL_TAG names the
  *   results file of such a partial run (<model>-<mode>-<tag>.json).
+ * - KF_AI_EVAL_PREFILL_CHUNK: how the model reads its prompt (src/ai/engine/prefill.ts), in place of
+ *   its own setting: a chunk in tokens, or "compiled" for the size its library was built with; with
+ *   KF_AI_EVAL_PREFILL_YIELD=1 each chunk after the first waits for the model's GPU queue. Left out:
+ *   the model's own. Every generation must report that setting in effect, or the run fails.
+ * - KF_AI_EVAL_FRAME_TURNS: the explorer's frames are measured over this many turns (default 1, at
+ *   most 3), each a different question.
  *
  * Nothing is downloaded. Chromium resolves huggingface.co and cdn.jsdelivr.net to a local HTTPS server
  * that streams the pinned files from disk (./serve.ts; route.fulfill cannot carry a file over about
@@ -31,7 +37,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { arch, cpus, loadavg, release, totalmem } from 'node:os';
 import { findModel, VISITOR_MODELS } from '../../src/ai/engine/catalogue';
-import type { GenerationRecord, Intelligence, ModelSpec, ToolKind } from '../../src/ai/types';
+import { prefillFor, type PrefillSetting } from '../../src/ai/engine/prefill';
+import type { GenerationRecord, Intelligence, ModelSpec, PrefillUsage, ToolKind } from '../../src/ai/types';
 import type { App, BodyId, UniverseView } from '../../src/core/types';
 import { manifestVerified, modelsDir, readManifest, type ModelManifest } from '../../scripts/ai-eval/store';
 import { env } from '../support/env';
@@ -46,6 +53,16 @@ const TAG = env('KF_AI_EVAL_TAG');
 const CASE_MS = Number(env('KF_AI_EVAL_CASE_MS') ?? 300_000);
 const ROOT = new URL('../../', import.meta.url).pathname;
 const OUT_DIR = env('KF_AI_EVAL_OUT') ?? `${ROOT}.work/ai-eval/results`;
+const PREFILL_CHUNK = env('KF_AI_EVAL_PREFILL_CHUNK');
+/** The prompt's chunk asked for in place of the model's own (null: its own). */
+const PREFILL: PrefillSetting | null = PREFILL_CHUNK === undefined ? null : { chunkTokens: PREFILL_CHUNK === 'compiled' ? null : Number(PREFILL_CHUNK), yieldBetween: env('KF_AI_EVAL_PREFILL_YIELD') === '1' };
+/** The questions the explorer's frames are measured over, one turn each (the first is the only one before KF_AI_EVAL_FRAME_TURNS). */
+const FRAME_QUESTIONS = [
+  'Describe in a few sentences what the Earth looks like from here, and why its sky is blue.',
+  'Why is the sky black on the Moon but blue on the Earth? Answer in a few sentences.',
+  'What gives the Earth its seasons? Answer in a few sentences.',
+] as const;
+const FRAME_TURNS = Math.max(1, Math.min(FRAME_QUESTIONS.length, Math.floor(Number(env('KF_AI_EVAL_FRAME_TURNS') ?? 1)) || 1));
 
 const mind = JSON.parse(readFileSync(new URL('../../src/i18n/en.ai.mind.json', import.meta.url), 'utf8')) as Record<string, string>;
 
@@ -56,7 +73,7 @@ interface Hook {
     universe: { state(): UniverseView | null };
     ai: {
       start(): Promise<Intelligence & { kindOf(tool: string): ToolKind | null; clear(): void }>;
-      evaluate(options: { router: 'first' | 'skip' } | null): Promise<void>;
+      evaluate(options: { router: 'first' | 'skip'; prefill?: PrefillSetting } | null): Promise<void>;
       generations(): readonly GenerationRecord[];
     };
   };
@@ -395,6 +412,12 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
   const visitor = VISITOR_MODELS.some((m) => m.id === MODEL_ID);
   const cases = selectCases(env('KF_AI_EVAL_CASES'));
   expect(cases.length).toBeGreaterThan(0);
+  if (PREFILL?.chunkTokens != null) expect(Number.isInteger(PREFILL.chunkTokens) && PREFILL.chunkTokens > 0, `KF_AI_EVAL_PREFILL_CHUNK=${PREFILL_CHUNK ?? ''}: a whole number of tokens, or "compiled"`).toBe(true);
+  /** The setting the model's loads use: the one under test, else the model's own. */
+  const prefillSetting: PrefillSetting = PREFILL ?? prefillFor(spec);
+  const evaluation = (router: 'first' | 'skip'): { router: 'first' | 'skip'; prefill?: PrefillSetting } => ({ router, ...(PREFILL ? { prefill: PREFILL } : {}) });
+  /** How the model read its prompt: asked (the setting under test, null for the model's own), the setting in effect, and what each generation reported. */
+  const runPrefill = { asked: PREFILL, setting: prefillSetting, seen: [] as ({ case?: string; frames?: number; purpose: string } & PrefillUsage)[] };
 
   const port = new URL(baseURL ?? 'http://127.0.0.1:4173/').port;
   const profile = `${modelsDir().replace(/\/models$/u, '')}/ai-eval/profile-${port}`;
@@ -485,6 +508,12 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     const servedBefore = { requests: served.requests, bytes: served.bytes };
     await page.reload();
     await ready(page);
+    // How the model reads its prompt is set when it loads: the setting under test goes in first (the
+    // assistant's own chunk, started here, gives the hook its evaluate()).
+    await page.evaluate(async (o) => {
+      await (window as unknown as Hook).__kf.ai.start();
+      await (window as unknown as Hook).__kf.ai.evaluate(o);
+    }, evaluation(MODE === 'model' ? 'skip' : 'first'));
     const l1 = load();
     let cachedLoad: { ms: number; via: 'panel' | 'use' };
     try {
@@ -499,9 +528,9 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     await expect(page.locator('html')).toHaveAttribute('data-ai-engine', 'local');
     const load2 = { ...cachedLoad, loadavg: l1, routeRequests: served.requests - servedBefore.requests, routeBytes: served.bytes - servedBefore.bytes };
 
-    await page.evaluate(async (router) => {
-      await (window as unknown as Hook).__kf.ai.evaluate({ router });
-    }, MODE === 'model' ? ('skip' as const) : ('first' as const));
+    await page.evaluate(async (o) => {
+      await (window as unknown as Hook).__kf.ai.evaluate(o);
+    }, evaluation(MODE === 'model' ? 'skip' : 'first'));
 
     const run = {
       model: MODEL_ID,
@@ -512,6 +541,8 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
       machine: { cpu: cpus()[0]?.model ?? null, memoryBytes: totalmem(), os: `darwin ${release()}`, arch: arch(), adapter },
       catalogue: { weightsUrl: spec.weightsUrl, libUrl: spec.libUrl, downloadBytes: spec.downloadBytes, vramMBEstimate: spec.vramMB, contextTokens: spec.contextTokens },
       load: { routed: routedLoad, cached: load2 },
+      // How the model read its prompt: asked (the setting under test, or null for the model's own) and in effect (null: the model's own).
+      prefill: runPrefill,
       gpuMemory: { reported: null, note: 'WebLLM 0.2.86 reports no GPU memory figure at run time; vramMBEstimate is its prebuilt estimate' },
       loadavgStart: load(),
       cases: [] as unknown[],
@@ -591,45 +622,65 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
         record = { id: c.id, category: c.category, tag: c.tag, start: c.start, question: c.question, pass: false, error: err instanceof Error ? err.message.slice(0, 2000) : String(err), ...(reloaded ? { reloaded } : {}), loadavg: { before: loadBefore, after: load(), gpuClients: gpuBefore } };
         await tidy(page, null).catch(() => undefined);
       }
+      const gens = Array.isArray(record.generations) ? (record.generations as GenerationRecord[]) : [];
+      run.prefill.seen.push(...gens.flatMap((g) => (g.engineUsage?.prefill ? [{ case: c.id, purpose: g.purpose, ...g.engineUsage.prefill }] : [])));
       const kept = redact(record, c.redact) as Record<string, unknown>;
       run.cases.push(kept);
       save();
       process.stdout.write(`${c.id}: ${kept.pass === true ? 'pass' : 'fail'}${typeof kept.error === 'string' ? ` (error: ${kept.error.split('\n')[0] ?? ''})` : ''}\n`);
     }
 
-    // Frame times in the explorer: idle with the model loaded, then while it plans and writes an answer.
+    // Frame times in the explorer: idle with the model loaded, then while it plans and writes an answer
+    // (one turn, or KF_AI_EVAL_FRAME_TURNS turns, each a different question from the Earth at rest).
     await enter(page, { at: 'explorer', body: 'earth' });
     await page.waitForTimeout(2000);
     const idleLoad = load();
     const idleGpu = gpuClients(profile);
     const idle = await frames(page, 8000);
-    await page.evaluate(async () => {
+    await page.evaluate(async (o) => {
       const hook = (window as unknown as Hook).__kf.ai;
-      await hook.evaluate({ router: 'skip' });
+      await hook.evaluate(o);
       hook.generations();
-    });
-    const genLoad = load();
-    const genGpu = gpuClients(profile);
-    let genMs = 0;
-    const generating = await frames(page, async () => {
-      const r = await askInPanel(page, 'Describe in a few sentences what the Earth looks like from here, and why its sky is blue.');
-      genMs = r.ms;
-    });
-    const genRecords = await page.evaluate(() => JSON.parse(JSON.stringify((window as unknown as Hook).__kf.ai.generations())) as GenerationRecord[]);
-    const long = longFrames(generating, genRecords);
-    run.frames = {
-      where: 'explorer, the Earth in view, the scene at rest',
-      idle: { ...stats(idle.intervals), ms: 8000, loadavg: idleLoad, gpuClients: idleGpu, long: longFrames(idle, []) },
-      generating: {
+    }, evaluation('skip'));
+    const turns: Record<string, unknown>[] = [];
+    const rawTurns: { intervals: number[]; at: number[] }[] = [];
+    for (let i = 0; i < FRAME_TURNS; i += 1) {
+      if (i > 0) {
+        await tidy(page, null);
+        await enter(page, { at: 'explorer', body: 'earth' });
+        await page.waitForTimeout(2000);
+        await page.evaluate(() => {
+          (window as unknown as Hook).__kf.ai.generations();
+        });
+      }
+      const genLoad = load();
+      const genGpu = gpuClients(profile);
+      let genMs = 0;
+      const generating = await frames(page, async () => {
+        const r = await askInPanel(page, FRAME_QUESTIONS[i] ?? FRAME_QUESTIONS[0]);
+        genMs = r.ms;
+      });
+      const genRecords = await page.evaluate(() => JSON.parse(JSON.stringify((window as unknown as Hook).__kf.ai.generations())) as GenerationRecord[]);
+      run.prefill.seen.push(...genRecords.flatMap((g) => (g.engineUsage?.prefill ? [{ frames: i, purpose: g.purpose, ...g.engineUsage.prefill }] : [])));
+      turns.push({
+        question: i,
         ...stats(generating.intervals),
         ms: genMs,
-        generations: genRecords.map((g) => ({ purpose: g.purpose, outputTokens: g.outputTokens, wallMs: g.wallMs, startedMs: g.startedMs ?? null, ttftMs: g.engineUsage?.ttftMs ?? null, decodeTokensPerS: g.engineUsage?.decodeTokensPerS ?? null })),
+        generations: genRecords.map((g) => ({ purpose: g.purpose, promptTokens: g.promptTokens, outputTokens: g.outputTokens, wallMs: g.wallMs, startedMs: g.startedMs ?? null, ttftMs: g.engineUsage?.ttftMs ?? null, prefillTokensPerS: g.engineUsage?.prefillTokensPerS ?? null, decodeTokensPerS: g.engineUsage?.decodeTokensPerS ?? null, prefillChunk: g.engineUsage?.prefill?.chunkAtGeneration ?? null })),
         loadavg: genLoad,
         gpuClients: genGpu,
         // Every frame over 50 ms, when it came and in which generation's prefill or decode.
-        long,
-      },
-      raw: { idle: idle.intervals, generating: generating.intervals, generatingAt: generating.at },
+        long: longFrames(generating, genRecords),
+      });
+      rawTurns.push(generating);
+    }
+    const first = rawTurns[0] ?? { intervals: [], at: [] };
+    run.frames = {
+      where: 'explorer, the Earth in view, the scene at rest',
+      idle: { ...stats(idle.intervals), ms: 8000, loadavg: idleLoad, gpuClients: idleGpu, long: longFrames(idle, []) },
+      generating: turns[0],
+      ...(turns.length > 1 ? { turns } : {}),
+      raw: { idle: idle.intervals, generating: first.intervals, generatingAt: first.at, ...(rawTurns.length > 1 ? { turns: rawTurns } : {}) },
     };
     run.finishedAt = new Date().toISOString();
     save();
@@ -640,5 +691,19 @@ test(`real model: ${MODEL_ID}, ${MODE}`, async ({ baseURL }, testInfo) => {
     await server.close();
   }
   expect(unexpected, 'requests to a model host that are not pinned files').toEqual([]);
+  // The prompt was read as asked (src/ai/engine/prefill.ts): a WebLLM whose pipeline moved fails here.
+  const seen = runPrefill.seen;
+  expect(seen.length, 'generations reporting how the prompt was read').toBeGreaterThan(0);
+  for (const p of seen) {
+    const asked = runPrefill.setting.chunkTokens;
+    if (asked === null) {
+      expect(p.outcome, 'no chunk asked for').toBe('off');
+      continue;
+    }
+    const expected = p.compiled !== null && p.compiled <= asked ? 'kept' : 'set';
+    expect(p.outcome, `the prompt's chunk (${asked}) set on WebLLM's pipeline`).toBe(expected);
+    expect(p.chunkAtGeneration, 'the chunk the pipeline held at the generation').toBe(expected === 'set' ? asked : p.compiled);
+    expect(p.yieldBetween, 'the wait between chunks').toBe(expected === 'set' && runPrefill.setting.yieldBetween);
+  }
   expect(unservedModelHosts, 'requests to a model host the local server does not serve').toEqual([]);
 });
