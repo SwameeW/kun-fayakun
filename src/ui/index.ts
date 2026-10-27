@@ -152,8 +152,17 @@ export function mountUI(app: App, root: HTMLElement): void {
   shortcutsButton.addEventListener('click', () => {
     shortcuts.openHelp();
   });
-  // Sound: the film's (./film-sound) and the explorer's wind, one choice for both.
-  extendTestHandle({ filmSound: createFilmSound(app) });
+  // Sound: the film's (./film-sound) and the explorer's wind, one choice for both. The assistant's
+  // starter loads src/ai only when called (its own chunk then completes the hook).
+  extendTestHandle({ filmSound: createFilmSound(app), ai: {
+      start: () =>
+        import('../ai/boot').then((m) =>
+          m.startIntelligence(app, (text) => {
+            announcer.announce(text);
+          }),
+        ),
+    },
+  });
   const soundIcon = h('span', { class: 'kf-sound-icon' });
   const soundButton = h(
     'button',
