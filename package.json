@@ -25,7 +25,8 @@
     "preprocess:jpl": "bash scripts/preprocess-jpl.sh",
     "preprocess:analysis": "tsx scripts/build-analysis.ts",
     "preprocess:places": "python3 -I scripts/places/build.py",
-    "preprocess:sky": "python3 -I scripts/sky/build.py"
+    "preprocess:sky": "python3 -I scripts/sky/build.py",
+    "preprocess:ai": "tsx scripts/build-ai-index.ts"
   },
   "dependencies": {
     "@mlc-ai/web-llm": "0.2.86",

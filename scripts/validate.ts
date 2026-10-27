@@ -9,6 +9,7 @@
  */
 import { loadContext, type ValidationContext } from './lib/context';
 import { Report, type RuleLog } from './lib/report';
+import { checkAiIndex } from './lib/rules/ai-index';
 import { checkArabicInSrc } from './lib/rules/arabic-in-src';
 import { checkAssets } from './lib/rules/assets';
 import { checkConstants } from './lib/rules/constants';
@@ -35,6 +36,7 @@ const RULES: ReadonlyArray<readonly [string, string, Rule]> = [
   ['i', 'No Arabic script in src/', checkArabicInSrc],
   ['j', 'Generated assets', checkAssets],
   ['k', 'Film: shot list and screenplay', checkFilm],
+  ['l', 'Assistant: the knowledge index', checkAiIndex],
 ];
 
 function parseArgs(args: readonly string[]): { online: boolean } {
