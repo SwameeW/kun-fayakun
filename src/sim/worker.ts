@@ -279,6 +279,10 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       job = null;
       recent = [];
       owed = 0;
+      // A new scenario waits at its start for the page's run request that follows the load: a tick
+      // between the two (the timer's task may come first) must not run it on at the rate of the one
+      // before (Reset from thirty days a second would leave it a third of a day past the fork).
+      paused = true;
       timeline = 0;
       rewind = null;
       atStart = false;

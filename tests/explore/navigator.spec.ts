@@ -384,17 +384,33 @@ test('narrowed to a phone’s width in an experiment the sheet folds small, and 
   test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
+  const nav = page.getByTestId('universe-bodies');
+  const toggle = page.getByTestId('universe-nav-toggle');
+  // Folded small: its head and the worlds' portraits within 200 px, and the time machine's row, which a
+  // sheet keeps in reach folded too; first outside an experiment at this width, to compare with.
+  const folded = async (): Promise<{ height: number; time: number }> => ({ height: (await navBox(page)).height, time: (await page.locator('.kf-nav-time').boundingBox())?.height ?? 0 });
+  await page.setViewportSize({ width: 800, height: 800 });
+  await expect(nav).toHaveClass(/is-sheet/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  const outside = await folded();
+  expect(outside.time).toBeGreaterThan(0);
+  expect(outside.height - outside.time).toBeLessThanOrEqual(200);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(nav).toHaveClass(/is-panel/);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await page.getByTestId('lab-open').click();
   await expect(page.getByTestId('lab-panel')).toBeVisible(LIVE);
   await page.setViewportSize({ width: 800, height: 800 });
-  const nav = page.getByTestId('universe-bodies');
   await expect(nav).toHaveClass(/is-sheet/);
-  await expect(page.getByTestId('universe-nav-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByTestId('lab-panel')).toBeHidden();
-  await expect.poll(async () => (await navBox(page)).height).toBeLessThanOrEqual(200);
+  // In the experiment, as small as outside one (its Reset joins the time machine's row without making it taller).
+  await expect.poll(async () => (await folded()).height).toBeLessThanOrEqual(outside.height + 2);
+  const inside = await folded();
+  expect(inside.height - inside.time).toBeLessThanOrEqual(200);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(nav).toHaveClass(/is-panel/);
-  await expect(page.getByTestId('universe-nav-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('lab-panel')).toBeVisible();
   expect(pageErrors).toEqual([]);
 });

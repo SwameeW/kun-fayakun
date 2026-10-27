@@ -492,7 +492,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   date field). A control that cannot act is `aria-disabled`, dimmed, and says why in the note
   (`universe-time-note`) when pressed. The controls head the navigator; on a phone's sheet the
   buttons sit above its scrolling part, folded or not, and the help, date and Islamic date under
-  the list. A change is announced politely.
+  the list. Folded on a narrow sheet (under 600 px wide, or 500 px tall) the rate's words have a line
+  of their own under the buttons, so the folded sheet keeps one height whatever they say (and in an
+  experiment, its Reset among the buttons, as small as outside one). On a desktop's side panel the
+  row folds away with the panel (landing on foot folds it: opened again, the row is there). A change
+  is announced politely.
 - **Photo mode.** `kf-photo` on the root hides the header, the HUD tags and everything in the
   explorer's interface but "Show the interface"; H toggles it and Esc leaves it (before Esc would
   leave the explorer).
@@ -760,6 +764,11 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
     back to orbit stands in for `universe-back`, which waits), and `is-walking` once landed, which
     hides the readout from orbit, the notes and the hint on every screen. Landing folds the
     navigator (it opens again after, if it was open); the notes say nothing on foot.
+  - The HUD (`kf-walk`) spans the view without taking its pointer: the way back at the top left
+    (`kf-walk-top`), and a dock at the lower left (`kf-walk-dock`) whose parts take the pointer. The
+    descent's HUD (`descent-hud`, `src/ui/explore/descent-hud.ts`) shares it: its notice, readout,
+    keys (`kf-walk-help`) and its pad with Back to orbit (`kf-walk-controls`) in the dock, "Back to
+    the start" staying at the top left.
   - Messages: `ui.universe.walk.*`.
 - **Rules:**
   - No walk begins within `MAKKAH_FRAME.radiusKm` (25 km) of the Kaaba, and no step enters it.

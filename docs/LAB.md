@@ -45,8 +45,10 @@ its own and has no real baseline.
   after it: before the fork it stops at the fork, after the century at its end, and the note under
   the row says "This experiment runs from … to …", Now too). While it is on its way the row
   says "Going to …"; Pause stops it where it is, and Reverse, Faster, Slower or a rate run on from
-  there at that rate. Reset, in the time row, goes back to the fork, paused, at a day a second;
-  going back to a checkpoint and replaying leave it paused too. The panel shows the rate and the
+  there at that rate. Reset, in the time row, goes back to the fork, paused, at a day a second (the
+  worker holds a scenario it loads at its start until the page's run request that follows, so a tick
+  between the two never runs it on at the rate before); going back to a checkpoint and replaying
+  leave it paused too. The panel shows the rate and the
   current step, and the achieved rate only when the worker cannot keep up.
 - **The drawn clock** (`src/explore/lab-clock.ts`). The worker moves in whole steps (from seconds to
   a day) and sends a snapshot about 30 times a second. What is drawn follows a clock of its own: it
@@ -308,7 +310,11 @@ plus its log.
   was seen; the clock steps back by those few frames.
 - **Checkpoints.** A checkpoint (a copy of the state) is taken before every edit and every 200 to
   2,000 steps, kept in order of step, at most 48: past that, the one whose loss leaves the shortest
-  gap goes, so they stay spread over the whole run (the first and the latest always stay).
+  gap goes, so they stay spread over the whole run (the first and the latest always stay). It keeps
+  the accelerations the next step starts from as the run had them: they are worked out within a step,
+  before the spins' second half-kick, so worked out again from the state alone they would differ in
+  the last bits wherever a J2 ties the pull to a spin's axis (the solar system's worlds), and a replay
+  from a checkpoint (going back, undo, a seek) would not be the run's own.
 - **Going backwards** (`src/sim/rewind.ts`). The run is deterministic, so its past is replayed: a
   replica of the engine (never the run itself) restores the latest checkpoint before the moment shown
   and steps forward over a segment of at most 256 steps, keeping every step's state (the bodies,

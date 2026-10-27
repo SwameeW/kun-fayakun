@@ -66,7 +66,8 @@ export const swarmPlaces = (state: Checkpoint['state']): SwarmPlaces => state.sw
 
 function sampleOf(engine: Engine, keepSwarms: boolean): Sample {
   const s = engine.state;
-  return { step: s.step, t: s.t, state: cloneState(s, false), dt: engine.dt, logIndex: engine.applied, swarms: keepSwarms && s.swarms.length > 0 ? swarmPlaces(s) : null };
+  // Without the rings' particles, but with the accelerations the step from it starts from (commit goes on from it exactly).
+  return { ...engine.snapshotNow(false), swarms: keepSwarms && s.swarms.length > 0 ? swarmPlaces(s) : null };
 }
 
 export class Rewind {

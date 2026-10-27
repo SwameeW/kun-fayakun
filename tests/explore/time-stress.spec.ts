@@ -444,6 +444,15 @@ test.describe('the time machine at 1280x800', () => {
     await page.getByTestId('living-earth').locator(':scope > summary').click();
     await page.getByTestId('living-walk').click();
     await expect.poll(async () => (await state(page)).walk?.state, { timeout: 120_000 * SLOW }).toBe('walking');
+    // Landed, the navigator folds to leave the view to the world (folded, a side panel shows only the
+    // worlds): the time machine is reached by opening it again, and its buttons are then in view.
+    const toggle = page.getByTestId('universe-nav-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('universe-time-slower')).toBeHidden();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    for (const id of ['universe-time-reverse', 'universe-time-slower', 'universe-time-pause', 'universe-time-faster']) await expect(page.getByTestId(id)).toBeVisible();
+    expect((await state(page)).walk?.state).toBe('walking');
     // Thirty days a second chosen: on foot an hour a second, said so, Faster disabled with why.
     expect((await state(page)).time).toMatchObject({ rate: MAX, held: 'foot' });
     await expect(page.getByTestId('universe-time-rate')).toHaveText('1 hour a second (the most on foot)');

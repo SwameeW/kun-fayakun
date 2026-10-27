@@ -1595,6 +1595,12 @@
     inline-size: min(24rem, 52vw);
   }
 
+  /* Pulled up, the sheet has the right of the screen: the column keeps to the left of it, as the readout
+     does (a trip can be under way with the sheet up: an experiment's own star flown to, the way back from one). */
+  .kf-universe.is-sheet-open :is(.kf-note-slot, .kf-trip) {
+    inline-size: min(24rem, calc(100vw - min(30rem, 64vw) - 3 * var(--kf-space-2)));
+  }
+
   .kf-universe .kf-note {
     inset-block: 0 auto;
     max-block-size: calc(100vh - var(--kf-header-h) - 2.75rem - var(--kf-readout-h, 3rem) - 2.5rem);
@@ -1735,6 +1741,20 @@
   flex: none;
   margin-block-end: 0;
   padding-block: var(--kf-space-1);
+}
+
+/*
+ * Folded, a narrow sheet has no room for the rate's words beside the buttons once they grow ("1 day a
+ * second", an experiment's Reset among the buttons): they have a line of their own under the buttons,
+ * so the folded sheet keeps one height as they change with each press (its top, and the buttons, never
+ * move under the finger), and in an experiment it is as small as outside one. (Pulled up, the sheet is
+ * as tall as it may be: its list gives way instead, and a short rate keeps to the buttons' line.)
+ */
+@media (max-width: 599.98px), (max-height: 500px) {
+  .kf-nav.is-sheet:not(.is-expanded) .kf-universe-time-rate {
+    flex-basis: 100%;
+    line-height: 1.25;
+  }
 }
 
 /* The help, the date and the Islamic date: in the row, or on a phone's sheet under the list. */

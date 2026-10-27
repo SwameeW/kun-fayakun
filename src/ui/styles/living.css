@@ -696,6 +696,15 @@
   color: var(--kf-gold-strong);
 }
 
+/* The descent's pad and its way back (src/ui/explore/descent-hud.ts), a row at the foot of the dock. */
+.kf-walk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-2);
+  flex: none;
+}
+
 /* With a keyboard the keys are named; on a touch screen, the pad and the look. */
 .kf-walk-touch {
   display: none;
