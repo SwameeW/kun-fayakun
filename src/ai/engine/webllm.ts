@@ -314,6 +314,9 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
       outputTokens: usage?.outputTokens ?? 0,
       prefillMs: ttft,
       decodeMs: Math.max(0, total - ttft),
+      ...(usage
+        ? { engineUsage: { prefillTokensPerS: usage.prefillTokensPerS, decodeTokensPerS: usage.decodeTokensPerS, ttftMs: usage.ttftMs, e2eMs: usage.e2eMs, grammarInitMs: usage.grammarInitMs } }
+        : {}),
     };
   };
 

@@ -274,14 +274,29 @@ Nothing here downloads anything.
 
 - **Unit (CI):** schema validator, router, guards, retrieval, planners, optimiser, calculators against known values, capability tiers from canned adapters.
 - **Browser (CI):** the whole pipeline through the scripted engine. This covers asking, routing, tools, confirmation, undo, verification, answer blocks and labels. Also the download dialog against mocked model hosts, storage controls, layout at 390×844 and desktop, and repeated open/close and cancel.
-- **Real models (local, not CI): `tests/ai-eval/`.** Runs Chromium with the real GPU on this Mac and downloads the models once into a persistent profile. Each model is scored on:
+- **Real models (local, not CI): `tests/ai-eval/`.** Runs Chromium with the real GPU on this Mac, one model at a time. Each model is scored on:
   - plan validity, tool choice and argument accuracy over a fixed case set;
   - grounded answers, checked for their key facts;
   - integrity cases, where scripture, numbers and claims must survive the guards with zero violations;
   - prefill and decode speed, time to first token, and load time;
   - frame times of the explorer while it generates.
 
-  The results go in `docs/AI-EVALUATION.md` with the date and hardware.
+  The results go in `docs/AI-EVALUATION.md` with the date and hardware, generated from the raw results.
+
+  **The harness.**
+  - `scripts/ai-eval/fetch-models.ts` downloads, once, exactly the files WebLLM fetches for each pinned build (mlc-chat-config.json, the tokenizer its config names, tensor-cache.json and every shard it lists, and the model library), resuming partial files. It checks the library against `libIntegrity` (SHA-384), each LFS file against the SHA-256 Hugging Face lists at the pinned commit, each size, and the total against `downloadBytes`, and writes `manifest.json` only when all of them pass. The files are kept in the main checkout's `.work/models/<id>/` (`scripts/ai-eval/store.ts`), shared by every worktree. By default it fetches the q4f16_1 builds of Qwen3 0.6B, 1.7B, 4B and 8B and of the candidates Qwen3.5 4B and 9B.
+  - The Playwright project `ai-eval` exists only with `KF_AI_EVAL=1`, and every other project ignores `tests/ai-eval/`. It uses the webgpu project's Chromium and WebGPU, one worker and hours of time. Chromium resolves every model host to nothing. The spec answers the pinned URLs from disk with the context's routes, so the app's own path (our worker, WebLLM, the Cache API) runs unchanged but offline. Any other request to a model host fails the run. The profile is persistent (`.work/ai-eval/profile-<port>` in the main checkout; the Cache API is per origin, so per port), so a model is copied into the Cache API once.
+  - `tests/ai-eval/cases.ts` holds the cases: tool choice and arguments against the real registry's schemas, grounded science (expected numbers worked out in `truth.ts` from data/constants.json and the JPL files), Islamic content cited only from the data files, integrity traps, limits and out-of-scope questions, and experiments that must wait for confirmation. `score.ts` scores what the test hook and the page show afterwards, never the model's own words. It also scans every answer for violations that got past the guards, with its own rules. `tests/unit/ai-eval-cases.spec.ts` checks the cases against the registry and the scorer on hand-made turns.
+  - `tests/ai-eval/eval.spec.ts` loads one model as a visitor does: the panel for a visitor tier, the `use()` the panel calls for a candidate. It checks that the engine reads back as the local one with that id. Then it asks every case through the panel's field and writes `.work/ai-eval/results/<model>-<mode>[-<tag>].json`. Per case, that holds the turn, every generation's messages and raw reply, first-try and repaired plan validity, the checks, citations, guard flags, violations, and timings (WebLLM's own time to first token, prefill and decode rates, and its grammar's start-up time). Per model, it holds the load (routed into the Cache API, then from it after a reload), frame intervals in the explorer while idle and while generating, and the load average beside every timing. `KF_AI_EVAL_MODE=model` skips the router through the test hook's `evaluate()`, so the model plans every case.
+  - `tests/ai-eval/network.spec.ts` (`KF_AI_EVAL_NETWORK=1`) is the one unrouted check. In a fresh profile, a visitor downloads Qwen3 0.6B from Hugging Face through the panel. It checks that nothing reaches a model host before Ask and Download, that the size is shown first and progress during the download, that the model answers, that a reload fetches nothing, and that the panel's Delete frees the Cache API.
+  - `scripts/ai-eval/report.ts` turns the raw files into the Markdown tables; `scripts/ai-eval/rescore.ts` scores them again after a change to the scorer, without a model.
+
+  ```
+  node --import tsx scripts/ai-eval/fetch-models.ts                       # once (outside any sandbox)
+  npx vite build
+  KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_MODEL=Qwen3-4B-q4f16_1-MLC KF_AI_EVAL_MODE=pipeline npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
+  node --import tsx scripts/ai-eval/report.ts --details                   # Markdown from .work/ai-eval/results
+  ```
 
 ## 10. Known limits (stated in the interface)
 

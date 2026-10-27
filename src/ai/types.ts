@@ -139,6 +139,12 @@ export interface GenerateResult {
   outputTokens: number;
   prefillMs: number;
   decodeMs: number;
+  /**
+   * The engine's own figures for this generation, where it reports them (WebLLM's usage: its
+   * prefill and decode rates, time to first token, end to end, and its grammar matcher's start for a
+   * schema). Read by the evaluation (tests/ai-eval), never shown to visitors.
+   */
+  engineUsage?: { prefillTokensPerS: number; decodeTokensPerS: number; ttftMs: number; e2eMs: number; grammarInitMs: number | null };
 }
 
 /** A language model the assistant can use (local, browser or scripted). */
@@ -474,6 +480,45 @@ export interface IntelligenceEvents {
   /** A turn changed (state, a new block, a streamed word). */
   turn: { turn: Turn };
   engine: { kind: EngineKind; model: string | null; state: 'off' | 'loading' | 'ready' | 'busy' | 'error'; progress?: LoadProgress; error?: EngineError };
+}
+
+/* ------------------------------------------------------------------ */
+/* Evaluation: the test hook's seam for measuring real models           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the real-model evaluation (tests/ai-eval, through the test hook's evaluate()) sets. Never
+ * set for visitors: without it the router always goes first and nothing is recorded.
+ * - router 'first': the shipping order (the deterministic router, then the model);
+ * - router 'skip': a loaded model plans every question, so its own planning is measured.
+ */
+export interface EvaluationOptions {
+  router: 'first' | 'skip';
+}
+
+/** One generation of a turn, as the evaluation records it: what it was for, the raw reply and the engine's figures. */
+export interface GenerationRecord {
+  turnId: string;
+  /** plan: the first plan; repair: the one retry after an unusable plan; answer: the prose. */
+  purpose: 'plan' | 'repair' | 'answer';
+  engine: TextWriter;
+  /** The messages sent, as sent. */
+  messages: readonly ChatMessage[];
+  /** For a plan: the tools offered (the shortlist), by name. */
+  offered?: readonly string[];
+  /** The reply exactly as the engine gave it, before any parsing or guard. */
+  raw: string;
+  finish: GenerateResult['finish'];
+  promptTokens: number;
+  outputTokens: number;
+  prefillMs: number;
+  decodeMs: number;
+  engineUsage: GenerateResult['engineUsage'] | null;
+  /** Wall time of the generation as the orchestrator saw it, ms. */
+  wallMs: number;
+  /** For a plan: whether it could be used, and what was wrong with it otherwise (the repair prompt's lines). */
+  valid?: boolean;
+  problems?: readonly string[];
 }
 
 /** The assistant as the interface sees it (src/ai/index.ts → createIntelligence(app)). */

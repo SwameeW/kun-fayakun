@@ -6,7 +6,9 @@
  * labels on every block, and the guide with no model at all. Also: Stop pressed just after Confirm
  * or while the experiment runs, an Undo the tool refuses or cannot confirm, the engine that wrote
  * each text block, a plan held to the tools it was offered and to the schema, prayer times only by
- * a convention the question names, and memory brought back as earlier turns.
+ * a convention the question names, and memory brought back as earlier turns. And the evaluation's
+ * seam (the test hook's evaluate()): off by default, it records each generation when on, and only
+ * with router 'skip' does a model plan what the router would have matched.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -17,7 +19,7 @@ import { createScriptedEngine, type ScriptedEngine, type ScriptedReply } from '.
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
 import { buildAnswerMessages, LEVEL_LINES } from '../../src/ai/prompts';
 import type { AiMemory, MemoryEntry } from '../../src/ai/memory';
-import type { AiContext, AnswerBlock, EngineHost, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
+import type { AiContext, AnswerBlock, EngineHost, EvaluationOptions, GenerationRecord, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
 import { BODY_IDS, type App, type I18n } from '../../src/core/types';
 
 const index = JSON.parse(readFileSync(new URL('../../public/assets/ai/index.json', import.meta.url), 'utf8')) as { passages: Passage[] };
@@ -194,7 +196,7 @@ interface Harness {
   remembered: MemoryEntry[];
 }
 
-function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[] } & ToolOptions = {}): Harness {
+function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[]; evaluation?: { options: () => EvaluationOptions | null; record: (entry: GenerationRecord) => void } } & ToolOptions = {}): Harness {
   const log: Log = { runs: [], undone: [] };
   const where = { ctx: options.where ?? CTX.home };
   const engine = createScriptedEngine(script, { delayMs: options.delayMs ?? 0 });
@@ -236,6 +238,7 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
     context: () => where.ctx,
     memory,
     ...(options.idleUnloadMs !== undefined ? { idleUnloadMs: options.idleUnloadMs } : {}),
+    ...(options.evaluation ? { evaluation: options.evaluation } : {}),
   };
   const ai = createIntelligence(app, deps);
   ai.events.on('turn', ({ turn }) => h.turnEvents?.push(turn));
@@ -786,5 +789,60 @@ test.describe('the context, read from the app', () => {
     expect(inLab.lab).toMatchObject({ status: 'running', days: 10, events: 2 });
     expect(inLab.lab?.bodies[0]).toEqual({ id: 'b0', name: 'A body with a long name 0', massKg: 1e20, centralId: 'sun', aKm: 1e8, e: 0.1 });
     expect(inLab.summary.length).toBeLessThanOrEqual(SUMMARY_MAX);
+  });
+});
+
+test.describe('the evaluation’s seam (the test hook’s evaluate(), tests/ai-eval)', () => {
+  const escapePlan = plan({ intent: 'answer', query: 'escape speed mars', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] });
+  const script = (): ScriptedReply[] => [
+    { format: 'json', match: 'escape speed of mars', reply: 'not json', once: true },
+    { format: 'json', match: 'cannot be used', reply: escapePlan },
+    { format: 'text', match: 'escape speed of mars', reply: 'Leaving Mars takes 5.03 km/s [[fact:escape.mars]].' },
+  ];
+
+  test('off (the shipping order): the router goes first, the model only writes the answer, nothing is recorded', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness(script(), { where: CTX.explorer, evaluation: { options: () => null, record: (e) => records.push(e) } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan).toMatchObject({ source: 'router', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] });
+    expect(h.engine.requests.map((r) => r.format.kind)).toEqual(['text']);
+    expect(records).toEqual([]);
+  });
+
+  test('router "first": the same shipping order, and the answer’s generation recorded with its raw reply', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness(script(), { where: CTX.explorer, evaluation: { options: () => ({ router: 'first' }), record: (e) => records.push(e) } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan?.source).toBe('router');
+    expect(records.map((r) => r.purpose)).toEqual(['answer']);
+    expect(records[0]).toMatchObject({ turnId: turn.id, engine: { kind: 'scripted', model: 'scripted' }, raw: 'Leaving Mars takes 5.03 km/s [[fact:escape.mars]].', finish: 'stop', engineUsage: null });
+  });
+
+  test('router "skip": the model plans what the router would have matched; the first plan, its repair and the answer are recorded', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness(script(), { where: CTX.explorer, evaluation: { options: () => ({ router: 'skip' }), record: (e) => records.push(e) } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan).toMatchObject({ source: 'model', calls: [{ tool: 'calc.escape_speed', args: { body: 'mars' } }] });
+    expect(records.map((r) => [r.purpose, r.valid])).toEqual([['plan', false], ['repair', true], ['answer', undefined]]);
+    expect(records[0]?.raw).toBe('not json');
+    expect(records[0]?.problems).toEqual(['the reply was not one JSON object']);
+    expect(records[0]?.offered).toContain('calc.escape_speed');
+    expect(records[1]?.raw).toBe(escapePlan);
+    expect(records[1]?.messages.at(-1)?.content).toContain('cannot be used');
+    for (const r of records) expect(r.turnId).toBe(turn.id);
+  });
+
+  test('router "skip" without a model: the router still answers (the guide has nothing else)', async () => {
+    const records: GenerationRecord[] = [];
+    const h = harness([], { where: CTX.explorer, evaluation: { options: () => ({ router: 'skip' }), record: (e) => records.push(e) } });
+    const turn = await h.ai.ask('escape speed of mars');
+    expect(turn.plan?.source).toBe('router');
+    expect(records).toEqual([]);
   });
 });

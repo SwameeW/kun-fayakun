@@ -44,7 +44,9 @@ import type {
   EngineKind,
   ExplanationLevel,
   Fact,
+  EvaluationOptions,
   GenerateResult,
+  GenerationRecord,
   Intelligence,
   IntelligenceEvents,
   KnowledgeKind,
@@ -85,6 +87,15 @@ export interface IntelligenceDeps {
   idleUnloadMs?: number;
   /** Narrations data/hadith.json excludes (the scripture catalogue's): a model's sentence naming one is removed. */
   withheld?: readonly WithheldNarration[];
+  /**
+   * The real-model evaluation's seam (tests/ai-eval, through the test hook's evaluate() in
+   * ./boot.ts), read at each turn: whether the router goes first (null: the shipping order), and
+   * where each generation is recorded. Visitors never reach it.
+   */
+  evaluation?: {
+    options(): EvaluationOptions | null;
+    record(entry: GenerationRecord): void;
+  };
 }
 
 /** The assistant, with what the test hook and the interface's settings also need. */
@@ -281,6 +292,25 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   /** Memory has been read back (restore() runs once). */
   let restored = false;
   const withheld = deps.withheld ?? [];
+  /** Records a generation for the evaluation, when it is on (nothing is kept otherwise). */
+  const observe = (rec: TurnRecord, e: LanguageEngine, purpose: GenerationRecord['purpose'], request: Parameters<LanguageEngine['generate']>[0], result: GenerateResult, wallMs: number, extra: Pick<GenerationRecord, 'offered' | 'valid' | 'problems'> = {}): void => {
+    if (!deps.evaluation?.options()) return;
+    deps.evaluation.record({
+      turnId: rec.turn.id,
+      purpose,
+      engine: { kind: e.kind, model: e.model },
+      messages: request.messages,
+      raw: result.text,
+      finish: result.finish,
+      promptTokens: result.promptTokens,
+      outputTokens: result.outputTokens,
+      prefillMs: result.prefillMs,
+      decodeMs: result.decodeMs,
+      engineUsage: result.engineUsage ?? null,
+      wallMs,
+      ...extra,
+    });
+  };
 
   /* ---------------- engine ---------------- */
 
@@ -588,9 +618,12 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const schema = planSchema(tools);
     let messagesNow: ChatMessage[] = buildPlanMessages(question, rec.ctx, tools, history(rec));
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const result = await generate(rec, e, { messages: messagesNow, format: { kind: 'json', schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal });
+      const request = { messages: messagesNow, format: { kind: 'json' as const, schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal };
+      const began = now();
+      const result = await generate(rec, e, request);
       checkpoint(rec);
       const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question, tools, schema);
+      observe(rec, e, attempt === 0 ? 'plan' : 'repair', request, result, now() - began, { offered: tools.map((t) => t.name), valid: parsed.plan !== null, problems: parsed.problems });
       if (parsed.plan) {
         rec.planner = { kind: e.kind, model: e.model };
         return parsed.plan;
@@ -772,7 +805,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       });
     const index = addBlock(rec, { type: 'text', knowledge: 'explanation', text: '', by: 'model', writer });
     let streamed = '';
-    const result = await generate(rec, e, {
+    const request: Parameters<LanguageEngine['generate']>[0] = {
       messages: msgs,
       format: { kind: 'text' },
       maxTokens: ANSWER_MAX_TOKENS,
@@ -784,7 +817,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         // What is on screen while it streams has passed the guards too, and what cannot be judged yet is held back.
         replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text: stripMarkers(guard(streamed, false, true).text), by: 'model', writer });
       },
-    });
+    };
+    const began = now();
+    const result = await generate(rec, e, request);
+    observe(rec, e, 'answer', request, result, now() - began);
     checkpoint(rec);
     if (result.finish === 'error') {
       rec.turn.blocks.splice(index, 1);
@@ -877,7 +913,9 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       addBlock(rec, { type: 'notice', key: 'ai.mind.notice.noKnowledge' });
     }
     checkpoint(rec);
-    let plan = route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
+    // The evaluation alone may skip the router, to measure a model's own planning (a model must be loaded).
+    const skipRouter = engine !== null && deps.evaluation?.options()?.router === 'skip';
+    let plan = skipRouter ? null : route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
     if (!plan && engine) plan = await modelPlan(rec, input.text);
     checkpoint(rec);
     // No rule matched, and no model plan: retrieval answers.

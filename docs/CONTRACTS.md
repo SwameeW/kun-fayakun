@@ -262,7 +262,7 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-ai-turn` (its latest turn's TaskState: `planning`, `awaiting-confirmation`, `answering`,
   `done`, `cancelled`…).
 - `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts),
-  `ai: { start(): Promise<Intelligence>, useScripted(script, options?): Promise<void>, useReport(report): Promise<void> }` (the assistant: see "Kun Fayakun Intelligence" below).
+  `ai: { start(): Promise<Intelligence>, useScripted(script, options?): Promise<void>, useReport(report): Promise<void>, evaluate(options | null): Promise<void>, generations(): GenerationRecord[] }` (the assistant: see "Kun Fayakun Intelligence" below).
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
   `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,
@@ -849,12 +849,22 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   nothing a visitor does reaches it). `useScripted` switches the running assistant to the
   scripted engine (`src/ai/engine/scripted.ts`: replies written in the test, matched on the last
   user message and the format; `options.delayMs` between streamed words), labelled `scripted`.
+  `evaluate({ router: 'first' | 'skip' })` is the real-model evaluation's alone (`tests/ai-eval`):
+  from then on every generation is recorded as a `GenerationRecord` (`src/ai/types.ts`: the turn,
+  the purpose (plan, repair or answer), the messages sent, the raw reply, the finish, tokens, the
+  plan's validity and problems, and `engineUsage`, WebLLM's own prefill and decode rates, time to
+  first token and grammar start), taken with `generations()`; with `router: 'skip'` a loaded model
+  plans every question, the router bypassed (`IntelligenceDeps.evaluation`). `evaluate(null)` puts
+  the shipping order back. Nothing a visitor does reaches it.
   `<html>` gets `data-ai-engine` and `data-ai-turn` (Test hooks, above).
 - **Model hosts in tests.** Every page's requests to huggingface.co, hf.co (and their
   subdomains: the file CDNs), cdn.jsdelivr.net and raw.githubusercontent.com are answered 404 in the
   browser (`tests/support/live.ts`, `mockModelHosts`, registered before the live hosts, so a test's
   own route wins); `modelRequests(page)` counts them. No test downloads a model.
-  `tests/ai-engine.spec.ts` also resolves those hosts to nothing.
+  `tests/ai-engine.spec.ts` also resolves those hosts to nothing. The real-model evaluation
+  (`tests/ai-eval`, its own Playwright project, only with `KF_AI_EVAL=1`) answers the pinned URLs
+  from the copies on disk and fails on any other model-host request; only its
+  `network.spec.ts`, with `KF_AI_EVAL_NETWORK=1`, reaches Hugging Face.
 - **Budgets** (`scripts/check-bundle.ts`, gzip): the assistant's chunks on start (with its panel) 120,000 B; the
   model worker 2,400,000 B (and the only built file holding WebLLM's runtime); the comparison
   worker 50,000 B; `assets/ai/index.json` 150,000 B.

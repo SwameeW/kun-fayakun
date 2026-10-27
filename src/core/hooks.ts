@@ -1,5 +1,5 @@
 import type { ScriptedOptions, ScriptedReply } from '../ai/engine/scripted';
-import type { CapabilityReport, Intelligence } from '../ai/types';
+import type { CapabilityReport, EvaluationOptions, GenerationRecord, Intelligence } from '../ai/types';
 import type { FrameStats } from './perf';
 import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from './types';
 
@@ -56,7 +56,8 @@ export interface KfTestHandle {
    * from then on the assistant's own chunk has replaced this part with one that also has
    * useScripted(), which switches the running assistant to the scripted test engine
    * (src/ai/engine/scripted.ts) with the given replies, labelled "scripted", and useReport(), which
-   * makes the engine host's detection answer with a canned device from then on.
+   * makes the engine host's detection answer with a canned device from then on; evaluate() and
+   * generations() are the real-model evaluation's (tests/ai-eval).
    */
   ai?: KfAiHandle | Pick<KfAiHandle, 'start'>;
   /** The solar-system explorer: its state (null when it is not on screen) and an instant camera placement. */
@@ -82,6 +83,15 @@ export interface KfAiHandle {
   start(): Promise<Intelligence>;
   useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<void>;
   useReport(report: CapabilityReport): Promise<void>;
+  /**
+   * The real-model evaluation's alone (tests/ai-eval): from now on every generation is recorded (its
+   * messages, raw reply, finish, tokens and the engine's own figures), and with router 'skip' a
+   * loaded model plans every question, the router bypassed; null puts the shipping order back and
+   * stops recording. Clears what was recorded.
+   */
+  evaluate(options: EvaluationOptions | null): Promise<void>;
+  /** The generations recorded since the last call (taken: the next call starts empty). */
+  generations(): readonly GenerationRecord[];
 }
 
 /** A part of the interface made after the app (the film's sound, the assistant) adds itself to the handle. */
