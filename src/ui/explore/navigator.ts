@@ -482,8 +482,9 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
       }
       // The experiment's panel runs folded too (a lesson's set-up waits on it); its figures only while it shows.
       lab.part?.update(view, expanded);
+      // The stars' panel too: folded, only what is under the pointer is kept up.
+      stars.part?.update(view, expanded);
       if (expanded) {
-        stars.part?.update(view);
         if (view.focus !== aboutFor) {
           aboutFor = view.focus;
           aboutSummary.textContent = i18n.t('ui.universe.about.title', { body: f.name(view.focus) });

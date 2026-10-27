@@ -4,8 +4,10 @@
  * no limit on pitch), orbit round a star once flown to (it stays where it is on the screen while the
  * camera goes round it), W A S D at a speed set by the nearest star (five times with Shift), the
  * wheel toward the star under the pointer, Back to the Sun from far out, and Esc: on the way in it
- * turns round, in a burst or held it never leaves the explorer. And the names: never overlapping,
- * the one under the pointer said.
+ * turns round, in a burst or held it never leaves the explorer. In orbit the wheel goes in toward the
+ * star in view wherever the pointer is on empty sky (a faint star lies within a few pixels of almost
+ * every point), and to another star only from its name's tag; a burst of the wheel never flies off.
+ * And the names: never overlapping, the one under the pointer said, and its tag gone with the explorer.
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
@@ -255,5 +257,86 @@ test('Esc on the way in turns round; a burst of Esc in a flight, or Esc held, ne
   await page.waitForTimeout(1000);
   expect(await stars(page)).toBeNull();
   expect(page.url()).toContain('#/universe');
+  expect(pageErrors).toEqual([]);
+});
+
+test('in orbit the wheel goes in toward the star in view from empty sky, never off to a faint star; a name’s tag takes it there', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await enterStars(page, kf);
+  await command(page, { kind: 'starsGoTo', hip: 32349 });
+  await expect.poll(async () => (await stars(page))?.travelling, LIVE).toBe(false);
+  expect((await stars(page))?.camera.mode).toBe('orbit');
+  // Points of empty sky: well clear of every name's tag and of the panel.
+  const panel = await page.getByTestId('stars-panel').boundingBox();
+  const clear = async (): Promise<Array<{ x: number; y: number }>> => {
+    const all = await tags(page);
+    return [
+      { x: 300, y: 300 },
+      { x: 500, y: 600 },
+      { x: 900, y: 200 },
+      { x: 200, y: 700 },
+      { x: 700, y: 450 },
+      { x: 120, y: 150 },
+      { x: 860, y: 680 },
+    ].filter((p) => (!panel || p.x < panel.x - 20) && all.every((t) => Math.hypot(t.x - p.x, t.y - p.y) > 70 && Math.hypot(t.x + 40 - p.x, t.y - 16 - p.y) > 70));
+  };
+  const points = await clear();
+  expect(points.length).toBeGreaterThanOrEqual(4);
+  for (const p of points) {
+    const before = (await stars(page))?.cameraPc ?? 0;
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.wheel(0, -100);
+    await page.waitForTimeout(250);
+    const after = await stars(page);
+    expect(after?.focus.name, `a notch at ${String(p.x)},${String(p.y)}`).toBe('Sirius');
+    expect(after?.travelling).toBe(false);
+    expect(after?.cameraPc ?? Infinity).toBeLessThan(before);
+  }
+  // Thirty notches over three seconds at one point of empty sky: in toward Sirius to its nearest, never elsewhere.
+  const p = points[0] ?? { x: 300, y: 300 };
+  await page.mouse.move(p.x, p.y);
+  for (let k = 0; k < 30; k += 1) {
+    await page.mouse.wheel(0, -100);
+    await page.waitForTimeout(100);
+    expect((await stars(page))?.focus.name).toBe('Sirius');
+  }
+  const near = await stars(page);
+  expect(near?.travelling).toBe(false);
+  expect((near?.cameraKm ?? 0) / 695_700).toBeGreaterThanOrEqual(1.1 * (near?.focus.radiusEstimated ?? 0) - 1e-6);
+  // Out again, then the pointer on another star's name: the wheel goes there.
+  for (let k = 0; k < 40; k += 1) await page.mouse.wheel(0, 100);
+  await page.waitForTimeout(400);
+  const other = (await tags(page)).find((t) => t.id.startsWith('star-') && t.id !== 'star-32349' && t.x > 40 && t.y > 60 && (!panel || t.x < panel.x - 160));
+  if (!other) throw new Error('no other star named');
+  await page.mouse.move(other.x + 14, other.y - 16);
+  await page.mouse.wheel(0, -100);
+  await expect.poll(async () => (await stars(page))?.focus.name, LIVE).toBe(other.text);
+  // And during that flight the wheel changes nothing.
+  for (let k = 0; k < 10; k += 1) await page.mouse.wheel(0, -100);
+  expect((await stars(page))?.focus.name).toBe(other.text);
+  // Arrived, in orbit: a right drag of a few pixels (as a pinch's middle drifts) keeps the orbit; a longer one pans, letting go of it.
+  await expect.poll(async () => (await stars(page))?.travelling, LIVE).toBe(false);
+  expect((await stars(page))?.camera.mode).toBe('orbit');
+  await drag(page, { x: 300, y: 450 }, 6, 0, 'right');
+  await page.waitForTimeout(400);
+  expect((await stars(page))?.camera.mode).toBe('orbit');
+  await drag(page, { x: 300, y: 450 }, 200, 0, 'right');
+  await expect.poll(async () => (await stars(page))?.camera.mode, LIVE).toBe('look');
+  expect(pageErrors).toEqual([]);
+});
+
+test('what is under the pointer goes with the explorer: its tag hidden once the visitor leaves', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await enterStars(page, kf);
+  const named = (await tags(page)).find((t) => t.id.startsWith('star-') && t.x > 60 && t.y > 80 && t.x < 900 && t.y < 720);
+  if (!named) throw new Error('no named star to point at');
+  await page.mouse.move(named.x, named.y);
+  await expect(page.getByTestId('stars-hover')).toBeVisible(LIVE);
+  await expect(page.getByTestId('stars-hover')).toContainText(named.text);
+  // Straight out of the explorer (as "Back to the start" does): the tag goes with it.
+  await page.getByTestId('universe-back').click();
+  await expect.poll(() => page.url(), LIVE).not.toContain('#/universe');
+  await page.waitForTimeout(500);
+  await expect(page.getByTestId('stars-hover')).toBeHidden();
   expect(pageErrors).toEqual([]);
 });

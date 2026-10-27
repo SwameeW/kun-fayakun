@@ -982,12 +982,10 @@ export interface UniverseNeighbourhood {
     massLow: number | null;
     massSource: string;
     massAlsoSource: string | null;
-    massHow: string;
     distPc: number;
     distMinusPc: number | null;
     distPlusPc: number | null;
     distanceSource: string;
-    distanceHow: string;
     redshift: number | null;
     lookbackGyr: number | null;
     rsKm: number;
@@ -998,9 +996,13 @@ export interface UniverseNeighbourhood {
     /** Its shadow's angular diameter from the Earth (microarcseconds), and the ring the Event Horizon Telescope measured where it did. */
     shadowFromEarthMicroArcsec: number;
     observation: { ringMicroArcsec: number; error: number; source: string } | null;
-    companion: { kind: string; periodDays: number } | null;
+    /** Its companion star's orbital period (days); how each value was measured is said by the interface's messages, by the hole's id. */
+    companion: { periodDays: number } | null;
     inclinationDeg: number | null;
-    inclinationNote: string | null;
+    /** Whether the sky behind it is stood in for by the catalogues' as seen from near the Sun (a stellar hole kiloparsecs out, the stars round it not catalogued). */
+    skyFromSun: boolean;
+    /** Whether its lens holds a capture of the sky's glow taken round this hole (none from another: forgotten when the camera comes near another). */
+    skyCaptured: boolean;
   } | null;
   /** The star's planets drawn round it (the camera near enough, no trip under way). */
   systemShown: boolean;

@@ -75,7 +75,8 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   brightness, so the planets stand in their real constellations. Each star's light is shared over the
   pixels it touches, sized in device pixels with a floor (`src/explore/starlight.ts`, the stars'
   view's too), so the faint ones neither vanish at one device pixel a CSS pixel nor shimmer as the
-  view turns; the stars panel's "Star brightness" and "Faintest stars" set it. Switches in the navigator show the
+  view turns; the stars panel's "Star brightness" and "Faintest stars" set it among the stars (the
+  solar system's sky keeps its own). Switches in the navigator show the
   constellation figures and names, the brightest stars' IAU names, the IAU boundaries, and a grid
   with the celestial equator and the ecliptic. The Milky Way's glow waits for an all-sky map with a
   clear licence.

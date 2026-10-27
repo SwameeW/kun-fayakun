@@ -3,7 +3,9 @@
  * device pixel per CSS pixel as at two (each star's light shared over the pixels it touches, sized in
  * device pixels with a floor: before, 178 against 973 in the same view), and plenty of them; the
  * visitor's brightness and faintest magnitude change what is drawn, and the deep catalogue arrives as
- * the faintest magnitude calls for it.
+ * the faintest magnitude calls for it (and those too faint stop being drawn when it goes back); the
+ * faintest magnitude adds or takes away stars without brightening the rest; the visitor's star light
+ * is the stars' own, the solar system's sky keeping its.
  */
 import type { Browser, Page } from '@playwright/test';
 import { expect, test } from '../support/fixtures';
@@ -127,7 +129,8 @@ test('as many stars lit at one device pixel per CSS pixel as at two, and plenty 
 test('the visitor’s star light: fainter stars drawn or not, brighter or dimmer, the deep catalogue fetched as it is called for', async ({ page, kf, pageErrors }) => {
   test.setTimeout(300_000 * SLOW);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await enter(page, kf.url('/universe/earth', { query: { jd: JD } }));
+  // At High (a WebGL2 browser's own default may be lower, which draws 600,000 at most).
+  await enter(page, kf.url('/universe/earth', { query: { jd: JD, detail: 'high' } }));
   const usual = await litStars(page);
   const faintest = page.getByTestId('stars-faintest');
   await faintest.fill('6');
@@ -136,9 +139,15 @@ test('the visitor’s star light: fainter stars drawn or not, brighter or dimmer
   await page.waitForTimeout(500);
   const fewer = await litStars(page);
   expect(fewer).toBeLessThan(0.7 * usual);
-  // To magnitude 12.5: Tycho-2's other packs come, 2.5 million stars drawn at this detail.
+  // To magnitude 12.5: Tycho-2's other packs come (all 2.5 million at this detail), every one as bright as 12.5 drawn (Tycho-2 reaches 15.4).
   await faintest.fill('12.5');
-  await expect.poll(async () => (await stars(page))?.stars.far ?? 0, LIVE).toBeGreaterThan(2_400_000);
+  await expect.poll(async () => (await stars(page))?.stars.loaded ?? 0, LIVE).toBeGreaterThan(2_500_000);
+  await expect.poll(async () => (await stars(page))?.stars.far ?? 0, LIVE).toBeGreaterThan(2_350_000);
+  // Back to 8.5: those too faint to be seen are no longer drawn (the packs are in magnitude order).
+  await faintest.fill('8.5');
+  await expect.poll(async () => (await stars(page))?.stars.far ?? Infinity, LIVE).toBeLessThan(100_000);
+  await faintest.fill('12.5');
+  await expect.poll(async () => (await stars(page))?.stars.far ?? 0, LIVE).toBeGreaterThan(2_350_000);
   await page.getByTestId('stars-brightness').fill('-2');
   await expect.poll(async () => (await stars(page))?.starlight.brightness, LIVE).toBe(0.25);
   await expect(page.getByTestId('stars-brightness-value')).toHaveText('0.25 times');
@@ -151,5 +160,31 @@ test('the visitor’s star light: fainter stars drawn or not, brighter or dimmer
   await page.getByTestId('stars-figures').click();
   await expect.poll(async () => (await stars(page))?.figures, LIVE).toBe(false);
   await expect(page.getByTestId('stars-figures')).toHaveAttribute('aria-pressed', 'false');
+  expect(pageErrors).toEqual([]);
+});
+
+test('the visitor’s star light is the stars’: the solar system’s sky keeps its own, the stars theirs when visited again', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(300_000 * SLOW);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(kf.url('/universe/earth', { query: { jd: JD } }));
+  await waitForUniverse(page);
+  // The solar system's sky first.
+  await page.waitForTimeout(1500);
+  const solar = await litStars(page);
+  await page.getByTestId('stars-open').click();
+  await expect.poll(async () => (await stars(page))?.focus.name ?? null, LIVE).toBe('Sun');
+  await expect.poll(async () => (await stars(page))?.stars.loaded ?? 0, LIVE).toBeGreaterThan(400_000);
+  await page.waitForTimeout(1500);
+  // Faintest 4 among the stars, then back to the solar system: its sky as it was; among the stars again, the visitor's 4.
+  await page.getByTestId('stars-faintest').fill('4');
+  await expect.poll(async () => (await stars(page))?.starlight.faintest, LIVE).toBe(4);
+  await page.getByTestId('stars-end').click();
+  await expect.poll(async () => await stars(page), LIVE).toBeNull();
+  await page.waitForTimeout(2500);
+  const back = await litStars(page);
+  expect(back).toBeGreaterThan(0.85 * solar);
+  await page.getByTestId('stars-open').click();
+  await expect.poll(async () => (await stars(page))?.starlight.faintest ?? null, LIVE).toBe(4);
+  await expect(page.getByTestId('stars-faintest-value')).toHaveText('magnitude 4');
   expect(pageErrors).toEqual([]);
 });

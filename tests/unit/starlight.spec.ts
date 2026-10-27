@@ -107,6 +107,8 @@ test('brighter stars are brighter, fainter than the faintest are not drawn, and 
   expect(starLight(STARLIGHT_DEFAULTS.faintest + 0.01)).toBe(0);
   expect(starLight(Number.NaN)).toBe(0);
   expect(starLight(10, 12)).toBeGreaterThan(0);
+  // The faintest magnitude only adds or takes away stars: a star drawn either way is as bright.
+  for (const v of [-1, 2, 5, 7]) expect(starLight(v, 12.5)).toBeCloseTo(starLight(v, 8.5), 12);
   expect(starLight(5, 8.5, 2)).toBeCloseTo(2 * starLight(5), 12);
   setStarlight(100, -5);
   expect(starlightUniforms.brightness.value).toBe(STARLIGHT_RANGE.brightness[1]);

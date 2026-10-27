@@ -1,7 +1,9 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, InstancedBufferAttribute, PointsNodeMaterial, Sprite, type Node } from 'three/webgpu';
-import { dot, exp, float, instancedBufferAttribute, max, min, modelViewMatrix, uniform, uv, varying, vec4 } from 'three/tsl';
+import { Vector3 } from 'three/webgpu';
+import { dot, exp, float, instancedBufferAttribute, length, max, min, modelViewMatrix, sqrt, uniform, uv, varying, vec4 } from 'three/tsl';
 import type { SceneLabel } from '../../core/types';
 import { skyDirection } from '../sky';
+import { lensed } from './field';
 import { armRadius, galactocentric, MILKY_WAY, sampleMilkyWay, type SpiralArm } from './galaxy';
 
 /**
@@ -67,8 +69,12 @@ export type Scale = 'stars' | 'galaxy' | 'local-group' | 'universe';
 export interface Beyond {
   readonly galaxies: readonly LocalGalaxy[];
   readonly places: readonly BeyondPlace[];
-  /** Places everything for a camera (pc from the Sun) and its screen; asks for the survey when it is far enough to need it. */
-  update(camera: V3, fromSunPc: number, focalPx: number): void;
+  /**
+   * Places everything for a camera (pc from the Sun) and its screen, bent by a black hole when near one
+   * (`standIn`: how much the Sun's sky stands in for a stellar one's, the model's Milky Way giving way to
+   * it); asks for the survey when it is far enough to need it.
+   */
+  update(camera: V3, fromSunPc: number, focalPx: number, bending?: boolean, standIn?: number): void;
   /** The share of the catalogue's stars and of the band of the galaxy's light to keep at this distance from the Sun. */
   starsShown(fromSunPc: number): number;
   bandShown(fromSunPc: number): number;
@@ -95,6 +101,8 @@ const DISCS: Record<string, { points: number; thickness: number; colour: V3; lig
 /** Display terms: when each part shows (pc from the Sun), and how bright its points are. */
 const FADE = { band: [800, 2500], stars: [3000, 8000], galaxy: [1200, 4000], glows: [500, 2000], web: [2e6, 2e7], webLoad: 1.5e6 } as const;
 const LIGHT = { galaxy: 0.07, glow: 0.5, web: 0.35 } as const;
+/** The widest a point's secondary image past a black hole is drawn (CSS px). */
+const SECONDARY_PX = 2.5;
 /** The Milky Way's points' radius (pc) and the survey's (pc). */
 const RADIUS = { galaxy: 200, web: 6e5 } as const;
 /** Where the scales change for the labels (pc from the Sun): the galaxy's own, then the Local Group's, then the universe's. */
@@ -128,7 +136,12 @@ export function galacticAxes(obliquity: number): { x: V3; y: V3; z: V3 } {
 
 /**
  * A sprite per point: its size on the screen from a radius in parsecs and its distance, its light
- * thinned below a pixel (but never under `minCoverage`, so a far galaxy still marks its place).
+ * thinned below a pixel (but never under `minCoverage`, so a far galaxy still marks its place). Near a
+ * black hole each point is bent as a star is (./field), with a second draw for its secondary image,
+ * after the hole's lens and hidden by its disc (so not in the lens's picture of the sky's glow): as an
+ * extended source, its size grows (or shrinks) as the square root of its magnification and its
+ * surface keeps its brightness, so a squeezed image is small and faint, and one too faint to see is
+ * not drawn at all.
  */
 function cloud(positions: Float32Array, colours: Float32Array, radii: Float32Array, maxPx: number, name: string, minCoverage = 0) {
   const count = radii.length;
@@ -137,36 +150,58 @@ function cloud(positions: Float32Array, colours: Float32Array, radii: Float32Arr
   const radiusAttr = new InstancedBufferAttribute(radii, 1);
   const uFocal = uniform(800);
   const uLight = uniform(1);
-  const material = new PointsNodeMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest: false, sizeAttenuation: false, fog: false });
+  /** The sprites' shift (minus the camera's place, pc), for the points' places from the camera. */
+  const uShift = uniform(new Vector3());
   const at = instancedBufferAttribute(posAttr) as unknown as Node<'vec3'>;
-  const depth = max(modelViewMatrix.mul(vec4(at, 1)).z.negate(), float(1e-3));
-  const diameter = (instancedBufferAttribute(radiusAttr) as unknown as Node<'float'>).mul(uFocal).mul(2).div(depth);
-  const size = diameter.clamp(1.5, maxPx);
-  material.positionNode = at;
-  material.sizeNode = size;
-  // Smaller than its drawn size: the light it would spread over its own area, no more.
-  const coverage = varying(max(min(diameter.div(size), 1), float(minCoverage)));
+  const colour = instancedBufferAttribute(colourAttr) as unknown as Node<'vec3'>;
+  // Its distance (not its depth along the gaze: a point behind the camera, seen past a black hole, is as far as it is).
+  const depth = max(length(modelViewMatrix.mul(vec4(at, 1)).xyz), float(1e-3));
   const c = uv().sub(0.5).mul(2);
   const r2 = dot(c, c);
-  material.colorNode = (instancedBufferAttribute(colourAttr) as unknown as Node<'vec3'>).mul(uLight).mul(coverage.mul(coverage)).mul(exp(r2.mul(-5)).mul(max(float(1).sub(r2), 0)));
-  material.opacityNode = float(1);
   const geometry = new BufferGeometry();
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
   geometry.setAttribute('position', new BufferAttribute(new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]), 3));
   geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
-  const sprite = new Sprite(material);
-  sprite.geometry = geometry;
-  sprite.count = count;
-  sprite.frustumCulled = false;
-  sprite.name = name;
-  sprite.renderOrder = -1;
+  const [sprite, image] = [false, true].map((secondary) => {
+    const material = new PointsNodeMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest: true, sizeAttenuation: false, fog: false });
+    const seen = lensed(at.add(uShift), secondary);
+    const gain = min(seen.w, 1e6);
+    const diameter = (instancedBufferAttribute(radiusAttr) as unknown as Node<'float'>).mul(uFocal).mul(2).div(depth).mul(sqrt(gain));
+    // (A secondary image is a thin arc squeezed against the shadow: drawn a small spot, never a wide one.)
+    const size = diameter.clamp(1.5, secondary ? Math.min(maxPx, SECONDARY_PX) : maxPx);
+    // Smaller than its drawn size: the light it would spread over its own area, no more.
+    const cover = max(min(diameter.div(size), 1), sqrt(min(gain, 1)).mul(minCoverage));
+    const light = uLight.mul(cover.mul(cover));
+    material.positionNode = seen.xyz.sub(uShift);
+    material.sizeNode = size.mul(light.mul(max(colour.x, max(colour.y, colour.z))).greaterThan(2e-4).select(1, 0));
+    material.colorNode = colour.mul(varying(light)).mul(exp(r2.mul(-5)).mul(max(float(1).sub(r2), 0)));
+    material.opacityNode = float(1);
+    const s = new Sprite(material);
+    s.geometry = geometry;
+    s.count = count;
+    s.frustumCulled = false;
+    s.name = secondary ? `${name}-images` : name;
+    s.renderOrder = 22;
+    // Its points' places (pc from the Sun), as drawn before any bending.
+    s.userData.positions = positions;
+    return s;
+  }) as [Sprite, Sprite];
+  image.visible = false;
   return {
     sprite,
+    image,
     uFocal,
     uLight,
+    /** Moves the points by minus the camera's place (pc); the secondary images shown when near a black hole. */
+    place(camera: readonly number[], bending: boolean): void {
+      for (const s of [sprite, image]) s.position.set(-(camera[0] ?? 0), -(camera[1] ?? 0), -(camera[2] ?? 0));
+      uShift.value.copy(sprite.position);
+      image.visible = sprite.visible && bending;
+    },
     dispose(): void {
       geometry.dispose();
-      material.dispose();
+      sprite.material.dispose();
+      image.material.dispose();
     },
   };
 }
@@ -208,7 +243,7 @@ function random(seed: number): () => number {
  * What lies beyond the stars, its objects handed to `add` (the survey's when it arrives); `loadWeb`
  * fetches the survey's sample, asked for once the camera is a million and a half parsecs out.
  */
-export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: () => Promise<{ manifest: WebManifest; data: ArrayBuffer }>, detail: 'full' | 'basic', add: (s: Sprite) => void): Beyond {
+export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: () => Promise<{ manifest: WebManifest; data: ArrayBuffer }>, detail: 'full' | 'basic', add: (...s: Sprite[]) => void): Beyond {
   const axes = galacticAxes(obliquity);
   /** A galactic-frame vector (any unit) in the render frame. */
   const toRender = (g: readonly [number, number, number], unit: number, out: Float32Array | number[], at: number): void => {
@@ -279,7 +314,7 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
   }
   const discs = cloud(new Float32Array(discPoints), new Float32Array(discColours), new Float32Array(discRadii), 10, 'explore-beyond-discs');
 
-  for (const c of [milkyWay, glows, discs]) add(c.sprite);
+  for (const c of [milkyWay, glows, discs]) add(c.sprite, c.image);
 
   // The survey's galaxies, once the camera is far enough to need them.
   let web: ReturnType<typeof cloud> | null = null;
@@ -305,7 +340,7 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
         }
         web = cloud(pos, colours, new Float32Array(count).fill(RADIUS.web), 6, 'explore-beyond-web', 0.3);
         web.sprite.visible = false;
-        add(web.sprite);
+        add(web.sprite, web.image);
       })
       .catch(() => {
         webAsked = false;
@@ -347,18 +382,12 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
   return {
     galaxies,
     places,
-    update(camera, fromSunPc, focalPx) {
-      const shift = (s: Sprite): void => {
-        s.position.set(-camera[0], -camera[1], -camera[2]);
-      };
+    update(camera, fromSunPc, focalPx, bending = false, standIn = 0) {
       fades.galaxy = smoothstep(FADE.galaxy[0], FADE.galaxy[1], fromSunPc);
       fades.web = smoothstep(FADE.web[0], FADE.web[1], fromSunPc);
-      for (const c of [milkyWay, glows, discs, ...(web ? [web] : [])]) {
-        shift(c.sprite);
-        c.uFocal.value = focalPx;
-      }
-      milkyWay.uLight.value = LIGHT.galaxy * fades.galaxy;
-      milkyWay.sprite.visible = fades.galaxy > 0.001;
+      // (Not where the Sun's sky stands in for a stellar black hole's: one Milky Way at a time.)
+      milkyWay.uLight.value = LIGHT.galaxy * fades.galaxy * (1 - standIn);
+      milkyWay.sprite.visible = milkyWay.uLight.value > 0.001 * LIGHT.galaxy;
       // The dwarf galaxies' glows come in past the stars near the Sun (as faint as they are, they would sit among the stars).
       fades.glows = smoothstep(FADE.glows[0], FADE.glows[1], fromSunPc);
       glows.uLight.value = LIGHT.glow * fades.glows;
@@ -367,6 +396,10 @@ export function createBeyond(file: LocalGroupFile, obliquity: number, loadWeb: (
       if (web) {
         web.uLight.value = LIGHT.web * fades.web;
         web.sprite.visible = fades.web > 0.001;
+      }
+      for (const c of [milkyWay, glows, discs, ...(web ? [web] : [])]) {
+        c.place(camera, bending);
+        c.uFocal.value = focalPx;
       }
       if (!webAsked && fromSunPc > FADE.webLoad) askWeb();
     },

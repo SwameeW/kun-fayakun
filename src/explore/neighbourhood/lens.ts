@@ -167,6 +167,116 @@ export function trace(camera: V3, dir: V3, normal: V3 | null = null, maxCrossing
   return { captured: true, direction: [0, 0, 0], crossings, er, et, b, phi, steps: TRACE.steps };
 }
 
+/** Gauss-Legendre nodes and weights on [0, 1] (Newton's iterations on the Legendre polynomial). */
+function gaussLegendre(n: number): { nodes: number[]; weights: number[] } {
+  const nodes: number[] = [];
+  const weights: number[] = [];
+  for (let i = 1; i <= n; i += 1) {
+    let x = Math.cos((Math.PI * (i - 0.25)) / (n + 0.5));
+    let d = 1;
+    for (let it = 0; it < 50; it += 1) {
+      let p0 = 1;
+      let p1 = x;
+      for (let k = 2; k <= n; k += 1) [p0, p1] = [p1, ((2 * k - 1) * x * p1 - (k - 1) * p0) / k];
+      d = (n * (x * p1 - p0)) / (x * x - 1);
+      const dx = p1 / d;
+      x -= dx;
+      if (Math.abs(dx) < 1e-15) break;
+    }
+    nodes.push((x + 1) / 2);
+    weights.push(1 / ((1 - x * x) * d * d));
+  }
+  return { nodes, weights };
+}
+
+const GL12 = gaussLegendre(12);
+
+/** The integral of f over [a, b], twelve Gauss points. */
+function quad(f: (x: number) => number, a: number, b: number): number {
+  let sum = 0;
+  for (let k = 0; k < 12; k += 1) sum += (GL12.weights[k] ?? 0) * f(a + (b - a) * (GL12.nodes[k] ?? 0));
+  return sum * (b - a);
+}
+
+/**
+ * The angle round the hole (rad) a ray swept on its way out to infinity, traced back from a camera
+ * hanging still `r` (r_s) out at an angle `theta` from the line from the hole to it (0: looking
+ * straight away from the hole); Infinity when the hole captures it. The integral of du / sqrt(1/b^2 -
+ * u^2 + u^3) out from the camera (and, for a ray heading in, down to its nearest point and back), in
+ * closed variables: with the cubic's roots u1 < 0 < u2 <= u3, u = u2 - w^2 removes the square root's
+ * zero at the turning point and w = sqrt(u3 - u2) sinh(v) the logarithm a ray winding round the photon
+ * sphere picks up, so twelve Gauss points suffice (to a few microradians, as ./lens's steps). The
+ * images the stars are drawn at come from it (imageTable).
+ */
+export function escapeAngle(theta: number, r: number): number {
+  const u0 = 1 / r;
+  const sine = Math.sin(theta);
+  if (sine < 1e-12) return Math.cos(theta) > 0 ? 0 : Number.POSITIVE_INFINITY;
+  const B = (1 - u0) / (r * r * sine * sine);
+  const inward = Math.cos(theta) < 0;
+  if (B >= 4 / 27) return inward ? Number.POSITIVE_INFINITY : quad((u) => 1 / Math.sqrt(Math.max(B - u * u + u * u * u, 1e-300)), 0, u0);
+  const angle = Math.acos(Math.max(-1, Math.min(1, 1 - 13.5 * B)));
+  const roots = [0, 1, 2].map((k) => 1 / 3 + (2 / 3) * Math.cos(angle / 3 - (2 * Math.PI * k) / 3)).sort((a, b) => a - b);
+  // The two small roots polished by Newton's steps (far out they are near +-1/b, lost in the cosine), the third from their sum (1).
+  const polish = (u: number): number => {
+    let x = u;
+    for (let it = 0; it < 3; it += 1) {
+      const slope = 3 * x * x - 2 * x;
+      if (slope !== 0) x -= (x * x * x - x * x + B) / slope;
+    }
+    return x;
+  };
+  const u1 = polish(roots[0] ?? 0);
+  const u2 = polish(roots[1] ?? 0);
+  const u3 = 1 - u1 - u2;
+  const eps = Math.max(u3 - u2, 1e-300);
+  const root = Math.sqrt(eps);
+  // From w = wa to wb, the last three units of v (where the integrand turns) on their own.
+  const part = (wa: number, wb: number): number => {
+    const va = Math.asinh(wa / root);
+    const vb = Math.asinh(wb / root);
+    const f = (v: number): number => 2 / Math.sqrt(Math.max(u2 - u1 - eps * Math.sinh(v) ** 2, 1e-300));
+    return vb - va <= 3 ? quad(f, va, vb) : quad(f, va, vb - 3) + quad(f, vb - 3, vb);
+  };
+  const wa = Math.sqrt(Math.max(u2 - u0, 0));
+  return part(wa, Math.sqrt(u2)) + (inward ? 2 * part(0, wa) : 0);
+}
+
+/** The table of images: its size, over source angles from 0 to `span` (rad). */
+export const IMAGES = { size: 1024, span: 2 * Math.PI } as const;
+
+/**
+ * For a camera hanging still `r` (r_s) from the hole: how far toward the line from the hole to the
+ * camera (rad) it sees a source at infinity whose direction from the hole is Phi from that line, for
+ * Phi evenly over [0, IMAGES.span]: the image is at Phi less the table's value. A source at Phi has
+ * its primary image at the table's Phi, on its own side, and its secondary at 2 pi - Phi, on the other
+ * side, just outside the shadow. The escape angle is found at angles evenly to the shadow's edge and
+ * evenly in -ln(1 - theta / edge) (it rises without end toward the edge), and the table read off it
+ * between those (the bending, not the angle, so a microradian's bending far out is kept).
+ */
+export function imageTable(r: number, out: Float32Array = new Float32Array(IMAGES.size)): Float32Array {
+  const camera = Math.max(r, 1.6);
+  const edge = Math.PI - shadowAngle(camera);
+  const ys: number[] = [];
+  for (let i = 0; i < 256; i += 1) ys.push(-Math.log(1 - i / 256));
+  for (let i = 1; i <= 320; i += 1) ys.push((22 * i) / 320);
+  ys.sort((a, b) => a - b);
+  const thetas = ys.map((y) => edge * -Math.expm1(-y));
+  const ends = thetas.map((t) => escapeAngle(t, camera));
+  let j = 0;
+  for (let k = 0; k < out.length; k += 1) {
+    const phi = (IMAGES.span * k) / (out.length - 1);
+    while (j < ends.length - 2 && (ends[j + 1] ?? 0) < phi) j += 1;
+    const a = ends[j] ?? 0;
+    const b = ends[j + 1] ?? 1;
+    const t = Math.max(0, Math.min(1, (phi - a) / Math.max(b - a, 1e-300)));
+    const bentA = a - (thetas[j] ?? 0);
+    const bentB = b - (thetas[j + 1] ?? 0);
+    out[k] = bentA + (bentB - bentA) * t;
+  }
+  return out;
+}
+
 /**
  * The shift of light from gas on a circular orbit in the disc (prograde about `normal`) at radius
  * `r` (r_s), seen by a camera hanging still at `cameraR` along a ray whose plane is (er, et) and

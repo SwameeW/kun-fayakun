@@ -8,29 +8,50 @@ import { CRITICAL_B, GAUSS, TRACE } from './lens';
  * loaded the first time the camera comes near one): a sphere round the camera whose every pixel
  * traces its ray back past the hole by ./lens's steps (the same equation and steps, here on the GPU),
  * to the horizon (black: the shadow) or out to the direction its light came from. That light is the
- * picture behind (the stars, the Milky Way, the galaxies, as drawn this frame) where that direction
- * is on the screen and not squeezed, else a capture of the whole sky round the camera (taken on
- * arriving, its blur matched to how much the lens squeezes it). Lensing keeps a surface's brightness,
- * so a star crossing the ring brightens by its area, never in a flash.
+ * sky's glow behind (the band, the Milky Way's model, the galaxies, as drawn this frame) where that
+ * direction is on the screen and not squeezed, else a capture of the glow round the camera (taken on
+ * arriving, its blur matched to how much the lens squeezes it), the two blended near the screen's
+ * edge. The stars are not in either: each is bent in its own vertex stage (./field), a sharp point at
+ * the screen's resolution, drawn after this with its secondary image; where the gas is opaque this
+ * writes the nearest depth, so a star behind the disc is hidden.
  *
  * Where the hole has gas, the ray's crossings of its disc's plane add its light: a thin disc (from the
  * innermost stable orbit, 3 r_s, out) whose temperature falls as Shakura and Sunyaev's, or a hot thin
- * ring near the photon sphere, each shifted by the gas's motion and the hole's pull (g, ./lens) and
- * brightened as g^3; their colours, temperatures and extents are illustrative, the bending computed.
+ * ring near the photon sphere, each shifted by the gas's motion and the hole's pull (g, ./lens). A
+ * disc's light is a blackbody's: since I_nu / nu^3 is kept along a ray, what reaches the camera is the
+ * spectrum of a blackbody at g T, so it is drawn in that temperature's colour and as bright as that
+ * blackbody at the middle of the visible (550 nm); the ring's brightened as g^3. Their temperatures
+ * and extents are illustrative (a supermassive hole's disc cooler and wider than a stellar one's, as
+ * such discs are), the bending computed.
  */
 
 /** Steps by tier (a step is pi/40 of a turn round the hole); the sky's capture (px a face). */
 export const LENS_DETAIL = { high: TRACE.steps, medium: 140, low: 100, capturePx: 512 } as const;
+/**
+ * A thin disc's display (illustrative): its temperature at its hottest (K), its outer edge (r_s), and
+ * its light where it is hottest, seen face on (under the bloom's threshold of 0.75; the side coming
+ * toward the camera, hotter seen, brighter). A supermassive hole's disc is cooler and wider than a
+ * stellar one's (a disc's temperature falls as its hole's mass to the -1/4).
+ */
+const DISC = { supermassive: { kelvin: 12_000, outer: 22, light: 0.4 }, stellar: { kelvin: 20_000, outer: 12, light: 0.35 } } as const;
+/** A disc's streaks turn once round its inner edge in this many seconds (illustrative: its real orbits there take a fraction of a millisecond round a stellar hole, about a year round TON 618). */
+const DISC_TURN_S = 40;
+/** hc / (k 550 nm): a blackbody's light at 550 nm goes as 1 / (exp(VISIBLE_K / T) - 1). */
+const VISIBLE_K = 26_160;
+const visible = (kelvin: number): number => 1 / Math.expm1(VISIBLE_K / kelvin);
 
 export interface LensView {
   readonly mesh: Mesh;
   /**
    * This frame: the camera's place from the hole in its Schwarzschild radii (render frame), the gas's
-   * model and axis, the screen's angle per device pixel, and how many steps to trace.
+   * model and axis, the screen's angle per device pixel, how many steps to trace, and the seconds a
+   * disc's streaks have turned for (DISC_TURN_S a turn; held still under reduced motion).
    */
-  update(camera: readonly [number, number, number], model: 'thin-disc' | 'hot-ring' | 'dormant', axis: readonly [number, number, number], pixelAngle: number, steps: number): void;
-  /** Captures the sky round the camera (the lens hidden) for the light from off the screen. */
+  update(camera: readonly [number, number, number], kind: 'supermassive' | 'stellar', model: 'thin-disc' | 'hot-ring' | 'dormant', axis: readonly [number, number, number], pixelAngle: number, steps: number, seconds: number): void;
+  /** Captures the sky's glow round the camera (the lens and the stars hidden) for the light from off the screen. */
   capture(renderer: WebGPURenderer, scene: Scene): void;
+  /** Forgets the capture (another hole's sky), until the next. */
+  forget(): void;
   dispose(): void;
 }
 
@@ -63,12 +84,17 @@ export function createLensView(): LensView {
   const target = new CubeRenderTarget(LENS_DETAIL.capturePx, { type: HalfFloatType, generateMipmaps: true, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter });
   const cubeCamera = new CubeCamera(1e-9, 1e13, target);
   const colours = colourTable();
-  /** A thin disc's display temperature at its hottest (K), and its outer edge (r_s): illustrative. */
-  const DISC_KELVIN = 6000;
-  const DISC_OUTER = 14;
+  const uDiscKelvin = uniform(DISC.supermassive.kelvin);
+  const uDiscOuter = uniform(DISC.supermassive.outer);
+  /** The disc's plane (two axes in it) and how far round its streaks have turned at its inner edge (rad). */
+  const uE1 = uniform(new Vector3(1, 0, 0));
+  const uE2 = uniform(new Vector3(0, 0, 1));
+  const uSpin = uniform(0);
+  /** The disc's light at its hottest over a blackbody's at 550 nm there. */
+  const uDiscLight = uniform(DISC.supermassive.light / visible(DISC.supermassive.kelvin));
 
-  const material = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: false, depthTest: false, transparent: true, blending: NoBlending, fog: false });
-  material.colorNode = Fn(() => {
+  const material = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: true, depthTest: false, transparent: true, blending: NoBlending, fog: false });
+  const traced = Fn(() => {
     const d = normalize(positionWorld.sub(cameraPosition));
     const er = uCam.div(uR0);
     const radial = dot(d, er);
@@ -79,6 +105,7 @@ export function createLensView(): LensView {
     // sky behind is squeezed into the photon ring (worked out before any branch: derivatives need it).
     const turn = float(1).div(max(b.sub(CRITICAL_B), 1e-5)).mul(pow(float(CRITICAL_B).div(max(b, CRITICAL_B)), 2));
     const spread = fwidth(b).mul(turn).add(uPixel);
+    const detail = smoothstep(3, 1, spread.div(uPixel));
     If(b.greaterThan(uSkipB), () => {
       Discard();
     });
@@ -124,15 +151,23 @@ export function createLensView(): LensView {
           const omega = sqrt(float(0.5).div(r.mul(r).mul(r)));
           const g = sqrt(float(1).sub(float(1.5).div(r))).div(float(1).sub(omega.mul(lambda))).mul(seen);
           If(uModel.equal(int(1)), () => {
-            // A thin disc from 3 r_s out, opaque: its temperature by Shakura and Sunyaev's law, softened at its outer edge.
-            If(r.greaterThan(3).and(r.lessThan(DISC_OUTER)), () => {
+            // A thin disc from 3 r_s out, opaque: its temperature by Shakura and Sunyaev's law, its outer edge sharp.
+            If(r.greaterThan(3).and(r.lessThan(uDiscOuter)), () => {
               const t = pow(pow(r, -3).mul(float(1).sub(sqrt(float(3).div(r)))), 0.25).div(0.21403);
-              const kelvin = g.mul(t).mul(DISC_KELVIN);
+              const kelvin = g.mul(t).mul(uDiscKelvin);
               const tint = texture(colours, vec2(log2(kelvin.div(1000).clamp(1, 40)).div(Math.log2(40)), 0.5)).rgb;
-              const edge = smoothstep(DISC_OUTER, DISC_OUTER * 0.65, r);
-              // Its whole light as g^4 T^4 (the hottest seen face on about 0.55), its colour the shifted temperature's.
-              gas.addAssign(tint.mul(pow(g.mul(t), 4)).mul(0.55).mul(edge));
-              opaque.assign(edge);
+              const edge = smoothstep(uDiscOuter, uDiscOuter.mul(0.92), r);
+              // Streaks of hotter and cooler gas (illustrative), wound by the disc's own turning (the inner faster, as
+              // Kepler's), softened where the lens squeezes them under a pixel.
+              const at = er.mul(cos(nextCross)).add(et.mul(sin(nextCross)));
+              const w = atan(dot(at, uE2), dot(at, uE1)).sub(uSpin.mul(pow(float(3).div(r), 1.5)));
+              const lr = log2(r).mul(Math.LN2);
+              const streaks = float(1).add(sin(w.mul(5).add(lr.mul(21))).mul(0.16).add(sin(w.mul(11).sub(lr.mul(37))).mul(0.1)).add(sin(lr.mul(47)).mul(0.08)).mul(detail));
+              // A blackbody's at the shifted temperature, at 550 nm, in its colour; front to back (the nearer crossing hides the farther).
+              const seenShare = float(1).sub(opaque).mul(edge);
+              const light = float(1).div(exp(float(VISIBLE_K).div(kelvin.max(500))).sub(1));
+              gas.addAssign(tint.mul(light).mul(uDiscLight).mul(streaks).mul(seenShare));
+              opaque.addAssign(seenShare);
             });
           }).Else(() => {
             // A hot, thin ring round the photon sphere (as the Event Horizon Telescope's images show): its light adds at every crossing.
@@ -163,16 +198,18 @@ export function createLensView(): LensView {
     const out = er.mul(cos(end)).add(et.mul(sin(end)));
     const clip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(out, 0)));
     const ndc = clip.xy.div(max(clip.w, 1e-6));
-    // The picture where its direction is on the screen, handing over to the capture as the lens squeezes it (between 1.5 and 3.5 pixels a pixel).
-    const onScreen = clip.w.greaterThan(0).and(max(abs(ndc.x), abs(ndc.y)).lessThan(0.985));
-    const share = onScreen.select(smoothstep(3.5, 1.5, spread.div(uPixel)), float(0));
+    // The picture where its direction is on the screen, handing over to the capture as the lens squeezes it (between 1.5 and 3.5 pixels a pixel) and toward the screen's edge.
+    const share = clip.w.greaterThan(0).select(smoothstep(3.5, 1.5, spread.div(uPixel)).mul(smoothstep(0.99, 0.85, max(abs(ndc.x), abs(ndc.y)))), float(0));
     // (At the middle of its pixel: a star bent by a pixel or so moves whole, not smeared over four.)
     const picture = viewportSharedTexture(vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5))).mul(viewportSize).floor().add(0.5).div(viewportSize)).level(float(0)).rgb;
     const level = log2(spread.div(uTexel)).clamp(0, 9);
     const sky = cubeTexture(target.texture, out, level).rgb.mul(uHasCapture);
     const behind = select(end.lessThan(0), vec3(0), mix(sky, picture, share));
-    return vec4(behind.mul(float(1).sub(opaque)).add(gas), 1);
-  })();
+    return vec4(behind.mul(float(1).sub(opaque)).add(gas), opaque);
+  })().toVar();
+  material.colorNode = vec4(traced.rgb, 1);
+  // The disc's gas in front of what is behind it: the nearest depth there (the stars after it are hidden), the farthest elsewhere.
+  material.depthNode = traced.a.greaterThan(0.5).select(float(0), float(1));
   const mesh = new Mesh(new SphereGeometry(1e6, 48, 24), material);
   mesh.frustumCulled = false;
   mesh.renderOrder = 20;
@@ -181,14 +218,23 @@ export function createLensView(): LensView {
 
   return {
     mesh,
-    update(camera, model, axis, pixelAngle, steps) {
+    update(camera, kind, model, axis, pixelAngle, steps, seconds) {
       const r = Math.max(1.0001, Math.hypot(camera[0], camera[1], camera[2]));
       uCam.value.set(camera[0], camera[1], camera[2]);
       uR0.value = r;
       uAxis.value.set(axis[0], axis[1], axis[2]).normalize();
+      uE1.value.set(1, 0, 0).cross(uAxis.value);
+      if (uE1.value.lengthSq() < 1e-6) uE1.value.set(0, 1, 0).cross(uAxis.value);
+      uE1.value.normalize();
+      uE2.value.copy(uAxis.value).cross(uE1.value);
+      uSpin.value = (2 * Math.PI * seconds) / DISC_TURN_S;
       uModel.value = model === 'thin-disc' ? 1 : model === 'hot-ring' ? 2 : 0;
       uPixel.value = pixelAngle;
       uSteps.value = Math.round(steps);
+      const disc = DISC[kind];
+      uDiscKelvin.value = disc.kelvin;
+      uDiscOuter.value = disc.outer;
+      uDiscLight.value = disc.light / visible(disc.kelvin);
       // Past the impact parameter bending a ray by under half a pixel (2 / b < pixel / 2), and with no gas out there, the picture stands.
       uSkipB.value = Math.max(4 / Math.max(pixelAngle, 1e-9), model === 'dormant' ? 0 : 40);
       mesh.visible = true;
@@ -199,6 +245,9 @@ export function createLensView(): LensView {
       cubeCamera.updateMatrixWorld();
       cubeCamera.update(renderer, scene);
       uHasCapture.value = 1;
+    },
+    forget() {
+      uHasCapture.value = 0;
     },
     dispose() {
       mesh.geometry.dispose();

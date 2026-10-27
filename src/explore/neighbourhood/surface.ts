@@ -55,7 +55,8 @@ export function createDisc(): Disc {
   material.opacityNode = uShown;
   const mesh = new Mesh(new SphereGeometry(1, 64, 32), material);
   mesh.frustumCulled = false;
-  mesh.renderOrder = 2;
+  // After the stars (./field), so the disc hides those behind it.
+  mesh.renderOrder = 26;
   mesh.name = 'explore-neighbourhood-disc';
   mesh.visible = false;
   return {

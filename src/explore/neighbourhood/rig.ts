@@ -14,7 +14,8 @@
  * - Orbit, round the star chosen (after flying to it, or O): a drag turns the camera round it, the
  *   wheel moves in or out (never inside it), and a move key lets go of it into free look.
  * A pan moves the camera across the view in either. A flight to a star or a place rises to see both
- * ends and comes down again, turning to look at where it goes, and arrives in orbit.
+ * ends and comes down again, turning to look at where it goes, and arrives in orbit; under reduced
+ * motion it is a cut.
  */
 
 export type V3 = [number, number, number];
@@ -22,8 +23,12 @@ export type V3 = [number, number, number];
 export type Quat = [number, number, number, number];
 export type RigMode = 'look' | 'orbit';
 
-/** Radians per CSS pixel dragged in orbit (the solar system's orbit's rate); the speed's share of the nearest distance a second, Shift's multiple, and its bounds (pc/s). */
-export const RIG = { orbitPerPx: 0.005, speedShare: 0.5, boost: 5, minSpeed: 1e-16, maxSpeed: 2e4, keyTurn: 0.9, keyZoom: 1.2, aimSeconds: 0.4 } as const;
+/**
+ * Radians per CSS pixel dragged in orbit (the solar system's orbit's rate); the speed's share of the
+ * nearest distance a second, Shift's multiple, and its bounds (pc/s); under reduced motion a flight is
+ * a cut, halfway through this wait (s), as the solar system's navigator cuts.
+ */
+export const RIG = { orbitPerPx: 0.005, speedShare: 0.5, boost: 5, minSpeed: 1e-16, maxSpeed: 2e4, keyTurn: 0.9, keyZoom: 1.2, aimSeconds: 0.4, cutSeconds: 0.6 } as const;
 
 export const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -275,15 +280,30 @@ function blend(a: V3, b: V3, t: number): V3 {
   return add(scale(a, Math.sin((1 - t) * theta) / s), scale(b, Math.sin(t * theta) / s));
 }
 
+/** A flight's arrival: its distance from what it went to, looking at it; at its end, in orbit round it. */
+function arrive(rig: Rig, trip: Trip, end: boolean): void {
+  rig.rel = scale(trip.toDir, Math.exp(trip.toLn));
+  rig.q = lookRotation(scale(trip.toDir, -1), trip.upTo ?? trip.up);
+  if (!end) return;
+  rig.trip = null;
+  rig.mode = 'orbit';
+}
+
 /**
  * Steps the camera by `dt` seconds: a flight, an aim, the keys. `nearestPc` is the distance to the
  * nearest star's (or black hole's) surface, which sets the speed of flight; `reduced`: reduced
- * motion (no easing of the aim).
+ * motion (no easing of the aim; a flight is a cut: the view holds, then is at its arrival).
  */
 export function step(rig: Rig, dt: number, nearestPc: number, reduced: boolean): void {
   const h = Math.min(Math.max(dt, 0), 0.1);
   rig.speed = 0;
   const trip = rig.trip;
+  if (trip && reduced) {
+    trip.t += h;
+    // Still a flight until its wait is over (Esc stops it, the panel says so), but already there from halfway.
+    if (trip.t >= RIG.cutSeconds / 2) arrive(rig, trip, trip.t >= RIG.cutSeconds);
+    return;
+  }
   if (trip) {
     trip.t += h;
     const s = smootherstep(trip.t / trip.seconds);
@@ -295,12 +315,7 @@ export function step(rig: Rig, dt: number, nearestPc: number, reduced: boolean):
     // The up carried along, kept square to the gaze.
     rig.q = lookRotation(length(look) > 0 ? look : scale(dir, -1), trip.upTo ? blend(trip.up, trip.upTo, s * s) : trip.up);
     trip.up = upOf(rig.q);
-    if (trip.t >= trip.seconds) {
-      rig.rel = scale(trip.toDir, Math.exp(trip.toLn));
-      rig.q = lookRotation(scale(trip.toDir, -1), trip.upTo ?? trip.up);
-      rig.trip = null;
-      rig.mode = 'orbit';
-    }
+    if (trip.t >= trip.seconds) arrive(rig, trip, true);
     return;
   }
   if (rig.aim) {

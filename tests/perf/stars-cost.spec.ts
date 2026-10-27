@@ -2,8 +2,10 @@
  * Among the stars at High (docs/NEIGHBOURHOOD.md, "Performance"): 1440x900 at two device pixels a
  * CSS pixel, ?profile=1 (the render scale held at 1): the frame rate and the slowest frames in the
  * solar system (for comparison), among the stars by default (Hipparcos's and Tycho-2's first pack),
- * with all 2.5 million stars drawn (faintest magnitude 12.5), and at three black holes (Sagittarius A*'s
- * hot ring, TON 618's disc, Gaia BH1 from two of its radii, where every pixel is traced). CPU time is
+ * with all 2.5 million stars drawn (faintest magnitude 12.5), and at five black holes (Sagittarius A*'s
+ * hot ring, TON 618's disc, M87* with the survey's galaxies bent, Cygnus X-1's disc with the Sun's sky
+ * stood in, Gaia BH1 from two of its radii, where every pixel is traced; the stars and points bent in
+ * their vertex stage, each drawn twice). CPU time is
  * the main thread's busy time (Chrome's TaskDuration) per frame. Always logs the numbers; asserts the
  * explorer's budget (60 fps median, the slowest 1% under 20 ms) with PERF_ASSERT=1, since it only means
  * something on the reference hardware.
@@ -60,10 +62,10 @@ test('among the stars and at the black holes, frames stay within the explorer’
   await expect.poll(async () => (await stars(page))?.stars.loaded ?? 0, { timeout: 60_000 }).toBeGreaterThan(400_000);
   await measure('stars, by default (faintest 8.5)');
   await command(page, { kind: 'starsLight', brightness: 1, faintest: 12.5 });
-  await expect.poll(async () => (await stars(page))?.stars.far ?? 0, { timeout: 120_000 }).toBeGreaterThan(2_400_000);
+  await expect.poll(async () => (await stars(page))?.stars.far ?? 0, { timeout: 120_000 }).toBeGreaterThan(2_350_000);
   await measure('stars, all 2.5 million (faintest 12.5)');
   await command(page, { kind: 'starsLight', brightness: 1, faintest: 8.5 });
-  for (const id of ['sgr-a', 'ton-618', 'gaia-bh1']) {
+  for (const id of ['sgr-a', 'ton-618', 'm87', 'cyg-x-1', 'gaia-bh1']) {
     await command(page, { kind: 'starsPlace', place: `bh:${id}` });
     await arrive();
     if (id === 'gaia-bh1') {

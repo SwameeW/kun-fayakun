@@ -3,16 +3,16 @@ import { exp, float, instancedBufferAttribute, max, smoothstep, uniform, uv, vec
 import { blackbodyRgb } from '../../chapters/shared/blackbody';
 import type { AssetLoader, SceneLabel, UniverseNeighbourhood, ViewInsets } from '../../core/types';
 import { bvKelvin, type SkyFile } from '../sky';
-import { setStarlight, spriteQuad, starlightUniforms } from '../starlight';
+import { setStarlight, spriteQuad, STARLIGHT_DEFAULTS, starlightUniforms } from '../starlight';
 import { createBand, type Band } from './band';
 import { createBeyond, galacticAxes, type Beyond, type BeyondPlace, type LocalGalaxy, type LocalGroupFile, type WebManifest } from './beyond';
 import { bvOf, type CatalogueManifest, type PackReply, type PackRequest } from './catalogue';
 import { KM_PER_PC, LY_PER_PC, readNeighbours, type Neighbours, type NeighbourhoodFile, type Star, type SunFigures } from './data';
-import { farLayer, placedLayer, setCameraParts, type FarLayer, type PlacedLayer } from './field';
+import { farLayer, LENSED, lensing, placedLayer, setCameraParts, setImages, type FarLayer, type PlacedLayer } from './field';
 import { createFigures, type Figures } from './figures';
 import { readBlackHoles, type BlackHole, type BlackHoleFile } from './holes';
-import { placeLabels, type LabelCandidate } from './labels';
-import { shadowAngle, shadowMicroArcsec } from './lens';
+import { placeLabels, tagBox, type LabelCandidate } from './labels';
+import { imageTable, IMAGES, shadowAngle, shadowMicroArcsec } from './lens';
 import type { LensView } from './lens-view';
 import { cameraOf, createRig, drag as rigDrag, flyTo, forwardOf, length, pan as rigPan, reanchor, step as rigStep, stopTrip, sub, toggleMode as rigToggle, upOf, zoom as rigZoom, type Rig, type V3 } from './rig';
 import { createDisc, estimatedRadius, SUN } from './surface';
@@ -95,15 +95,26 @@ const ARRIVE = { sunPc: 3, starRadii: 30, holeRs: 20, discRs: 55, starMin: 1.1, 
 /**
  * The directions on the sky (Tycho-2's, Hipparcos's unplaced) are the sky seen from near the Sun (most
  * of those stars lie within a few hundred parsecs): they fade out between these distances from it (pc),
- * as the Milky Way's model comes in.
+ * as the Milky Way's model comes in. Near a black hole in the galaxy (a stellar one, hundreds of
+ * parsecs to kiloparsecs out in the disc, where the stars around are not catalogued) the sky as seen
+ * from the Sun stands in for its sky, said so in the panel: those directions, the band of the galaxy's
+ * glow, and the stars placed in space drawn as from the Sun, fully within the first distance of it
+ * (pc), not past the second.
  */
 const FAR_FADE = [150, 3000] as const;
-/** The sky's capture round a black hole: a face's focal length (px; 512 px a face, 90 degrees). */
-const CAPTURE_FOCAL_PX = 256;
+const STAND_IN_PC = [20, 200] as const;
 /** Names: at most this many, of stars brighter than this as seen from here (the star in view and the one under the pointer always). */
 const NAMES = { max: 16, brighterThan: 3.2 } as const;
-/** Picking: within this many CSS px (touch wider), each magnitude brighter than the faintest worth this many px. */
-const PICK = { mousePx: 20, touchPx: 32, perMag: 2 } as const;
+/**
+ * Picking: within this many CSS px (touch wider), each magnitude brighter than the faintest worth this
+ * many px. The wheel and a pinch head for (or, in orbit, go to) only what the pointer is on: a name's
+ * tag or within `pointPx` of a named star, or within `brightPx` of a star brighter than `brightMag`
+ * from here; anywhere else the wheel goes in toward the star in view (in free look, along the
+ * pointer's ray), since a faint star lies within a few pixels of almost every point of the sky.
+ */
+const PICK = { mousePx: 20, touchPx: 32, perMag: 2, pointPx: 12, brightPx: 8, brightMag: 4 } as const;
+/** A pan lets go of an orbit once it has gone this far (CSS px) in one gesture (a pause this long, ms, begins another). */
+const PAN_LET_GO = { px: 12, gapMs: 300 } as const;
 /** A black hole's lens is drawn within this many of its Schwarzschild radii (beyond, its bending is under a pixel). */
 const LENS_RS = 1e7;
 /** A star drawn as a disc once its radius is this many device pixels (fully at the second). */
@@ -192,8 +203,10 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   const fileFar = farLayer(unplacedDirs, unplacedColour, obliquity, 'explore-neighbourhood-unplaced');
   const group = new Group();
   group.name = 'explore-neighbourhood';
-  group.add(fileFar.sprite, namedLayer.sprite);
+  group.add(fileFar.sprite, fileFar.image, namedLayer.sprite, namedLayer.image);
   group.visible = false;
+  /** The visitor's star light among the stars (the solar system's sky keeps the defaults). */
+  const own: { brightness: number; faintest: number } = { ...STARLIGHT_DEFAULTS };
 
   // The deep catalogue: Hipparcos's other stars and Tycho-2's, streamed pack by pack (brightest first), decoded in a worker.
   let manifest: CatalogueManifest | null = null;
@@ -202,7 +215,17 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   const exclude = new Uint32Array(data.stars.filter((s) => s.hip !== null).map((s) => s.hip ?? 0));
   const asked = new Set<string>();
   let hipPlaced: { layer: PlacedLayer; stars: Float32Array; hips: Uint32Array } | null = null;
-  const farLayers: Array<{ layer: FarLayer; count: number; file: string }> = [];
+  /** Each pack's directions, brightest first, with how many of them are as bright as each V code or brighter (so those too faint to see are not drawn). */
+  const farLayers: Array<{ layer: FarLayer; count: number; file: string; upTo: Uint32Array }> = [];
+  const brighterCount = (colours: Uint8Array): Uint32Array => {
+    const upTo = new Uint32Array(256);
+    for (let i = 0; i < colours.length / 4; i += 1) {
+      const code = colours[i * 4 + 3] ?? 255;
+      upTo[code] = i + 1;
+    }
+    for (let c = 1; c < 256; c += 1) upTo[c] = Math.max(upTo[c] ?? 0, upTo[c - 1] ?? 0);
+    return upTo;
+  };
   let loaded = 0;
   const pending = new Map<number, string>();
   let nextId = 1;
@@ -219,14 +242,14 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     const p = reply.pack;
     if (p.placed.length > 0 && !hipPlaced) {
       const layer = placedLayer(p.placed, p.placedColour, 'explore-neighbourhood-hipparcos');
-      group.add(layer.sprite);
+      group.add(layer.sprite, layer.image);
       hipPlaced = { layer, stars: p.placed, hips: p.placedHip };
       loaded += p.placedHip.length;
     }
     if (p.far.length > 0 && !farLayers.some((f) => f.file === name)) {
       const layer = farLayer(p.far, p.farColour, obliquity, `explore-neighbourhood-${name.replace('.bin', '')}`);
-      group.add(layer.sprite);
-      farLayers.push({ layer, count: p.far.length / 2, file: name });
+      group.add(layer.sprite, layer.image);
+      farLayers.push({ layer, count: p.far.length / 2, file: name, upTo: brighterCount(p.farColour) });
       // Brightest first across the packs: Hipparcos's directions, then Tycho-2's in order.
       farLayers.sort((a, b) => (a.file < b.file ? -1 : 1));
       loaded += p.far.length / 2;
@@ -264,6 +287,11 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   let lens: LensView | null = null;
   let lensLoading = false;
   let lensCaptured = false;
+  /** The table of the stars' images past the hole in view (their bending, ./lens imageTable), and how much a stellar hole's sky is stood in for by the Sun's (STAND_IN_PC). */
+  const images = new Float32Array(IMAGES.size);
+  let skyStandIn = 0;
+  /** How long a disc's (illustrative) streaks have turned (s). */
+  let discSeconds = 0;
   if (ctx) {
     void ctx.assets
       .json<CatalogueManifest>('assets/stars/catalogue.json')
@@ -334,8 +362,8 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   planetSprites.name = 'explore-neighbourhood-planets';
   group.add(disc.mesh, reticle, orbitLines, planetSprites);
   const beyond: Beyond | null = beyondInputs
-    ? createBeyond(beyondInputs.localGroup, obliquity, beyondInputs.loadWeb, beyondInputs.detail, (s) => {
-        group.add(s);
+    ? createBeyond(beyondInputs.localGroup, obliquity, beyondInputs.loadWeb, beyondInputs.detail, (...s) => {
+        group.add(...s);
       })
     : null;
 
@@ -410,7 +438,13 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
   let hoverInfo: UniverseNeighbourhood['hover'] = null;
   let hoverAt: { x: number; y: number; t: number; sticky: boolean } | null = null;
   let lastHoverMs = 0;
-  let zoomLockMs = 0;
+  /** A gesture's pan so far in orbit (CSS px), and when it last moved (ms). */
+  let panHeld = { dx: 0, dy: 0, t: 0 };
+  /** The names drawn this frame, where (CSS px from the canvas's top left): what the wheel can head for. */
+  let tagged: Array<LabelCandidate & { s: Star }> = [];
+  /** The camera's distance from the hole the stars' images were last worked out for (r_s), and the hole the sky was captured round. */
+  let imagesFor = 0;
+  let lensFor: BlackHole | null = null;
   const project = new Vector3();
 
   /** The orbits of a system, as line segments relative to its star (pc): each in the plane face-on to the Sun, tilted by its inclination where measured. */
@@ -442,10 +476,35 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
 
   /** The camera's place relative to a point (pc), worked out from its anchor: exact near a star or a black hole however far it is from the Sun. */
   const relTo = (p: V3): V3 => [rig.anchor[0] - p[0] + rig.rel[0], rig.anchor[1] - p[1] + rig.rel[1], rig.anchor[2] - p[2] + rig.rel[2]];
+  /** A point's place from the camera (pc), where a black hole near shows it: its primary image, as ./field draws it. */
+  const seenRel = (p: V3): V3 => {
+    const rel: V3 = [p[0] - camera[0], p[1] - camera[1], p[2] - camera[2]];
+    const hv = lensing.hole.value;
+    const dH = Math.hypot(hv.x, hv.y, hv.z);
+    if (lensing.on.value < 0.5 || !(dH > 0)) return rel;
+    const er: V3 = [-hv.x / dH, -hv.y / dH, -hv.z / dH];
+    const toStar: V3 = [rel[0] - hv.x, rel[1] - hv.y, rel[2] - hv.z];
+    const dS = length(toStar);
+    const turn = crossOf(er, toStar);
+    const sine = length(turn) / dS;
+    if (sine < 1e-12) return rel;
+    const phi = Math.atan2(sine, (er[0] * toStar[0] + er[1] * toStar[1] + er[2] * toStar[2]) / dS);
+    const at = Math.min(Math.max((phi * (IMAGES.size - 1)) / IMAGES.span, 0), IMAGES.size - 1.001);
+    const i = Math.floor(at);
+    const bent = (images[i] ?? 0) + ((images[i + 1] ?? 0) - (images[i] ?? 0)) * (at - i);
+    const angle = -bent * smoothstepJs(LENSED.farFrom, LENSED.farTo, dS / dH);
+    const n = unitOf(turn);
+    const r = length(rel);
+    const d: V3 = [rel[0] / r, rel[1] / r, rel[2] / r];
+    const nd = crossOf(n, d);
+    const k = (n[0] * d[0] + n[1] * d[1] + n[2] * d[2]) * (1 - Math.cos(angle));
+    return [0, 1, 2].map((a) => r * ((d[a] ?? 0) * Math.cos(angle) + (nd[a] ?? 0) * Math.sin(angle) + (n[a] ?? 0) * k)) as V3;
+  };
   /** Where a point (pc from the Sun) is on the screen (CSS px), or null behind the camera. */
   const toScreen = (p: V3, w: number, h: number): { x: number; y: number } | null => {
     if (!lastCamera) return null;
-    project.set(p[0] - camera[0], p[1] - camera[1], p[2] - camera[2]).project(lastCamera);
+    const r = seenRel(p);
+    project.set(r[0], r[1], r[2]).project(lastCamera);
     if (project.z > 1 || project.z < -1) return null;
     return { x: ((project.x + 1) / 2) * w, y: ((1 - project.y) / 2) * h };
   };
@@ -476,10 +535,10 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     return best;
   };
 
-  /** The star (or hole) nearest a point of the screen (CSS px) among those visibly drawn: its pixel distance less a bonus for brightness. */
-  const nearestOnScreen = (x: number, y: number, w: number, h: number, radius: number): Star | null => {
+  /** The star (or hole) nearest a point of the screen (CSS px) among those visibly drawn (or brighter than `brighterThan` from here): its pixel distance less a bonus for brightness. */
+  const nearestOnScreen = (x: number, y: number, w: number, h: number, radius: number, brighterThan = starlightUniforms.faintest.value - 0.3): Star | null => {
     if (!lastCamera) return null;
-    const faintest = starlightUniforms.faintest.value - 0.3;
+    const faintest = brighterThan;
     let best: Star | null = null;
     let bestScore = radius;
     const ray = rayAt(x, y, w, h);
@@ -506,8 +565,9 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
         }
       }
     };
-    for (let k = 0; k < named.length; k += 1) consider(namedData[k * 4] ?? 0, namedData[k * 4 + 1] ?? 0, namedData[k * 4 + 2] ?? 0, namedData[k * 4 + 3] ?? 30, () => named[k] ?? null);
-    const hp = hipPlaced;
+    // (Where the stars stand in for a black hole's sky, drawn as from the Sun, only the holes are picked.)
+    if (skyStandIn <= 0.5) for (let k = 0; k < named.length; k += 1) consider(namedData[k * 4] ?? 0, namedData[k * 4 + 1] ?? 0, namedData[k * 4 + 2] ?? 0, namedData[k * 4 + 3] ?? 30, () => named[k] ?? null);
+    const hp = skyStandIn > 0.5 ? null : hipPlaced;
     if (hp) for (let k = 0; k < hp.hips.length; k += 1) consider(hp.stars[k * 4] ?? 0, hp.stars[k * 4 + 1] ?? 0, hp.stars[k * 4 + 2] ?? 0, hp.stars[k * 4 + 3] ?? 30, () => hipStar(k));
     holes.forEach((hh, k) => {
       const at = toScreen(hh.position, w, h);
@@ -520,6 +580,17 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     });
     return best;
   };
+
+  /** What the pointer is on, for the wheel and a pinch (PICK): a name's tag or its star, else a bright star or a black hole right under it. */
+  const pointedAt = (x: number, y: number, w: number, h: number): Star | null => {
+    for (const t of tagged) {
+      const b = tagBox(t);
+      if (Math.hypot(t.x - x, t.y - y) <= PICK.pointPx || (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom)) return t.s;
+    }
+    return nearestOnScreen(x, y, w, h, PICK.brightPx, PICK.brightMag);
+  };
+  /** The same star or black hole (a stand-in is made afresh each time). */
+  const sameAs = (a: Star, b: Star): boolean => a === b || (a.hip !== null && a.hip === b.hip) || (holeOf(a) !== null && holeOf(a) === holeOf(b));
 
   const describe = (s: Star, x: number, y: number): UniverseNeighbourhood['hover'] => {
     const h = holeOf(s);
@@ -610,6 +681,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       hoverInfo = null;
       hoverAt = null;
       lensCaptured = false;
+      setStarlight(own.brightness, own.faintest);
       askPacks();
     },
     exit() {
@@ -619,31 +691,45 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       rig.keys = { move: [0, 0, 0], roll: 0, boost: false, turnX: 0, turnY: 0, zoom: 0 };
       hoverInfo = null;
       hoverAt = null;
+      tagged = [];
+      lensing.on.value = 0;
+      // The solar system's sky as it always is: the visitor's star light was for the stars.
+      setStarlight(STARLIGHT_DEFAULTS.brightness, STARLIGHT_DEFAULTS.faintest);
     },
     drag(dx, dy) {
       rigDrag(rig, dx, dy, radPerPx());
     },
     pan(dx, dy) {
+      // In orbit a pan lets go of the star only once it has gone PAN_LET_GO px within a gesture: a pinch's middle drifting a little keeps the orbit.
+      const now = performance.now();
+      if (now - panHeld.t > PAN_LET_GO.gapMs) panHeld = { dx: 0, dy: 0, t: now };
+      panHeld.t = now;
+      if (rig.mode === 'orbit') {
+        panHeld.dx += dx;
+        panHeld.dy += dy;
+        if (Math.hypot(panHeld.dx, panHeld.dy) < PAN_LET_GO.px) return;
+        [dx, dy] = [panHeld.dx, panHeld.dy];
+      }
+      if (dx === 0 && dy === 0) return;
       // Across the view by the angle a pixel spans at the distance of the star in view (in free look, no farther than the nearest star).
       const at = Math.max(length(sub(camera, posOf(focus))), 1e-15);
       rigPan(rig, dx, dy, radPerPx() * (rig.mode === 'orbit' ? at : Math.min(at, nearestPc * 2)));
     },
     zoom(dLn, clientX, clientY) {
-      if (!Number.isFinite(dLn) || dLn === 0) return;
+      // Nothing during a flight: a gesture going on never sends it elsewhere.
+      if (!Number.isFinite(dLn) || dLn === 0 || rig.trip) return;
       const rect = canvasRect();
       const pointer = rect && clientX !== undefined && clientY !== undefined ? { x: clientX - rect.left, y: clientY - rect.top, w: rect.width, h: rect.height } : null;
-      const now = performance.now();
-      // Toward a star under the pointer: in orbit it becomes the one in view (once a gesture), in free look the camera heads for it.
-      const under = pointer && dLn < 0 ? nearestOnScreen(pointer.x, pointer.y, pointer.w, pointer.h, PICK.mousePx) : null;
-      const other = under !== null && under !== focus && (under.hip === null || under.hip !== focus.hip);
-      if (under && other && rig.mode === 'orbit') {
-        if (now > zoomLockMs) goTo(under);
-        zoomLockMs = now + 300;
+      // Toward what the pointer is on (PICK): in orbit another star there becomes the one in view, in free look the camera heads for it.
+      const under = pointer && dLn < 0 ? pointedAt(pointer.x, pointer.y, pointer.w, pointer.h) : null;
+      if (rig.mode === 'orbit') {
+        if (under && !sameAs(under, focus)) goTo(under);
+        // Else in or out from the star in view, never inside it.
+        else rigZoom(rig, dLn, null, 0);
         return;
       }
-      if (rig.trip) return;
-      const target = under ? posOf(under) : null;
-      if (target && under) {
+      if (under) {
+        const target = posOf(under);
         rigZoom(rig, dLn, unitOf(sub(target, camera)), Math.max(0, length(sub(target, camera)) - reachOf(under)));
         return;
       }
@@ -715,6 +801,9 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
     },
     setStarlight(brightness, faintest) {
       setStarlight(brightness, faintest);
+      own.brightness = starlightUniforms.brightness.value;
+      own.faintest = starlightUniforms.faintest.value;
+      if (!active) setStarlight(STARLIGHT_DEFAULTS.brightness, STARLIGHT_DEFAULTS.faintest);
       askPacks();
     },
     setMode(mode) {
@@ -752,27 +841,35 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       const toFocus = relTo(fp).map((x) => -x) as V3;
       const focusDistance = length(toFocus);
       const fromSun = length(camera);
-      // Out past the stars: the catalogue's stars and the glow from within the galaxy give way to its model.
+      // A black hole's light bending, when near enough one to see it (its lens, ./lens-view, loaded the first time).
+      const near = holes.find((h) => length(relTo(h.position)) < LENS_RS * h.rsPc) ?? null;
+      const bending = near !== null;
+      // Out past the stars: the catalogue's stars and the glow from within the galaxy give way to its model,
+      // except near a stellar black hole, whose sky they stand in for (STAND_IN_PC).
+      skyStandIn = holes.reduce((k, h) => (h.kind === 'stellar' ? Math.max(k, 1 - smoothstepJs(STAND_IN_PC[0], STAND_IN_PC[1], length(relTo(h.position)))) : k), 0);
       const starsShown = beyond ? beyond.starsShown(fromSun) : 1;
-      const farShown = (1 - smoothstepJs(FAR_FADE[0], FAR_FADE[1], fromSun)) * starsShown;
-      beyond?.update(camera, fromSun, focalPx);
-      namedLayer.light.value = starsShown;
-      namedLayer.sprite.visible = starsShown > 0.001;
-      if (hipPlaced) {
-        hipPlaced.layer.light.value = starsShown;
-        hipPlaced.layer.sprite.visible = starsShown > 0.001;
-      }
-      fileFar.light.value = farShown;
-      fileFar.sprite.visible = farShown > 0.001;
+      const farShown = Math.max(1 - smoothstepJs(FAR_FADE[0], FAR_FADE[1], fromSun), skyStandIn) * starsShown;
+      beyond?.update(camera, fromSun, focalPx, bending, skyStandIn);
+      const show = (l: PlacedLayer | FarLayer, light: number, count?: number): void => {
+        l.light.value = light;
+        if (count !== undefined) l.sprite.count = l.image.count = count;
+        l.sprite.visible = light > 0.001 && l.sprite.count > 0;
+        l.image.visible = l.sprite.visible && bending;
+      };
+      show(namedLayer, starsShown);
+      if (hipPlaced) show(hipPlaced.layer, starsShown);
+      for (const l of [namedLayer, hipPlaced?.layer]) if (l) l.sunView.value = skyStandIn;
+      show(fileFar, farShown);
+      // Brightest first, as many as the detail allows, none fainter than the faintest drawn (their packs are in magnitude order; near a black hole, a little fainter, for its lens to brighten).
+      const code = Math.max(0, Math.min(255, Math.floor((starlightUniforms.faintest.value + (bending ? LENSED.reach : 0) + 1.5) * 16)));
       let budget = starBudget;
       for (const f of farLayers) {
-        f.layer.light.value = farShown;
-        f.layer.sprite.count = Math.max(0, Math.min(f.count, budget));
-        f.layer.sprite.visible = farShown > 0.001 && f.layer.sprite.count > 0;
+        show(f.layer, farShown, Math.max(0, Math.min(f.count, budget, f.upTo[code] ?? f.count)));
         budget -= f.count;
       }
-      band?.setLight(beyond ? beyond.bandShown(fromSun) : 1);
-      figures?.setShown(figuresOn ? 0.3 * starsShown : 0);
+      band?.setLight(Math.max(beyond ? beyond.bandShown(fromSun) : 1, skyStandIn));
+      // (Not round a black hole: the figures would cross its picture of the sky unbent.)
+      figures?.setShown(figuresOn && !bending ? 0.3 * starsShown : 0);
       // The star in view up close: a disc of its size once it is wider than a pixel or so, its point fading.
       const radius = radiusOf(focus);
       const dpr = ctx?.renderer.getPixelRatio() ?? 1;
@@ -781,6 +878,11 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       disc.set(toFocus, radius?.pc ?? 0, blackbodyRgb(focus.system?.teffK ?? (focus.bv === null ? 5800 : bvKelvin(focus.bv))), shown);
       namedLayer.focus.value = slotOf(focus);
       namedLayer.focusLight.value = 1 - shown;
+      // The stand-in sky is the Sun's: the Sun itself not in it.
+      if (skyStandIn > 0 && slotOf(focus) < 0) {
+        namedLayer.focus.value = slotOf(data.sun);
+        namedLayer.focusLight.value = 1 - skyStandIn;
+      }
       if (hipPlaced) {
         hipPlaced.layer.focus.value = focus.index <= -1000 ? -1000 - focus.index : -1;
         hipPlaced.layer.focusLight.value = 1 - shown;
@@ -790,8 +892,18 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       reticlePos.set(toFocus);
       reticleAttr.needsUpdate = true;
       reticle.visible = uReticle.value > 0.01;
-      // A black hole's light bending, when near enough one to see it.
-      const near = holes.find((h) => length(relTo(h.position)) < LENS_RS * h.rsPc) ?? null;
+      // The stars' images past it, in their vertex stage: the table of images worked out again as the camera's distance from it changes.
+      lensing.on.value = bending ? 1 : 0;
+      if (near) {
+        const at = relTo(near.position);
+        lensing.hole.value.set(-at[0], -at[1], -at[2]);
+        const r = length(at) / near.rsPc;
+        if (Math.abs(Math.log(r / Math.max(imagesFor, 1e-300))) > 2e-4) {
+          imageTable(r, images);
+          setImages(images);
+          imagesFor = r;
+        }
+      }
       if (near && ctx && !lens && !lensLoading) {
         lensLoading = true;
         void import('./lens-view')
@@ -805,27 +917,25 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
           });
       }
       if (lens) {
+        // Another hole than the sky was captured round: its capture forgotten until this one's is taken.
+        if (near !== lensFor) {
+          lens.forget();
+          lensCaptured = false;
+          lensFor = near;
+        }
         if (near) {
-          lens.update(relTo(near.position).map((x) => x / near.rsPc) as V3, near.model, near.axis, 1 / Math.max(focalPx, 1), tier === 'low' ? 100 : tier === 'medium' ? 140 : 200);
-          // The sky round the camera, captured once there (the lens hidden from it), again after a flight: its light
-          // per pixel as on the screen (the stars' by the screen's to a face's pixel, the galaxies sized for a face).
+          if (!(ctx?.reducedMotion ?? false)) discSeconds += dt;
+          lens.update(relTo(near.position).map((x) => x / near.rsPc) as V3, near.kind, near.model, near.axis, 1 / Math.max(focalPx, 1), tier === 'low' ? 100 : tier === 'medium' ? 140 : 200, discSeconds);
+          // The sky's glow round the camera (the band: the stars and the galaxies' points are bent in their
+          // own vertex stage), captured once there with the lens hidden, again after a flight.
           if (!lensCaptured && !rig.trip && ctx) {
-            const brightness = starlightUniforms.brightness.value;
-            const fov = cam.fov;
-            starlightUniforms.brightness.value = brightness * Math.tan(((fov / 2) * Math.PI) / 180) ** 2;
-            beyond?.update(camera, fromSun, CAPTURE_FOCAL_PX);
-            const hidden = [figures?.object, reticle, disc.mesh, orbitLines, planetSprites].filter((o) => o?.visible);
-            for (const o of hidden) if (o) o.visible = false;
+            const hidden = group.children.filter((o) => o.visible && o !== band?.mesh);
+            for (const o of hidden) o.visible = false;
             lens.capture(ctx.renderer, ctx.scene);
-            for (const o of hidden) if (o) o.visible = true;
-            starlightUniforms.brightness.value = brightness;
-            beyond?.update(camera, fromSun, focalPx);
+            for (const o of hidden) o.visible = true;
             lensCaptured = true;
           }
-        } else {
-          lens.mesh.visible = false;
-          lensCaptured = false;
-        }
+        } else lens.mesh.visible = false;
       }
       // The system round the star in view, when near: its orbits, and its planets where their periods put them (their phases illustrative).
       planetsDrawn = [];
@@ -877,6 +987,7 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       return { forward: forwardOf(rig.q), up: upOf(rig.q), near: nearDepth, far: REACH.maxPc * 16 };
     },
     labels(out) {
+      tagged = [];
       if (!active) return;
       const fromSun = length(camera);
       beyond?.labels(out, camera, fromSun);
@@ -885,21 +996,24 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       const h = rect?.height ?? 1;
       const rel = (p: V3): [number, number, number] => [p[0] - camera[0], p[1] - camera[1], p[2] - camera[2]];
       // The black holes, by name: the one in view, and others within half the camera's distance from the Sun (or 100 pc).
-      for (const hh of holes) {
-        if (hh !== hole && length(relTo(hh.position)) > Math.max(0.5 * fromSun, 100)) continue;
+      holes.forEach((hh, k) => {
+        if (hh !== hole && length(relTo(hh.position)) > Math.max(0.5 * fromSun, 100)) return;
         out.push({ id: `bh-${hh.id}`, textKey: '', text: hh.name, position: rel(hh.position), opacity: 0.9 });
-      }
+        const at = toScreen(hh.position, w, h);
+        if (at) tagged.push({ id: `bh-${hh.id}`, text: hh.name, x: at.x, y: at.y, s: standIn(hh.position, hh.name, -3 - k) });
+      });
       for (const p of planetsDrawn) out.push({ id: `planet-${p.name}`, textKey: '', text: p.name, position: [p.at[0], p.at[1], p.at[2]], opacity: 0.85 });
-      if (beyond && beyond.starsShown(fromSun) < 0.5) return;
+      // (No names where the stars stand in for a black hole's sky: they are drawn as from the Sun.)
+      if ((beyond && beyond.starsShown(fromSun) < 0.5) || skyStandIn > 0.5) return;
       // The star in view, the one under the pointer, then the brightest named stars seen from here, where their tags fit.
-      const candidates: Array<LabelCandidate & { p: V3 }> = [];
+      const candidates: Array<LabelCandidate & { p: V3; s: Star }> = [];
       const push = (s: Star | null | undefined): void => {
         if (!s?.name) return;
         const id = `star-${String(s.hip ?? 'sun')}`;
         if (candidates.some((c) => c.id === id)) return;
         const p = posOf(s);
         const at = toScreen(p, w, h);
-        if (at) candidates.push({ id, text: s.name, x: at.x, y: at.y, p });
+        if (at) candidates.push({ id, text: s.name, x: at.x, y: at.y, p, s });
       };
       if (focus.index >= -1) push(focus);
       if (hoverInfo && !hoverInfo.hole) push(hoverInfo.hip === null ? (hoverInfo.name === 'Sun' ? data.sun : null) : data.stars.find((s) => s.hip === hoverInfo?.hip));
@@ -917,7 +1031,9 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
       const area = { left: lastInsets.left + 8, top: lastInsets.top + 8, right: w - lastInsets.right - 8, bottom: h - lastInsets.bottom - 8 };
       for (const id of placeLabels(candidates, area, NAMES.max)) {
         const c = candidates.find((x) => x.id === id);
-        if (c) out.push({ id, textKey: '', text: c.text, position: rel(c.p), opacity: 1 });
+        if (!c) continue;
+        out.push({ id, textKey: '', text: c.text, position: seenRel(c.p), opacity: 1 });
+        tagged.push(c);
       }
     },
     view() {
@@ -992,12 +1108,10 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
               massLow: h.mass.low ?? null,
               massSource: h.mass.source,
               massAlsoSource: h.mass.alsoSource ?? null,
-              massHow: h.mass.how,
               distPc: h.distPc,
               distMinusPc: h.distance.minus,
               distPlusPc: h.distance.plus,
               distanceSource: h.distance.source,
-              distanceHow: h.distance.how,
               redshift: h.redshift,
               lookbackGyr: h.lookbackGyr,
               rsKm: h.rsKm,
@@ -1008,7 +1122,8 @@ export function createNeighbourhood(file: NeighbourhoodFile, obliquity: number, 
               observation: h.observation ? { ...h.observation } : null,
               companion: h.companion ? { ...h.companion } : null,
               inclinationDeg: h.inclinationDeg,
-              inclinationNote: h.inclinationNote,
+              skyFromSun: skyStandIn > 0.5,
+              skyCaptured: lensCaptured && lensFor === h,
             }
           : null,
         place: place

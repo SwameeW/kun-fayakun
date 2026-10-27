@@ -10,15 +10,13 @@
     "value": 4297000.0,
     "minus": 42000.0,
     "plus": 42000.0,
-    "source": "gravity-2022-sgr-a",
-    "how": "the orbits of the stars round it (S2 and others), 0.012 statistical and 0.040 systematic (millions of Suns) combined"
+    "source": "gravity-2022-sgr-a"
    },
    "distance": {
     "pc": 8277,
     "minus": 31,
     "plus": 31,
-    "source": "gravity-2022-sgr-a",
-    "how": "the same orbits: 8,277 +/- 9 +/- 30 pc"
+    "source": "gravity-2022-sgr-a"
    },
    "observation": {
     "ringMicroArcsec": 51.8,
@@ -26,7 +24,6 @@
     "source": "eht-2022-sgr-a"
    },
    "inclinationDeg": 30,
-   "inclinationNote": "illustrative: the Event Horizon Telescope's models disfavour more than 50 degrees",
    "simbad": {
     "id": "NAME Sgr A*",
     "mainId": "NAME Sgr A*"
@@ -45,15 +42,13 @@
     "value": 6500000000.0,
     "minus": 730000000.0,
     "plus": 730000000.0,
-    "source": "eht-2019-m87",
-    "how": "the size of its ring, 0.2 statistical and 0.7 systematic (billions of Suns) combined"
+    "source": "eht-2019-m87"
    },
    "distance": {
     "pc": 16800000.0,
     "minus": 700000.0,
     "plus": 800000.0,
-    "source": "eht-2019-m87",
-    "how": "the distance the Event Horizon Telescope took"
+    "source": "eht-2019-m87"
    },
    "observation": {
     "ringMicroArcsec": 42,
@@ -61,7 +56,6 @@
     "source": "eht-2019-m87"
    },
    "inclinationDeg": 17,
-   "inclinationNote": "its jet's angle to the line of sight, as the Event Horizon Telescope took it",
    "simbad": {
     "id": "M 87",
     "mainId": "M 87"
@@ -81,14 +75,12 @@
     "minus": 25000000000.0,
     "plus": 0.0,
     "source": "shemmer-2004-ton618",
-    "how": "from the width of its H-beta line and its brightness (one epoch): log M = 10.82 (Shemmer et al. 2004); the same spectrum gives log M = 10.61, 4.1e10, in Ge et al. (2019); such estimates are uncertain by a factor of about three",
     "alsoSource": "ge-2019-ton618",
     "low": 40700000000.0
    },
    "redshift": 2.219,
    "redshiftSource": "shemmer-2004-ton618",
    "inclinationDeg": 20,
-   "inclinationNote": "illustrative: a quasar is seen near its disc's axis",
    "simbad": {
     "id": "Ton 618",
     "mainId": "Ton 618"
@@ -99,8 +91,7 @@
     "pc": 5621267347,
     "minus": null,
     "plus": null,
-    "source": "planck-2018-cosmology",
-    "how": "the comoving distance of redshift 2.219 in Planck 2018's cosmology (H0 67.66, matter 0.30966), as the survey's galaxies are placed"
+    "source": "planck-2018-cosmology"
    },
    "lookbackGyr": 10.84,
    "schwarzschildKm": 194914505000.0,
@@ -115,18 +106,15 @@
     "value": 9.62,
     "minus": 0.18,
     "plus": 0.18,
-    "source": "el-badry-2023-gaia-bh1",
-    "how": "the orbit of its companion, from Gaia's astrometry and radial velocities"
+    "source": "el-badry-2023-gaia-bh1"
    },
    "distance": {
     "pc": 480,
     "minus": 8,
     "plus": 8,
-    "source": "el-badry-2023-gaia-bh1",
-    "how": "Gaia's parallax"
+    "source": "el-badry-2023-gaia-bh1"
    },
    "companion": {
-    "kind": "a Sun-like star (G dwarf)",
     "periodDays": 185.6
    },
    "simbad": {
@@ -147,18 +135,15 @@
     "value": 8.9,
     "minus": 0.3,
     "plus": 0.3,
-    "source": "el-badry-2023-gaia-bh2",
-    "how": "the orbit of its companion, from Gaia's astrometry and radial velocities"
+    "source": "el-badry-2023-gaia-bh2"
    },
    "distance": {
     "pc": 1160,
     "minus": 20,
     "plus": 20,
-    "source": "el-badry-2023-gaia-bh2",
-    "how": "Gaia's parallax, from the orbit's fit"
+    "source": "el-badry-2023-gaia-bh2"
    },
    "companion": {
-    "kind": "a red giant",
     "periodDays": 1277
    },
    "simbad": {
@@ -179,18 +164,15 @@
     "value": 32.7,
     "minus": 0.82,
     "plus": 0.82,
-    "source": "gaia-2024-bh3",
-    "how": "the orbit of its companion, from Gaia's astrometry and radial velocities"
+    "source": "gaia-2024-bh3"
    },
    "distance": {
     "pc": 590,
     "minus": 10,
     "plus": 10,
-    "source": "gaia-2024-bh3",
-    "how": "Gaia's parallax"
+    "source": "gaia-2024-bh3"
    },
    "companion": {
-    "kind": "an old, metal-poor giant of the galaxy's halo",
     "periodDays": 4237
    },
    "simbad": {
@@ -211,22 +193,18 @@
     "value": 21.2,
     "minus": 2.2,
     "plus": 2.2,
-    "source": "miller-jones-2021-cyg-x1",
-    "how": "the orbit and the radio parallax"
+    "source": "miller-jones-2021-cyg-x1"
    },
    "distance": {
     "pc": 2220,
     "minus": 170,
     "plus": 180,
-    "source": "miller-jones-2021-cyg-x1",
-    "how": "the radio parallax (VLBA)"
+    "source": "miller-jones-2021-cyg-x1"
    },
    "companion": {
-    "kind": "a blue supergiant (HDE 226868, O9.7 Iab)",
     "periodDays": 5.6
    },
    "inclinationDeg": 27.5,
-   "inclinationNote": "the orbit's inclination (Miller-Jones et al. 2021); the disc taken to lie in it",
    "simbad": {
     "id": "HD 226868",
     "mainId": "HD 226868"

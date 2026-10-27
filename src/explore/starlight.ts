@@ -1,17 +1,18 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, PointsNodeMaterial, Sprite, type Node } from 'three/webgpu';
-import { exp, float, max, min, screenDPR, smoothstep, sqrt, tanh, uniform, uv, varying, viewportSize } from 'three/tsl';
+import { exp, float, log, max, min, screenDPR, smoothstep, sqrt, tanh, uniform, uv, varying, viewportSize } from 'three/tsl';
 
 /**
  * Star light, shared by the explorer's sky (./sky) and the stars around the Sun (./neighbourhood):
  * how a star's magnitude becomes light on the screen, the same at any pixel density and wherever the
  * star falls inside a pixel.
  *
- * - Light, from magnitude: a star's flux relative to the faintest drawn, 10^(-0.4 m), compressed by
- *   CONTRAST (a display's range is far less than the sky's: a contrast of 0.6 shows the brightest
- *   star of the night 5 magnitudes brighter as 16 times, not 100), times the visitor's brightness, and
- *   faded out over the magnitude before the faintest so stars come and go smoothly as the camera
- *   moves. Its unit is linear light times CSS pixels squared: the same light on the same area of
- *   screen at any pixel density.
+ * - Light, from magnitude: a star's flux relative to a star of magnitude REFERENCE, 10^(-0.4 m),
+ *   compressed by CONTRAST (a display's range is far less than the sky's: a contrast of 0.6 shows the
+ *   brightest star of the night 5 magnitudes brighter as 16 times, not 100), times the visitor's
+ *   brightness, and faded out over the magnitude before the faintest drawn so stars come and go
+ *   smoothly as the camera moves (the faintest only adds or takes away stars: the brightness is the
+ *   other control's). Its unit is linear light times CSS pixels squared: the same light on the same
+ *   area of screen at any pixel density.
  * - Spread, over pixels: each star is a Gaussian of SIGMA_CSS CSS pixels (never under SIGMA_MIN
  *   device pixels), and each pixel shows the Gaussian integrated over its own square (a difference of
  *   error functions on each axis), not sampled at its centre: a star's light is the same wherever it
@@ -20,12 +21,13 @@ import { exp, float, max, min, screenDPR, smoothstep, sqrt, tanh, uniform, uv, v
  *   halo whose radius grows with it (its peak about HALO_PEAK), so the brightest stars are larger
  *   rather than clipped, and the bloom of the picture's highlights does the rest.
  *
- * The faintest drawn star (FAINT_LIGHT at a magnitude above the faintest) peaks at about 0.03 in
- * linear light at worst, above where the explorer's tone curve (ACES) turns to black.
+ * A star of magnitude REFERENCE (a magnitude above the faintest drawn by default) has FAINT_LIGHT and
+ * peaks at about 0.03 in linear light at worst, above where the explorer's tone curve (ACES) turns
+ * to black.
  */
 
-/** A Gaussian's width (CSS px) and its least (device px); the light per CSS pixel squared of a star a magnitude above the faintest; the contrast's power. */
-export const STARLIGHT = { sigmaCss: 0.6, sigmaMin: 0.6, faintLight: 0.15, contrast: 0.6, coreMax: 1, haloPeak: 0.22, haloCssMax: 10, footprintMax: 72 } as const;
+/** A Gaussian's width (CSS px) and its least (device px); the light per CSS pixel squared of a star of the reference magnitude; the tone curve's black (linear); the contrast's power. */
+export const STARLIGHT = { sigmaCss: 0.6, sigmaMin: 0.6, faintLight: 0.15, reference: 7.5, black: 0.002, contrast: 0.6, coreMax: 1, haloPeak: 0.22, haloCssMax: 10, footprintMax: 72 } as const;
 /** The visitor's defaults: brightness (a multiple of the light), and the faintest magnitude drawn. */
 export const STARLIGHT_DEFAULTS = { brightness: 1, faintest: 8.5 } as const;
 /** Their ranges, as the stars panel offers them. */
@@ -49,7 +51,7 @@ export function starLight(magnitude: number, faintest: number = STARLIGHT_DEFAUL
   if (!Number.isFinite(magnitude)) return 0;
   const t = Math.max(0, Math.min(1, faintest - magnitude));
   const fade = t * t * (3 - 2 * t);
-  return brightness * STARLIGHT.faintLight * 10 ** (-0.4 * STARLIGHT.contrast * (magnitude - (faintest - 1))) * fade;
+  return brightness * STARLIGHT.faintLight * 10 ** (-0.4 * STARLIGHT.contrast * (magnitude - STARLIGHT.reference)) * fade;
 }
 
 /** The Gaussian's width in device pixels for a device-pixel ratio (render scale included). */
@@ -90,7 +92,7 @@ export function starPixels(light: number, dpr: number, offsetX = 0, offsetY = 0)
   return { peak, perCss: sum / (dpr * dpr) };
 }
 
-/** The visitor's brightness and faintest magnitude, shared by every star material (the stars panel sets them). */
+/** The visitor's brightness and faintest magnitude, shared by every star material (the stars panel sets them while among the stars; the solar system's sky keeps the defaults). */
 export const starlightUniforms = { brightness: uniform(STARLIGHT_DEFAULTS.brightness), faintest: uniform(STARLIGHT_DEFAULTS.faintest) };
 
 export function setStarlight(brightness: number, faintest: number): void {
@@ -126,7 +128,7 @@ export function starMaterial(position: Node<'vec3'>, magnitude: Node<'float'>, c
   const dpr = viewportSize.y.div(cssHeight);
   const sigma = max(float(STARLIGHT.sigmaMin), dpr.mul(STARLIGHT.sigmaCss));
   const fade = smoothstep(faintest, faintest.sub(1), magnitude);
-  const css = brightness.mul(STARLIGHT.faintLight).mul(exp(magnitude.sub(faintest.sub(1)).mul(-0.4 * STARLIGHT.contrast * Math.LN10))).mul(fade).mul(light);
+  const css = brightness.mul(STARLIGHT.faintLight).mul(exp(magnitude.sub(STARLIGHT.reference).mul(-0.4 * STARLIGHT.contrast * Math.LN10))).mul(fade).mul(light);
   // The core's capacity: CORE_MAX at the peak of a star centred on a pixel; the rest to the halo. Its light raised as coarse pixels flatten it (sharpness).
   const centre = shaderErf(float(0.5).div(sigma.mul(SQRT2)));
   const centreShare = centre.mul(centre);
@@ -138,8 +140,9 @@ export function starMaterial(position: Node<'vec3'>, magnitude: Node<'float'>, c
   const haloMax = dpr.mul(STARLIGHT.haloCssMax);
   const haloSigma = sqrt(excess.div(2 * Math.PI * STARLIGHT.haloPeak)).clamp(sigma.mul(1.5), haloMax);
   const haloPeak = min(excess.div(haloSigma.mul(haloSigma).mul(2 * Math.PI)), float(STARLIGHT.haloPeak * 2));
-  // The sprite: wide enough for the core's Gaussian and the halo's, nothing for a star not drawn.
-  const footprint = max(sigma.mul(6).add(2), haloSigma.mul(excess.greaterThan(0).select(5.5, 0))).ceil().min(STARLIGHT.footprintMax).mul(total.greaterThan(1e-5).select(1, 0));
+  // The sprite: as wide as the core's Gaussian stays above the tone curve's black (so a faint star's is a few pixels), and the halo's; nothing for a star too faint to show.
+  const reach = sigma.mul(sqrt(log(max(core.mul(centreShare).div(STARLIGHT.black), 8)).mul(2)));
+  const footprint = max(reach.mul(2).add(1), haloSigma.mul(excess.greaterThan(0).select(5.5, 0))).ceil().min(STARLIGHT.footprintMax).mul(core.mul(centreShare).greaterThan(STARLIGHT.black / 4).select(1, 0));
   material.positionNode = position;
   // three sizes a sprite in device pixels of the canvas (its size times the screen's ratio): the footprint is in the target's own.
   material.sizeNode = footprint.div(screenDPR);

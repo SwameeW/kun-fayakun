@@ -2,11 +2,13 @@
  * Light bending round a black hole (src/explore/neighbourhood/lens.ts): the Schwarzschild radii of
  * the catalogue's holes, the shadow's size from afar against the Event Horizon Telescope's rings, the
  * shadow's edge (Synge) from near, the tracer against the weak field's bending 4GM/(c^2 b) and the
- * critical impact parameter sqrt(27)/2 r_s, and the shift of a disc's light; and the file's values.
+ * critical impact parameter sqrt(27)/2 r_s, and the shift of a disc's light; the stars' images (the
+ * escape angle in closed variables against the tracer, the table of images read back, the light of
+ * the whole sky kept by their magnifications); and the file's values, with its words in the messages.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { CRITICAL_B, discShift, discTemperature, impact, ISCO, schwarzschildKm, shadowAngle, shadowMicroArcsec, trace, weakBending, type V3 } from '../../src/explore/neighbourhood/lens';
+import { CRITICAL_B, discShift, discTemperature, escapeAngle, imageTable, IMAGES, impact, ISCO, schwarzschildKm, shadowAngle, shadowMicroArcsec, trace, weakBending, type V3 } from '../../src/explore/neighbourhood/lens';
 
 const ROOT = new URL('../../', import.meta.url);
 const AU = 149_597_870.7;
@@ -127,4 +129,92 @@ test('the black holes’ file: seven, each with its cited mass and distance, TON
   expect((ton?.distance.pc ?? 0) / 1e6).toBeCloseTo(5621, -1);
   expect(ton?.schwarzschildAu ?? 0).toBeCloseTo(1303, -1);
   expect(file.blackHoles.find((h) => h.id === 'sgr-a')?.distance.pc).toBe(8277);
+});
+
+test('the stars’ images: the escape angle in closed variables as the tracer’s steps give it, the table of images read back to a tenth of a pixel', () => {
+  // Against the tracer: from 2 to a million r_s, rays out and in, to the shadow's edge.
+  for (const r of [2, 3, 20, 55, 1000, 1e6]) {
+    const edge = Math.PI - shadowAngle(r);
+    for (let k = 1; k < 40; k += 1) {
+      const theta = (edge * k) / 40;
+      const t = trace([r, 0, 0], [Math.cos(theta), Math.sin(theta), 0]);
+      expect(t.captured).toBe(false);
+      expect(Math.abs(escapeAngle(theta, r) - t.phi)).toBeLessThan(1e-5);
+    }
+    // Inside the edge: captured.
+    expect(escapeAngle(edge + 1e-4, r)).toBe(Number.POSITIVE_INFINITY);
+  }
+  // The table: each image's angle sends its light back to the source's own angle (the inverse), within 1e-4 rad
+  // (a tenth of a pixel at 1,800 px for 50 degrees), and every image outside the shadow.
+  for (const r of [2, 20, 55, 1e6]) {
+    const table = imageTable(r);
+    const edge = Math.PI - shadowAngle(r);
+    for (let k = 1; k < IMAGES.size; k += 7) {
+      const phi = (IMAGES.span * k) / (IMAGES.size - 1);
+      let lo = 0;
+      let hi = edge;
+      for (let it = 0; it < 60; it += 1) {
+        const mid = (lo + hi) / 2;
+        if (escapeAngle(mid, r) < phi) lo = mid;
+        else hi = mid;
+      }
+      expect(Math.abs(phi - (table[k] ?? 0) - lo)).toBeLessThan(1e-4);
+      expect(phi - (table[k] ?? 0)).toBeLessThan(edge);
+    }
+  }
+  // Far out the bending is the weak field's: looking square to the line, the camera is at the ray's
+  // nearest point, so the light has bent half of 2/b on its way from infinity (b = r).
+  for (const r of [1e3, 1e5, 1e6]) {
+    expect((escapeAngle(Math.PI / 2, r) - Math.PI / 2) * r).toBeCloseTo(1, 2);
+    const far = imageTable(r);
+    // (pi/2 falls three quarters of the way from the 255th entry to the next.)
+    const k = Math.floor((IMAGES.size - 1) / 4);
+    const t = (IMAGES.size - 1) / 4 - k;
+    expect(((far[k] ?? 0) * (1 - t) + (far[k + 1] ?? 0) * t) * r).toBeCloseTo(1, 1);
+  }
+});
+
+test('the images’ magnifications keep the sky’s light: over a sky of sources, the primary images’ and the secondary’s add to the share of the sky each covers', () => {
+  const table = imageTable(20);
+  const per = (IMAGES.size - 1) / IMAGES.span;
+  const at = (x: number): { theta: number; slope: number } => {
+    const a = Math.min(Math.max(x * per, 0), IMAGES.size - 1.001);
+    const i = Math.floor(a);
+    const lo = table[i] ?? 0;
+    const hi = table[i + 1] ?? 0;
+    return { theta: x - (lo + (hi - lo) * (a - i)), slope: 1 - (hi - lo) * per };
+  };
+  let primary = 0;
+  let secondary = 0;
+  const n = 200_000;
+  for (let k = 0; k < n; k += 1) {
+    // Evenly over the sphere: cos(phi) evenly from -1 to 1.
+    const phi = Math.acos(1 - (2 * (k + 0.5)) / n);
+    const p = at(phi);
+    const q = at(2 * Math.PI - phi);
+    primary += (Math.sin(p.theta) / Math.sin(phi)) * Math.abs(p.slope);
+    secondary += (Math.sin(q.theta) / Math.sin(phi)) * Math.abs(q.slope);
+  }
+  const ring = at(Math.PI).theta;
+  const edge = Math.PI - shadowAngle(20);
+  expect(Math.abs(primary / n - (1 - Math.cos(ring)) / 2)).toBeLessThan(0.005);
+  expect(Math.abs(secondary / n - (Math.cos(ring) - Math.cos(edge)) / 2)).toBeLessThan(0.002);
+});
+
+test('the black holes’ file holds numbers and sources only; how each was measured, its axis and its companion are the messages’ words, typeset', () => {
+  const file = JSON.parse(readFileSync(new URL('public/assets/stars/black-holes.json', ROOT), 'utf8')) as { blackHoles: Array<Record<string, unknown> & { id: string; mass: Record<string, unknown>; distance: Record<string, unknown>; companion?: Record<string, unknown>; inclinationDeg?: number }> };
+  const messages = JSON.parse(readFileSync(new URL('src/i18n/en.stars.json', ROOT), 'utf8')) as Record<string, string>;
+  for (const h of file.blackHoles) {
+    expect(h.mass.how).toBeUndefined();
+    expect(h.distance.how).toBeUndefined();
+    expect(h.inclinationNote).toBeUndefined();
+    expect(h.companion?.kind).toBeUndefined();
+    const keys = [`ui.universe.stars.hole.measuredOf.${h.id}`, ...(h.inclinationDeg !== undefined ? [`ui.universe.stars.hole.axisOf.${h.id}`] : []), ...(h.companion ? [`ui.universe.stars.hole.companionOf.${h.id}`] : [])];
+    for (const key of keys) {
+      const text = messages[key];
+      expect(text, key).toBeDefined();
+      // Typographic apostrophes, a true plus-minus, no e-notation.
+      expect(text ?? '', key).not.toMatch(/'|\+\/-|\d[eE][+-]?\d/u);
+    }
+  }
 });

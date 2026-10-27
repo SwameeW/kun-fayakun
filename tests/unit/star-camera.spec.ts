@@ -115,3 +115,34 @@ test('a flight arrives in orbit at its distance looking at its target: kilometre
   for (let k = 0; k < 100; k += 1) zoom(rig, -0.2, null, 0);
   expect(length(rig.rel) / rs).toBeCloseTo(2, 9);
 });
+
+test('under reduced motion a flight is a cut: the view holds, then is at its arrival, in orbit, never between', () => {
+  const rig = createRig([0, 0, 0], [0, 0, 3], 1e-8, 1e10);
+  const start = cameraOf(rig);
+  const to: V3 = [2.1, -1.4, 0.7];
+  flyTo(rig, to, 0.01, null);
+  const end: V3 = (() => {
+    const t = rig.trip;
+    if (!t) throw new Error('no flight');
+    return [to[0] + t.toDir[0] * 0.01, to[1] + t.toDir[1] * 0.01, to[2] + t.toDir[2] * 0.01];
+  })();
+  let frames = 0;
+  let travelling = 0;
+  // (A function, so the flight is asked after each step, not taken as known from the loop's test.)
+  const flying = (): boolean => rig.trip !== null;
+  while (flying() && frames < 600) {
+    step(rig, 1 / 60, 1, true);
+    frames += 1;
+    if (flying()) travelling += 1;
+    const at = cameraOf(rig);
+    // Only ever where it started or where it lands.
+    expect(Math.min(length(sub(at, start)), length(sub(at, end)))).toBeLessThan(1e-9);
+  }
+  expect(rig.trip).toBeNull();
+  expect(rig.mode).toBe('orbit');
+  // Still a flight for a moment (Esc can stop it, the panel says so), and short.
+  expect(travelling / 60).toBeGreaterThan(RIG.cutSeconds * 0.8);
+  expect(frames / 60).toBeLessThan(RIG.cutSeconds + 0.1);
+  const v = seen(rig.q, cameraOf(rig), to);
+  expect(Math.hypot(v.x, v.y)).toBeLessThan(1e-9);
+});

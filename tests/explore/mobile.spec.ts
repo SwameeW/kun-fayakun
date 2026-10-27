@@ -160,6 +160,9 @@ test('among the stars by touch: one finger looks round (the Sun moving with it),
   if (!named) throw new Error('no named star in the clear part of the view');
   await tap(cdp, { x: named.x, y: named.y });
   await expect.poll(async () => (await stars())?.hover?.name ?? null, { timeout: 5000 * SLOW }).toBe(named.text ?? '');
+  // Said beside it, the sheet folded as it is.
+  await expect(page.getByTestId('stars-hover')).toBeVisible();
+  await expect(page.getByTestId('stars-hover')).toContainText(named.text ?? '');
   await page.waitForTimeout(80);
   await tap(cdp, { x: named.x, y: named.y });
   await expect.poll(async () => (await stars())?.travelling ?? null, { timeout: 10_000 * SLOW }).toBe(true);
@@ -170,6 +173,26 @@ test('among the stars by touch: one finger looks round (the Sun moving with it),
   const before = (await stars())?.cameraPc ?? 0;
   await twoFingers(cdp, [{ x: c.x - 40, y: c.y }, { x: c.x + 40, y: c.y }], [{ x: c.x - 140, y: c.y }, { x: c.x + 140, y: c.y }]);
   await expect.poll(async () => (await stars())?.cameraPc ?? Infinity, { timeout: 5000 * SLOW }).toBeLessThan(before * 0.6);
+  // Pinches whose middle is on empty sky, away from the star and every name: still in toward it, never off to a faint star.
+  const focus = (await stars())?.focus.name;
+  const labels = await page.evaluate(() => (window as unknown as KfHook).__kf.app.hud().labels.map((l) => ({ x: l.x, y: l.y })));
+  const sheetTop = (await page.getByTestId('universe-bodies').boundingBox())?.y ?? 600;
+  const spots = [
+    { x: 80, y: 140 },
+    { x: 300, y: 160 },
+    { x: 100, y: sheetTop - 60 },
+    { x: 290, y: sheetTop - 80 },
+  ].filter((p) => labels.every((l) => Math.hypot(l.x - p.x, l.y - p.y) > 60 && Math.hypot(l.x + 40 - p.x, l.y - 16 - p.y) > 60));
+  expect(spots.length).toBeGreaterThanOrEqual(2);
+  for (const p of spots) {
+    const was = (await stars())?.cameraPc ?? 0;
+    await twoFingers(cdp, [{ x: p.x - 20, y: p.y }, { x: p.x + 20, y: p.y }], [{ x: p.x - 45, y: p.y }, { x: p.x + 45, y: p.y }]);
+    await page.waitForTimeout(300);
+    const now = await stars();
+    expect(now?.focus.name).toBe(focus);
+    expect(now?.travelling).toBe(false);
+    expect(now?.cameraPc ?? Infinity).toBeLessThanOrEqual(was);
+  }
   expect(pageErrors).toEqual([]);
 });
 
