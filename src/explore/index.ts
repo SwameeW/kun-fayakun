@@ -1400,7 +1400,8 @@ export default function create(): UniverseModule {
   const startStars = (): void => {
     const c = ctx;
     hoodWanted = true;
-    if (!c || !labInputs || lab?.active || hoodShown || hoodLoading) return;
+    // A second press on the way in changes nothing (the dip is not begun again).
+    if (!c || !labInputs || lab?.active || hoodShown || hoodLoading || hoodDip?.into) return;
     if (walk?.active) endWalk(true);
     if (descent?.active) endDescent(true);
     const begin = (made: Neighbourhood): void => {
@@ -3224,8 +3225,8 @@ export default function create(): UniverseModule {
         stop: () => {
           // Among the stars, or on the way in or out: Esc stops a flight, then goes back to the solar
           // system; on the way in it turns round, while they load it calls them off. A switch holds Esc a
-          // little while (a burst or a held key goes no further).
-          if (performance.now() < hoodHeld) return true;
+          // little while (a burst or a held key goes no further, though an open card still closes on it).
+          if (performance.now() < hoodHeld) return 'held';
           if (hoodShown || hoodDip || hoodLoading) {
             if (hoodDip && !hoodDip.into) return true;
             if (hoodDip && !hoodDip.switched) {

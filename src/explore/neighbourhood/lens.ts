@@ -33,7 +33,7 @@ const GM_SUN = 1.32712440018e11;
 const AU_KM = 149_597_870.7;
 const PC_KM = (648_000 / Math.PI) * AU_KM;
 
-/** The tracer's constants (the shader's too): the step in phi, and the most steps (two turns and a half). */
+/** The tracer's constants (the shader's too): the step in phi (fine enough that its phase error over a ray is a microradian), and the most steps (two turns and a half). */
 export const TRACE = { dPhi: Math.PI / 40, steps: 200 } as const;
 
 /** The Schwarzschild radius of a mass (Suns), km. */
@@ -90,6 +90,19 @@ export interface Traced {
 /** u'' = -u + 1.5 u^2. */
 const curve = (u: number): number => -u + 1.5 * u * u;
 
+/** Four-point Gauss-Legendre nodes and weights on [0, 1]. */
+export const GAUSS = { nodes: [0.0694318442, 0.3300094782, 0.6699905218, 0.9305681558], weights: [0.1739274226, 0.3260725774, 0.3260725774, 0.1739274226] } as const;
+
+/** The angle an outgoing ray still turns through from u out to infinity: the integral of du / sqrt(1/b^2 - u^2 + u^3) from 0 to u. */
+export function tailAngle(u: number, b: number): number {
+  let sum = 0;
+  for (let k = 0; k < 4; k += 1) {
+    const x = u * (GAUSS.nodes[k] ?? 0);
+    sum += (GAUSS.weights[k] ?? 0) / Math.sqrt(Math.max(1e-12, 1 / (b * b) - x * x + x * x * x));
+  }
+  return sum * u;
+}
+
 /**
  * Traces the ray a camera hanging still at `camera` (r_s, from the hole) sees along `dir` (unit, its
  * own frame) back to where its light came from, noting where it crosses the plane square to
@@ -142,8 +155,8 @@ export function trace(camera: V3, dir: V3, normal: V3 | null = null, maxCrossing
     }
     if (nu >= 1) return { captured: true, direction: [0, 0, 0], crossings, er, et, b, phi: phi + h, steps };
     if (nu <= 0) {
-      // Out: the angle where u reaches 0 (between the step's ends, by its slope there).
-      const end = phi + h * (u / Math.max(u - nu, 1e-300));
+      // Out: the angle where u reaches 0, the rest of the way from this step's start by its integral.
+      const end = phi + tailAngle(u, b);
       return { captured: false, direction: add(scale(er, Math.cos(end)), scale(et, Math.sin(end))), crossings, er, et, b, phi: end, steps };
     }
     u = nu;

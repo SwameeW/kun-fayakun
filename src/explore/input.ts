@@ -81,8 +81,11 @@ export interface InputTarget {
   orbitKeys(azimuth: number, elevation: number, zoom: number): void;
   /** Moves (W A S D, R F, Space), roll (Q E), Shift's boost, and on foot V's ride. */
   flightKeys(move: Km, roll: number, boost: boolean, ride?: boolean): void;
-  /** Esc: true when it stopped a trip (then nothing else hears it). */
-  stop(): boolean;
+  /**
+   * Esc: true when it stopped a trip (then nothing else hears it); 'held' when it is kept from the
+   * interface only (a burst after a switch), so an open card or menu still closes on it.
+   */
+  stop(): boolean | 'held';
   /** The eye shown on the ground (Space jumps) or going down through an air, where a click locks the pointer for mouse-look; null otherwise (landing still waits in orbit). */
   onFoot?(): 'ground' | 'air' | null;
   /** O: orbit the body the camera is near. */
@@ -334,9 +337,10 @@ export function createInput(element: HTMLElement, target: InputTarget): ExploreI
       e.stopPropagation();
       return;
     }
-    if (target.stop()) {
+    const used = target.stop();
+    if (used) {
       e.preventDefault();
-      e.stopPropagation();
+      if (used !== 'held') e.stopPropagation();
     }
   };
 

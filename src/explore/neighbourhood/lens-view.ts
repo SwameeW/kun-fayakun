@@ -1,7 +1,7 @@
 import { BackSide, CubeCamera, CubeRenderTarget, DataTexture, FloatType, HalfFloatType, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicNodeMaterial, NoBlending, RGBAFormat, SphereGeometry, Vector3, type Node, type Scene, type WebGPURenderer } from 'three/webgpu';
 import { abs, atan, Break, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, cross, cubeTexture, Discard, dot, exp, float, Fn, fwidth, If, int, length, log2, Loop, max, mix, normalize, positionWorld, pow, select, sin, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4, viewportSharedTexture, viewportSize } from 'three/tsl';
 import { blackbodyRgb } from '../../chapters/shared/blackbody';
-import { CRITICAL_B, TRACE } from './lens';
+import { CRITICAL_B, GAUSS, TRACE } from './lens';
 
 /**
  * A black hole drawn by its light bending (docs/NEIGHBOURHOOD.md, "Black holes"; its own chunk,
@@ -146,7 +146,13 @@ export function createLensView(): LensView {
         Break();
       });
       If(nu.lessThanEqual(0), () => {
-        end.assign(phi.add(h.mul(u.div(max(u.sub(nu), 1e-30)))));
+        // Out: the rest of the way from this step's start, by the integral of du / sqrt(1/b^2 - u^2 + u^3) (four Gauss points, as ../lens).
+        const inv = float(1).div(b.mul(b));
+        const tail = GAUSS.nodes.map((n, k) => {
+          const x = u.mul(n);
+          return float(GAUSS.weights[k] ?? 0).div(sqrt(max(inv.sub(x.mul(x)).add(x.mul(x).mul(x)), 1e-12)));
+        });
+        end.assign(phi.add(tail.reduce((a, t) => a.add(t)).mul(u)));
         Break();
       });
       u.assign(nu);

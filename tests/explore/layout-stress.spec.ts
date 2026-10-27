@@ -267,6 +267,23 @@ for (const size of SIZES) {
       expect(drawn.width).toBe(drawn.wanted);
       expect(drawn.fontPx).toBeGreaterThanOrEqual(11);
       await expectLayout(page, 'among the stars');
+      // Its controls in bursts: free look and orbit, the figures, star light to its ends; then a black hole, its facts and model.
+      for (const id of ['stars-camera-orbit', 'stars-camera-look', 'stars-figures']) {
+        await page.getByTestId(id).scrollIntoViewIfNeeded();
+        await spam(page.getByTestId(id), 9);
+      }
+      await page.getByTestId('stars-faintest').fill('12.5');
+      await page.getByTestId('stars-brightness').fill('2');
+      await page.getByTestId('stars-faintest').fill('4');
+      await expectLayout(page, 'among the stars, its controls pressed');
+      await page.getByTestId('stars-bh-ton-618').scrollIntoViewIfNeeded();
+      await spam(page.getByTestId('stars-bh-ton-618'), 5);
+      await expect.poll(async () => (await view(page))?.neighbourhood?.blackHole?.id ?? null, LIVE).toBe('ton-618');
+      await expect.poll(async () => (await view(page))?.neighbourhood?.travelling, LIVE).toBe(false);
+      await expect(page.getByTestId('stars-bh-model')).toBeVisible();
+      await expectLayout(page, 'among the stars, a black hole in view');
+      await page.getByTestId('stars-sun').click();
+      await expect.poll(async () => (await view(page))?.neighbourhood?.travelling, LIVE).toBe(false);
       await spam(page.getByTestId('universe-nav-toggle'), 25);
       expect(await expanded(page)).toBe(false);
       await expect(panel).toBeHidden();

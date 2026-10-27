@@ -224,13 +224,36 @@ test('Esc on the way in turns round; a burst of Esc in a flight, or Esc held, ne
   await page.keyboard.up('Escape');
   await page.waitForTimeout(800);
   expect(page.url()).toContain('#/universe');
-  // Open and close ten times quickly: it ends in the solar system, no errors.
-  for (let k = 0; k < 10; k += 1) {
-    await page.getByTestId('stars-open').click();
+  // Open and close twenty times quickly, pressing whichever of the two is shown at that moment (looked
+  // for and pressed in one go in the page, so a fade that ends between a look and a press cannot
+  // strand the press on a button just hidden): it ends in the solar system, no errors.
+  const press = (ids: readonly string[]): Promise<boolean> =>
+    page.evaluate((list) => {
+      for (const id of list) {
+        const b = document.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+        if (b?.checkVisibility()) {
+          b.click();
+          return true;
+        }
+      }
+      return false;
+    }, ids);
+  let pressed = 0;
+  for (let k = 0; k < 20; k += 1) {
+    if (await press(['stars-open', 'stars-end'])) pressed += 1;
     await page.waitForTimeout(k % 2 ? 600 : 120);
-    if (await page.getByTestId('stars-end').isVisible()) await page.getByTestId('stars-end').click();
   }
-  await expect.poll(async () => await stars(page), LIVE).toBeNull();
+  expect(pressed).toBeGreaterThanOrEqual(10);
+  // Whatever the last press began has settled; the way back, if among the stars, and it stays out.
+  await page.waitForTimeout(1000);
+  await expect
+    .poll(async () => {
+      await press(['stars-end']);
+      return await stars(page);
+    }, LIVE)
+    .toBeNull();
+  await page.waitForTimeout(1000);
+  expect(await stars(page)).toBeNull();
   expect(page.url()).toContain('#/universe');
   expect(pageErrors).toEqual([]);
 });
