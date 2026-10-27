@@ -539,8 +539,8 @@
   border-block-end: 0;
 }
 
-/* The stage text and Explore Mode's dock step aside from the column. */
-.kf-ai-side-open .kf-stage {
+/* The stage text, Explore Mode's dock, the welcome screen and the Sources page step aside from the column. */
+.kf-ai-side-open :is(.kf-stage, .kf-intro, .kf-sources) {
   inset-inline-start: var(--kf-ai-inset, 0px);
 }
 
