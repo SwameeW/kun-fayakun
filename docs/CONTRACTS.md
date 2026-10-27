@@ -855,6 +855,18 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   progress, generate then pull each piece, interrupt, unload, hasModelInCache,
   deleteModelAllInfoInCache; failures as EngineError data). Its file is fetched only when a model
   loads (or a stored one is deleted).
+- **How a model reads its prompt** (`src/ai/engine/prefill.ts`, docs/AI-INTELLIGENCE.md §6). A
+  `load` message carries a `PrefillSetting` (`chunkTokens`, null for none; `yieldBetween`), the
+  model's own from `prefillFor(model)` unless the evaluation gives another; after every load the
+  worker sets it on WebLLM's pipeline with `applyPrefill(engine, modelId, setting)`, which never
+  throws, changes nothing unless WebLLM's internals are where 0.2.86 keeps them, and returns a
+  `PrefillReport` (`src/ai/types.ts`: `outcome` set, off, kept, no-pipeline, no-field or failed; the
+  compiled chunk; the chunk now; whether it waits between chunks). The `loaded` answer carries the
+  report, `WebLlmEngine.prefill` holds it, and each generation's `engineUsage.prefill` gives it with
+  `chunkAtGeneration`, the chunk the pipeline held as the reply ended (read in the worker; the
+  usage's `prefillChunk`). `tests/unit/ai-prefill.spec.ts` checks WebLLM's file for the fields it
+  reaches; the real-model evaluation fails a run whose generations do not report the setting asked
+  for.
 - **Test hook.** `window.__kf.ai.start()` loads the assistant (the shell's starter) and resolves to
   its Intelligence; the assistant's own chunk then replaces `window.__kf.ai` with
   `{ start, useScripted(script, options?), useReport(report) }`. `useReport` makes the engine
@@ -862,7 +874,7 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   nothing a visitor does reaches it). `useScripted` switches the running assistant to the
   scripted engine (`src/ai/engine/scripted.ts`: replies written in the test, matched on the last
   user message and the format; `options.delayMs` between streamed words), labelled `scripted`.
-  `evaluate({ router: 'first' | 'skip' })` is the real-model evaluation's alone (`tests/ai-eval`):
+  `evaluate({ router: 'first' | 'skip', prefill? })` is the real-model evaluation's alone (`tests/ai-eval`):
   from then on every generation is recorded as a `GenerationRecord` (`src/ai/types.ts`: the turn,
   the purpose (plan, repair or answer), the messages sent, the raw reply, the finish, tokens, the
   plan's validity and problems, `engineUsage`, WebLLM's own prefill and decode rates, time to
@@ -870,7 +882,9 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   set against it), taken with `generations()`; with `router: 'skip'` a loaded model
   plans every question, the router bypassed (`IntelligenceDeps.evaluation`), even a model that
   writes explanations only (`ModelSpec.plans: false`, the pocket tier), which in the shipping order
-  is never asked to plan. `evaluate(null)` puts the shipping order back. Nothing a visitor does
+  is never asked to plan. With `prefill` (`{ chunkTokens, yieldBetween }`), a model loaded after it
+  reads its prompt with that setting in place of its own (the engine host's `assumePrefill`); without
+  it, each model's own. `evaluate(null)` puts the shipping order back. Nothing a visitor does
   reaches it.
   `<html>` gets `data-ai-engine` and `data-ai-turn` (Test hooks, above).
 - **Model hosts in tests.** Every page's requests to huggingface.co, hf.co (and their
