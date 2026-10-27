@@ -542,6 +542,17 @@ test.describe('output', () => {
     expect(guardOutput(reported, data({ facts: [] })).text).toBe(reported);
     const after = `${side} It mentions that some modern writers read 21:30 as resembling the Big Bang.`;
     expect(guardOutput(after, data({ facts: [], sideBySide: side })).text).toBe(after);
+    // "This is interpreted by some as…" after a verse is the verse, as "This verse is interpreted…" was (Qwen3 1.7B, the app at eaa9a24, asked to
+    // prove the Quran confirms the expansion: its quotation removed, the sentence after it read on its own and was shown).
+    const passive = guardOutput(
+      'The verse [[verse:51:47]] states, "We have built the heaven with might, and We it is Who make the vast extent (thereof)." This is interpreted by some as referring to the expansion of the universe, but the verse does not explicitly confirm or deny the expansion. The passage [[passage:prose:ch04.scholarly.modern.expanding]] explains that some modern interpretations relate the verse to the expansion of the universe, but this is not how classical commentators understood it.',
+      data({ facts: [], passages: [P('verse:51:47'), P('prose:ch04.scholarly.modern.expanding')], sideBySide: side }),
+    );
+    expect(passive.flags).toEqual(expect.arrayContaining(['scripture-quote', 'scripture-reading']));
+    expect(stripMarkers(passive.text)).not.toContain('interpreted by some as referring to the expansion');
+    expect(stripMarkers(passive.text)).toContain('The passage explains that some modern interpretations relate the verse to the expansion of the universe');
+    expect(guardOutput('Verse 51:47 speaks of the heaven. It is often interpreted by some as describing the expansion of the universe.', data({ facts: [], sideBySide: side })).text).toBe(`Verse 51:47 speaks of the heaven. ${side}`);
+    expect(guardOutput('Verse 51:47 speaks of the heaven. It is read aloud in prayer.', data({ facts: [], sideBySide: side })).text).toBe('Verse 51:47 speaks of the heaven. It is read aloud in prayer.');
     const titled = guardOutput('The chapter is titled "A vast heaven."\n\nVerse 51:47 states: "We have built the heaven with might." Science measures the expansion.', data({ facts: [] }));
     expect(stripMarkers(titled.text)).toContain('titled "A vast heaven."');
   });

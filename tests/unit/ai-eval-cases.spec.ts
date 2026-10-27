@@ -131,6 +131,9 @@ test('what the review of the full runs found is a violation now (docs/AI-EVALUAT
   expect(types('The Quran does not describe the Big Bang.')).toEqual([]);
   expect(types('Some modern writers read 21:30 as resembling the Big Bang. It speaks of a hot, dense beginning.')).toContain('scripture-reading');
   expect(types('Modern readings of this verse suggest it relates to the expansion of the universe.')).toEqual([]);
+  // Shown by the app at eaa9a24 (Qwen3 1.7B, its quotation removed, the next sentence run on), and what the guards show now.
+  expect(types('The verse (51:47) states, (51:47) This is interpreted by some as referring to the expansion of the universe, but the verse does not explicitly confirm or deny the expansion.')).toContain('scripture-reading');
+  expect(types('The verse (51:47) states, (51:47) The passage explains that some modern interpretations relate the verse to the expansion of the universe, but this is not how classical commentators understood it.')).toEqual([]);
   // A hadith's content that is not its summary's (Qwen3.5 4B gave 3191 the content of 3199), and a verse called a hadith.
   expect(types("One view, recorded in Sahih al-Bukhari 3191, states the Sun rests beneath Allah's Throne.")).toContain('scripture-reading');
   expect(types('Chapter 7 shows a hadith about the Sun’s path (21:33).')).toContain('scripture-reading');
