@@ -1344,13 +1344,16 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       // The explorer's reducer (./time): at the start going backwards, play, faster and slower turn round.
       const next = applyTimeCommand({ rate, paused, edge }, command).state;
       if (command.kind === 'now' || command.kind === 'date') {
-        // Now and a date: that moment of the experiment (its clock is TDB), from the fork on. Now runs on at real time.
+        // Now and a date: that moment of the experiment (its clock is TDB), from the fork on. Now runs on at real
+        // time; a date before the fork stops there (the experiment has no history before it), as at the explorer's ends.
         const epoch = seedScenario?.epochJdTdb ?? 0;
         const utc = command.kind === 'now' ? Date.now() / 86_400_000 + 2_440_587.5 : command.jdUtc;
+        const t = (utcToTdb(utc, physical.time) - epoch) * 86_400;
         rate = next.rate;
-        paused = next.paused;
+        paused = next.paused || t < 0;
         sendRun();
-        goTo((utcToTdb(utc, physical.time) - epoch) * 86_400);
+        goTo(t);
+        if (t < 0) edge = 'start';
         return;
       }
       rate = next.rate;

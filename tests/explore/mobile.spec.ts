@@ -3,7 +3,8 @@
  * phone, so the GPU is this machine's): touch gestures through real CDP touch events (a pinch zooms
  * in log distance, two fingers pan, a double tap on a world flies there), the bottom sheet, layouts
  * in portrait and landscape with nothing wider than the screen, touch-action: none only while the
- * explorer is on screen, and axe on the navigator and the heads-up readout.
+ * explorer is on screen, axe on the navigator and the heads-up readout, and the time machine's buttons
+ * in reach on the sheet whether it is folded or pulled up.
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { CDPSession, Page } from '@playwright/test';
@@ -38,13 +39,14 @@ async function tap(cdp: CDPSession, p: Point): Promise<void> {
   await touch(cdp, 'touchEnd', []);
 }
 
-/** The middle of the clear part of the view (between the readout and the sheet). */
+/** The middle of the clear part of the view (between the readout and the sheet, or a note standing above it: where the view frames the bodies). */
 async function middle(page: Page): Promise<Point> {
   return page.evaluate(() => {
     const readout = document.querySelector('[data-testid="universe-readout"]')?.getBoundingClientRect();
     const sheet = document.querySelector('[data-testid="universe-bodies"]')?.getBoundingClientRect();
+    const card = document.querySelector('.kf-note.is-visible')?.getBoundingClientRect();
     const top = readout ? readout.bottom : 0;
-    const bottom = sheet ? sheet.top : window.innerHeight;
+    const bottom = Math.min(sheet ? sheet.top : window.innerHeight, card && card.height > 0 && card.top > top ? card.top : Infinity);
     return { x: window.innerWidth / 2, y: (top + bottom) / 2 };
   });
 }
@@ -442,5 +444,53 @@ test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, 
   // Back to orbit.
   await page.getByTestId('walk-end').tap();
   await expect.poll(async () => (await view(page))?.walk, { timeout: 30_000 * SLOW }).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+test('the time machine stays in reach on the sheet: its buttons above the list folded or pulled up, its date under the list, every tap answered', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await settled(page, ['universe-readout', 'universe-bodies']);
+  const nav = page.getByTestId('universe-bodies');
+  const ids = ['universe-time-reverse', 'universe-time-slower', 'universe-time-pause', 'universe-time-faster', 'universe-time-now', 'universe-photo'];
+  /** Each button: in the window, on top at its middle, at least 44 px each way. */
+  const reach = (): Promise<string[]> =>
+    page.evaluate((list) => {
+      const out: string[] = [];
+      for (const id of list) {
+        const el = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+        const r = el?.getBoundingClientRect();
+        if (!el || !r || r.width === 0) {
+          out.push(`${id} missing`);
+          continue;
+        }
+        if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) out.push(`${id} outside`);
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!(hit === el || el.contains(hit))) out.push(`${id} covered`);
+        if (r.width < 43.5 || r.height < 43.5) out.push(`${id} ${String(Math.round(r.width))}x${String(Math.round(r.height))}`);
+      }
+      return out;
+    }, ids);
+  expect(await reach()).toEqual([]);
+  for (let i = 0; i < 3; i += 1) await page.getByTestId('universe-time-faster').tap();
+  expect((await view(page))?.time.rate).toBe(600);
+  // Pulled up: the buttons stay where they were reached; the date is under the list, by scrolling the sheet.
+  await page.getByTestId('universe-nav-toggle').tap();
+  await expect(nav).toHaveClass(/is-expanded/);
+  await page.waitForTimeout(400);
+  expect(await reach()).toEqual([]);
+  await page.getByTestId('universe-time-date').scrollIntoViewIfNeeded();
+  await page.getByTestId('universe-time-date').fill('2031-03-20');
+  await expect.poll(async () => new Date((await view(page))?.unixMs ?? 0).toISOString().slice(0, 10)).toBe('2031-03-20');
+  // A hundred taps on Faster and Slower in turn, the sheet folded and pulled up between bursts (forced: a finger presses a control at a ladder's end too).
+  for (let round = 0; round < 20; round += 1) {
+    for (let k = 0; k < 5; k += 1) await page.getByTestId(k % 2 === 0 ? 'universe-time-faster' : 'universe-time-slower').tap({ force: true });
+    await page.getByTestId('universe-nav-toggle').tap();
+  }
+  expect([1, 10, 60, 600, 3600, 21_600, 86_400, 604_800, 2_592_000]).toContain(Math.abs((await view(page))?.time.rate ?? 0));
+  expect(await reach()).toEqual([]);
+  const sides = await overflow(page);
+  expect(sides.scroll).toBeLessThanOrEqual(sides.client);
   expect(pageErrors).toEqual([]);
 });

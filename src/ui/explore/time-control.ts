@@ -29,6 +29,8 @@ export interface TimeControl {
   update(view: UniverseView): void;
   /** A key's press of a time button (the same as a click: a control that cannot act says why). */
   press(kind: 'faster' | 'slower' | 'reverse'): void;
+  /** The help, the date field and the Islamic date: in the row (null), or in another place (a phone's sheet keeps them below its list, the buttons above it). */
+  placeDay(into: HTMLElement | null): void;
 }
 
 const DAY_MS = 86_400_000;
@@ -133,15 +135,13 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
   const hijriHelp = helpButton(app, 'hijri', i18n.t('ui.help.label.hijri'));
   hijriHelp.hidden = true;
 
+  const day = h('span', { class: 'kf-universe-time-day' }, helpButton(app, 'time', i18n.t('ui.universe.time.label')), dateLabel, date, h('span', { class: 'kf-universe-time-hijri-row' }, hijri, hijriHelp));
   const element = h(
     'div',
     { class: 'kf-universe-time', role: 'group', 'aria-label': i18n.t('ui.universe.time.label'), 'data-testid': 'universe-time' },
     h('span', { class: 'kf-universe-time-buttons' }, reverse, slower, pause, faster, now, reset),
     rate,
-    helpButton(app, 'time', i18n.t('ui.universe.time.label')),
-    dateLabel,
-    date,
-    h('span', { class: 'kf-universe-time-hijri-row' }, hijri, hijriHelp),
+    day,
     note,
   );
   // Space pauses or plays wherever the focus is in the row: it never presses a focused time button
@@ -178,6 +178,10 @@ export function createTimeControl(app: App, announce: (text: string) => void): T
   return {
     element,
     press,
+    placeDay(into) {
+      if (into) into.append(day);
+      else element.insertBefore(day, note);
+    },
     update(view) {
       const t = view.time;
       const lab = view.lab;

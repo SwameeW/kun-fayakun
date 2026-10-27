@@ -257,8 +257,9 @@ scope.onmessage = (event: MessageEvent<LabRequest>) => {
       case 'goto': {
         control = msg.control;
         rewind = null;
-        atStart = false;
         const target = Math.max(0, Number.isFinite(msg.t) ? msg.t : 0);
+        // To the fork, paused (a date before it): stopped at the start, as going backwards stops there.
+        atStart = target === 0 && paused;
         // Back through the checkpoints (a jump: the page's drawn clock follows it), then on to it a few steps a tick.
         if (target < engine.state.t) {
           engine.restoreBefore(target);

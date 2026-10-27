@@ -47,8 +47,8 @@ const PANEL_QUERY = '(min-width: 900px) and (min-height: 560px)';
 /** The navigator's Walk here, under each world it offers a walk on. */
 const WALK_HINTS = { moon: 'ui.universe.walk.hereMoon', mars: 'ui.universe.walk.hereMars', mercury: 'ui.universe.walk.hereMercury', venus: 'ui.universe.walk.hereVenus' } as const;
 
-/** `time`: the time machine's line (./time-control and photo mode's button), placed at the head of the body. */
-export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void, time: HTMLElement): Navigator {
+/** `time`: the time machine's line (./time-control and photo mode's button), placed at the head of the body; `placeDay` puts its date where given (null: in its line). */
+export function createNavigator(app: App, f: Formatters, onApplied: (title: string, line: string) => void, time: HTMLElement, placeDay: (slot: HTMLElement | null) => void = () => undefined): Navigator {
   const { i18n } = app;
   const panelQuery = window.matchMedia(PANEL_QUERY);
   const coarse = window.matchMedia('(pointer: coarse)');
@@ -215,7 +215,9 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
   // The foot stays put below the scrolling part, so the detail menu can open over the list.
   // Detail and Sound share a row, so the foot keeps its height and the list its room on a phone.
   const foot = h('div', { class: 'kf-nav-foot' }, keys, h('div', { class: 'kf-nav-foot-row' }, quality.element, sound));
-  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living, islamic, seen);
+  // On a phone's sheet the time machine's date sits under the list (its buttons stay above the scrolling part).
+  const daySlot = h('div', { class: 'kf-nav-day' });
+  const body = h('div', { id: bodyId, class: 'kf-nav-body-wrap' }, time, labSlot, starsSlot, map, list, listHead, daySlot, about.element, walkEntry, descentEntry, sky.element, saved.element, starsEntry, labEntry, living, islamic, seen);
 
   const element = h('nav', { class: 'kf-nav', 'aria-label': i18n.t('ui.universe.navigator'), 'data-testid': 'universe-bodies' }, head, body, foot);
 
@@ -232,8 +234,14 @@ export function createNavigator(app: App, f: Formatters, onApplied: (title: stri
     element.classList.toggle('is-expanded', expanded);
     toggle.setAttribute('aria-expanded', String(expanded));
     toggleText.textContent = i18n.t(expanded ? 'ui.universe.navigatorHide' : 'ui.universe.navigatorShow');
-    // Folded, the list stays (as portraits); the map, the log and the menu go.
-    for (const el of [time, map, listHead, about.element, sky.element, saved.element, starsEntry, labEntry, living, islamic, seen, foot]) el.hidden = !expanded;
+    // Folded, the list stays (as portraits); the map, the log and the menu go. The time machine heads the
+    // body in the panel; on a phone's sheet it sits above the scrolling part, folded or not, always in reach.
+    if (layout === 'sheet') element.insertBefore(time, body);
+    else body.prepend(time);
+    time.hidden = layout === 'panel' && !expanded;
+    placeDay(layout === 'sheet' ? daySlot : null);
+    daySlot.hidden = layout === 'panel' || !expanded;
+    for (const el of [map, listHead, about.element, sky.element, saved.element, starsEntry, labEntry, living, islamic, seen, foot]) el.hidden = !expanded;
     if (!expanded) {
       walkEntry.hidden = true;
       descentEntry.hidden = true;

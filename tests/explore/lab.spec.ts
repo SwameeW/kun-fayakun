@@ -5,8 +5,12 @@
  * circular orbit), duplicated and removed with stable ids; predictions follow the edits; mergers
  * are accounted; the experiment is saved, reset, loaded, rewound to a checkpoint and replayed; files
  * export and bad ones are refused; leaving gives the real explorer back exactly as it was, and the
- * film after it; and removing the world the camera is on moves the camera, not into nothing.
- * Reduced motion, so flights land at once.
+ * film after it; and removing the world the camera is on moves the camera, not into nothing. Its
+ * clock: played backwards to the fork through the run's own states, Reset paused at the fork, a drawn
+ * clock that never turns back and keeps an even pace at every rate (slow ones too), a rate change
+ * seen at once, Now and a date, a checkpoint gone back to paused, five hundred presses inside single
+ * frames; a two-body laboratory shows its own star, not the real Earth; and the Solar system forks at
+ * the explorer's date after a lesson. Reduced motion, so flights land at once.
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
@@ -362,5 +366,236 @@ test('a crater drawn where it struck: a stone dropped on the Moon from the Earth
   for (let i = 0; i < 2; i += 1) await page.locator('body').press(']');
   await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan((e?.t ?? 0) + 5 * 86_400);
   expect((await lab(page))?.events.find((x) => x.survivor === 'moon')?.craterSite).toEqual(placed);
+  expect(pageErrors).toEqual([]);
+});
+
+/** The experiment's clock, frame by frame in the page (requestAnimationFrame): its drawn time (s) and step each frame. */
+const sampleClock = (page: Page, ms: number): Promise<Array<{ t: number; step: number; jd: number }>> =>
+  page.evaluate(
+    (span) =>
+      new Promise((resolve) => {
+        const kf = (window as unknown as KfHook).__kf;
+        const out: Array<{ t: number; step: number; jd: number }> = [];
+        const t0 = performance.now();
+        const tick = (): void => {
+          const v = kf.universe.state();
+          if (v?.lab) out.push({ t: v.lab.elapsedS, step: v.lab.step, jd: v.jdTdb });
+          if (performance.now() - t0 < span) requestAnimationFrame(tick);
+          else resolve(out);
+        };
+        requestAnimationFrame(tick);
+      }),
+    ms,
+  );
+const setRate = (page: Page, rate: number): Promise<void> =>
+  page.evaluate((r) => {
+    (window as unknown as KfHook).__kf.app.universeTime({ kind: 'rate', rate: r });
+  }, rate);
+/** Synchronous clicks inside one task (one frame), by test id. */
+const burst = (page: Page, ids: readonly string[]): Promise<void> =>
+  page.evaluate((list) => {
+    for (const id of list) document.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
+  }, ids);
+const LAB_BUTTONS = ['universe-time-reverse', 'universe-time-slower', 'universe-time-pause', 'universe-time-faster', 'universe-time-now', 'universe-time-reset'] as const;
+
+test('backwards through the experiment’s history to its fork, exactly as it ran; forwards again; Reset pauses at the fork', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  // Thirty days a second for a while, then a day a second (about a step a snapshot).
+  await setRate(page, 2_592_000);
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(30 * 86_400);
+  await setRate(page, 86_400);
+  // On the way forwards, each step's Earth-Moon distance as the worker had it.
+  const forward = await page.evaluate(
+    () =>
+      new Promise<Array<[number, number]>>((resolve) => {
+        const kf = (window as unknown as KfHook).__kf;
+        const out: Array<[number, number]> = [];
+        const t0 = performance.now();
+        const tick = (): void => {
+          const l = kf.universe.state()?.lab;
+          const m = l?.bodies.find((b) => b.id === 'moon');
+          if (l && m?.distanceKm != null && !out.some(([s]) => s === l.step)) out.push([l.step, m.distanceKm]);
+          if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
+          else resolve(out);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  expect(forward.length).toBeGreaterThan(20);
+  // Reverse: the clock runs back, never forwards, every frame; the moments gone back through are the
+  // run's own (the same Earth-Moon distance at the same step).
+  await page.getByTestId('universe-time-reverse').click();
+  expect((await lab(page))?.requestedRate).toBe(-86_400);
+  const backward = await page.evaluate(
+    () =>
+      new Promise<{ steps: Array<[number, number]>; times: number[] }>((resolve) => {
+        const kf = (window as unknown as KfHook).__kf;
+        const steps: Array<[number, number]> = [];
+        const times: number[] = [];
+        const t0 = performance.now();
+        const tick = (): void => {
+          const l = kf.universe.state()?.lab;
+          const m = l?.bodies.find((b) => b.id === 'moon');
+          if (l) times.push(l.elapsedS);
+          if (l && m?.distanceKm != null && !steps.some(([s]) => s === l.step)) steps.push([l.step, m.distanceKm]);
+          if (performance.now() - t0 < 4000) requestAnimationFrame(tick);
+          else resolve({ steps, times });
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  for (let k = 1; k < backward.times.length; k += 1) expect(backward.times[k] ?? 0).toBeLessThanOrEqual(backward.times[k - 1] ?? 0);
+  expect((backward.times[0] ?? 0) - (backward.times.at(-1) ?? 0)).toBeGreaterThan(2 * 86_400);
+  await expect(page.getByTestId('lab-rates')).toContainText('Going back');
+  const seen = new Map(forward);
+  const common = backward.steps.filter(([s]) => seen.has(s));
+  expect(common.length).toBeGreaterThan(10);
+  for (const [s, d] of common) expect(d, `step ${String(s)}`).toBe(seen.get(s));
+  // Faster backwards, to the fork.
+  await page.getByTestId('universe-time-faster').click();
+  await page.getByTestId('universe-time-faster').click();
+  expect((await lab(page))?.requestedRate).toBe(-2_592_000);
+  // At the fork: stopped there, saying so.
+  await expect.poll(async () => (await view(page))?.time.edge, LIVE).toBe('start');
+  await expect.poll(async () => (await lab(page))?.elapsedS, LIVE).toBe(0);
+  expect((await lab(page))?.step).toBe(0);
+  await expect(page.getByTestId('universe-time-rate')).toHaveText('Back at the start of the experiment');
+  await expect(page.getByTestId('universe-time-note')).toHaveText('Play runs it forwards from here.');
+  // Play runs it forwards again.
+  await page.getByTestId('universe-time-pause').click();
+  expect((await lab(page))?.requestedRate).toBe(2_592_000);
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? 0, LIVE).toBeGreaterThan(5 * 86_400);
+  // Reset: at once back at the fork, paused, at a day a second.
+  await page.getByTestId('universe-time-reset').click();
+  await expect.poll(async () => (await lab(page))?.elapsedS ?? Infinity, { timeout: 2000 * SLOW }).toBeLessThan(1);
+  expect((await lab(page))).toMatchObject({ paused: true, requestedRate: 86_400 });
+  await page.waitForTimeout(500);
+  expect((await lab(page))?.elapsedS).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the drawn clock: smooth and never turning back at every rate, a rate change seen at once, slow rates moving, a pause holding', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  const smooth = async (what: string): Promise<{ median: number; per: number }> => {
+    const s = await sampleClock(page, 1500);
+    const steps = s.slice(1).map((x, k) => x.t - (s[k]?.t ?? 0));
+    const jds = s.slice(1).map((x, k) => x.jd - (s[k]?.jd ?? 0));
+    expect(Math.min(...steps), `${what}: no frame goes back`).toBeGreaterThanOrEqual(0);
+    expect(Math.min(...jds), `${what}: nor does the date`).toBeGreaterThanOrEqual(0);
+    const sorted = [...steps].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    if (median > 0) expect(sorted[Math.floor(sorted.length * 0.95)] ?? 0, `${what}: even`).toBeLessThan(1.6 * median);
+    return { median, per: ((s.at(-1)?.t ?? 0) - (s[0]?.t ?? 0)) / 1.5 };
+  };
+  // The solar system at a day, six hours, an hour and thirty days a second.
+  for (const rate of [86_400, 21_600, 3600, 2_592_000]) {
+    await setRate(page, rate);
+    await page.waitForTimeout(400);
+    const { per } = await smooth(`solar at ${String(rate)}`);
+    expect(per).toBeGreaterThan(0.7 * rate);
+  }
+  // A rate change shows at once: three presses of Faster from an hour a second, and the clock runs at a week a second within moments.
+  await setRate(page, 3600);
+  await page.waitForTimeout(400);
+  await burst(page, ['universe-time-faster', 'universe-time-faster', 'universe-time-faster']);
+  await page.waitForTimeout(250);
+  expect((await smooth('after three presses')).per).toBeGreaterThan(0.8 * 604_800);
+  // The two-body laboratory (steps of about 14 hours) at a day a second and at ten seconds a second: it moves, smoothly.
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  for (const rate of [86_400, 10]) {
+    await setRate(page, rate);
+    await page.waitForTimeout(400);
+    const { per } = await smooth(`two-body at ${String(rate)}`);
+    expect(per).toBeGreaterThan(0.6 * rate);
+    expect(per).toBeLessThan(1.4 * rate);
+    await expect(page.getByTestId('lab-rates')).not.toContainText('only');
+  }
+  // Paused: it goes on to where the run stopped, never back, and then holds.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.locator('body').press('Space');
+  expect((await lab(page))?.paused).toBe(true);
+  const after = await sampleClock(page, 600);
+  for (let k = 1; k < after.length; k += 1) expect(after[k]?.t ?? 0).toBeGreaterThanOrEqual(after[k - 1]?.t ?? 0);
+  expect(after.at(-1)?.t).toBe(after.at(-5)?.t);
+  expect(pageErrors).toEqual([]);
+});
+
+test('Now and a date in an experiment, a checkpoint gone back to (paused), and hundreds of presses inside single frames', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.getByTestId('lab-tools').locator('summary').click();
+  // The two-body laboratory starts at J2000: Now is a quarter of a century on, then real time.
+  await page.getByTestId('lab-preset-two').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id), LIVE).toEqual(['star', 'planet']);
+  await page.getByTestId('universe-time-now').click();
+  const sinceJ2000 = (Date.now() - Date.UTC(2000, 0, 1, 12)) / 1000;
+  await expect.poll(async () => Math.abs(((await lab(page))?.elapsedS ?? 0) - sinceJ2000), LIVE).toBeLessThan(2 * 86_400);
+  await expect.poll(async () => (await lab(page))?.seekingS, LIVE).toBeNull();
+  expect((await lab(page))?.requestedRate).toBe(1);
+  await expect(page.getByTestId('universe-time-rate')).toHaveText('Real time');
+  // A date: that day of the experiment (back through its history, then on).
+  await page.getByTestId('universe-time-date').fill('2010-06-15');
+  await expect.poll(async () => new Date((await view(page))?.unixMs ?? 0).toISOString().slice(0, 10), LIVE).toBe('2010-06-15');
+  // Before the fork: stopped at the fork, saying so.
+  await page.getByTestId('universe-time-date').fill('1990-01-01');
+  await expect.poll(async () => (await lab(page))?.elapsedS, LIVE).toBe(0);
+  expect((await lab(page))?.paused).toBe(true);
+  await expect(page.getByTestId('universe-time-rate')).toHaveText('Back at the start of the experiment');
+  // A checkpoint: gone back to, paused there.
+  await setRate(page, 2_592_000);
+  await expect.poll(async () => (await lab(page))?.checkpoints.length ?? 0, LIVE).toBeGreaterThan(2);
+  const list = page.getByTestId('lab-checkpoints').getByRole('button');
+  await expect(list.first()).toBeVisible();
+  const target = (await lab(page))?.checkpoints.at(-2);
+  await page.getByTestId(`lab-checkpoint-${String(target?.step)}`).click();
+  await expect.poll(async () => (await lab(page))?.step, LIVE).toBe(target?.step);
+  expect((await lab(page))?.paused).toBe(true);
+  await page.waitForTimeout(300);
+  expect((await lab(page))?.elapsedS).toBe(target?.t);
+  // Five hundred presses in twenty bursts, each inside one frame: the clock stays sound, and one more press still turns it.
+  let seed = 5;
+  const next = (): number => ((seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648);
+  for (let b = 0; b < 20; b += 1) {
+    await burst(page, Array.from({ length: 25 }, () => LAB_BUTTONS[Math.floor(next() * LAB_BUTTONS.length)] ?? 'universe-time-pause'));
+    await page.waitForTimeout(16 + Math.floor(next() * 450));
+  }
+  await page.waitForTimeout(500);
+  const l = await lab(page);
+  expect([1, 10, 60, 600, 3600, 21_600, 86_400, 604_800, 2_592_000]).toContain(Math.abs(l?.requestedRate ?? 0));
+  expect(l?.elapsedS ?? -1).toBeGreaterThanOrEqual(0);
+  const before = l?.requestedRate ?? 0;
+  await page.getByTestId('universe-time-reverse').click();
+  expect((await lab(page))?.requestedRate).toBe(-before);
+  expect(pageErrors).toEqual([]);
+});
+
+test('a laboratory of its own shows its star and planet, not the real Earth; the Solar system forks again at the explorer’s date after a lesson', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await page.getByTestId('lab-lessons').locator('summary').click();
+  await page.getByTestId('lab-lesson-kepler').click();
+  await expect.poll(async () => (await lab(page))?.bodies.map((b) => b.id).join(), LIVE).toBe('star,planet');
+  // The view leaves the Earth (which this experiment does not have) for its star; no Earth named or described.
+  await expect.poll(async () => (await view(page))?.focus, LIVE).toBe('sun');
+  await expect(page.getByTestId('universe-readout')).toHaveText(/^Sun\d/u, LIVE);
+  const labels = await page.evaluate(() => (window as unknown as { __kf: { app: { hud(): { labels: Array<{ id: string }> } } } }).__kf.app.hud().labels.map((x) => x.id));
+  expect(labels.filter((id) => /^(earth|edge-earth)$/u.test(id))).toEqual([]);
+  // The Solar system preset: forked at the explorer's date, not the lesson's J2000.
+  await page.getByTestId('lab-tools').locator('summary').click();
+  await page.getByTestId('lab-preset-solar').click();
+  await expect.poll(async () => (await lab(page))?.bodies.length ?? 0, LIVE).toBe(10);
+  expect(Math.abs(((await lab(page))?.epochJdTdb ?? 0) - Number(JD))).toBeLessThan(1 / 24);
   expect(pageErrors).toEqual([]);
 });

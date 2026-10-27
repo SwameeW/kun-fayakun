@@ -1210,7 +1210,8 @@
 .kf-nav.is-sheet {
   inset-inline: var(--kf-space-2);
   inset-block-end: var(--kf-space-2);
-  max-block-size: min(72vh, 34rem);
+  /* Room for the time machine's line above the ten worlds, which stay whole when it is pulled up. */
+  max-block-size: min(76vh, 37rem);
   border-radius: calc(var(--kf-radius) * 1.8);
 }
 
@@ -1584,6 +1585,7 @@
     display: none;
   }
 
+
   /* Pulled up on a phone held sideways, the worlds sit in two columns: ten worlds remain reachable in a scrolling list. */
   .kf-nav.is-sheet.is-expanded .kf-nav-list {
     display: grid;
@@ -1690,7 +1692,7 @@
   .kf-nav.is-panel.is-expanded .kf-nav-light { font-size: 0.625rem; line-height: 1.25; }
 }
 
-/* The time machine (./time-control) heads the navigator; photo mode's button ends its line. On a phone's sheet it follows the list. */
+/* The time machine (./time-control) heads the navigator; photo mode's button ends its line. On a phone's sheet it sits above the scrolling part. */
 .kf-nav-time {
   display: flex;
   align-items: flex-start;
@@ -1706,10 +1708,31 @@
   display: none;
 }
 
+/* Never scrolled away nor folded away on a phone (folded, without the date). */
 .kf-nav.is-sheet .kf-nav-time {
-  order: 2;
+  flex: none;
+  margin-block-end: 0;
+  padding-block: var(--kf-space-1);
+}
+
+/* The help, the date and the Islamic date: in the row, or on a phone's sheet under the list. */
+.kf-universe-time-day {
+  display: contents;
+}
+
+.kf-nav-day {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-1) var(--kf-space-2);
+  order: 1;
+  padding: var(--kf-space-2) var(--kf-space-3);
   border-block-start: 1px solid var(--kf-line);
-  border-block-end: 0;
+  font-size: 0.8125rem;
+}
+
+.kf-nav-day[hidden] {
+  display: none;
 }
 
 .kf-universe-time {
@@ -1814,6 +1837,11 @@
   .kf-universe-time-date {
     min-block-size: 2.75rem;
     min-inline-size: 2.75rem;
+  }
+
+  /* Its help's reach keeps to its own line (the row wraps under the buttons). */
+  .kf-universe-time .kf-help {
+    margin-block: 0;
   }
 }
 

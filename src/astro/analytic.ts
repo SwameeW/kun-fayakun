@@ -23,8 +23,12 @@ import { DAYS_PER_CENTURY, J2000, PLANET_TABLE, positionFromElements, tableRange
  * against Horizons vectors from 1600 to 2400 (tests/unit/analytic.spec.ts).
  */
 
-/** The span the explorer shows with these theories (TDB Julian dates): 1600-01-01 to 2400-01-01. */
-export const THEORY_RANGE: JdRange = { startJd: 2_305_447.5, endJd: 2_597_641.5 };
+/**
+ * The span the explorer shows with these theories (TDB Julian dates): from 1600-01-01 to 2399-12-31,
+ * a quarter of an hour inside those days at each end, so that they are the first and last days in UTC
+ * too (TDB runs about a minute ahead of it) and the date field's ends are whole days.
+ */
+export const THEORY_RANGE: JdRange = { startJd: 2_305_447.51, endJd: 2_597_641.49 };
 /** Days over which the Moon's table hands over to its theory at its ends (five rows), and Table 1 to Table 2 (two years): no jump at either seam. */
 export const BLEND_DAYS = 5;
 const PLANET_BLEND_DAYS = 730.5;

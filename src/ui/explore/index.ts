@@ -131,6 +131,9 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
       toast.show(title, line);
     },
     timeRow,
+    (slot) => {
+      time.placeDay(slot);
+    },
   );
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));

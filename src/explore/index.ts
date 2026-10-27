@@ -1191,10 +1191,12 @@ export default function create(): UniverseModule {
   const holdSpin = (sys: SolarSystem, id: BodyId, perFrame: number, dt: number): void => {
     const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
     let h = spinHold.get(id);
-    if (!h && perFrame > SPIN_HOLD && id !== 'sun') spinHold.set(id, (h = { lon: sunLongitude(sys, id), turn: 0 }));
+    // Held from the turn drawn now (catching up or not): no jump.
+    if (dt > 0 && perFrame > SPIN_HOLD && id !== 'sun' && h?.lon == null) spinHold.set(id, (h = { lon: sunLongitude(sys, id) - (h?.turn ?? 0), turn: h?.turn ?? 0 }));
     if (!h) return;
     const sign = Math.sign(spinRate[id]) || 1;
-    if (h.lon !== null && perFrame < SPIN_FREE) {
+    // A frame of no time (a pose placed at once) neither holds nor lets go: the turn stays as it was.
+    if (h.lon !== null && dt > 0 && perFrame < SPIN_FREE) {
       // Let go: the turn held back, caught up forwards (a whole turn at most, ahead of the true one, shrinking).
       const behind = wrap(sunLongitude(sys, id) - h.lon);
       h.turn = sign > 0 ? (behind > 0 ? behind - 2 * Math.PI : behind) : behind < 0 ? behind + 2 * Math.PI : behind;
@@ -1618,6 +1620,8 @@ export default function create(): UniverseModule {
       lab.applyBuiltIns(sys, hiddenBodies);
       const refocus = lab.takeRefocus();
       if (refocus && !hiddenBodies.has(refocus)) nav.flyTo(world, refocus);
+      // A laboratory of its own (two or three bodies, none of them the worlds): the view goes to its star, at the Sun's place, never to a world it lacks.
+      else if (hiddenBodies.has(nav.focus) && nav.focus !== 'sun' && !nav.busy) nav.flyTo(world, 'sun');
     }
     for (const id of BODY_IDS) holdSpin(sys, id, Math.abs((spinRate[id] * clockRate * dt) / 86_400) * (Math.PI / 180), dt);
     advanceStretch(dt);
@@ -1928,7 +1932,7 @@ export default function create(): UniverseModule {
       // On foot, aimed where the walker stands (looking along the ground, the view's centre may miss the globe).
       const standing = walking && walkWorld === 'earth' ? (walk?.where() ?? null) : null;
       const aim =
-        entering || stretch.amount < 1
+        entering || stretch.amount < 1 || hiddenBodies.has('earth')
           ? null
           : standing
             ? { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: WALK_FOOTPRINT_KM / sys.specs.earth.radiusKm }
@@ -1962,6 +1966,8 @@ export default function create(): UniverseModule {
     bodies.jupiter.update({ time: ambient, sun: sunDir, light: lightAt('jupiter') }, origin3);
     unit(sunDir, sys.bodies.saturn.position, sun);
     bodies.saturn.update({ time: ambient, sun: sunDir, light: lightAt('saturn') }, origin3);
+    // A world the experiment does not have (merged, removed, or a laboratory of its own) is not drawn, lit or not.
+    for (const id of hiddenBodies) bodies.objects[id].visible = false;
     // Saturn's ring particles: the camera in the rings' frame (km, doubles), the Sun in the view's.
     const particles = bodies.saturn.rings?.particles;
     if (particles?.enabled) {
