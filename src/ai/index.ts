@@ -25,7 +25,7 @@ import { readContext } from './context';
 import { guardInput, guardOutput, stripMarkers, type OutcomeSummary } from './guards';
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
-import { route } from './router';
+import { route, type NamedPlace } from './router';
 import type {
   AiContext,
   AnswerBlock,
@@ -176,22 +176,34 @@ const SUGGESTIONS: Readonly<Record<AiContext['where'], readonly string[]>> = {
 
 const EMPTY_RETRIEVER: Retriever = { search: () => [], get: () => null };
 
+/** The knowledge index's passages for the field notes' atlas: "place:atlas.<field-notes id>". */
+const ATLAS_PREFIX = 'place:atlas.';
+
 function fold(text: string): string {
   return text.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().replace(/['’]/gu, '').trim();
 }
 
-/** A named place's coordinates from the knowledge index (its places carry "lat,lon" as ref). */
-function placeFrom(retriever: Retriever, name: string): { name: string; lat: number; lon: number } | null {
+/**
+ * A named place from the knowledge index (its places carry "lat,lon" as ref), for the router: the
+ * field notes' own places first (with their id, which the place tools take), then the most populous
+ * town of that name (the index numbers the smaller ones that share it "-2", "-3"…).
+ */
+export function placeFrom(retriever: Retriever, name: string): NamedPlace | null {
   const want = fold(name);
-  for (const { passage } of retriever.search(name, { kinds: ['place'], limit: 8 })) {
+  const found: Array<{ rank: number; place: NamedPlace }> = [];
+  for (const { passage } of retriever.search(name, { kinds: ['place'], limit: 12 })) {
     if (!passage.ref) continue;
     const title = fold(passage.title);
     if (title !== want && !title.startsWith(`${want},`) && !title.startsWith(`${want} (`)) continue;
     const [lat, lon] = passage.ref.split(',').map(Number);
     if (lat === undefined || lon === undefined || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    return { name: passage.title, lat, lon };
+    const atlas = passage.id.startsWith(ATLAS_PREFIX) ? passage.id.slice(ATLAS_PREFIX.length) : null;
+    const numbered = /-(\d+)$/u.exec(passage.id);
+    const rank = atlas ? 0 : numbered ? Number(numbered[1]) : 1;
+    found.push({ rank, place: { name: passage.title, lat, lon, ...(atlas ? { place: atlas } : {}) } });
   }
-  return null;
+  found.sort((a, b) => a.rank - b.rank);
+  return found[0]?.place ?? null;
 }
 
 function problemText(i18n: I18n, call: ToolCall, problems: readonly { path: string; messageKey: string; values?: Record<string, string | number> }[]): string[] {

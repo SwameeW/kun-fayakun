@@ -4,12 +4,23 @@
  * a model (when one is loaded) or retrieval takes it instead.
  *
  * Every plan passes through the registry's validator (registry.validate): a tool that is not in the
- * registry, not available where the visitor is, or that refuses the arguments, means no plan. Where
- * a tool's arguments could reasonably take more than one shape (a chapter as "ch07" or 7), the
- * router offers the shapes in order and keeps the first the registry accepts.
+ * registry, not available where the visitor is, or that refuses the arguments, means no plan. The
+ * calls have exactly the argument shapes of the real tools (src/ai/tools, docs/AI-INTELLIGENCE.md
+ * §4). Where more than one call could do what is asked (a place of the field notes by its id, else
+ * by its degrees; leaving the explorer, else Explore Mode), the router offers them in order and
+ * keeps the first the registry accepts here.
  */
 import type { BodyId, ChapterId } from '../core/types';
 import type { AiContext, Plan, ToolCall, ToolRegistry } from './types';
+
+/** A named place from verified data: its name, its degrees, and its id when it is a place of the field notes. */
+export interface NamedPlace {
+  name: string;
+  lat: number;
+  lon: number;
+  /** The field notes' id (src/explore/field-notes/data.ts), which the place tools take as `place`. */
+  place?: string;
+}
 
 export interface RouteOptions {
   /**
@@ -17,7 +28,7 @@ export interface RouteOptions {
    * or null when no place has that name. Without it, commands that need a named place are left to
    * the model or retrieval.
    */
-  place?: (name: string) => { name: string; lat: number; lon: number } | null;
+  place?: (name: string) => NamedPlace | null;
 }
 
 interface Candidate {
@@ -259,8 +270,7 @@ const chapter: Matcher = (q) => {
     if (m) id = CHAPTER_NAMES[(m[1] ?? '').trim()] ?? null;
   }
   if (!id) return null;
-  const n = Number(id.slice(2));
-  return { intent: 'act', options: [[call('film.open', { chapter: id })], [call('film.open', { chapter: n })]] };
+  return { intent: 'act', options: [[call('film.open', { chapter: id })]] };
 };
 
 /** Commands for the film's transport and the explorer's clock. */
@@ -280,6 +290,8 @@ const transport: Matcher = (q, ctx) => {
   if (/^(?:play|resume|continue|start|unpause)\s+(?:the\s+)?(?:film|movie|video|chapter)$/u.test(q)) return film('play');
   if (/^(?:next|next chapter|(?:go\s+)?(?:on\s+)?to the next chapter|(?:play|watch|start) the next chapter|skip to the next chapter|skip (?:this\s+)?chapter|forward a chapter)$/u.test(q)) return film('next');
   if (/^(?:previous|prev|previous chapter|last chapter|(?:go\s+)?back a chapter|(?:go\s+)?(?:back\s+)?to the previous chapter)$/u.test(q)) return film('previous');
+  if (/^(?:explore mode|(?:enter|open|start|switch to|go to|go into|turn on) explore mode|look around|free look)$/u.test(q)) return film('explore');
+  if (/^(?:(?:leave|exit|close|stop|end|turn off) explore mode|(?:back to\s+)?cinematic mode)$/u.test(q)) return film('film');
   return null;
 };
 
@@ -308,8 +320,12 @@ const explorerOpen: Matcher = (q) => {
   if (/^(?:open|launch|start|enter|go to|take me to|show(?:\s+me)?)\s+(?:the\s+)?(?:orbital\s+)?(?:lab|laboratory|sandbox)$/u.test(q)) {
     return { intent: 'act', options: [[call('lab.open', {})]] };
   }
-  if (/^(?:close|leave|exit|quit)\s+(?:the\s+)?(?:solar[- ]system\s+)?(?:explorer|solar system|universe)$|^(?:back|go back|return)\s+to\s+the\s+(?:film|chapters?|movie)$/u.test(q)) {
+  if (/^(?:close|leave|exit|quit)\s+(?:the\s+)?(?:solar[- ]system\s+)?(?:explorer|solar system|universe)$/u.test(q)) {
     return { intent: 'act', options: [[call('explorer.close', {})]] };
+  }
+  // From the explorer, back to the film; in a chapter's Explore Mode, back to its film.
+  if (/^(?:back|go back|return)\s+to\s+the\s+(?:film|chapters?|movie)$/u.test(q)) {
+    return { intent: 'act', options: [[call('explorer.close', {})], [call('film.control', { action: 'film' })]] };
   }
   return null;
 };
@@ -329,10 +345,7 @@ const walk: Matcher = (q, ctx) => {
 
 const stars: Matcher = (q) => {
   if (/^(?:(?:show me|take me to|go to|fly to|go out to|go out among|go among|fly out to|fly out among|open|leave for)\s+)?(?:the\s+)?(?:stars view|star view|nearby stars|stellar neighbourhood|stellar neighborhood|neighbourhood of the sun|stars around the sun)$|^(?:show me|take me to|go to|fly to|go out to|go out among|go among|fly out to|fly out among)\s+the\s+stars$/u.test(q)) {
-    return { intent: 'act', options: [[call('explorer.stars', { on: true })]] };
-  }
-  if (/^(?:(?:go\s+)?back to|return to|go home to)\s+the\s+solar\s+system$|^leave the stars(?: view)?$|^close the stars(?: view)?$/u.test(q)) {
-    return { intent: 'act', options: [[call('explorer.stars', { on: false })]] };
+    return { intent: 'act', options: [[call('explorer.stars', {})]] };
   }
   const m = /^(?:find|locate|show me|where is|point (?:me )?to|go to|fly to|take me to|travel to|visit)\s+(?:the\s+)?(?:star\s+)?(.+?)$/u.exec(q);
   if (!m) return null;
@@ -389,8 +402,14 @@ const fly: Matcher = (q, ctx, options) => {
   if (NOT_PLACES.has(rest) || rest.split(' ').length > 5 || /\d/u.test(rest)) return null;
   const found = options.place?.(rest.replace(/^the\s+/u, '')) ?? null;
   if (!found) return null;
-  return { intent: 'act', options: [[call('explorer.place', { name: found.name })], [call('explorer.place', { lat: found.lat, lon: found.lon })]] };
+  return { intent: 'act', options: placeOptions('explorer.place', found) };
 };
+
+/** A named place as the place tools take it: the field notes' id where it is one, else its degrees. */
+function placeOptions(tool: string, found: NamedPlace, extra: Record<string, unknown> = {}): ToolCall[][] {
+  const byDegrees = [call(tool, { lat: found.lat, lon: found.lon, ...extra })];
+  return found.place ? [[call(tool, { place: found.place, ...extra })], byDegrees] : [byDegrees];
+}
 
 const calc: Matcher = (q) => {
   let m =
@@ -452,10 +471,8 @@ const islamic: Matcher = (q, _ctx, options) => {
     if (coords) return { intent: 'answer', query: 'qibla direction', options: [[call('islamic.qibla', coords)]] };
     if (where.length === 0 || /\d/u.test(where) || where.split(' ').length > 5 || NOT_PLACES.has(where)) return null;
     const found = options.place?.(where.replace(/^the\s+/u, '')) ?? null;
-    const named = found ? found.name : titleCase(where);
-    const opts: ToolCall[][] = [[call('islamic.qibla', { name: named })]];
-    if (found) opts.push([call('islamic.qibla', { lat: found.lat, lon: found.lon })]);
-    return { intent: 'answer', query: 'qibla direction', options: opts };
+    if (!found) return null;
+    return { intent: 'answer', query: 'qibla direction', options: placeOptions('islamic.qibla', found) };
   }
 
   m = /^(?:what(?:'s|\s+is|\s+are)\s+|show(?:\s+me)?\s+|tell me\s+|give me\s+)?(?:the\s+)?(?:prayer|salah|salat|namaz)\s+times?\s+(?:in|for|at|from)\s+(.+?)(?:\s+(?:on|for)\s+(.+?))?(?:\s+(?:using|with|by|per)\s+(?:the\s+)?(.+?)(?:\s+(?:convention|method))?)?$/u.exec(q);
@@ -463,14 +480,15 @@ const islamic: Matcher = (q, _ctx, options) => {
     const where = (m[1] ?? '').trim();
     const day = m[2] ? parseDate(m[2]) : null;
     if (m[2] && !day) return null;
+    // The times depend on the convention, which the visitor names (the tool never picks one for them).
     const convention = m[3] ? conventionOf(m[3]) : null;
-    if (m[3] && !convention) return null;
-    const coords = parseCoordinates(where) ?? (/\d/u.test(where) ? null : options.place?.(where.replace(/^the\s+/u, '')) ?? null);
-    if (!coords) return null;
-    const args: Record<string, unknown> = { lat: coords.lat, lon: coords.lon };
-    if (day) args.date = day;
-    if (convention) args.convention = convention;
-    return { intent: 'answer', query: 'prayer times convention', options: [[call('islamic.prayer_times', args)]] };
+    if (!convention) return null;
+    const extra: Record<string, unknown> = day ? { date: day, convention } : { convention };
+    const coords = parseCoordinates(where);
+    if (coords) return { intent: 'answer', query: 'prayer times convention', options: [[call('islamic.prayer_times', { ...coords, ...extra })]] };
+    const found = /\d/u.test(where) ? null : (options.place?.(where.replace(/^the\s+/u, '')) ?? null);
+    if (!found) return null;
+    return { intent: 'answer', query: 'prayer times convention', options: placeOptions('islamic.prayer_times', found, extra) };
   }
 
   m = /^(?:what(?:'s|\s+is)\s+)?(?:the\s+|today's\s+)?(?:hijri|islamic|muslim)\s+(?:calendar\s+)?(?:date|day|month|year)(?:\s+today|\s+now)?(?:\s+(?:on|for)\s+(.+))?$/u.exec(q);
@@ -485,9 +503,43 @@ const islamic: Matcher = (q, _ctx, options) => {
   return null;
 };
 
+/** An experiment as lab.experiment and lab.compare take it: its id and its parameters, flat. */
 interface Experiment {
   experiment: string;
-  options: ReadonlyArray<Readonly<Record<string, string | number>>>;
+  params: Readonly<Record<string, string | number>>;
+}
+
+/**
+ * What "a rock", "an asteroid" or "a comet" thrown at a world means, as illustrative numbers for the
+ * thought experiment (the card shows them, and the visitor confirms or cancels): a diameter in km,
+ * scaled by "small", "big" or "giant"; a speed in km/s, at least one above the world's escape speed
+ * (the laboratory refuses a slower one); and 45 degrees, the likeliest angle of an impact.
+ */
+const IMPACTOR_KM: ReadonlyArray<readonly [RegExp, number]> = [
+  [/comet/u, 5],
+  [/asteroid|space rock/u, 1],
+  [/rock|stone|boulder|meteor/u, 0.05],
+];
+const IMPACTOR_SCALE: ReadonlyArray<readonly [RegExp, number]> = [
+  [/\b(?:small|little|tiny)\b/u, 0.2],
+  [/\b(?:big|large|huge)\b/u, 10],
+  [/\bgiant\b/u, 100],
+];
+const IMPACT_SPEED_KMS = 20;
+const COMET_SPEED_KMS = 50;
+/** Above each giant planet's escape speed (about 59.5, 35.5, 21.3 and 23.5 km/s). */
+const IMPACT_SPEED_FLOOR: Readonly<Partial<Record<BodyId, number>>> = { jupiter: 65, saturn: 40, uranus: 25, neptune: 25 };
+const IMPACT_ANGLE_DEG = 45;
+
+function impactOf(missile: string, target: BodyId): Experiment | null {
+  // Nothing thrown can be faster than the Sun's escape speed allows (the laboratory's limit is 72 km/s).
+  if (target === 'sun') return null;
+  const size = IMPACTOR_KM.find(([re]) => re.test(missile))?.[1];
+  if (size === undefined) return null;
+  const scale = IMPACTOR_SCALE.find(([re]) => re.test(missile))?.[1] ?? 1;
+  const diameterKm = Math.min(1000, Math.max(0.01, size * scale));
+  const speedKmS = Math.max(/comet/u.test(missile) ? COMET_SPEED_KMS : IMPACT_SPEED_KMS, IMPACT_SPEED_FLOOR[target] ?? 0);
+  return { experiment: 'impact', params: { target, diameterKm, speedKmS, angleDeg: IMPACT_ANGLE_DEG } };
 }
 
 /** An experiment named in plain words: change a mass, remove a body, throw something at one. */
@@ -501,30 +553,32 @@ function experimentOf(text: string): Experiment | null {
     const body = bodyOf(m[1]);
     const word = m[2] ?? '';
     const factor = word === 'doubled' ? 2 : word === 'halved' ? 0.5 : word === 'tripled' ? 3 : parseFactor(word);
-    if (body && factor !== null && factor !== 1) return { experiment: 'scale-mass', options: [{ body, factor }] };
+    if (body && factor !== null && factor !== 1) return { experiment: 'scale-mass', params: { body, factor } };
   }
   m = new RegExp(String.raw`^(double|halve|triple)\s+(?:the\s+mass\s+of\s+${BODY}|${BODY}(?:'s)?\s+mass)$`, 'u').exec(text);
   if (m) {
     const body = bodyOf(m[2] ?? m[3]);
     const factor = m[1] === 'double' ? 2 : m[1] === 'halve' ? 0.5 : 3;
-    if (body) return { experiment: 'scale-mass', options: [{ body, factor }] };
+    if (body) return { experiment: 'scale-mass', params: { body, factor } };
   }
   m =
     new RegExp(String.raw`^(?:remove|delete|take away|get rid of|eliminate)\s+${BODY}$`, 'u').exec(text) ??
     new RegExp(String.raw`^(?:what if|what would happen if|what happens if|suppose|imagine(?: if)?)\s+(?:there\s+(?:were|was|is)\s+no\s+${BODY}|${BODY}\s+(?:disappeared|vanished|did not exist|didn't exist|were gone|was gone|were removed|was removed|is removed))$`, 'u').exec(text);
   if (m) {
     const body = bodyOf(m[1] ?? m[2]);
-    if (body) return { experiment: 'remove-body', options: [{ body }] };
+    if (body) return { experiment: 'remove-body', params: { body } };
   }
-  const missile = String.raw`(?:a|an|some)\s+(?:big\s+|small\s+|large\s+|giant\s+)?(?:rock|asteroid|meteor|meteorite|comet|stone|boulder|space rock)`;
-  m =
-    new RegExp(String.raw`^(?:throw|hurl|drop|fling|launch|send|crash|smash|fire|lob)\s+${missile}\s+(?:at|into|on|onto|towards?)\s+${BODY}$`, 'u').exec(text) ??
-    new RegExp(String.raw`^(?:hit|strike|bombard|smash)\s+${BODY}\s+with\s+${missile}$`, 'u').exec(text) ??
-    new RegExp(String.raw`^(?:what if|what would happen if|what happens if|suppose|imagine(?: if)?)\s+${missile}\s+(?:hit|hits|struck|strikes|crashed into|crashes into|slammed into|fell on|falls on)\s+${BODY}$`, 'u').exec(text);
-  if (m) {
-    const body = bodyOf(m[1]);
-    if (body) return { experiment: 'impact', options: [{ target: body }, { body }] };
-  }
+  const missile = String.raw`((?:a|an|some)\s+(?:big\s+|small\s+|little\s+|tiny\s+|large\s+|huge\s+|giant\s+)?(?:rock|asteroid|meteor|meteorite|comet|stone|boulder|space rock))`;
+  let thrown: string | undefined;
+  let at: string | undefined;
+  m = new RegExp(String.raw`^(?:throw|hurl|drop|fling|launch|send|crash|smash|fire|lob)\s+${missile}\s+(?:at|into|on|onto|towards?)\s+${BODY}$`, 'u').exec(text);
+  if (m) [thrown, at] = [m[1], m[2]];
+  m = thrown ? null : new RegExp(String.raw`^(?:hit|strike|bombard|smash)\s+${BODY}\s+with\s+${missile}$`, 'u').exec(text);
+  if (m) [at, thrown] = [m[1], m[2]];
+  m = thrown ? null : new RegExp(String.raw`^(?:what if|what would happen if|what happens if|suppose|imagine(?: if)?)\s+${missile}\s+(?:hit|hits|struck|strikes|crashed into|crashes into|slammed into|fell on|falls on)\s+${BODY}$`, 'u').exec(text);
+  if (m) [thrown, at] = [m[1], m[2]];
+  const target = bodyOf(at);
+  if (thrown && target) return impactOf(thrown, target);
   return null;
 }
 
@@ -536,23 +590,20 @@ const experiment: Matcher = (q) => {
     let found: Experiment | null = null;
     if (without) {
       const body = bodyOf(without[1]);
-      if (body) found = { experiment: 'remove-body', options: [{ body }] };
+      if (body) found = { experiment: 'remove-body', params: { body } };
     } else {
       what = what.replace(/^(?:what happens|what would happen)\s+(?:if|when)\s+/u, 'what if ');
       found = experimentOf(what) ?? experimentOf(`what if ${what}`);
     }
     if (!found) return null;
-    const { experiment: id, options } = found;
     const amount = compare[2] ? Number(compare[2]) : null;
     const horizonDays = amount === null ? null : (compare[3] ?? '').startsWith('year') ? Math.round(amount * 365.25 * 100) / 100 : amount;
-    return {
-      intent: 'act',
-      options: options.map((params) => [call('lab.compare', { experiment: id, params: { ...params }, ...(horizonDays !== null ? { horizonDays } : {}) })]),
-    };
+    // Nothing on screen changes, and the comparison is the whole answer (no passages are looked up for it).
+    return { intent: 'act', options: [[call('lab.compare', { experiment: found.experiment, ...found.params, ...(horizonDays !== null ? { horizonDays } : {}) })]] };
   }
   const found = experimentOf(q);
   if (!found) return null;
-  return { intent: 'act', options: found.options.map((params) => [call('lab.experiment', { experiment: found.experiment, params: { ...params } })]) };
+  return { intent: 'act', options: [[call('lab.experiment', { experiment: found.experiment, ...found.params })]] };
 };
 
 /** In order: the most specific patterns first, so "go to chapter 3" is never taken for a place. */

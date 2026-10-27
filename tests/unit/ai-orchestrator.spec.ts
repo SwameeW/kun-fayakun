@@ -87,7 +87,8 @@ function tools(log: Log): ToolDefinition[] {
       facts: [{ id: `escape.${String(a.body)}`, label: `Escape speed at ${String(a.body)}`, value: 5.03, unit: 'km/s', knowledge: 'model' }],
     })),
     t('cite.verse', 'cite', obj({ key: { type: 'string', pattern: '^\\d{1,3}:\\d{1,3}$' } }, ['key']), (a) => ({ status: 'done', blocks: [{ type: 'verse', key: a.key as `${number}:${number}` }] })),
-    t('lab.experiment', 'experiment', obj({ experiment: { type: 'string' }, params: { type: 'object', properties: { body: BODY, factor: { type: 'number' }, target: BODY } } }, ['experiment', 'params']), () => ({
+    // An experiment's arguments as the real tool takes them: its id and its parameters, flat.
+    t('lab.experiment', 'experiment', obj({ experiment: { type: 'string' }, body: BODY, factor: { type: 'number' }, target: BODY }, ['experiment']), () => ({
       status: 'done',
       observedKey: 'test.experiment',
       observedValues: { days: 3652 },
@@ -423,7 +424,7 @@ test.describe('experiments wait for the visitor', () => {
     const turn = await ai.ask('What if the Sun were twice as massive?');
     expect(turn.state).toBe('awaiting-confirmation');
     expect(log.runs).toEqual([]);
-    expect(ofType(turn, 'action')).toEqual([{ type: 'action', callId: 'c1', tool: 'lab.experiment', preview: 'lab.experiment {"experiment":"scale-mass","params":{"body":"sun","factor":2}}', status: 'awaiting', undoable: false }]);
+    expect(ofType(turn, 'action')).toEqual([{ type: 'action', callId: 'c1', tool: 'lab.experiment', preview: 'lab.experiment {"experiment":"scale-mass","body":"sun","factor":2}', status: 'awaiting', undoable: false }]);
     expect(announced).toContain('An experiment is waiting for you to confirm it.');
     await ai.confirm(turn.id, 'c1', true);
     const done = ai.turns().find((t) => t.id === turn.id);
