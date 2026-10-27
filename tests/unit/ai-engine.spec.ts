@@ -1,7 +1,8 @@
 /**
  * The assistant's engines (src/ai/engine) without a browser: the tier each kind of device is
  * offered (canned adapters and navigators, docs/AI-INTELLIGENCE.md §7), the pinned catalogue
- * against WebLLM 0.2.86's own records, the request a generation becomes, and how failures read.
+ * against WebLLM 0.2.86's own records, the request a generation becomes, how failures read, and
+ * the render budget held while a model's weights upload and its shaders compile.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -9,7 +10,8 @@ import type { AdapterProbe } from '../../src/ai/engine/adapter';
 import { buildAppConfig, EVAL_CANDIDATES, MODEL_TIERS, modelFor, VISITOR_MODELS } from '../../src/ai/engine/catalogue';
 import { adapterSignals, BUDGET_MB, browserOf, chooseTier, limitsOk, platformOf, type NavigatorLike, type TierSignals } from '../../src/ai/engine/detect';
 import { engineError, EngineFailure, isEngineError, toEngineError } from '../../src/ai/engine/errors';
-import { toCompletionRequest, toLoadProgress } from '../../src/ai/engine/webllm';
+import type { Pacer } from '../../src/ai/engine/pacing';
+import { loadWebLLM, toCompletionRequest, toLoadProgress, type ModelWorker } from '../../src/ai/engine/webllm';
 import type { GenerateRequest, JsonSchema } from '../../src/ai/types';
 
 const ROOT = new URL('../../', import.meta.url);
@@ -337,5 +339,50 @@ test('failures from WebLLM (strings from its worker) and the browser map to Engi
   expect(toEngineError({ code: 'network', messageKey: 'ai.engine.error.network' }).code).toBe('network');
   for (const code of ['no-webgpu', 'too-small', 'quota', 'network', 'aborted', 'device-lost', 'out-of-memory', 'integrity', 'unsupported', 'unknown']) {
     expect(Object.keys(MESSAGES)).toContain(`ai.engine.error.${code}`);
+  }
+});
+
+test('a model’s load holds the render budget from its weights’ upload to its end, and lets it go even when the load fails', async () => {
+  const model = VISITOR_MODELS[0];
+  if (!model) throw new Error('no model');
+  for (const outcome of ['loaded', 'fails'] as const) {
+    let holds = 0;
+    const seen: { text: string; held: number }[] = [];
+    const pacer: Pacer = {
+      gate: () => Promise.resolve(),
+      visible: () => Promise.resolve(),
+      hold() {
+        holds += 1;
+        let done = false;
+        return () => {
+          if (done) return;
+          done = true;
+          holds -= 1;
+        };
+      },
+      dispose: () => undefined,
+    };
+    const reports = ['Start to fetch params', 'Fetching param cache[1/10]: 100MB fetched.', 'Loading model from cache[1/10]: 0MB loaded.', 'Loading model from cache[10/10]: 900MB loaded.', 'Loading GPU shader modules[5/40]', 'Finish loading on WebGPU'];
+    const worker: ModelWorker = {
+      async call(request, onProgress) {
+        if (request.type === 'unload') return { type: 'loaded', id: 0 };
+        for (const text of reports) {
+          onProgress?.({ progress: 0.5, text });
+          seen.push({ text, held: holds });
+          await Promise.resolve();
+        }
+        if (outcome === 'fails') throw new Error('device lost');
+        return { type: 'loaded', id: 0 };
+      },
+      interrupt: () => undefined,
+      terminate: () => undefined,
+    };
+    const loading = loadWebLLM(model, () => undefined, new AbortController().signal, pacer, () => worker);
+    if (outcome === 'loaded') await (await loading).unload();
+    else await expect(loading).rejects.toBeTruthy();
+    // Downloading is the network's work, not the GPU's: the scene is judged as usual meanwhile.
+    expect(seen.filter((r) => !/^Loading/u.test(r.text) && r.text !== 'Finish loading on WebGPU').every((r) => r.held === 0), outcome).toBe(true);
+    expect(seen.filter((r) => /^Loading/u.test(r.text)).every((r) => r.held === 1), outcome).toBe(true);
+    expect(holds, outcome).toBe(0);
   }
 });

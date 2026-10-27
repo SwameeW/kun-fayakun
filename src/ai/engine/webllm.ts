@@ -11,6 +11,9 @@
  *   by XGrammar. Each piece is pulled: the worker decodes the next one only when the page asks, and
  *   the page asks through the pacer, so decoding yields to the scene.
  * - Crash markers before device creation, weight upload and the first prefill (detect.ts).
+ * - The render budget (pacing.ts) is held from the weights' upload to the end of the load (the
+ *   upload syncs the device for every tensor, then the shaders compile), and for each generation, so
+ *   the scene's governors never read the model's work as the scene's.
  */
 import type { ChatCompletionMessageParam, ChatCompletionRequestStreaming, InitProgressReport } from '@mlc-ai/web-llm';
 import type { EngineError, GenerateRequest, GenerateResult, LanguageEngine, LoadProgress, ModelSpec } from '../types';
@@ -176,14 +179,15 @@ export async function deleteModelInWorker(model: ModelSpec): Promise<void> {
 /**
  * Downloads (if needed), compiles and readies `model` in its worker. Rejects with an EngineError:
  * aborted, network, quota, integrity, device-lost, out-of-memory, unsupported, no-webgpu or unknown.
+ * `start` makes the worker (a test gives its own).
  */
-export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress) => void, signal: AbortSignal, pacer: Pacer): Promise<WebLlmEngine> {
+export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress) => void, signal: AbortSignal, pacer: Pacer, start: () => ModelWorker = startModelWorker): Promise<WebLlmEngine> {
   throwIfAborted(signal);
   // A hidden tab starts nothing (§6).
   await pacer.visible();
   throwIfAborted(signal);
 
-  const worker = startModelWorker();
+  const worker = start();
   let readySent = false;
   /** Where the load is: the device is made before the first params report, uploads begin with "Loading model from cache". */
   let stage: 'device' | 'download' | 'upload' = 'device';
@@ -210,6 +214,8 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
 
   progress({ phase: 'download', loadedBytes: 0, totalBytes: model.downloadBytes, fraction: 0 });
   markStage('device', model.id);
+  /** The render budget, from the weights' upload (or the shaders' compilation) to the load's end. */
+  let release: (() => void) | null = null;
   try {
     const loading = worker.call({ type: 'load', appConfig: buildAppConfig([model]), model: model.id }, (report) => {
       if (stage === 'device' && PARAMS_TEXT.test(report.text)) {
@@ -220,6 +226,7 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
         markStage('upload', model.id);
         stage = 'upload';
       }
+      if (release === null && COMPILE_TEXT.test(report.text)) release = pacer.hold();
       progress(toLoadProgress(report, model.downloadBytes));
     });
     await guarded(loading, signal);
@@ -229,6 +236,8 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     clearStage();
     await stop();
     throw toEngineError(err);
+  } finally {
+    (release as (() => void) | null)?.();
   }
   clearStage();
   progress({ phase: 'ready', loadedBytes: model.downloadBytes, totalBytes: model.downloadBytes, fraction: 1 });

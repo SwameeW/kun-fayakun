@@ -23,7 +23,7 @@ export interface Pacer {
   gate(): Promise<void>;
   /** Resolves once the tab is visible (at once if it is). */
   visible(): Promise<void>;
-  /** Takes the render budget for a generation, prefill included; returns its release (idempotent). */
+  /** Takes the render budget for a generation (prefill included) or a model's upload and compilation; returns its release (idempotent). */
   hold(): () => void;
   /** Removes the listeners (the pacer is not used after). */
   dispose(): void;
