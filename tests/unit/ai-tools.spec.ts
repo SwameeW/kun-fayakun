@@ -444,33 +444,123 @@ test('a date outside the data’s span is refused with the span', async () => {
   expect(fake.sent).toEqual([]);
 });
 
-test('an experiment is applied, confirmed by reading the laboratory back, and undone by its own undo', async () => {
+/** A small laboratory that keeps an undo list of whole states, as the real one does (src/sim/engine.ts). */
+function fakeLab(): { fake: FakeApp; lab: UniverseLab } {
   const gPerKg = 398_600.435 / 5.972e24;
   const body = (id: string, name: string, massKg: number): UniverseLabBody => ({ id, name, massKg, gm: massKg * gPerKg, radiusKm: 1000, primary: id === 'sun' ? null : 'sun', persistent: id === 'sun', relativeVelKmS: [0, 0, 0], edited: false, orbit: null } as unknown as UniverseLabBody);
-  const lab = { name: 'solar-system', bodies: [body('sun', 'Sun', 1.989e30), body('earth', 'Earth', 5.972e24)], undoable: 0, names: { sun: 'Sun', earth: 'Earth' }, auKm: 149_597_870.7 } as unknown as UniverseLab;
-  const history: number[] = [];
+  const lab = { name: 'solar-system', bodies: [body('sun', 'Sun', 1.989e30), body('earth', 'Earth', 5.972e24), body('jupiter', 'Jupiter', 1.898e27)], undoable: 0, names: { sun: 'Sun', earth: 'Earth', jupiter: 'Jupiter' }, auKm: 149_597_870.7 } as unknown as UniverseLab;
+  const history: UniverseLabBody[][] = [];
   const fake = fakeApp((c) => {
     const cmd = c as LabCommand;
-    const sun = lab.bodies[0];
-    if (!sun) return;
-    if (cmd.kind === 'mass') {
-      history.push(sun.massKg);
-      sun.massKg = cmd.massKg;
+    const edit = (change: () => void): void => {
+      history.push(structuredClone<UniverseLabBody[]>([...lab.bodies]));
+      change();
       lab.undoable += 1;
+    };
+    if (cmd.kind === 'mass') {
+      edit(() => {
+        const b = lab.bodies.find((x) => x.id === cmd.id);
+        if (b) b.massKg = cmd.massKg;
+      });
+    } else if (cmd.kind === 'remove') {
+      edit(() => {
+        (lab as { bodies: UniverseLabBody[] }).bodies = lab.bodies.filter((x) => x.id !== cmd.id);
+      });
     } else if (cmd.kind === 'undo') {
-      sun.massKg = history.pop() ?? sun.massKg;
+      const back = history.pop();
+      if (!back) return;
+      (lab as { bodies: UniverseLabBody[] }).bodies = back;
       lab.undoable -= 1;
     }
   });
   fake.setView({ ...skyView(), lab });
+  return { fake, lab };
+}
+
+const sunMass = (lab: UniverseLab): number | undefined => lab.bodies.find((b) => b.id === 'sun')?.massKg;
+
+test('an experiment is applied, confirmed by reading the laboratory back, and undone by its own undo', async () => {
+  const { fake, lab } = fakeLab();
   const preview = tool('lab.experiment').preview({ experiment: 'scale-mass', body: 'sun', factor: 2 }, LAB, fake.app.i18n);
-  expect(preview).toBe('Multiply Sun’s mass by 2, then integrate 3,650 days ahead.');
+  // The card promises only the edit: nothing is integrated ahead by applying it.
+  expect(preview).toBe('Multiply Sun’s mass by 2.');
+  expect(tool('lab.compare').preview({ experiment: 'scale-mass', body: 'sun', factor: 2 }, LAB, fake.app.i18n)).toBe('In the background, integrate 3,650 days ahead with and without this change: Multiply Sun’s mass by 2.');
   const out = await tool('lab.experiment').run({ experiment: 'scale-mass', body: 'sun', factor: 2 }, envFor(fake.app, LAB));
   expect(out.status).toBe('done');
-  expect(lab.bodies[0]?.massKg).toBeCloseTo(2 * 1.989e30, -25);
+  expect(fake.app.i18n.t(out.observedKey ?? '', out.observedValues)).toBe('The laboratory shows the change: Multiply Sun’s mass by 2.');
+  expect(sunMass(lab)).toBeCloseTo(2 * 1.989e30, -25);
   expect(fake.sent[0]).toEqual({ kind: 'mass', id: 'sun', massKg: 2 * 1.989e30 });
-  await out.undo?.();
-  expect(lab.bodies[0]?.massKg).toBe(1.989e30);
+  expect(await out.undo?.()).toEqual({ status: 'done' });
+  expect(sunMass(lab)).toBe(1.989e30);
+  expect(lab.undoable).toBe(0);
+});
+
+test('an experiment’s undo is its own: refused while a later edit sits on top, done once that edit is undone', async () => {
+  const { fake, lab } = fakeLab();
+  const out = await tool('lab.experiment').run({ experiment: 'scale-mass', body: 'sun', factor: 2 }, envFor(fake.app, LAB));
+  expect(out.status).toBe('done');
+  // The visitor removes Jupiter by hand, as the laboratory's panel would.
+  fake.app.universeLab({ kind: 'remove', id: 'jupiter' });
+  expect(lab.undoable).toBe(2);
+  const refused = await out.undo?.();
+  expect(refused).toEqual({ status: 'refused', problem: { path: '', messageKey: 'ai.tool.lab.experiment.undoLater' } });
+  // Nothing was sent: Jupiter is still gone and the Sun still doubled.
+  expect(fake.sent.filter((c) => (c as LabCommand).kind === 'undo')).toEqual([]);
+  expect(lab.bodies.some((b) => b.id === 'jupiter')).toBe(false);
+  expect(sunMass(lab)).toBeCloseTo(2 * 1.989e30, -25);
+  // The visitor's own edit undone in the laboratory, the experiment's undo goes through.
+  fake.app.universeLab({ kind: 'undo' });
+  expect(await out.undo?.()).toEqual({ status: 'done' });
+  expect(sunMass(lab)).toBe(1.989e30);
+  expect(lab.bodies.some((b) => b.id === 'jupiter')).toBe(true);
+});
+
+test('an experiment’s undo once the laboratory no longer shows it is refused, and an undo the laboratory ignores is not confirmed', async () => {
+  const { fake, lab } = fakeLab();
+  const out = await tool('lab.experiment').run({ experiment: 'scale-mass', body: 'sun', factor: 2 }, envFor(fake.app, LAB));
+  fake.app.universeLab({ kind: 'undo' });
+  expect(await out.undo?.()).toEqual({ status: 'refused', problem: { path: '', messageKey: 'ai.tool.lab.experiment.undoGone' } });
+  expect(lab.undoable).toBe(0);
+  // A laboratory that takes the undo but never shows it.
+  const second = await tool('lab.experiment').run({ experiment: 'scale-mass', body: 'sun', factor: 2 }, envFor(fake.app, LAB));
+  const realUndo = fake.app.universeLab.bind(fake.app);
+  (fake.app as { universeLab: (c: LabCommand) => void }).universeLab = () => undefined;
+  expect(await second.undo?.()).toEqual({ status: 'not-confirmed' });
+  (fake.app as { universeLab: (c: LabCommand) => void }).universeLab = realUndo;
+});
+
+test('an experiment stopped before it sends anything sends nothing; stopped while it waits, it reports what it sent, with its undo', async () => {
+  const { fake, lab } = fakeLab();
+  const stopped = new AbortController();
+  stopped.abort();
+  const none = await tool('lab.experiment').run({ experiment: 'scale-mass', body: 'sun', factor: 2 }, { ...envFor(fake.app, LAB), signal: stopped.signal });
+  expect(none.status).toBe('refused');
+  expect(fake.sent).toEqual([]);
+  // A laboratory slow to show the edit, and the turn stopped meanwhile.
+  const slow = fakeLab();
+  const real = slow.fake.app.universeLab.bind(slow.fake.app);
+  (slow.fake.app as { universeLab: (c: LabCommand) => void }).universeLab = (c) => {
+    setTimeout(() => {
+      real(c);
+    }, 200);
+  };
+  const control = new AbortController();
+  const env = { ...envFor(slow.fake.app, LAB, 2000), signal: control.signal };
+  const waiting = tool('lab.experiment').run({ experiment: 'scale-mass', body: 'sun', factor: 2 }, {
+    ...env,
+    until: (p, ms) => (control.signal.aborted ? Promise.resolve(false) : env.until(() => control.signal.aborted || p(), ms).then((held) => held && !control.signal.aborted)),
+  });
+  setTimeout(() => {
+    control.abort();
+  }, 50);
+  const sent = await waiting;
+  expect(sent.status).toBe('not-confirmed');
+  expect(sent.undo).toBeDefined();
+  await expect.poll(() => sunMass(slow.lab)).toBeCloseTo(2 * 1.989e30, -25);
+  (slow.fake.app as { universeLab: (c: LabCommand) => void }).universeLab = real;
+  expect(await sent.undo?.()).toEqual({ status: 'done' });
+  expect(sunMass(slow.lab)).toBe(1.989e30);
+  expect(slow.lab.undoable).toBe(0);
   expect(lab.undoable).toBe(0);
 });
 

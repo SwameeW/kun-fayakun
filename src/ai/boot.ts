@@ -5,9 +5,10 @@
  * model's worker, fetched only when a visitor chooses a model.
  *
  * It adds the assistant's message files to the catalogue (en.ai.engine.json, en.ai.tools.json,
- * en.ai.mind.json), builds the tool registry (with the verses and hadith the data files hold), the
- * engine host and the knowledge index's retriever, and returns createIntelligence(app, deps). There
- * is one assistant per page: later calls return the same one.
+ * en.ai.mind.json), builds the tool registry (with the verses and hadith the data files hold, and
+ * the narrations they exclude for the output guards), the engine host and the knowledge index's
+ * retriever, and returns createIntelligence(app, deps), with any conversation memory kept brought
+ * back. There is one assistant per page: later calls return the same one.
  *
  * It also gives the test hook its assistant part (window.__kf.ai): start(); useScripted(), which
  * switches the running assistant to the scripted test engine (labelled as such on screen); and
@@ -21,7 +22,7 @@ import { createEngineHost } from './engine';
 import { createScriptedEngine, type ScriptedOptions, type ScriptedReply } from './engine/scripted';
 import { createIntelligence, type AiOrchestrator } from './index';
 import { loadRetriever } from './knowledge';
-import { createRegistryFor, registerToolMessages } from './tools';
+import { createRegistry, loadScriptureCatalogue, registerToolMessages } from './tools';
 import type { CapabilityReport } from './types';
 
 let started: Promise<AiOrchestrator> | null = null;
@@ -33,10 +34,12 @@ async function build(app: App, announce: (text: string) => void): Promise<AiOrch
   i18n.extend('en.ai.engine.json', engineMessages);
   registerToolMessages(i18n);
   i18n.extend('en.ai.mind.json', mindMessages);
-  const registry = await createRegistryFor(app);
+  // The verses and hadith the data files hold (and the narrations they exclude, for the output guards).
+  const scripture = await loadScriptureCatalogue(app);
+  const registry = createRegistry({ scripture });
   const host = createEngineHost(app);
   engineHost = host;
-  const ai = createIntelligence(app, { registry, host, retriever: () => loadRetriever(app), announce });
+  const ai = createIntelligence(app, { registry, host, retriever: () => loadRetriever(app), announce, withheld: scripture.withheld });
   // What tests wait on (docs/CONTRACTS.md, "Test hooks"): the engine in use and the latest turn's state.
   setHook('data-ai-engine', ai.engine().kind);
   ai.events.on('engine', ({ kind }) => {
@@ -45,6 +48,8 @@ async function build(app: App, announce: (text: string) => void): Promise<AiOrch
   ai.events.on('turn', ({ turn }) => {
     setHook('data-ai-turn', turn.state);
   });
+  // With memory on, the conversation kept in this browser comes back before the panel shows it.
+  await ai.restore().catch(() => 0);
   return ai;
 }
 

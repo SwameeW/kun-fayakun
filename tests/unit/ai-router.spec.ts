@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { placeFrom } from '../../src/ai/index';
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
-import { normaliseCommand, parseCoordinates, parseDate, route, type NamedPlace } from '../../src/ai/router';
+import { conventionsNamed, normaliseCommand, parseCoordinates, parseDate, route, type NamedPlace } from '../../src/ai/router';
 import { catalogueFrom, createRegistry } from '../../src/ai/tools';
 import type { AiContext, Passage, ToolRegistry } from '../../src/ai/types';
 import { createDataStore } from '../../src/core/data';
@@ -367,6 +367,16 @@ test('without a place resolver, named places are left alone, but coordinates sti
   expect(route('prayer times in london using mwl', CTX.home, registry)).toBeNull();
   expect(route('qibla from london', CTX.home, registry)).toBeNull();
   expect(route('prayer times at 21.4225, 39.8262 using makkah', CTX.home, registry)?.calls[0]?.args).toEqual({ lat: 21.4225, lon: 39.8262, convention: 'makkah' });
+});
+
+test('the conventions a question names: a name anywhere, a place name only beside a word that makes it a convention', () => {
+  expect(conventionsNamed('When should I pray in Mecca today?')).toEqual([]);
+  expect(conventionsNamed('Prayer times in Karachi')).toEqual([]);
+  expect(conventionsNamed('When is Fajr in Mecca by Umm al-Qura?')).toEqual(['makkah']);
+  expect(conventionsNamed('Fajr in London using the Makkah method')).toEqual(['makkah']);
+  expect(conventionsNamed('Prayer times in Karachi by ISNA')).toEqual(['isna']);
+  expect(conventionsNamed('What does the Muslim World League say for Paris?')).toEqual(['mwl']);
+  expect(conventionsNamed('Times in Tehran with the Egyptian convention')).toEqual(['egypt']);
 });
 
 test('is deterministic', () => {

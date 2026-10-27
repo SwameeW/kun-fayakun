@@ -95,6 +95,25 @@ export function waitFor(env: ToolEnv, predicate: () => boolean, timeoutMs: numbe
   }, timeoutMs);
 }
 
+/**
+ * Waits on the app's state outside any turn: an undo, which may be pressed after its turn was
+ * stopped (so the turn's signal, which ends env.until at once, is not its own).
+ */
+export async function settle(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    let held: boolean;
+    try {
+      held = predicate();
+    } catch {
+      held = false;
+    }
+    if (held) return true;
+    if (Date.now() >= end) return false;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+}
+
 /** How long the explorer may take to come on screen (its code, its data, the first frame). */
 export const OPEN_MS = 30_000;
 

@@ -102,19 +102,43 @@ const MONTHS: Readonly<Record<string, number>> = {
 };
 const MONTH = String.raw`(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)`;
 
-/** Prayer-time conventions by the names people use for them. */
-const CONVENTIONS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/^(?:mwl|muslim world league|the muslim world league)$/u, 'mwl'],
-  [/^(?:isna|islamic society of north america)$/u, 'isna'],
-  [/^(?:egypt|egyptian|egyptian general authority(?: of survey)?)$/u, 'egypt'],
-  [/^(?:makkah|mecca|umm al-?qura)$/u, 'makkah'],
-  [/^(?:karachi|university of islamic sciences(?:,? karachi)?)$/u, 'karachi'],
-  [/^(?:tehran)$/u, 'tehran'],
-  [/^(?:qum|qom|jafari)$/u, 'qum'],
-  [/^(?:france|uoif)$/u, 'france'],
-  [/^(?:russia)$/u, 'russia'],
-  [/^(?:singapore|muis)$/u, 'singapore'],
+/**
+ * Prayer-time conventions by the names people use for them. `places` are names that are also places
+ * ("prayer times in Karachi" names a city), so in free text they name the convention only beside a
+ * word that says so ("by Karachi", "the Karachi method").
+ */
+const CONVENTION_NAMES: ReadonlyArray<{ id: string; names?: string; places?: string }> = [
+  { id: 'mwl', names: 'mwl|(?:the )?muslim world league' },
+  { id: 'isna', names: 'isna|islamic society of north america' },
+  { id: 'egypt', names: 'egyptian(?: general authority(?: of survey)?)?', places: 'egypt' },
+  { id: 'makkah', names: 'umm al-?qura', places: 'makkah|mecca' },
+  { id: 'karachi', names: 'university of islamic sciences(?:,? karachi)?', places: 'karachi' },
+  { id: 'tehran', places: 'tehran' },
+  { id: 'qum', names: 'jafari', places: 'qum|qom' },
+  { id: 'france', names: 'uoif', places: 'france' },
+  { id: 'russia', places: 'russia' },
+  { id: 'singapore', names: 'muis', places: 'singapore' },
 ];
+
+/** The conventions as a whole phrase names them (the router's "… by <convention>"). */
+const CONVENTIONS: ReadonlyArray<readonly [RegExp, string]> = CONVENTION_NAMES.map(({ id, names, places }) => [new RegExp(`^(?:${[names, places].filter(Boolean).join('|')})$`, 'u'), id] as const);
+
+/** The conventions as free text names them (a model's plan may use only one the question names). */
+const NAMED_IN_TEXT: ReadonlyArray<readonly [RegExp, string]> = CONVENTION_NAMES.map(({ id, names, places }) => {
+  const ways: string[] = [];
+  if (names) ways.push(String.raw`(?<![\p{L}\p{N}])(?:${names})(?![\p{L}\p{N}])`);
+  if (places) {
+    ways.push(String.raw`\b(?:using|with|by|per|under|following|according to)\s+(?:the\s+)?(?:${places})(?![\p{L}\p{N}])`);
+    ways.push(String.raw`(?<![\p{L}\p{N}])(?:${places})\s+(?:convention|method|calculation|angles?|rules?|standard)\b`);
+  }
+  return [new RegExp(ways.join('|'), 'u'), id] as const;
+});
+
+/** The prayer-time conventions a question names, by their ids. */
+export function conventionsNamed(question: string): string[] {
+  const q = normaliseCommand(question);
+  return NAMED_IN_TEXT.filter(([re]) => re.test(q)).map(([, id]) => id);
+}
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */

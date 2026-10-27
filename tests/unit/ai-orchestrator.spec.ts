@@ -3,7 +3,10 @@
  * registry and host, and the real knowledge index: the router's path, the model's plan, invalid
  * JSON then a repair, the fall back to retrieval, an experiment waiting for confirmation (confirmed
  * and cancelled), cancelling while a reply streams, the guards on the model's words, the knowledge
- * labels on every block, and the guide with no model at all.
+ * labels on every block, and the guide with no model at all. Also: Stop pressed just after Confirm
+ * or while the experiment runs, an Undo the tool refuses or cannot confirm, the engine that wrote
+ * each text block, a plan held to the tools it was offered and to the schema, prayer times only by
+ * a convention the question names, and memory brought back as earlier turns.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -14,7 +17,7 @@ import { createScriptedEngine, type ScriptedEngine, type ScriptedReply } from '.
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
 import { buildAnswerMessages, LEVEL_LINES } from '../../src/ai/prompts';
 import type { AiMemory, MemoryEntry } from '../../src/ai/memory';
-import type { AiContext, AnswerBlock, EngineHost, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn } from '../../src/ai/types';
+import type { AiContext, AnswerBlock, EngineHost, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
 import { BODY_IDS, type App, type I18n } from '../../src/core/types';
 
 const index = JSON.parse(readFileSync(new URL('../../public/assets/ai/index.json', import.meta.url), 'utf8')) as { passages: Passage[] };
@@ -57,7 +60,19 @@ interface Log {
   undone: string[];
 }
 
-function tools(log: Log): ToolDefinition[] {
+interface ToolOptions {
+  /** The experiment takes this long to run (it has started once log.runs names it). */
+  experimentMs?: number;
+  /** What the experiment's undo reports. */
+  experimentUndo?: UndoOutcome;
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+function tools(log: Log, options: ToolOptions = {}): ToolDefinition[] {
   const t = (name: string, kind: ToolDefinition['kind'], args: JsonSchema & { type: 'object' }, run: (a: Record<string, unknown>) => ToolOutcome, available: (ctx: AiContext) => boolean = () => true): ToolDefinition => ({
     name,
     kind,
@@ -89,14 +104,27 @@ function tools(log: Log): ToolDefinition[] {
     })),
     t('cite.verse', 'cite', obj({ key: { type: 'string', pattern: '^\\d{1,3}:\\d{1,3}$' } }, ['key']), (a) => ({ status: 'done', blocks: [{ type: 'verse', key: a.key as `${number}:${number}` }] })),
     // An experiment's arguments as the real tool takes them: its id and its parameters, flat.
-    t('lab.experiment', 'experiment', obj({ experiment: { type: 'string' }, body: BODY, factor: { type: 'number' }, target: BODY }, ['experiment']), () => ({
-      status: 'done',
-      observedKey: 'test.experiment',
-      observedValues: { days: 3652 },
-      blocks: [{ type: 'comparison', comparison: { experiment: 'scale-mass', horizonDays: 3652, rows: [{ label: 'Earth’s distance', unit: 'au', baseline: 1, variant: 0.71 }], events: [], energyError: { baseline: 1e-9, variant: 2e-9 } } }],
-      undo: () => {
-        log.undone.push('lab.experiment');
+    {
+      ...t('lab.experiment', 'experiment', obj({ experiment: { type: 'string' }, body: BODY, factor: { type: 'number' }, target: BODY }, ['experiment']), () => ({ status: 'done' })),
+      async run() {
+        log.runs.push('lab.experiment');
+        if (options.experimentMs) await sleep(options.experimentMs);
+        return {
+          status: 'done',
+          observedKey: 'test.experiment',
+          observedValues: { days: 3652 },
+          blocks: [{ type: 'comparison', comparison: { experiment: 'scale-mass', horizonDays: 3652, rows: [{ label: 'Earth’s distance', unit: 'au', baseline: 1, variant: 0.71 }], events: [], energyError: { baseline: 1e-9, variant: 2e-9 } } }],
+          undo: (): UndoOutcome => {
+            log.undone.push('lab.experiment');
+            return options.experimentUndo ?? { status: 'done' };
+          },
+        };
       },
+    },
+    t('islamic.prayer_times', 'calc', obj({ place: { type: 'string' }, convention: { type: 'string', enum: ['mwl', 'isna', 'egypt', 'makkah', 'karachi'] } }, ['convention']), (a) => ({
+      status: 'done',
+      observedKey: 'test.escape',
+      observedValues: { body: String(a.place), value: 5.03 },
     })),
   ];
 }
@@ -125,11 +153,11 @@ function check(schema: JsonSchema, value: unknown): boolean {
   }
 }
 
-function registry(list: ToolDefinition[]): ToolRegistry {
+function registry(list: ToolDefinition[], offered?: readonly string[]): ToolRegistry {
   return {
     all: () => list,
     get: (name) => list.find((t) => t.name === name) ?? null,
-    shortlist: (_q, ctx, limit) => list.filter((t) => t.available(ctx)).slice(0, limit),
+    shortlist: (_q, ctx, limit) => list.filter((t) => t.available(ctx) && (!offered || offered.includes(t.name))).slice(0, limit),
     validate(call, ctx) {
       const tool = list.find((t) => t.name === call.tool);
       const problem: ToolProblem = { path: '', messageKey: 'test.invalid' };
@@ -166,11 +194,11 @@ interface Harness {
   remembered: MemoryEntry[];
 }
 
-function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean } = {}): Harness {
+function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[] } & ToolOptions = {}): Harness {
   const log: Log = { runs: [], undone: [] };
   const where = { ctx: options.where ?? CTX.home };
   const engine = createScriptedEngine(script, { delayMs: options.delayMs ?? 0 });
-  const remembered: MemoryEntry[] = [];
+  const remembered: MemoryEntry[] = [...(options.kept ?? [])];
   const memory: AiMemory = {
     enabled: () => options.memoryOn === true,
     setEnabled: () => undefined,
@@ -201,7 +229,7 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; wher
   };
   const app = { i18n: fakeI18n() } as unknown as App;
   const deps: IntelligenceDeps = {
-    registry: registry(tools(log)),
+    registry: registry(tools(log, options), options.offered),
     host,
     retriever: () => Promise.resolve(retriever),
     announce: (text) => h.announced?.push(text),
@@ -243,7 +271,8 @@ test.describe('the guide, with no model', () => {
   test('a question no command matches is answered from retrieval: verses shown from data, passages labelled', async () => {
     const { ai } = harness([], { where: CTX.chapter });
     const turn = await ai.ask('What does the classical reading say about the heavens and the earth being joined?');
-    expect(turn.plan).toMatchObject({ source: 'router', intent: 'answer', calls: [] });
+    // No rule matched and there is no model: retrieval answers, and the plan says so.
+    expect(turn.plan).toMatchObject({ source: 'fallback', intent: 'answer', calls: [] });
     const text = ofType(turn, 'text')[0];
     expect(text?.text).toBe('Here is what the app’s verified content says.');
     const shown = turn.blocks.filter((b) => b.type === 'passage' || b.type === 'verse');
@@ -361,18 +390,63 @@ test.describe('with a model', () => {
     expect(ofType(turn, 'action')[0]?.status).toBe('done');
   });
 
-  test('a plan that stays invalid falls back to retrieval, and says so', async () => {
+  test('a plan that stays invalid falls back to retrieval, and says so: the guide answers, as the notice says', async () => {
     const h = harness([{ format: 'json', match: 'the beginning', reply: plan({ intent: 'act', calls: [{ tool: 'universe.delete', args: {} }] }) }, { format: 'text', match: 'the beginning', reply: 'The data describes an early hot, dense state [[passage:prose:ch01.science.hotDense]].' }]);
     h.ai.attach(h.engine);
     await expect.poll(() => h.ai.engine().state).toBe('ready');
     const turn = await h.ai.ask('Tell me about the beginning of the universe');
     expect(h.engine.requests.filter((r) => r.format.kind === 'json')).toHaveLength(2);
-    expect(h.engine.requests[1]?.messages.at(-1)?.content).toContain('universe.delete: not allowed here');
+    expect(h.engine.requests[1]?.messages.at(-1)?.content).toContain('universe.delete: not offered');
     expect(turn.blocks).toContainEqual({ type: 'notice', key: 'ai.mind.notice.planFallback' });
-    expect(turn.plan).toMatchObject({ source: 'router', intent: 'answer', calls: [] });
+    expect(turn.plan).toMatchObject({ source: 'fallback', intent: 'answer', calls: [] });
     expect(h.log.runs).toEqual([]);
     expect(turn.state).toBe('done');
-    expect(ofType(turn, 'text')[0]?.text).toBe('The data describes an early hot, dense state.');
+    // "This answer comes from the app's own content": the model is not asked to write it.
+    expect(h.engine.requests.filter((r) => r.format.kind === 'text')).toHaveLength(0);
+    const text = ofType(turn, 'text');
+    expect(text).toHaveLength(1);
+    expect(text[0]?.by).toBeUndefined();
+  });
+
+  test('a plan may use only the tools it was offered, and must fit the plan’s schema as a whole', async () => {
+    // explorer.fly is a real tool and valid here, but it was not offered for this question.
+    const h = harness(
+      [
+        { format: 'json', match: 'cannot be used', reply: plan({ intent: 'answer', query: 'jupiter', calls: [], reason: 'extra' }), once: true },
+        { format: 'json', match: 'largest planet', reply: plan({ intent: 'act', calls: [{ tool: 'explorer.fly', args: { body: 'jupiter' } }] }), once: true },
+      ],
+      { where: CTX.explorer, offered: ['calc.escape_speed'] },
+    );
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('Take me to the largest planet');
+    expect(h.engine.requests[1]?.messages.at(-1)?.content).toContain('explorer.fly: not offered');
+    // The repair has a property the schema does not allow.
+    expect(turn.blocks).toContainEqual({ type: 'notice', key: 'ai.mind.notice.planFallback' });
+    expect(h.log.runs).toEqual([]);
+    expect(turn.plan?.source).toBe('fallback');
+  });
+
+  test('prayer times only by a convention the question names: otherwise the visitor is asked which', async () => {
+    const reply = (convention: string): string => plan({ intent: 'answer', calls: [{ tool: 'islamic.prayer_times', args: { place: 'mecca', convention } }] });
+    const h = harness([
+      { format: 'json', match: 'pray in mecca today', reply: reply('mwl') },
+      { format: 'json', match: 'umm al-qura', reply: reply('makkah') },
+      { format: 'text', match: 'umm al-qura', reply: 'Here are the times.' },
+    ]);
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const unnamed = await h.ai.ask('When should I pray in Mecca today?');
+    expect(h.log.runs).toEqual([]);
+    expect(unnamed.plan).toMatchObject({ intent: 'clarify', source: 'model', questionKey: 'ai.mind.clarify.convention', calls: [] });
+    const asked = ofType(unnamed, 'text');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.text).toContain('Which one');
+    // The question is the app's own, not the model's.
+    expect(asked[0]?.by).toBeUndefined();
+    const named = await h.ai.ask('When is Fajr in Mecca by Umm al-Qura?');
+    expect(named.plan).toMatchObject({ intent: 'answer', calls: [{ tool: 'islamic.prayer_times', args: { convention: 'makkah' } }] });
+    expect(h.log.runs).toEqual(['islamic.prayer_times']);
   });
 
   test('an engine error while answering falls back to the guide', async () => {
@@ -415,6 +489,38 @@ test.describe('with a model', () => {
     expect(second.state).toBe('done');
     expect(h.ai.turns().map((t) => t.state)).toEqual(['cancelled', 'done']);
   });
+
+  test('while it streams, words presented as the Quran are never on screen, not even before their closing mark', async () => {
+    const reply = 'Stars shine by fusion. The Quran says “Do the disbelievers not see that the heavens and the earth were one mass, then they were split apart, and seven strong heavens rose above them” and more. The Sun is a star.';
+    const h = harness([{ format: 'json', match: 'stars shine', reply: plan({ intent: 'answer', query: 'stars', calls: [] }) }, { format: 'text', match: 'stars shine', reply }], { delayMs: 1 });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('Why do stars shine?');
+    const streamed = h.turnEvents.flatMap((t) => ofType(t, 'text').map((b) => b.text));
+    expect(streamed.some((s) => s.startsWith('Stars shine by fusion.'))).toBe(true);
+    for (const s of streamed) {
+      expect(s).not.toContain('disbelievers');
+      expect(s).not.toContain('one mass');
+    }
+    const text = ofType(turn, 'text')[0];
+    expect(text?.text).toContain('Stars shine by fusion.');
+    expect(text?.text).toContain('The Sun is a star.');
+    expect(text?.flags).toContain('scripture-quote');
+  });
+
+  test('each text block names the engine that wrote it: a model attached while a card waits writes the answer, and is named', async () => {
+    const h = harness([{ format: 'text', match: 'massive', reply: 'The laboratory integrated ahead 3652 days.' }], { where: CTX.lab });
+    const turn = await h.ai.ask('What if the Sun were twice as massive?');
+    expect(turn.engine).toBe('guide');
+    expect(turn.state).toBe('awaiting-confirmation');
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    await h.ai.confirm(turn.id, 'c1', true);
+    const done = h.ai.turns().find((t) => t.id === turn.id);
+    const text = done ? ofType(done, 'text')[0] : undefined;
+    expect(text).toMatchObject({ by: 'model', writer: { kind: 'scripted', model: 'scripted' } });
+    expect(done).toMatchObject({ engine: 'scripted', model: 'scripted' });
+  });
 });
 
 /* ---------------- experiments ---------------- */
@@ -452,6 +558,66 @@ test.describe('experiments wait for the visitor', () => {
     // A second answer to the same card does nothing.
     await ai.confirm(turn.id, 'c1', true);
     expect(log.runs).toEqual([]);
+  });
+
+  test('Stop pressed straight after Confirm: nothing runs, and the card says it was cancelled', async () => {
+    const { ai, log } = harness([], { where: CTX.lab });
+    const turn = await ai.ask('What if the Sun were twice as massive?');
+    const confirming = ai.confirm(turn.id, 'c1', true);
+    ai.cancel();
+    await confirming;
+    const after = ai.turns().find((t) => t.id === turn.id);
+    expect(log.runs).toEqual([]);
+    expect(after?.state).toBe('cancelled');
+    expect(after?.blocks.find((b) => b.type === 'action')).toMatchObject({ status: 'cancelled', undoable: false });
+  });
+
+  test('Stop pressed while the experiment runs: what it did is kept on its card, with its Undo', async () => {
+    const h = harness([], { where: CTX.lab, experimentMs: 150 });
+    const turn = await h.ai.ask('What if the Sun were twice as massive?');
+    const confirming = h.ai.confirm(turn.id, 'c1', true);
+    await expect.poll(() => h.log.runs).toEqual(['lab.experiment']);
+    h.ai.cancel();
+    // Until its outcome comes, the card says it was sent but not seen.
+    expect(h.ai.turns().find((t) => t.id === turn.id)?.blocks.find((b) => b.type === 'action')).toMatchObject({ status: 'not-confirmed' });
+    await confirming;
+    await expect.poll(() => h.ai.turns().find((t) => t.id === turn.id)?.blocks.find((b) => b.type === 'action')).toMatchObject({ status: 'done', undoable: true });
+    const after = h.ai.turns().find((t) => t.id === turn.id);
+    expect(after?.state).toBe('cancelled');
+    expect(after?.blocks).toContainEqual({ type: 'notice', key: 'ai.mind.notice.cancelled' });
+    await h.ai.undo(turn.id, 'c1');
+    expect(h.log.undone).toEqual(['lab.experiment']);
+    expect(h.ai.turns().find((t) => t.id === turn.id)?.blocks.at(-1)).toMatchObject({ type: 'notice', key: 'ai.mind.notice.undone' });
+  });
+
+  test('an Undo the tool refuses keeps the card’s Undo and says why; one it cannot confirm says so, never "put back"', async () => {
+    const refused = harness([], { where: CTX.lab, experimentUndo: { status: 'refused', problem: { path: '', messageKey: 'test.invalid' } } });
+    const turn = await refused.ai.ask('What if the Sun were twice as massive?');
+    await refused.ai.confirm(turn.id, 'c1', true);
+    await refused.ai.undo(turn.id, 'c1');
+    const after = refused.ai.turns().find((t) => t.id === turn.id);
+    expect(after?.blocks.find((b) => b.type === 'action')).toMatchObject({ status: 'done', undoable: true, undoRefused: { messageKey: 'test.invalid' } });
+    expect(after?.blocks.some((b) => b.type === 'notice' && b.key === 'ai.mind.notice.undone')).toBe(false);
+    // It can be pressed again.
+    await refused.ai.undo(turn.id, 'c1');
+    expect(refused.log.undone).toEqual(['lab.experiment', 'lab.experiment']);
+
+    const unseen = harness([], { where: CTX.lab, experimentUndo: { status: 'not-confirmed' } });
+    const t2 = await unseen.ai.ask('What if the Sun were twice as massive?');
+    await unseen.ai.confirm(t2.id, 'c1', true);
+    await unseen.ai.undo(t2.id, 'c1');
+    const last = unseen.ai.turns().find((t) => t.id === t2.id);
+    expect(last?.blocks.at(-1)).toMatchObject({ type: 'notice', key: 'ai.mind.notice.undoNotSeen' });
+    expect(last?.blocks.find((b) => b.type === 'action')).toMatchObject({ undoable: false });
+  });
+
+  test('a turn shows which tool is running, an experiment only once it is confirmed', async () => {
+    const h = harness([], { where: CTX.lab, experimentMs: 30 });
+    const turn = await h.ai.ask('What if the Sun were twice as massive?');
+    expect(h.turnEvents.every((t) => t.running.length === 0)).toBe(true);
+    await h.ai.confirm(turn.id, 'c1', true);
+    expect(h.turnEvents.some((t) => t.running.some((r) => r.tool === 'lab.experiment' && r.callId === 'c1'))).toBe(true);
+    expect(h.ai.turns().find((t) => t.id === turn.id)?.running).toEqual([]);
   });
 
   test('with a model, the answer mentions only what the outcome reports', async () => {
@@ -499,6 +665,34 @@ test.describe('engines and the rest', () => {
     on.ai.clear();
     expect(on.ai.turns()).toEqual([]);
     await expect.poll(() => on.remembered.length).toBe(0);
+  });
+
+  test('memory on: restore() brings the kept turns back as earlier turns, labelled, and a model reads them', async () => {
+    const kept: MemoryEntry[] = [
+      { question: 'How old is the universe?', answer: 'About 13.8 billion years.', at: 1 },
+      { question: 'Why is Mars red?', answer: 'Iron oxide in its dust.', at: 2, writer: { kind: 'local', model: 'Qwen3-4B-q4f16_1-MLC' } },
+    ];
+    const h = harness([{ format: 'json', match: 'stars shine', reply: plan({ intent: 'answer', query: 'stars', calls: [] }) }, { format: 'text', match: 'stars shine', reply: 'Fusion.' }], { memoryOn: true, kept });
+    expect(await h.ai.restore()).toBe(2);
+    // Once only.
+    expect(await h.ai.restore()).toBe(0);
+    const turns = h.ai.turns();
+    expect(turns.map((t) => t.question)).toEqual(['How old is the universe?', 'Why is Mars red?']);
+    expect(turns[0]?.blocks).toEqual([
+      { type: 'notice', key: 'ai.mind.notice.kept' },
+      { type: 'text', knowledge: 'explanation', text: 'About 13.8 billion years.' },
+    ]);
+    expect(turns[1]?.blocks[1]).toMatchObject({ by: 'model', writer: { kind: 'local', model: 'Qwen3-4B-q4f16_1-MLC' } });
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    await h.ai.ask('Why do stars shine?');
+    expect(h.engine.requests[0]?.messages[0]?.content).toContain('Q: Why is Mars red?');
+    // What a model wrote is kept with its writer.
+    expect(h.remembered.at(-1)).toMatchObject({ question: 'Why do stars shine?', writer: { kind: 'scripted', model: 'scripted' } });
+    // Off: nothing is brought back.
+    const off = harness([], { kept });
+    expect(await off.ai.restore()).toBe(0);
+    expect(off.ai.turns()).toEqual([]);
   });
 
   test('suggestions are deterministic for where the visitor is', () => {

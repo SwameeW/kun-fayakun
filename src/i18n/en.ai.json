@@ -31,6 +31,7 @@
   "ai.ui.engine.off": "{model}, resting to free memory",
   "ai.ui.by.model": "Explanation by {model}, on this device",
   "ai.ui.by.browser": "Explanation by this browser’s built-in model, on this device",
+  "ai.ui.by.anyModel": "Explanation by a language model, on this device",
   "ai.ui.by.guide": "Written by the guide",
   "ai.ui.by.scripted": "Test engine (scripted replies)",
   "ai.ui.flags.title": "Changed before it was shown",
@@ -77,6 +78,7 @@
   "ai.ui.action.status.refusedWhy": "Not done: {why}",
   "ai.ui.action.status.failed": "Not done: something went wrong.",
   "ai.ui.action.status.cancelled": "Cancelled. Nothing changed.",
+  "ai.ui.action.undoRefused": "Not undone: {why}",
   "ai.ui.action.confirm": "Confirm",
   "ai.ui.action.cancel": "Cancel",
   "ai.ui.action.undo": "Undo",
@@ -141,7 +143,7 @@
   "ai.ui.settings.deeper": "Deeper",
   "ai.ui.settings.levelNote": "How much a model’s explanations assume. The guide’s own words stay the same.",
   "ai.ui.settings.memory": "Remember this conversation",
-  "ai.ui.settings.memoryNote": "Off unless you turn it on. When on, each question and its answer are kept in this browser’s storage on this device, and nowhere else. Turning it off or clearing the conversation deletes them.",
+  "ai.ui.settings.memoryNote": "Off unless you turn it on. When on, each question and its answer are kept in this browser’s storage on this device, and nowhere else: they are shown again when you come back, and a model reads the last few as the conversation so far. Turning it off or clearing the conversation deletes them.",
   "ai.ui.settings.clear": "Clear conversation",
   "ai.ui.settings.cleared": "Conversation cleared."
 }

@@ -1,9 +1,13 @@
 /**
  * Opt-in memory: off unless the visitor turns it on. While it is on, each question and the final
- * text of its answer are kept in this browser's IndexedDB ('kf-ai'), nowhere else; while it is off
- * nothing is written. clear() wipes both the stored turns and the preference. Every storage call is
- * guarded: in a private window, with storage blocked, or in Node, memory simply stays off and empty.
+ * text of its answer (with the engine that wrote it) are kept in this browser's IndexedDB ('kf-ai'),
+ * nowhere else; while it is off nothing is written. When the assistant starts with memory on, the
+ * kept turns are read back and shown as earlier turns, and a model reads the last few as the
+ * conversation so far (createIntelligence's restore()). clear() wipes both the stored turns and the
+ * preference. Every storage call is guarded: in a private window, with storage blocked, or in Node,
+ * memory simply stays off and empty.
  */
+import type { TextWriter } from './types';
 
 /** The preference, in localStorage: "1" on, anything else off. */
 export const MEMORY_PREFERENCE_KEY = 'kf.ui.aiMemory';
@@ -11,12 +15,16 @@ const DB_NAME = 'kf-ai';
 const STORE = 'turns';
 /** At most this many turns are kept; the oldest go first. */
 const KEEP = 200;
+/** The engines a kept answer may name as its writer. */
+const WRITER_KINDS: readonly TextWriter['kind'][] = ['local', 'browser', 'scripted'];
 
 export interface MemoryEntry {
   question: string;
   answer: string;
   /** Unix ms. */
   at: number;
+  /** The engine that wrote the answer, when a model did (its label says so when the turn is brought back). */
+  writer?: TextWriter;
 }
 
 export interface AiMemory {
@@ -103,7 +111,7 @@ export function createMemory(): AiMemory {
         try {
           const tx = db.transaction(STORE, 'readwrite');
           const store = tx.objectStore(STORE);
-          store.add({ question: entry.question.slice(0, 600), answer: entry.answer.slice(0, 4000), at: entry.at });
+          store.add({ question: entry.question.slice(0, 600), answer: entry.answer.slice(0, 4000), at: entry.at, ...(entry.writer ? { writer: { kind: entry.writer.kind, model: entry.writer.model.slice(0, 120) } } : {}) });
           const count = store.count();
           count.onsuccess = () => {
             let extra = count.result - KEEP;
@@ -134,8 +142,14 @@ export function createMemory(): AiMemory {
           const tx = db.transaction(STORE, 'readonly');
           const request = tx.objectStore(STORE).getAll();
           await done(tx);
-          const all = (request.result as unknown[]).filter((e): e is MemoryEntry => typeof e === 'object' && e !== null && typeof (e as MemoryEntry).question === 'string');
-          return all.slice(-Math.max(0, limit));
+          const all = (request.result as unknown[]).filter((e): e is MemoryEntry => typeof e === 'object' && e !== null && typeof (e as MemoryEntry).question === 'string' && typeof (e as MemoryEntry).answer === 'string');
+          // A writer is kept only in its known shape (the database is the visitor's, not the app's).
+          return all.slice(-Math.max(0, limit)).map((e) => {
+            const w = e.writer as { kind?: unknown; model?: unknown } | undefined;
+            const kind = WRITER_KINDS.find((k) => k === w?.kind);
+            const writer = kind && typeof w?.model === 'string' ? { kind, model: w.model } : null;
+            return { question: e.question, answer: e.answer, at: e.at, ...(writer ? { writer } : {}) };
+          });
         } finally {
           db.close();
         }

@@ -7,8 +7,9 @@
  *   back), ending above the film's timeline or the explorer's readout (./layout.ts measures them). The
  *   explorer is told how much of the view it covers, so it frames the worlds in the rest; in Explore
  *   Mode, Discover's dock folds and the stage steps aside.
- * - A phone or a narrow window: a bottom sheet on a modal <dialog>, which minimises to a bar while a
- *   view or an experiment runs, so the scene is in sight.
+ * - A phone or a narrow window: a bottom sheet on a modal <dialog>, which minimises to a bar when a
+ *   view or an experiment starts running (an experiment only once it is confirmed: its card waits
+ *   in the open sheet), so the scene is in sight.
  * Esc closes it and focus goes back to Ask. Every key pressed inside the panel is its own (it is
  * marked data-kf-keys="own"), and none pressed outside it is: the scene keeps its keys whenever the
  * panel is not focused. Answers are real DOM text. Screen readers hear one line per finished answer
@@ -17,7 +18,6 @@
 import type { App } from '../../core/types';
 import messages from '../../i18n/en.ai.json';
 import { h, uniqueId } from '../../ui/dom';
-import { loadArabicFont } from '../../ui/fonts';
 import { icon } from '../../ui/icons';
 import { loadPlainWords } from '../../ui/plain-words';
 import { startIntelligence } from '../boot';
@@ -66,8 +66,7 @@ function engineText(app: App, e: EngineState): string {
 export async function mountAssistant(app: App, root: HTMLElement, askButton: HTMLButtonElement, announce: (text: string) => void): Promise<AssistantUi> {
   const { i18n } = app;
   i18n.extend('en.ai.json', messages);
-  // Scripture in answers shows its plain words and its Arabic typeface, as the notes do.
-  void loadArabicFont();
+  // Scripture in answers shows its plain words, as the notes do (its Arabic typeface comes with the first verse shown: ./blocks.ts).
   const [ai] = await Promise.all([startIntelligence(app, announce), loadPlainWords(app)]);
   return createPanel(app, ai, root, askButton, announce);
 }
@@ -96,12 +95,8 @@ function createPanel(app: App, ai: AiOrchestrator, root: HTMLElement, askButton:
   const log = h('ol', { class: 'kf-ai-log', 'aria-label': i18n.t('ai.ui.conversation'), 'data-testid': 'ai-log' });
   const suggestions = h('div', { class: 'kf-ai-suggest', role: 'group', 'aria-label': i18n.t('ai.ui.suggestions'), 'data-testid': 'ai-suggestions' });
   const actions = {
-    confirm(turnId: string, callId: string, accept: boolean) {
-      void ai.confirm(turnId, callId, accept);
-    },
-    undo(turnId: string, callId: string) {
-      void ai.undo(turnId, callId);
-    },
+    confirm: (turnId: string, callId: string, accept: boolean): Promise<void> => ai.confirm(turnId, callId, accept).catch(() => undefined),
+    undo: (turnId: string, callId: string): Promise<void> => ai.undo(turnId, callId).catch(() => undefined),
     kindOf: (tool: string) => ai.kindOf(tool),
     navigated() {
       // On a phone the sheet steps aside to show where the link went.
@@ -139,7 +134,7 @@ function createPanel(app: App, ai: AiOrchestrator, root: HTMLElement, askButton:
   let isOpen = false;
   let mode: 'side' | 'sheet' = 'side';
   let minimised = false;
-  /** Turns already minimised for (a turn minimises the sheet once, when its action starts). */
+  /** The call last minimised for ("turn:call"): each view or experiment that starts minimises the sheet once. */
   let minimisedFor: string | null = null;
   let inset = 0;
   const views = new Map<string, TurnView>();
@@ -195,9 +190,12 @@ function createPanel(app: App, ai: AiOrchestrator, root: HTMLElement, askButton:
     if (turn.id === latest()?.id) showBusy(turn);
     // Follow the conversation, unless the visitor has scrolled back to read.
     if (atEnd || turn.blocks.length === 0) scroller.scrollTop = scroller.scrollHeight;
-    // On a phone, a view or an experiment that starts running is watched with the sheet out of the way.
-    if (mode === 'sheet' && isOpen && !minimised && turn.state === 'acting' && minimisedFor !== turn.id && turn.plan?.calls.some((c) => ['view', 'experiment'].includes(ai.kindOf(c.tool) ?? ''))) {
-      minimisedFor = turn.id;
+    // On a phone, a view or an experiment that starts running is watched with the sheet out of the way
+    // (a card waiting for Confirm is not running: the sheet stays open so it can be confirmed).
+    const started = turn.running.find((r) => ['view', 'experiment'].includes(ai.kindOf(r.tool) ?? ''));
+    const key = started ? `${turn.id}:${started.callId}` : null;
+    if (mode === 'sheet' && isOpen && !minimised && key !== null && minimisedFor !== key) {
+      minimisedFor = key;
       setMinimised(true);
     }
     if (turn.state === 'done' && isOpen) showSuggestions();

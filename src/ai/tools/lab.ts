@@ -2,9 +2,9 @@ import type { LabCommand, UniverseLab } from '../../core/types';
 import type { Baseline } from '../planner/compare';
 import { EXPERIMENT_IDS, EXPERIMENT_PARAMS, experimentPreview, experimentProblems, HORIZON_DAYS, isPlan, planExperiment, resolveBody, worldFromContext, worldFromLab, type PlanNames, type PlanWorld } from '../planner/experiments';
 import type { OptimiseSearch } from '../planner/optimise';
-import type { AiContext, ExperimentId, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolOutcome } from '../types';
+import type { AiContext, ExperimentId, Fact, JsonSchema, ToolDefinition, ToolEnv, ToolOutcome, UndoOutcome } from '../types';
 import { dateJdTdb, jplData } from './data';
-import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfirmed, num, OPEN_MS, problem, refused, say, sig, str, view, waitFor } from './shared';
+import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfirmed, num, OPEN_MS, problem, refused, say, settle, sig, str, view, waitFor } from './shared';
 
 /**
  * The orbital laboratory (src/explore/lab.ts): open it, read it, change it with an experiment (shown
@@ -13,6 +13,11 @@ import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfir
  * for a goal. The laboratory acknowledges nothing and ignores what it cannot do without a word, so
  * every input is checked first (./planner/experiments.ts) and every edit confirmed by reading the
  * laboratory back: a mass changed, a body gone, a new body found by name, an orbit as asked.
+ *
+ * An experiment stops sending at once when its turn is stopped, and reports what it did send. Its
+ * Undo is its own edits, not whatever edit is newest: it is refused while a later edit sits on top
+ * (or once the laboratory no longer shows the experiment), and it reports done only when the
+ * laboratory reads back as it was before.
  */
 
 const QUICK_MS = 5000;
@@ -84,6 +89,69 @@ function shows(c: LabCommand, before: UniverseLab, now: UniverseLab): boolean {
     default:
       return now.undoable > before.undoable;
   }
+}
+
+/** Whether an applied edit still shows (what can be told of it: a velocity or an orbit moves on with the run). */
+function stillShows(c: LabCommand, prior: UniverseLab, now: UniverseLab): boolean {
+  switch (c.kind) {
+    case 'mass':
+    case 'remove':
+    case 'addOrbit':
+    case 'addState':
+      return shows(c, prior, now);
+    default:
+      return true;
+  }
+}
+
+/** Whether the laboratory shows an edit put back: the mass as it was, the body back, the new body gone. */
+function putBack(c: LabCommand, prior: UniverseLab, now: UniverseLab): boolean {
+  const body = (lab: UniverseLab, id: string) => lab.bodies.find((b) => b.id === id);
+  switch (c.kind) {
+    case 'mass': {
+      const was = body(prior, c.id)?.massKg;
+      const is = body(now, c.id)?.massKg;
+      return was !== undefined && is !== undefined && Math.abs(is - was) <= 1e-6 * Math.max(was, 1);
+    }
+    case 'remove':
+      return body(now, c.id) !== undefined;
+    case 'addOrbit':
+    case 'addState':
+      return !now.bodies.some((b) => b.name === c.name && !prior.bodies.some((p) => p.id === b.id));
+    default:
+      return true;
+  }
+}
+
+/** An edit an experiment sent: the laboratory just before it (a copy), and its undo list's length with it applied. */
+interface Sent {
+  command: LabCommand;
+  prior: UniverseLab;
+  depth: number;
+}
+
+/**
+ * Undoes exactly the edits an experiment made, or says why not. Its waits are its own, not its
+ * turn's: Undo may be pressed after that turn was stopped.
+ */
+async function undoSent(env: ToolEnv, sent: readonly Sent[]): Promise<UndoOutcome> {
+  const first = sent[0];
+  const last = sent.at(-1);
+  const lab = labView(env);
+  if (!first || !last) return { status: 'done' };
+  if (!lab) return { status: 'refused', problem: problem('', 'ai.tool.experiment.noLab') };
+  if (lab.undoable > last.depth) return { status: 'refused', problem: problem('', 'ai.tool.lab.experiment.undoLater') };
+  if (lab.undoable < last.depth || !sent.every((s) => stillShows(s.command, s.prior, lab))) return { status: 'refused', problem: problem('', 'ai.tool.lab.experiment.undoGone') };
+  for (let k = 0; k < sent.length; k += 1) {
+    const n = labView(env)?.undoable ?? 0;
+    env.app.universeLab({ kind: 'undo' });
+    if (!(await settle(() => (labView(env)?.undoable ?? n) < n, QUICK_MS))) return { status: 'not-confirmed' };
+  }
+  const back = await settle(() => {
+    const now = labView(env);
+    return now !== null && now.undoable === first.prior.undoable && sent.every((s) => putBack(s.command, s.prior, now));
+  }, QUICK_MS);
+  return { status: back ? 'done' : 'not-confirmed' };
 }
 
 /* ----- Tools ----- */
@@ -165,30 +233,31 @@ export const labExperiment: ToolDefinition = {
     const id = experimentOf(args);
     const plan = planExperiment(id, paramsOf(args), env.context(), { world: worldFromLab(before), names: planNames(env) });
     if (!isPlan(plan)) return refused(plan[0] ?? problem('', 'ai.tool.experiment.invalid'));
-    let applied = 0;
+    const sent: Sent[] = [];
     let confirmed = true;
     for (const c of plan.commands) {
+      // Stopped: nothing more is sent (what was sent is reported, with its undo).
+      if (env.signal.aborted) {
+        confirmed = false;
+        break;
+      }
       // A copy: the view may be the same object, changed in place, from one frame to the next.
       const prior = structuredClone(labView(env) ?? before);
       env.app.universeLab(c);
-      applied += 1;
-      const ok = await waitFor(env, () => {
+      const seen = (): boolean => {
         const now = labView(env);
         return now !== null && now.undoable > prior.undoable && shows(c, prior, now);
-      }, QUICK_MS);
+      };
+      const ok = await waitFor(env, seen, QUICK_MS);
+      sent.push({ command: c, prior, depth: ok ? (labView(env)?.undoable ?? prior.undoable + 1) : prior.undoable + 1 });
       if (!ok) {
         confirmed = false;
         break;
       }
     }
-    const undo = async (): Promise<void> => {
-      for (let k = 0; k < applied; k += 1) {
-        const n = labView(env)?.undoable ?? 0;
-        env.app.universeLab({ kind: 'undo' });
-        await waitFor(env, () => (labView(env)?.undoable ?? 0) < n, QUICK_MS);
-      }
-    };
     const values = { ...plan.previewValues, sentence: say(env.i18n, plan.previewKey, plan.previewValues) };
+    if (sent.length === 0) return refused(problem('', 'ai.tool.problem.cancelled'));
+    const undo = (): Promise<UndoOutcome> => undoSent(env, sent);
     return confirmed ? done('ai.tool.lab.experiment.observed', values, { undo }) : notConfirmed('ai.tool.lab.experiment.notSeen', values, { undo });
   },
 };
@@ -266,31 +335,30 @@ export const labMeasure: ToolDefinition = {
 /* ----- In the background ----- */
 
 /**
- * The laboratory as it stands, as a baseline: its scenario from a share link it is asked for, at the
- * step it had reached; or, outside the laboratory, the solar system seeded at the explorer's date (or
- * now) as the laboratory seeds it. Changes nothing on screen (a share link is only made, not shown).
+ * The laboratory as it stands, as a baseline: its scenario from a copy it is asked for (never shown:
+ * no share link appears and its status line does not change), at the step it had reached; or,
+ * outside the laboratory, the solar system seeded at the explorer's date (or now) as the laboratory
+ * seeds it. Changes nothing on screen.
  */
 async function baseline(env: ToolEnv): Promise<{ baseline: Baseline; world: PlanWorld } | { problem: ReturnType<typeof problem> }> {
   // The engine's side of the planner, loaded only when a comparison or a search is asked for.
   const { sharedBaseline, solarBaseline, worldAtStart } = await import('../planner/compare');
   const lab = labView(env);
   if (lab) {
-    // A new link is a new object (the laboratory replaces it); its text is the same when nothing has changed.
-    const prior = lab.share;
-    const asked = lab.status;
-    env.app.universeLab({ kind: 'share' });
+    // A new copy is a new object (the laboratory replaces it each time it is asked).
+    const prior = lab.copy;
+    env.app.universeLab({ kind: 'copy' });
     const made = await waitFor(env, () => {
-      const now = labView(env);
-      const s = now?.share ?? null;
-      return s !== null && (s !== prior || (now?.status !== asked && now?.status?.kind === 'shared'));
+      const c = labView(env)?.copy ?? null;
+      return c !== null && c !== prior;
     }, QUICK_MS);
     const now = labView(env);
-    const share = now?.share ?? null;
-    if (!made || !now || !share) return { problem: problem('', 'ai.tool.lab.compare.noShare') };
-    if ('tooLarge' in share) return { problem: problem('', 'ai.tool.lab.compare.tooLarge', { chars: share.chars }) };
+    const copy = now?.copy ?? null;
+    if (!made || !now || !copy) return { problem: problem('', 'ai.tool.lab.compare.noShare') };
+    if ('error' in copy) return { problem: problem('', 'ai.tool.lab.compare.unreadable', { detail: copy.error }) };
     const world = worldFromLab(now);
     if (world.gPerKg === null) return { problem: problem('', 'ai.tool.experiment.needsState') };
-    const got = await sharedBaseline(share.url, now.step, world.gPerKg, now.auKm);
+    const got = await sharedBaseline(copy.data, now.step, world.gPerKg, now.auKm);
     if (!got.ok) return { problem: problem('', 'ai.tool.lab.compare.unreadable', { detail: got.errors.slice(0, 3).join('; ') }) };
     return { baseline: got.baseline, world };
   }
@@ -319,7 +387,11 @@ export const labCompare: ToolDefinition = {
   check(args, ctx) {
     return experimentProblems(experimentOf(args), paramsOf(args), worldFromContext(ctx));
   },
-  preview: (args, ctx, i18n) => say(i18n, 'ai.tool.lab.compare.preview', { sentence: previewText(args, ctx, i18n) }),
+  preview: (args, ctx, i18n) => {
+    const id = experimentOf(args);
+    const days = EXPERIMENT_IDS.includes(id) ? experimentPreview(id, paramsOf(args), worldFromContext(ctx)).values.days : (num(args, 'horizonDays') ?? 0);
+    return say(i18n, 'ai.tool.lab.compare.preview', { sentence: previewText(args, ctx, i18n), days: days ?? 0 });
+  },
   async run(args, env) {
     ensureMessages(env.i18n);
     try {

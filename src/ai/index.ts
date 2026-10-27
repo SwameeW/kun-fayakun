@@ -10,22 +10,31 @@
  *   plans under a JSON schema over a shortlist of tools (temperature 0), each call validated by the
  *   registry, with one repair attempt that tells it what was wrong; otherwise retrieval answers.
  * - acting: read, calc, cite and view tools run at once; an experiment becomes a card that waits for
- *   the visitor (confirm), because it changes the laboratory.
+ *   the visitor (confirm), because it changes the laboratory. A model's plan may use only the tools
+ *   it was offered, checked against the plan's schema as a whole; prayer times only by a convention
+ *   the question names. Once a tool has started, what it did is kept even if the turn is stopped
+ *   meanwhile: its card shows its outcome and its Undo.
  * - verifying: what is said about an action comes only from its tool's outcome (read back from the
  *   app's state), never from the plan.
  * - answering: with a model, its prose grounded in the passages and facts, streamed, then passed
  *   through the output guards and its citation markers expanded into verse, hadith, fact and passage
  *   blocks; with the guide, a template from en.ai.mind.json and the top passages.
- * Every block carries its knowledge kind (blockKnowledge); the text block is always 'explanation'.
+ * Every block carries its knowledge kind (blockKnowledge); the text block is always 'explanation',
+ * and a model's text block names the engine that wrote it.
+ *
+ * With opt-in memory on, each finished turn's question and answer are kept in this browser
+ * (./memory.ts); restore() brings them back as earlier turns, which a model then reads as the
+ * conversation so far.
  */
 import type { App, BodyId, I18n } from '../core/types';
 import { createEventBus } from '../core/events';
 import messages from '../i18n/en.ai.mind.json' with { type: 'json' };
 import { readContext } from './context';
-import { guardInput, guardOutput, stripMarkers, type OutcomeSummary } from './guards';
+import { guardInput, guardOutput, stripMarkers, type OutcomeSummary, type WithheldNarration } from './guards';
 import { createMemory, type AiMemory } from './memory';
 import { ANSWER_MAX_TOKENS, buildAnswerMessages, buildPlanMessages, buildRepairMessages, PLAN_MAX_TOKENS, planSchema, type ActionLine, type HistoryItem } from './prompts';
-import { route, type NamedPlace } from './router';
+import { conventionsNamed, route, type NamedPlace } from './router';
+import { validateSchema } from './tools/schema';
 import type {
   AiContext,
   AnswerBlock,
@@ -45,6 +54,7 @@ import type {
   Plan,
   Retriever,
   TaskState,
+  TextWriter,
   ToolCall,
   ToolDefinition,
   ToolEnv,
@@ -52,6 +62,7 @@ import type {
   ToolOutcome,
   ToolRegistry,
   Turn,
+  UndoOutcome,
 } from './types';
 
 export { readContext } from './context';
@@ -72,6 +83,8 @@ export interface IntelligenceDeps {
   memory?: AiMemory;
   /** A model is unloaded after this long without use (default 10 minutes). */
   idleUnloadMs?: number;
+  /** Narrations data/hadith.json excludes (the scripture catalogue's): a model's sentence naming one is removed. */
+  withheld?: readonly WithheldNarration[];
 }
 
 /** The assistant, with what the test hook and the interface's settings also need. */
@@ -84,6 +97,8 @@ export interface AiOrchestrator extends Intelligence {
   setLevel(level: ExplanationLevel): void;
   /** A tool's kind by its name, or null (the interface minimises its phone sheet while a view or experiment runs). */
   kindOf(tool: string): ToolKind | null;
+  /** With memory on, brings back the turns it kept as earlier turns (once, before any question); resolves to how many. */
+  restore(): Promise<number>;
 }
 
 /** The knowledge kind a block shows (null for the interface's own blocks: actions and notices). */
@@ -116,6 +131,8 @@ const GUIDE_PASSAGES = 3;
 const MIN_SCORE = 1.5;
 /** Turns kept for turns() and for the prompts' history. */
 const KEEP_TURNS = 50;
+/** Turns brought back from memory. */
+const RESTORE_TURNS = 20;
 const HISTORY_TURNS = 3;
 const ACTIVE: ReadonlySet<TaskState> = new Set(['understanding', 'planning', 'acting', 'verifying', 'answering']);
 
@@ -152,7 +169,15 @@ interface TurnRecord {
   controller: AbortController;
   ctx: AiContext;
   pending: Map<string, Pending>;
-  undo: Map<string, () => Promise<void> | void>;
+  /** Experiments confirmed whose run has not begun yet (a second Confirm does nothing). */
+  confirming: Set<string>;
+  /** Calls whose tool is running now, with the tool's name. */
+  running: Map<string, string>;
+  /** The engine whose plan this turn follows, when a model planned it. */
+  planner: TextWriter | null;
+  /** The model's plan could not be used: the guide answers this turn, as its notice says. */
+  guideOnly: boolean;
+  undo: Map<string, NonNullable<ToolOutcome['undo']>>;
   done: Done[];
   facts: Fact[];
   passages: Passage[];
@@ -253,6 +278,9 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let retrieverPromise: Promise<Retriever> | null = null;
   let explanationLevel: ExplanationLevel = 'standard';
+  /** Memory has been read back (restore() runs once). */
+  let restored = false;
+  const withheld = deps.withheld ?? [];
 
   /* ---------------- engine ---------------- */
 
@@ -354,10 +382,12 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
 
   function snapshot(rec: TurnRecord): Turn {
     const t = rec.turn;
-    return { id: t.id, question: t.question, state: t.state, plan: t.plan, blocks: [...t.blocks], engine: t.engine, model: t.model, timings: { ...t.timings } };
+    return { id: t.id, question: t.question, state: t.state, plan: t.plan, blocks: [...t.blocks], engine: t.engine, model: t.model, timings: { ...t.timings }, running: [...rec.running].map(([callId, tool]) => ({ callId, tool })) };
   }
 
   function emit(rec: TurnRecord): void {
+    // A turn cleared away says nothing more (a tool that was still running when Clear was pressed).
+    if (!records.includes(rec)) return;
     events.emit('turn', { turn: snapshot(rec) });
   }
 
@@ -400,6 +430,13 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       if (b?.type === 'action') rec.turn.blocks[i] = { ...b, status: 'cancelled' };
     }
     rec.pending.clear();
+    rec.confirming.clear();
+    // A tool already running may have changed something: its card says so until its own outcome comes (record()).
+    for (const callId of rec.running.keys()) {
+      const i = actionIndex(rec, callId);
+      const b = rec.turn.blocks[i];
+      if (b?.type === 'action') rec.turn.blocks[i] = { ...b, status: 'not-confirmed' };
+    }
     rec.turn.blocks.push({ type: 'notice', key: 'ai.mind.notice.cancelled' });
     rec.turn.state = 'cancelled';
     emit(rec);
@@ -491,7 +528,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       tool: tool.name,
       preview: shown,
       status: outcome.status,
-      undoable: Boolean(outcome.undo) && outcome.status === 'done',
+      // Sent but not seen yet may still have changed something, so it can be undone too (the undo reads the state back).
+      undoable: Boolean(outcome.undo) && (outcome.status === 'done' || outcome.status === 'not-confirmed'),
       ...(outcome.status === 'refused' && outcome.problem ? { reason: outcome.problem } : {}),
     };
     if (i >= 0) rec.turn.blocks[i] = card;
@@ -501,6 +539,29 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     rec.turn.blocks.push(...blocks);
     if (outcome.facts?.length && !blocks.some((b) => b.type === 'facts')) rec.turn.blocks.push({ type: 'facts', facts: outcome.facts });
     emit(rec);
+  }
+
+  /**
+   * Runs one call and records what it reported. Nothing starts once the turn is stopped; once a view or
+   * an experiment has started, its outcome is recorded even if the turn is stopped meanwhile (what it
+   * changed stays on its card, with its undo), and only then does the turn end as stopped. A read, a
+   * calculation or a citation stopped midway changed nothing, so it is not reported.
+   */
+  async function act(rec: TurnRecord, callId: string, tool: ToolDefinition, call: ToolCall, shown: string, retriever: Retriever): Promise<void> {
+    checkpoint(rec);
+    rec.pending.delete(callId);
+    rec.confirming.delete(callId);
+    rec.running.set(callId, tool.name);
+    // The interface hears that it started (a phone's sheet steps aside while a view or an experiment runs).
+    emit(rec);
+    let outcome: ToolOutcome;
+    try {
+      outcome = await runTool(rec, tool, call, retriever);
+    } finally {
+      rec.running.delete(callId);
+    }
+    if (!rec.controller.signal.aborted || tool.kind === 'view' || tool.kind === 'experiment') record(rec, callId, tool, call, outcome, shown);
+    checkpoint(rec);
   }
 
   async function execute(rec: TurnRecord, calls: readonly ToolCall[], retriever: Retriever): Promise<void> {
@@ -515,13 +576,11 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         addBlock(rec, { type: 'action', callId, tool: tool.name, preview: shown, status: 'awaiting', undoable: false });
         continue;
       }
-      const outcome = await runTool(rec, tool, call, retriever);
-      checkpoint(rec);
-      record(rec, callId, tool, call, outcome, shown);
+      await act(rec, callId, tool, call, shown, retriever);
     }
   }
 
-  /** The model's plan, validated; one repair attempt; null when it cannot be used. */
+  /** The model's plan, validated; one repair attempt; null when it cannot be used (the guide then answers the turn). */
   async function modelPlan(rec: TurnRecord, question: string): Promise<Plan | null> {
     const e = engine;
     if (!e) return null;
@@ -531,16 +590,25 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const result = await generate(rec, e, { messages: messagesNow, format: { kind: 'json', schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal });
       checkpoint(rec);
-      const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question);
-      if (parsed.plan) return parsed.plan;
+      const parsed = result.finish === 'error' ? { plan: null, problems: ['the engine stopped with an error'] } : parsePlan(result.text, rec.ctx, question, tools, schema);
+      if (parsed.plan) {
+        rec.planner = { kind: e.kind, model: e.model };
+        return parsed.plan;
+      }
       if (result.finish === 'error') break;
       messagesNow = buildRepairMessages(messagesNow, result.text, parsed.problems);
     }
     addBlock(rec, { type: 'notice', key: 'ai.mind.notice.planFallback' });
+    rec.guideOnly = true;
     return null;
   }
 
-  function parsePlan(text: string, ctx: AiContext, question: string): { plan: Plan; problems: [] } | { plan: null; problems: string[] } {
+  /**
+   * A model's reply as a plan, or what is wrong with it (for the repair prompt). Each call must name a
+   * tool it was offered (the shortlist) and pass the registry's checks, and the reply as a whole must
+   * fit the plan's schema: constrained decoding has open bugs, so nothing is taken on trust.
+   */
+  function parsePlan(text: string, ctx: AiContext, question: string, offered: readonly ToolDefinition[], schema: ReturnType<typeof planSchema>): { plan: Plan; problems: [] } | { plan: null; problems: string[] } {
     let raw: unknown;
     try {
       raw = jsonObject(text);
@@ -548,6 +616,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       return { plan: null, problems: ['the reply was not one JSON object'] };
     }
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { plan: null, problems: ['the reply was not a JSON object'] };
+    const names = new Set(offered.map((t) => t.name));
     const r = raw as { intent?: unknown; query?: unknown; question?: unknown; calls?: unknown };
     const problems: string[] = [];
     const intent = typeof r.intent === 'string' && ['answer', 'act', 'clarify', 'decline'].includes(r.intent) ? (r.intent as Plan['intent']) : null;
@@ -565,11 +634,23 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       const c = item as { tool: string; args?: unknown };
       const args = typeof c.args === 'object' && c.args !== null && !Array.isArray(c.args) ? (c.args as Record<string, unknown>) : {};
       const call: ToolCall = { tool: c.tool, args };
+      if (!names.has(call.tool)) {
+        problems.push(`${call.tool}: not offered; use only the tools listed`);
+        continue;
+      }
       const v = registry.validate(call, ctx);
       if (v.ok) calls.push(v.call);
       else problems.push(...(v.problems.length ? problemText(i18n, call, v.problems) : [`${call.tool}: not accepted here`]));
     }
+    // The reply as a whole, against the schema it was asked for.
+    if (problems.length === 0) problems.push(...problemText(i18n, { tool: 'plan', args: {} }, validateSchema(schema, raw)).slice(0, 4));
     if (problems.length > 0 || !intent) return { plan: null, problems };
+    // Prayer times differ by convention, and the visitor chooses it: a model may not choose one for them.
+    const named = conventionsNamed(question);
+    if (calls.some((c) => c.tool === 'islamic.prayer_times' && !named.includes(String(c.args.convention)))) {
+      const key = 'ai.mind.clarify.convention';
+      return { plan: { intent: 'clarify', calls: [], source: 'model', question: i18n.t(key), questionKey: key }, problems: [] };
+    }
     const query = typeof r.query === 'string' && r.query.trim() ? r.query.trim().slice(0, 160) : undefined;
     const clarify = typeof r.question === 'string' && r.question.trim() ? r.question.trim().slice(0, 200) : undefined;
     if (intent === 'clarify' && !clarify) return { plan: null, problems: ['clarify needs a question'] };
@@ -660,11 +741,15 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   async function modelAnswer(rec: TurnRecord, question: string, passages: readonly Passage[], retriever: Retriever): Promise<boolean> {
     const e = engine;
     if (!e) return false;
+    // The words are this engine's, whichever was in use when the turn began (a model may be loaded while a card waits).
+    const writer: TextWriter = { kind: e.kind, model: e.model };
+    rec.turn.engine = e.kind;
+    rec.turn.model = e.model;
     const msgs = buildAnswerMessages(question, rec.ctx, passages, rec.facts, actionLines(rec), history(rec), explanationLevel);
     const factIds = new Set(rec.facts.map((f) => f.id));
     const passageIds = new Set(passages.map((p) => p.id));
     const given = [question, rec.ctx.summary, ...rec.done.map((d) => JSON.stringify(d.call.args)), ...actionLines(rec).map((a) => a.observed ?? '')];
-    const guard = (text: string, truncated: boolean): ReturnType<typeof guardOutput> =>
+    const guard = (text: string, truncated: boolean, streaming = false): ReturnType<typeof guardOutput> =>
       guardOutput(text, {
         facts: rec.facts,
         passages,
@@ -682,8 +767,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
             .map((r) => ({ key: r.passage.ref ?? r.passage.id.slice('verse:'.length), text: r.passage.text })),
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         truncated,
+        withheld,
+        streaming,
       });
-    const index = addBlock(rec, { type: 'text', knowledge: 'explanation', text: '', by: 'model' });
+    const index = addBlock(rec, { type: 'text', knowledge: 'explanation', text: '', by: 'model', writer });
     let streamed = '';
     const result = await generate(rec, e, {
       messages: msgs,
@@ -694,8 +781,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       onText: (delta) => {
         streamed += delta;
         if (rec.controller.signal.aborted) return;
-        // What is on screen while it streams has passed the guards too.
-        replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text: stripMarkers(guard(streamed, false).text), by: 'model' });
+        // What is on screen while it streams has passed the guards too, and what cannot be judged yet is held back.
+        replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text: stripMarkers(guard(streamed, false, true).text), by: 'model', writer });
       },
     });
     checkpoint(rec);
@@ -711,7 +798,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       if (final.flags.length > 0) addBlock(rec, { type: 'notice', key: 'ai.mind.notice.guarded' });
       return false;
     }
-    replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text, ...(final.flags.length ? { flags: final.flags } : {}), by: 'model' });
+    replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text, ...(final.flags.length ? { flags: final.flags } : {}), by: 'model', writer });
     // Citations become blocks shown from data, in the order the text cites them.
     const cited: AnswerBlock[] = [];
     const citedFacts: Fact[] = [];
@@ -749,7 +836,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     rec.passages = passages;
     const onlyViews = rec.done.length > 0 && rec.done.every((d) => d.tool.kind === 'view');
     let answered = false;
-    if (engine && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, passages, retriever);
+    if (engine && !rec.guideOnly && !(plan?.intent === 'act' && onlyViews)) answered = await modelAnswer(rec, rec.turn.question, passages, retriever);
     checkpoint(rec);
     if (!answered) guideAnswer(rec, passages);
     rec.turn.timings.answerMs += now() - started;
@@ -762,7 +849,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     if (state === 'done') {
       announce('ai.mind.announce.answer');
       const answer = answerText(rec);
-      if (answer) void memory.remember({ question: rec.turn.question, answer, at: Date.now() });
+      const writer = rec.turn.blocks.findLast((b): b is Extract<AnswerBlock, { type: 'text' }> => b.type === 'text' && b.writer !== undefined);
+      if (answer) void memory.remember({ question: rec.turn.question, answer, at: Date.now(), ...(writer?.writer ? { writer: writer.writer } : {}) });
     }
   }
 
@@ -792,13 +880,20 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     let plan = route(input.text, rec.ctx, registry, { place: (name) => placeFrom(retriever, name) });
     if (!plan && engine) plan = await modelPlan(rec, input.text);
     checkpoint(rec);
-    plan ??= { intent: 'answer', query: input.text, calls: [], source: 'router' };
+    // No rule matched, and no model plan: retrieval answers.
+    plan ??= { intent: 'answer', query: input.text, calls: [], source: 'fallback' };
     rec.turn.plan = plan;
     rec.turn.timings.planMs = now() - started;
     emit(rec);
 
     if (plan.intent === 'decline') {
       rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: i18n.t('ai.mind.guide.decline') });
+      finish(rec, 'done');
+      return;
+    }
+    if (plan.intent === 'clarify' && plan.questionKey) {
+      // The app's own question back (a prayer-time convention the visitor has not named, say).
+      rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text: i18n.t(plan.questionKey) });
       finish(rec, 'done');
       return;
     }
@@ -811,9 +906,15 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         known: { verse: () => false, hadith: () => false, fact: () => false, passage: () => false },
         verses: (q) => retriever.search(q, { kinds: ['verse'], limit: 4 }).map((r) => ({ key: r.passage.ref ?? '', text: r.passage.text })),
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
+        withheld,
       });
       const text = stripMarkers(g.text);
-      if (text) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text, ...(g.flags.length ? { flags: g.flags } : {}), ...(plan.source === 'model' ? { by: 'model' as const } : {}) });
+      const by = plan.source === 'model' && rec.planner ? { by: 'model' as const, writer: rec.planner } : {};
+      if (rec.planner) {
+        rec.turn.engine = rec.planner.kind;
+        rec.turn.model = rec.planner.model;
+      }
+      if (text) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text, ...(g.flags.length ? { flags: g.flags } : {}), ...by });
       finish(rec, 'done');
       return;
     }
@@ -849,6 +950,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       controller: new AbortController(),
       ctx: context(),
       pending: new Map(),
+      confirming: new Set(),
+      running: new Map(),
+      planner: null,
+      guideOnly: false,
       undo: new Map(),
       done: [],
       facts: [],
@@ -891,12 +996,12 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     async confirm(turnId: string, callId: string, accept: boolean): Promise<void> {
       const rec = records.find((r) => r.turn.id === turnId);
       const pending = rec?.pending.get(callId);
-      if (!rec || !pending) return;
-      rec.pending.delete(callId);
+      if (!rec || !pending || rec.confirming.has(callId)) return;
       const index = actionIndex(rec, callId);
       const card = rec.turn.blocks[index];
       const shown = card?.type === 'action' ? card.preview : pending.tool.name;
       if (!accept) {
+        rec.pending.delete(callId);
         if (card?.type === 'action') rec.turn.blocks[index] = { ...card, status: 'cancelled' };
         rec.turn.blocks.push({ type: 'notice', key: 'ai.mind.notice.experimentCancelled' });
         if (rec.pending.size === 0) {
@@ -909,14 +1014,14 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       if (current && current !== rec && ACTIVE.has(current.turn.state)) cancelRecord(current);
       current = rec;
       if (rec.controller.signal.aborted) rec.controller = new AbortController();
+      // Still pending until it starts, so Stop before then cancels it (and its card says so).
+      rec.confirming.add(callId);
       touch();
       await guarded(rec, async () => {
         setState(rec, 'acting');
         const started = now();
         const retriever = await getRetriever().catch(() => EMPTY_RETRIEVER);
-        const outcome = await runTool(rec, pending.tool, pending.call, retriever);
-        checkpoint(rec);
-        record(rec, callId, pending.tool, pending.call, outcome, shown);
+        await act(rec, callId, pending.tool, pending.call, shown, retriever);
         rec.turn.timings.actMs += now() - started;
         if (rec.pending.size > 0) {
           setState(rec, 'awaiting-confirmation');
@@ -931,16 +1036,32 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       const fn = rec?.undo.get(callId);
       if (!rec || !fn) return;
       rec.undo.delete(callId);
+      let result: UndoOutcome | null;
       try {
-        await fn();
+        const reported = await fn();
+        result = typeof reported === 'object' ? reported : null;
       } catch (err) {
         console.warn('ai: undo failed', err);
-        return;
+        result = { status: 'not-confirmed' };
       }
       const index = actionIndex(rec, callId);
       const card = rec.turn.blocks[index];
-      if (card?.type === 'action') rec.turn.blocks[index] = { ...card, undoable: false };
-      rec.turn.blocks.push({ type: 'notice', key: 'ai.mind.notice.undone', values: { what: card?.type === 'action' ? card.preview : callId } });
+      const what = card?.type === 'action' ? card.preview : callId;
+      if (result && result.status === 'refused') {
+        // Nothing was sent: the card keeps its Undo and says why it cannot be done yet.
+        rec.undo.set(callId, fn);
+        if (card?.type === 'action') rec.turn.blocks[index] = { ...card, undoRefused: result.problem };
+        emit(rec);
+        announce('ai.mind.announce.undoRefused');
+        return;
+      }
+      if (card?.type === 'action') {
+        const next: AnswerBlock = { ...card, undoable: false };
+        delete next.undoRefused;
+        rec.turn.blocks[index] = next;
+      }
+      // "Put back as it was" only when the state was read back and shows it (or the tool reads nothing back).
+      rec.turn.blocks.push({ type: 'notice', key: result?.status === 'not-confirmed' ? 'ai.mind.notice.undoNotSeen' : 'ai.mind.notice.undone', values: { what } });
       emit(rec);
     },
 
@@ -978,6 +1099,49 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
 
     kindOf(tool: string): ToolKind | null {
       return registry.get(tool)?.kind ?? null;
+    },
+
+    async restore(): Promise<number> {
+      if (restored || !memory.enabled()) return 0;
+      restored = true;
+      const kept = await memory.recall(RESTORE_TURNS);
+      // Questions asked while it read come after what it brings back.
+      const asked = records;
+      records = [];
+      for (const entry of kept) {
+        counter += 1;
+        const writer = entry.writer;
+        records.push({
+          turn: {
+            id: `turn-${counter}`,
+            question: entry.question,
+            state: 'done',
+            plan: null,
+            blocks: [
+              { type: 'notice', key: 'ai.mind.notice.kept' },
+              { type: 'text', knowledge: 'explanation', text: entry.answer, ...(writer ? { by: 'model' as const, writer } : {}) },
+            ],
+            engine: writer?.kind ?? 'guide',
+            model: writer?.model ?? null,
+            timings: { planMs: 0, actMs: 0, answerMs: 0, tokens: 0 },
+          },
+          controller: new AbortController(),
+          ctx: context(),
+          pending: new Map(),
+          confirming: new Set(),
+          running: new Map(),
+          planner: null,
+          guideOnly: false,
+          undo: new Map(),
+          done: [],
+          facts: [],
+          passages: [],
+        });
+      }
+      records.push(...asked);
+      if (records.length > KEEP_TURNS) records = records.slice(-KEEP_TURNS);
+      for (const rec of records.slice(0, kept.length)) emit(rec);
+      return kept.length;
     },
 
     suggestions(): readonly string[] {

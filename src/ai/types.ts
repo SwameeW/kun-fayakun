@@ -304,10 +304,21 @@ export interface ToolOutcome {
   observedValues?: Record<string, string | number>;
   facts?: readonly Fact[];
   blocks?: readonly AnswerBlock[];
-  /** Puts things back as they were before this call (view tools; the lab's own undo for experiments). */
-  undo?: () => Promise<void> | void;
+  /**
+   * Puts things back as they were before this call (view tools; the lab's own undo for experiments).
+   * What it reports, when it reads the state back (UndoOutcome); nothing means it was sent.
+   */
+  undo?: (() => Promise<void> | void) | (() => Promise<UndoOutcome> | UndoOutcome);
   problem?: ToolProblem;
 }
+
+/**
+ * What an undo found:
+ * - done: the app's state shows things as they were;
+ * - not-confirmed: the undo was sent, but the state does not show things as they were;
+ * - refused: nothing was sent, and why (a later change sits on top of this one, say).
+ */
+export type UndoOutcome = { status: 'done' | 'not-confirmed' } | { status: 'refused'; problem: ToolProblem };
 
 export interface ToolDefinition {
   /** "explorer.fly", "calc.escape_speed", "cite.verse" */
@@ -389,10 +400,15 @@ export interface Plan {
   /** What to look up in the verified content. */
   query?: string;
   calls: readonly ToolCall[];
-  /** The router matched it deterministically, or a model chose it. */
-  source: 'router' | 'model';
+  /**
+   * router: the router matched it deterministically; model: a model chose it; fallback: neither
+   * (no rule matched, and there was no model or its plan could not be used), so retrieval answers.
+   */
+  source: 'router' | 'model' | 'fallback';
   /** For clarify: the question back to the visitor. */
   question?: string;
+  /** For clarify: the question is the app's own words (this message), not the model's. */
+  questionKey?: I18nKey;
 }
 
 /** Changes the guards made to a model's words before they were shown. */
@@ -409,16 +425,25 @@ export type GuardFlag =
 export type ExplanationLevel = 'plain' | 'standard' | 'deeper';
 
 export type AnswerBlock =
-  /** `by: 'model'` when a language model wrote it (labelled with that model); absent for the guide's own templates. */
-  | { type: 'text'; knowledge: 'explanation'; text: string; flags?: readonly GuardFlag[]; by?: 'model' }
+  /**
+   * `by: 'model'` when a language model wrote it, and `writer` the engine that did (its label names
+   * that one, whatever is in use later); both absent for the guide's own templates.
+   */
+  | { type: 'text'; knowledge: 'explanation'; text: string; flags?: readonly GuardFlag[]; by?: 'model'; writer?: TextWriter }
   | { type: 'passage'; passage: Passage }
   | { type: 'verse'; key: VerseKey }
   | { type: 'hadith'; id: HadithId; summaryKey?: I18nKey }
   | { type: 'facts'; facts: readonly Fact[] }
   | { type: 'comparison'; comparison: Comparison }
-  /** `reason`: why a check refused it, when one did (shown on its card). */
-  | { type: 'action'; callId: string; tool: string; preview: string; status: ToolOutcome['status'] | 'awaiting' | 'cancelled'; undoable: boolean; reason?: ToolProblem }
+  /** `reason`: why a check refused it, when one did (shown on its card); `undoRefused`: why its Undo was refused, the last time it was pressed. */
+  | { type: 'action'; callId: string; tool: string; preview: string; status: ToolOutcome['status'] | 'awaiting' | 'cancelled'; undoable: boolean; reason?: ToolProblem; undoRefused?: ToolProblem }
   | { type: 'notice'; key: I18nKey; values?: Record<string, string | number> };
+
+/** The engine that wrote a text block: its kind and its model id ("browser", "scripted" for those). */
+export interface TextWriter {
+  kind: Exclude<EngineKind, 'guide'>;
+  model: string;
+}
 
 /** The task state machine (docs/AI-INTELLIGENCE.md, "Tasks"). */
 export type TaskState =
@@ -441,6 +466,8 @@ export interface Turn {
   engine: EngineKind;
   model: string | null;
   timings: { planMs: number; actMs: number; answerMs: number; tokens: number };
+  /** The calls whose tool is running now (an experiment's only once it is confirmed and starts). */
+  running: readonly { callId: string; tool: string }[];
 }
 
 export interface IntelligenceEvents {

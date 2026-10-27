@@ -1,21 +1,23 @@
 /**
  * A turn of the conversation on screen: the question, then each answer block as real DOM text,
  * labelled with what kind of thing it is (docs/AI-INTELLIGENCE.md §5).
- * - text: the explanation, with who wrote it (a model on this device, the browser's model, the
- *   guide, or the test engine) and an honest note of anything the guards changed;
+ * - text: the explanation, with who wrote it (the engine that wrote that block: a model on this
+ *   device, the browser's model, the guide, or the test engine) and an honest note of anything the
+ *   guards changed;
  * - verse and hadith: drawn from data by src/ui/scripture.ts (never a model's words; no hadith
- *   wording, no transliteration);
+ *   wording, no transliteration); the Arabic typeface is fetched when the first verse is shown;
  * - facts: value, unit, kind and source links;
  * - comparison: the laboratory's two runs side by side, a thought experiment with each run's energy error;
  * - passage: the app's own notes, with a link to where they live;
  * - action: the preview sentence and its status in words, with Confirm and Cancel for an experiment
- *   (nothing runs before Confirm) and Undo for a view;
+ *   (nothing runs before Confirm) and Undo for a view or an experiment (and why an Undo was refused);
  * - notice.
  * A turn re-renders only the blocks that changed, so a streamed explanation grows in place and
  * scripture is not rebuilt with every word.
  */
 import type { App, I18n } from '../../core/types';
 import { externalLink, h } from '../../ui/dom';
+import { loadArabicFont } from '../../ui/fonts';
 import { resolveCitation, scientificNode } from '../../ui/format';
 import { chapterHash } from '../../ui/route';
 import { hadithArticle, verseArticle } from '../../ui/scripture';
@@ -24,8 +26,9 @@ import { blockKnowledge } from '../index';
 import type { AnswerBlock, Comparison, Fact, KnowledgeKind, ToolKind, Turn } from '../types';
 
 export interface TurnActions {
-  confirm(turnId: string, callId: string, accept: boolean): void;
-  undo(turnId: string, callId: string): void;
+  /** Each settles once the assistant has answered the press (the card's buttons come back if it has not been redrawn). */
+  confirm(turnId: string, callId: string, accept: boolean): Promise<void> | void;
+  undo(turnId: string, callId: string): Promise<void> | void;
   kindOf(tool: string): ToolKind | null;
   /** A link inside an answer took the visitor elsewhere in the app. */
   navigated(): void;
@@ -50,12 +53,15 @@ export function modelName(id: string | null): string {
   return (id && findModel(id)?.name) ?? id ?? '';
 }
 
-/** Who wrote a text block, as its label says. */
+/** Who wrote a text block, as its label says: the engine the block names (a turn's engine may have changed since). */
 function authorLabel(block: Extract<AnswerBlock, { type: 'text' }>, turn: Turn, i18n: I18n): string {
   if (block.by !== 'model') return i18n.t('ai.ui.by.guide');
-  if (turn.engine === 'scripted') return i18n.t('ai.ui.by.scripted');
-  if (turn.engine === 'browser') return i18n.t('ai.ui.by.browser');
-  return i18n.t('ai.ui.by.model', { model: modelName(turn.model) });
+  const kind = block.writer?.kind ?? turn.engine;
+  const model = block.writer?.model ?? turn.model;
+  if (kind === 'scripted') return i18n.t('ai.ui.by.scripted');
+  if (kind === 'browser') return i18n.t('ai.ui.by.browser');
+  const name = modelName(model);
+  return name ? i18n.t('ai.ui.by.model', { model: name }) : i18n.t('ai.ui.by.anyModel');
 }
 
 function label(text: string): HTMLElement {
@@ -120,6 +126,8 @@ function textBlock(block: Extract<AnswerBlock, { type: 'text' }>, turn: Turn, i1
 
 function scriptureBlock(block: Extract<AnswerBlock, { type: 'verse' | 'hadith' }>, app: App): HTMLElement {
   const { i18n, data } = app;
+  // The verse's Arabic in its typeface, fetched the first time scripture is shown (not when the panel opens).
+  if (block.type === 'verse') void loadArabicFont();
   // The verse without the transliteration (licensed for non-commercial use, and not the assistant's to use); a hadith without wording.
   const article =
     block.type === 'verse'
@@ -217,34 +225,33 @@ function actionStatus(block: Extract<AnswerBlock, { type: 'action' }>, i18n: I18
 function actionBlock(block: Extract<AnswerBlock, { type: 'action' }>, turn: Turn, i18n: I18n, actions: TurnActions): HTMLElement {
   const experiment = actions.kindOf(block.tool) === 'experiment';
   const buttons: HTMLButtonElement[] = [];
-  const button = (text: string, testId: string, primary: boolean, run: () => void): HTMLButtonElement => {
+  const button = (text: string, testId: string, primary: boolean, run: () => Promise<void> | void): HTMLButtonElement => {
     const b = h('button', { type: 'button', class: `kf-btn${primary ? ' kf-btn--primary' : ''}`, 'data-testid': testId }, text);
     b.addEventListener('click', () => {
       // One press is enough: the card's buttons go quiet until the turn says what happened.
       for (const other of buttons) other.disabled = true;
-      run();
+      // If the card was not redrawn (an Undo refused again for the same reason), its buttons come back.
+      void Promise.resolve(run()).finally(() => {
+        if (b.isConnected) for (const other of buttons) other.disabled = false;
+      });
     });
     buttons.push(b);
     return b;
   };
   if (block.status === 'awaiting') {
-    button(i18n.t('ai.ui.action.confirm'), 'ai-confirm', true, () => {
-      actions.confirm(turn.id, block.callId, true);
-    });
-    button(i18n.t('ai.ui.action.cancel'), 'ai-cancel', false, () => {
-      actions.confirm(turn.id, block.callId, false);
-    });
+    button(i18n.t('ai.ui.action.confirm'), 'ai-confirm', true, () => actions.confirm(turn.id, block.callId, true));
+    button(i18n.t('ai.ui.action.cancel'), 'ai-cancel', false, () => actions.confirm(turn.id, block.callId, false));
   } else if (block.undoable) {
-    button(i18n.t('ai.ui.action.undo'), 'ai-undo', false, () => {
-      actions.undo(turn.id, block.callId);
-    });
+    button(i18n.t('ai.ui.action.undo'), 'ai-undo', false, () => actions.undo(turn.id, block.callId));
   }
+  const refusedUndo = block.undoable && block.undoRefused && i18n.has(block.undoRefused.messageKey) ? i18n.t('ai.ui.action.undoRefused', { why: i18n.t(block.undoRefused.messageKey, block.undoRefused.values) }) : null;
   return h(
     'section',
     { class: 'kf-ai-block kf-ai-action', 'data-block': 'action', 'data-status': block.status, 'data-tool': block.tool, 'data-testid': 'ai-action' },
     label(i18n.t(experiment ? 'ai.ui.action.experiment' : 'ai.ui.action.label')),
     h('p', { class: 'kf-ai-preview' }, block.preview),
     h('p', { class: 'kf-ai-status', 'data-testid': 'ai-action-status' }, actionStatus(block, i18n)),
+    refusedUndo ? h('p', { class: 'kf-ai-status', 'data-testid': 'ai-undo-refused' }, refusedUndo) : null,
     buttons.length > 0 ? h('div', { class: 'kf-ai-buttons' }, ...buttons) : null,
   );
 }
