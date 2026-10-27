@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs';
 import type { Locator, Page } from '@playwright/test';
 import { VISITOR_MODELS } from '../src/ai/engine/catalogue';
+import type { CapabilityReport } from '../src/ai/types';
 import { ask, LIVE, openPanel, ready, realErrors, REPORT, s } from './support/ai';
 import { platform, SLOW } from './support/env';
 import { expect, test, type Kf, type KfHook } from './support/fixtures';
@@ -37,13 +38,13 @@ const POCKET = VISITOR_MODELS.find((m) => m.id === 'Qwen3-0.6B-q4f16_1-MLC');
 
 const modelHostCount = (page: Page): number => [...modelRequests(page).values()].reduce((a, b) => a + b, 0);
 
-async function openModelSection(page: Page, kf: Kf): Promise<Locator> {
+async function openModelSection(page: Page, kf: Kf, report: CapabilityReport = REPORT): Promise<Locator> {
   await kf.open('/');
   await ready(page);
   await openPanel(page);
   await page.evaluate(async (r) => {
     await (window as unknown as KfHook).__kf.ai.useReport(r);
-  }, REPORT);
+  }, report);
   const section = page.getByTestId('ai-model');
   await section.locator('summary').click();
   await expect(section.getByTestId('ai-suggested')).toHaveText(`Suggested for this device: ${COMPACT?.name ?? '?'}`);
@@ -65,6 +66,8 @@ test('the model: size, licence and source before any download; a second question
   await expect(section.getByTestId('ai-model-source')).toContainText('huggingface.co');
   await expect(section).toContainText('Hugging Face and jsDelivr will see your IP address');
   await expect(section).toContainText(s('ai.ui.model.stays'));
+  // No browser model here, so none is offered.
+  await expect(section.getByTestId('ai-browser-model')).toBeHidden();
   // The limits come with it, and a larger model is offered with a warning.
   await expect(section.locator('.kf-ai-limits li').first()).toBeVisible();
   await section.getByTestId('ai-model-select').selectOption(VISITOR_MODELS.find((m) => m.id === 'Qwen3-8B-q4f16_1-MLC')?.id ?? '?');
@@ -112,6 +115,8 @@ test('the model: Cancel stops a download under way; the guide answers again', as
   await section.getByTestId('ai-download-cancel').click();
   await expect(section.getByTestId('ai-load-cancelled')).toHaveText(s('ai.ui.model.cancelled'), LIVE);
   await expect(page.getByTestId('ai-engine')).toHaveText(s('ai.ui.engine.guide'));
+  await section.getByTestId('ai-use-guide').click();
+  await expect(section.getByTestId('ai-in-use')).toHaveText(s('ai.ui.model.usingGuide'));
   // And the guide answers.
   await page.getByTestId('ai-input').focus();
   const turn = await ask(page, 'Escape speed of Mars');
@@ -150,5 +155,15 @@ test('stored models: those in the Cache API are listed with their sizes, and del
   // Asking the browser to keep stored models says what it answered.
   await section.getByTestId('ai-persist').click();
   await expect(section.locator('p', { hasText: /The browser (agreed|did not agree)/u })).toBeVisible();
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
+test('the browser’s own model is offered only where detection finds it, with a warning when the browser would download it', async ({ page, kf, pageErrors }) => {
+  const section = await openModelSection(page, kf, { ...REPORT, browserModel: 'downloadable' });
+  const offer = section.getByTestId('ai-browser-model');
+  await expect(offer).toBeVisible();
+  await expect(offer).toContainText(s('ai.ui.model.browserTitle'));
+  await expect(offer).toContainText(engineStrings['ai.engine.browser.downloadable'] ?? '?');
+  await expect(offer.getByTestId('ai-use-browser')).toBeVisible();
   expect(realErrors(pageErrors)).toEqual([]);
 });

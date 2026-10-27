@@ -64,7 +64,8 @@ test('Ask loads the panel only when pressed; / opens it, Esc closes it and focus
   await expect(page.getByTestId('ai-input')).toBeFocused();
   await expect(panel(page)).toHaveAttribute('data-kf-keys', 'own');
   await expect(page.getByTestId('ai-engine')).toHaveText(s('ai.ui.engine.guide'));
-  await expect(page.getByTestId('ai-suggestion').first()).toBeVisible();
+  // No live region inside: screen readers hear one line per finished answer (the page's announcer), never each word.
+  await expect(panel(page).locator('[aria-live]')).toHaveCount(0);
 
   // Typed keys stay in the field: ? and / are text there, not shortcuts.
   await page.keyboard.type('what is / this?');
@@ -75,6 +76,15 @@ test('Ask loads the panel only when pressed; / opens it, Esc closes it and focus
   await expect(page.getByTestId('ai-input')).toHaveValue('what is / this?\n');
   await page.getByTestId('ai-input').fill('');
 
+  // A suggestion asks itself.
+  const chip = page.getByTestId('ai-suggestion').first();
+  const suggested = (await chip.textContent()) ?? '?';
+  await chip.click();
+  await expect(turns(page).first().locator('.kf-ai-question')).toHaveText(suggested);
+  await expect(turns(page).first()).toHaveAttribute('data-state', 'done', LIVE);
+  await expect(page.locator('html')).toHaveAttribute('data-ai-turn', 'done');
+
+  await page.getByTestId('ai-input').focus();
   await page.keyboard.press('Escape');
   await expect(panel(page)).toHaveCount(0);
   await expect(askButton).toBeFocused();
@@ -163,6 +173,15 @@ test('"Fly to Mars": the explorer arrives at Mars, the card says done, and Undo 
   const inset = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kf-ai-inset')));
   const box = await panel(page).boundingBox();
   expect(inset).toBeCloseTo((box?.x ?? 0) + (box?.width ?? 0), 0);
+  // With the panel open but not focused, the scene's keys are the scene's: ] makes time run faster.
+  const rate = (): Promise<number> => page.evaluate(() => (window as unknown as KfHook).__kf.app.universe()?.time.rate ?? 0);
+  const before = await rate();
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await page.keyboard.press(']');
+  await expect.poll(rate).toBeGreaterThan(before);
+  await expect(panel(page)).toBeVisible();
 
   await card.getByTestId('ai-undo').click();
   await expect(turn.locator('[data-block="notice"]').last()).toContainText('Put back as it was');
@@ -230,6 +249,13 @@ test('"Show verse 21:30" shows the verse from data, labelled scripture; "Escape 
   await expect(verse.locator('.kf-translit')).toHaveCount(0);
   expect(await verse.textContent()).not.toContain(entry?.translit.slice(0, 20) ?? '?');
   await expect(verse.locator('.kf-arabic')).toHaveAttribute('lang', 'ar');
+
+  // A hadith: its reference, grading and source, labelled scripture, never its wording.
+  const hadithTurn = await ask(page, 'Sahih al-Bukhari 3191');
+  const hadith = hadithTurn.locator('[data-block="hadith"]', { has: page.locator('[data-hadith="bukhari-3191"]') });
+  await expect(hadith.locator('.kf-ai-label')).toHaveText(s('ai.ui.kind.scripture'));
+  await expect(hadith.locator('.kf-grading')).toBeVisible();
+  await expect(hadithTurn.locator('[data-block="hadith"] :is(.kf-hadith-text, blockquote)')).toHaveCount(0);
 
   const factsTurn = await ask(page, 'Escape speed of Mars');
   const table = factsTurn.getByTestId('ai-facts');
