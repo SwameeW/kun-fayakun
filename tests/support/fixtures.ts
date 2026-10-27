@@ -5,7 +5,7 @@
  */
 import { test as base, expect, type Page } from '@playwright/test';
 import type { ScriptedOptions, ScriptedReply } from '../../src/ai/engine/scripted';
-import type { Intelligence } from '../../src/ai/types';
+import type { CapabilityReport, Intelligence } from '../../src/ai/types';
 import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
 import { env, SLOW } from './env';
 import { mockLiveHosts } from './live';
@@ -45,11 +45,13 @@ export interface KfHook {
     };
     /**
      * The assistant (src/ai/boot.ts): start() loads it and resolves to the page's one Intelligence;
-     * useScripted() (there once start() has run) switches it to the scripted test engine.
+     * useScripted() (there once start() has run) switches it to the scripted test engine;
+     * useReport() makes detection answer with a canned device.
      */
     ai: {
       start(): Promise<Intelligence>;
       useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<void>;
+      useReport(report: CapabilityReport): Promise<void>;
     };
   };
 }

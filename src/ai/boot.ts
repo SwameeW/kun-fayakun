@@ -9,8 +9,9 @@
  * engine host and the knowledge index's retriever, and returns createIntelligence(app, deps). There
  * is one assistant per page: later calls return the same one.
  *
- * It also gives the test hook its assistant part (window.__kf.ai): start(), and useScripted(), which
- * switches the running assistant to the scripted test engine (labelled as such on screen).
+ * It also gives the test hook its assistant part (window.__kf.ai): start(); useScripted(), which
+ * switches the running assistant to the scripted test engine (labelled as such on screen); and
+ * useReport(), which makes detection answer with a canned device (CI has no GPU to find).
  */
 import { extendTestHandle, setHook } from '../core/hooks';
 import type { App } from '../core/types';
@@ -21,9 +22,11 @@ import { createScriptedEngine, type ScriptedOptions, type ScriptedReply } from '
 import { createIntelligence, type AiOrchestrator } from './index';
 import { loadRetriever } from './knowledge';
 import { createRegistryFor, registerToolMessages } from './tools';
-import type { Intelligence } from './types';
+import type { CapabilityReport } from './types';
 
 let started: Promise<AiOrchestrator> | null = null;
+/** The engine host of the page's assistant, for the test hook's useReport. */
+let engineHost: ReturnType<typeof createEngineHost> | null = null;
 
 async function build(app: App, announce: (text: string) => void): Promise<AiOrchestrator> {
   const { i18n } = app;
@@ -32,6 +35,7 @@ async function build(app: App, announce: (text: string) => void): Promise<AiOrch
   i18n.extend('en.ai.mind.json', mindMessages);
   const registry = await createRegistryFor(app);
   const host = createEngineHost(app);
+  engineHost = host;
   const ai = createIntelligence(app, { registry, host, retriever: () => loadRetriever(app), announce });
   // What tests wait on (docs/CONTRACTS.md, "Test hooks"): the engine in use and the latest turn's state.
   setHook('data-ai-engine', ai.engine().kind);
@@ -59,13 +63,17 @@ function orchestrator(app: App, announce: (text: string) => void): Promise<AiOrc
  * The page's assistant, made the first time it is asked for. `announce` speaks a short status line
  * to screen readers (the interface's live region).
  */
-export function startIntelligence(app: App, announce: (text: string) => void): Promise<Intelligence> {
+export function startIntelligence(app: App, announce: (text: string) => void): Promise<AiOrchestrator> {
   const start = (): Promise<AiOrchestrator> => orchestrator(app, announce);
   extendTestHandle({
     ai: {
       start,
       async useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions) {
         (await start()).attach(createScriptedEngine(script, options));
+      },
+      async useReport(report: CapabilityReport) {
+        await start();
+        engineHost?.assume(report);
       },
     },
   });

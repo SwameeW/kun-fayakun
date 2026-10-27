@@ -33,6 +33,7 @@ import type {
   EngineError,
   EngineHost,
   EngineKind,
+  ExplanationLevel,
   Fact,
   GenerateResult,
   Intelligence,
@@ -47,6 +48,7 @@ import type {
   ToolCall,
   ToolDefinition,
   ToolEnv,
+  ToolKind,
   ToolOutcome,
   ToolRegistry,
   Turn,
@@ -77,6 +79,11 @@ export interface AiOrchestrator extends Intelligence {
   /** Uses this engine directly (the scripted test engine, through the test hook). */
   attach(engine: LanguageEngine): void;
   readonly memory: AiMemory;
+  /** How much a model's explanations assume (the visitor's setting; 'standard' until chosen). */
+  level(): ExplanationLevel;
+  setLevel(level: ExplanationLevel): void;
+  /** A tool's kind by its name, or null (the interface minimises its phone sheet while a view or experiment runs). */
+  kindOf(tool: string): ToolKind | null;
 }
 
 /** The knowledge kind a block shows (null for the interface's own blocks: actions and notices). */
@@ -245,6 +252,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   let loading: AbortController | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let retrieverPromise: Promise<Retriever> | null = null;
+  let explanationLevel: ExplanationLevel = 'standard';
 
   /* ---------------- engine ---------------- */
 
@@ -477,7 +485,15 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     rec.done.push({ callId, call, tool, preview: shown, outcome });
     if (outcome.undo) rec.undo.set(callId, outcome.undo);
     const i = actionIndex(rec, callId);
-    const card: AnswerBlock = { type: 'action', callId, tool: tool.name, preview: shown, status: outcome.status, undoable: Boolean(outcome.undo) && outcome.status === 'done' };
+    const card: AnswerBlock = {
+      type: 'action',
+      callId,
+      tool: tool.name,
+      preview: shown,
+      status: outcome.status,
+      undoable: Boolean(outcome.undo) && outcome.status === 'done',
+      ...(outcome.status === 'refused' && outcome.problem ? { reason: outcome.problem } : {}),
+    };
     if (i >= 0) rec.turn.blocks[i] = card;
     else if (tool.kind === 'view' || tool.kind === 'experiment' || outcome.status !== 'done') rec.turn.blocks.push(card);
     if (outcome.facts?.length) rec.facts.push(...outcome.facts);
@@ -644,7 +660,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   async function modelAnswer(rec: TurnRecord, question: string, passages: readonly Passage[], retriever: Retriever): Promise<boolean> {
     const e = engine;
     if (!e) return false;
-    const msgs = buildAnswerMessages(question, rec.ctx, passages, rec.facts, actionLines(rec), history(rec));
+    const msgs = buildAnswerMessages(question, rec.ctx, passages, rec.facts, actionLines(rec), history(rec), explanationLevel);
     const factIds = new Set(rec.facts.map((f) => f.id));
     const passageIds = new Set(passages.map((p) => p.id));
     const given = [question, rec.ctx.summary, ...rec.done.map((d) => JSON.stringify(d.call.args)), ...actionLines(rec).map((a) => a.observed ?? '')];
@@ -667,7 +683,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
         truncated,
       });
-    const index = addBlock(rec, { type: 'text', knowledge: 'explanation', text: '' });
+    const index = addBlock(rec, { type: 'text', knowledge: 'explanation', text: '', by: 'model' });
     let streamed = '';
     const result = await generate(rec, e, {
       messages: msgs,
@@ -679,7 +695,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         streamed += delta;
         if (rec.controller.signal.aborted) return;
         // What is on screen while it streams has passed the guards too.
-        replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text: stripMarkers(guard(streamed, false).text) });
+        replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text: stripMarkers(guard(streamed, false).text), by: 'model' });
       },
     });
     checkpoint(rec);
@@ -695,7 +711,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       if (final.flags.length > 0) addBlock(rec, { type: 'notice', key: 'ai.mind.notice.guarded' });
       return false;
     }
-    replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text, ...(final.flags.length ? { flags: final.flags } : {}) });
+    replaceBlock(rec, index, { type: 'text', knowledge: 'explanation', text, ...(final.flags.length ? { flags: final.flags } : {}), by: 'model' });
     // Citations become blocks shown from data, in the order the text cites them.
     const cited: AnswerBlock[] = [];
     const citedFacts: Fact[] = [];
@@ -797,7 +813,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         uncheckedLabel: i18n.t('ai.mind.guard.unchecked'),
       });
       const text = stripMarkers(g.text);
-      if (text) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text, ...(g.flags.length ? { flags: g.flags } : {}) });
+      if (text) rec.turn.blocks.push({ type: 'text', knowledge: 'explanation', text, ...(g.flags.length ? { flags: g.flags } : {}), ...(plan.source === 'model' ? { by: 'model' as const } : {}) });
       finish(rec, 'done');
       return;
     }
@@ -950,6 +966,18 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
 
     attach(e: LanguageEngine): void {
       void load(e);
+    },
+
+    level(): ExplanationLevel {
+      return explanationLevel;
+    },
+
+    setLevel(level: ExplanationLevel): void {
+      explanationLevel = level;
+    },
+
+    kindOf(tool: string): ToolKind | null {
+      return registry.get(tool)?.kind ?? null;
     },
 
     suggestions(): readonly string[] {

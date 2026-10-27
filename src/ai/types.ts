@@ -405,14 +405,19 @@ export type GuardFlag =
   | 'scripture-quote'
   | 'truncated';
 
+/** How much an explanation assumes, chosen by the visitor (the answer prompt says it in one line). */
+export type ExplanationLevel = 'plain' | 'standard' | 'deeper';
+
 export type AnswerBlock =
-  | { type: 'text'; knowledge: 'explanation'; text: string; flags?: readonly GuardFlag[] }
+  /** `by: 'model'` when a language model wrote it (labelled with that model); absent for the guide's own templates. */
+  | { type: 'text'; knowledge: 'explanation'; text: string; flags?: readonly GuardFlag[]; by?: 'model' }
   | { type: 'passage'; passage: Passage }
   | { type: 'verse'; key: VerseKey }
   | { type: 'hadith'; id: HadithId; summaryKey?: I18nKey }
   | { type: 'facts'; facts: readonly Fact[] }
   | { type: 'comparison'; comparison: Comparison }
-  | { type: 'action'; callId: string; tool: string; preview: string; status: ToolOutcome['status'] | 'awaiting' | 'cancelled'; undoable: boolean }
+  /** `reason`: why a check refused it, when one did (shown on its card). */
+  | { type: 'action'; callId: string; tool: string; preview: string; status: ToolOutcome['status'] | 'awaiting' | 'cancelled'; undoable: boolean; reason?: ToolProblem }
   | { type: 'notice'; key: I18nKey; values?: Record<string, string | number> };
 
 /** The task state machine (docs/AI-INTELLIGENCE.md, "Tasks"). */

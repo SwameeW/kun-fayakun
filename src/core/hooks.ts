@@ -1,5 +1,5 @@
 import type { ScriptedOptions, ScriptedReply } from '../ai/engine/scripted';
-import type { Intelligence } from '../ai/types';
+import type { CapabilityReport, Intelligence } from '../ai/types';
 import type { FrameStats } from './perf';
 import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from './types';
 
@@ -55,7 +55,8 @@ export interface KfTestHandle {
    * The assistant (src/ai/boot.ts). start() loads it and resolves to the page's one Intelligence;
    * from then on the assistant's own chunk has replaced this part with one that also has
    * useScripted(), which switches the running assistant to the scripted test engine
-   * (src/ai/engine/scripted.ts) with the given replies, labelled "scripted".
+   * (src/ai/engine/scripted.ts) with the given replies, labelled "scripted", and useReport(), which
+   * makes the engine host's detection answer with a canned device from then on.
    */
   ai?: KfAiHandle | Pick<KfAiHandle, 'start'>;
   /** The solar-system explorer: its state (null when it is not on screen) and an instant camera placement. */
@@ -80,6 +81,7 @@ export function exposeTestHandle(handle: KfTestHandle): void {
 export interface KfAiHandle {
   start(): Promise<Intelligence>;
   useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<void>;
+  useReport(report: CapabilityReport): Promise<void>;
 }
 
 /** A part of the interface made after the app (the film's sound, the assistant) adds itself to the handle. */

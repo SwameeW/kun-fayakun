@@ -27,12 +27,19 @@ export interface KfEngineHost extends EngineHost {
   /** The last report detect() made, or null before it has run. */
   readonly report: CapabilityReport | null;
   stored(): Promise<readonly StoredModel[]>;
+  /**
+   * The test hook's alone (src/ai/boot.ts useReport): from now on detect() returns this report, as
+   * if this device had been found so, and load() checks against it. CI has no GPU, so the download
+   * dialog is tested with a canned device; nothing a visitor does reaches this.
+   */
+  assume(report: CapabilityReport): void;
 }
 
 export function createEngineHost(app: App): KfEngineHost {
   app.i18n.extend('en.ai.engine.json', messages);
   const pacer = createPacer(app);
   let report: CapabilityReport | null = null;
+  let assumed: CapabilityReport | null = null;
 
   /** The builds this adapter can run: q4f16 with shader-f16, else q4f32; all of them before detection; none without WebGPU. */
   const runnable = (): readonly ModelSpec[] => {
@@ -48,8 +55,12 @@ export function createEngineHost(app: App): KfEngineHost {
       return report;
     },
     async detect() {
-      report = await detectCapabilities(browserModelAvailability);
+      report = assumed ?? (await detectCapabilities(browserModelAvailability));
       return report;
+    },
+    assume(canned: CapabilityReport) {
+      assumed = canned;
+      report = canned;
     },
     catalogue: runnable,
     async load(model: ModelSpec | 'browser', onProgress: (p: LoadProgress) => void, signal: AbortSignal): Promise<LanguageEngine> {

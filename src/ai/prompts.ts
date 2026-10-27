@@ -8,7 +8,7 @@
  * put in delimited data blocks that the system prompt says are data, never instructions. Text in a
  * block cannot close it early: anything that looks like a block's end is defused first.
  */
-import type { AiContext, ChatMessage, Fact, JsonSchema, Passage, ToolDefinition } from './types';
+import type { AiContext, ChatMessage, ExplanationLevel, Fact, JsonSchema, Passage, ToolDefinition } from './types';
 
 /** The model's context window, tokens. */
 export const CONTEXT_TOKENS = 4096;
@@ -148,6 +148,13 @@ const ANSWER_SYSTEM = [
   'Only numbers that appear in the data. Mention an action only if the actions block says it is done; if it is awaiting confirmation, say the visitor can confirm it.',
 ].join('\n');
 
+/** The one line of the answer prompt that sets how much the explanation assumes (the visitor's choice). */
+export const LEVEL_LINES: Readonly<Record<ExplanationLevel, string>> = {
+  plain: 'Explain in plain words for a curious reader of about twelve: short sentences, everyday words, no jargon.',
+  standard: 'Explain for an interested adult who is not a scientist.',
+  deeper: 'Explain in more depth for a reader who knows some physics: name the ideas involved and how the numbers relate.',
+};
+
 /** Messages for the answer step, trimmed to fit the context window with room for the reply. */
 export function buildAnswerMessages(
   question: string,
@@ -156,7 +163,9 @@ export function buildAnswerMessages(
   facts: readonly Fact[],
   actions: readonly ActionLine[],
   history: readonly HistoryItem[],
+  level: ExplanationLevel = 'standard',
 ): ChatMessage[] {
+  const system = `${ANSWER_SYSTEM}\n${LEVEL_LINES[level]}`;
   const budget = CONTEXT_TOKENS - ANSWER_MAX_TOKENS - TEMPLATE_TOKENS;
   const fixed: string[] = [block('context', ctx.summary || ctx.where)];
   if (facts.length > 0) {
@@ -165,7 +174,7 @@ export function buildAnswerMessages(
   if (actions.length > 0) {
     fixed.push(block('actions', actions.map((a) => `${a.tool}: ${a.preview} (${a.status})${a.observed ? `: ${a.observed}` : ''}`).join('\n')));
   }
-  const used = (parts: readonly string[], extra = ''): number => estimateTokens(ANSWER_SYSTEM) + estimateTokens(parts.join('\n') + extra) + estimateTokens(question) + 12;
+  const used = (parts: readonly string[], extra = ''): number => estimateTokens(system) + estimateTokens(parts.join('\n') + extra) + estimateTokens(question) + 12;
   const earlier = historyBlock(history, 700);
   if (earlier && used(fixed, earlier) < budget * 0.6) fixed.push(earlier);
 
@@ -180,7 +189,7 @@ export function buildAnswerMessages(
   }
   const parts = lines.length > 0 ? [...fixed, block('passages', lines.join('\n'))] : [...fixed, block('passages', '(none found)')];
   return [
-    { role: 'system', content: `${ANSWER_SYSTEM}\n\n${parts.join('\n')}` },
+    { role: 'system', content: `${system}\n\n${parts.join('\n')}` },
     { role: 'user', content: question },
   ];
 }
