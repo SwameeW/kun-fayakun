@@ -1319,6 +1319,57 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "web-llm",
+      "kind": "software",
+      "title": "WebLLM (in-browser language model engine) and its compiled model libraries",
+      "author": "MLC AI (the MLC LLM and WebLLM contributors)",
+      "url": "https://github.com/mlc-ai/web-llm",
+      "version": "@mlc-ai/web-llm 0.2.86; model libraries from github.com/mlc-ai/binary-mlc-llm-libs at commit 00fe7a40e57e5e8eb9fef87526a4bf28ad5846c0 (web-llm-models/v0_2_86/base)",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://github.com/mlc-ai/web-llm/blob/main/LICENSE",
+      "credit": "WebLLM, MLC AI, Apache License 2.0.",
+      "notes": "Runs the assistant's language model on the visitor's own device, in a worker with WebGPU. Loaded only when a visitor asks for a model; no account, key or hosted service is involved.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "qwen3",
+      "kind": "software",
+      "title": "Qwen3 language models (0.6B, 1.7B, 4B and 8B), MLC builds (q4f16_1 and q4f32_1)",
+      "author": "Qwen Team, Alibaba Cloud; MLC builds by MLC AI",
+      "url": "https://huggingface.co/mlc-ai",
+      "version": "Each build pinned to its Hugging Face commit (src/ai/engine/catalogue.ts)",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://huggingface.co/Qwen/Qwen3-4B/blob/1cfa9a7208912126459214e8b04321603b3df60c/LICENSE",
+      "credit": "Qwen3 by the Qwen Team (Alibaba Cloud), Apache License 2.0; MLC builds by MLC AI.",
+      "notes": "The assistant's optional on-device models, downloaded from huggingface.co only when a visitor asks, after showing the size, licence and source. Their words are shown as explanation; facts, numbers and scripture never come from them.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "qwen3-5",
+      "kind": "software",
+      "title": "Qwen3.5 language models (4B and 9B), MLC builds (q4f16_1 and q4f32_1)",
+      "author": "Qwen Team, Alibaba Cloud; MLC builds by MLC AI",
+      "url": "https://huggingface.co/mlc-ai",
+      "version": "Each build pinned to its Hugging Face commit (src/ai/engine/catalogue.ts)",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/LICENSE",
+      "credit": "Qwen3.5 by the Qwen Team (Alibaba Cloud), Apache License 2.0; MLC builds by MLC AI.",
+      "notes": "Evaluation candidates only: measured on the project's own machine against the Qwen3 models, not offered to visitors.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []

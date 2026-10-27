@@ -38,7 +38,8 @@ const PROBE_SECONDS = 2;
 const LOCK_SECONDS = 20;
 const HOLD_OFF_SECONDS = 3;
 
-export function createResolutionGovernor(options: { enabled: boolean }): ResolutionGovernor {
+/** While `held()` is true (a render budget: another load shares the GPU) every sample is ignored and the scale stays. */
+export function createResolutionGovernor(options: { enabled: boolean; held?: () => boolean }): ResolutionGovernor {
   let scale = 1;
   let average = 1 / 60;
   let slowFor = 0;
@@ -70,7 +71,7 @@ export function createResolutionGovernor(options: { enabled: boolean }): Resolut
     sample(frameSeconds) {
       // A stall is left out of the average altogether: clamped and averaged in, a single
       // 400 ms hitch kept the average above SLOW for about a second and cost a step.
-      if (!options.enabled || !(frameSeconds > 0) || frameSeconds > STALL_SECONDS) return null;
+      if (!options.enabled || options.held?.() || !(frameSeconds > 0) || frameSeconds > STALL_SECONDS) return null;
       const dt = frameSeconds;
       cadence.sample(dt);
       average += (dt - average) * (1 - Math.exp(-dt / AVERAGE_SECONDS));
