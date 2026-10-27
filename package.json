@@ -28,6 +28,7 @@
     "preprocess:sky": "python3 -I scripts/sky/build.py"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.86",
     "intl-messageformat": "12.1.4",
     "satellite.js": "7.1.0",
     "three": "0.186.1"
