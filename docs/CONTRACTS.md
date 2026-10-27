@@ -401,7 +401,9 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   over it (the way back; on a wide screen the readout's card), which the interface reports on the
   window as `kf-universe-avoid`: a pointer at the edge slides along the edge past it, a tag gives way.
   A pointer's tag is inside the clear view whole, not only its point (it hangs toward the clear
-  view's middle; where there is no room for one, above a phone's sheet held sideways, it gives way).
+  view's middle; where there is no room for one, above a phone's sheet held sideways or between a
+  phone's readout and its sheet pulled up, it gives way at once, never drawn under them while it
+  fades; so does a tag beside its body held past the clear view's top or bottom).
   The laboratory's names take part (`SceneLabel.rank`: the larger first): none behind a world's disc
   or outside the clear view, each trying the four corners about its body, and two never show over
   each other; the chosen body's name and its marks (burn directions, Lagrange points, encounters: no
@@ -766,9 +768,11 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
 
 - **Chunk.** `src/explore/worlds/` (its own chunk, `scripts/check-bundle.ts` WORLDS_SOURCES, 30,000 B
   with `src/ui/explore/worlds-panel.ts` and `src/i18n/en.worlds.json`), asked for 2 s into a visit, at
-  once by a `world` or `smallBodies` command, again 30 s after a failure. `createWorlds(ctx, system,
-  obliquity, detail)` returns `Worlds`: `advance(jdTdb)` after the ten bodies are placed and before the
-  camera moves; `nearestKm(camera)` joins the depth range's nearest surface; `update(frame)` with the
+  once by a `world` or `smallBodies` command, again 30 s after a failure; its pipelines compiled
+  before it is first drawn, its maps put on the GPU as they come, and the governor holding off
+  meanwhile, so a first visit ends with all of it built, as a later one does. `createWorlds(ctx,
+  system, obliquity, detail, hold)` returns `Worlds`: `advance(jdTdb)` after the ten bodies are
+  placed and before the camera moves; `nearestKm(camera)` joins the depth range's nearest surface; `update(frame)` with the
   camera, lens, the ten bodies as placed, the exposure's adaptation and whether the real sky's worlds
   show (not in an experiment, on foot or on the way down); `labels(out)`; `nav(id)`, `navList()`,
   `host(id)`, `find(name)`, `pick(x, y)`, `setDetail`, `setLayer`, `setGrouped`, `view(focus)`,

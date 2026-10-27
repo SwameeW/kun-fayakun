@@ -125,8 +125,11 @@ const smooth = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** Loads the data and builds the worlds; the asteroid files beyond the first arrive afterwards. */
-export async function createWorlds(ctx: UniverseContext, system: SolarSystem, obliquity: number, detail: ExploreDetail): Promise<Worlds> {
+/**
+ * Loads the data and builds the worlds; the asteroid files beyond the first arrive afterwards.
+ * `hold` is called as a map goes up to the GPU (the explorer's governor judges no frame for a while).
+ */
+export async function createWorlds(ctx: UniverseContext, system: SolarSystem, obliquity: number, detail: ExploreDetail, hold: () => void = () => undefined): Promise<Worlds> {
   const [manifest, worldsFile, cometFile, mapsFile] = await Promise.all([
     ctx.assets.json<BeltManifest>(`${SMALL_BODIES_URL}manifest.json`),
     ctx.assets.json<WorldsFile>(`${SMALL_BODIES_URL}worlds.json`),
@@ -137,7 +140,17 @@ export async function createWorlds(ctx: UniverseContext, system: SolarSystem, ob
   const object = new Group();
   object.name = 'explore-small-worlds';
   const auKm = system.auKm;
-  const bodies = createWorldBodies(worldsFile.worlds, system, obliquity, mapsFile.maps, (file) => ctx.assets.texture(`${SMALL_BODIES_URL}${file}`));
+  const bodies = createWorldBodies(
+    worldsFile.worlds,
+    system,
+    obliquity,
+    mapsFile.maps,
+    (file) => ctx.assets.texture(`${SMALL_BODIES_URL}${file}`),
+    (map) => {
+      hold();
+      ctx.renderer.initTexture(map);
+    },
+  );
   object.add(bodies.object);
   const comets: Comets = createComets(cometFile.comets, auKm);
   object.add(comets.object);

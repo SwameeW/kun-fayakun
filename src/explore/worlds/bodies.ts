@@ -205,7 +205,11 @@ function makeMaterial(): { material: MeshBasicNodeMaterial; map: { value: Textur
   return { material, map: mapNode, mapShare: uMapShare, uniforms: { sun: uSun.value, eye: uEye.value, axes: uAxes.value, albedo: uAlbedo.value, light: uLight } };
 }
 
-export function createWorldBodies(records: readonly WorldRecord[], system: SolarSystem, obliquity: number, maps: Readonly<Record<string, WorldMap>> = {}, loadMap: (file: string) => Promise<Texture> = () => Promise.reject(new Error('no maps'))): WorldBodies {
+/**
+ * `loadMap` fetches a map's file; `upload` puts it on the GPU as it arrives (whether or not its world
+ * is still drawn then), so what a visit has seen is on the GPU by the time it ends.
+ */
+export function createWorldBodies(records: readonly WorldRecord[], system: SolarSystem, obliquity: number, maps: Readonly<Record<string, WorldMap>> = {}, loadMap: (file: string) => Promise<Texture> = () => Promise.reject(new Error('no maps')), upload: (map: Texture) => void = () => undefined): WorldBodies {
   const object = new Group();
   object.name = 'explore-worlds';
   const auKm = system.auKm;
@@ -261,7 +265,7 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
     object.add(mesh);
     return { mesh, material, map, mapShare, uniforms, showing: '' };
   });
-  // Maps load the first time their world is drawn as a mesh, and stay.
+  // Maps load the first time their world is drawn as a mesh, go up to the GPU as they come, and stay.
   const textures = new Map<string, Texture | 'loading' | 'failed'>();
   const mapFor = (name: string): Texture | null => {
     const entry = maps[name];
@@ -275,6 +279,7 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
           t.wrapS = RepeatWrapping;
           t.anisotropy = 8;
           t.needsUpdate = true;
+          upload(t);
           textures.set(name, t);
         },
         () => textures.set(name, 'failed'),
@@ -522,6 +527,7 @@ export function createWorldBodies(records: readonly WorldRecord[], system: Solar
     dispose() {
       geometry.dispose();
       for (const slot of pool) slot.material.dispose();
+      for (const t of textures.values()) if (typeof t !== 'string') t.dispose();
       dots.dispose();
     },
   };

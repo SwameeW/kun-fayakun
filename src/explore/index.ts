@@ -464,12 +464,14 @@ export default function create(): UniverseModule {
   let hoodLoading = false;
   /**
    * More worlds (./worlds, its own chunk: the small bodies, the moons, Uranus's and Neptune's rings,
-   * eclipses): asked for 6 s into a visit, once the entry's push-in has settled and the first maps have
-   * come (at once for a world asked for by name, flown to when it comes, or for the layer; again
-   * BEYOND_RETRY_S after a failure), and the layer's choice meanwhile.
+   * eclipses): asked for 2 s into a visit, once the engine has learned the display's rate (at once for
+   * a world asked for by name, flown to when it comes, or for the layer; again BEYOND_RETRY_S after a
+   * failure), and the layer's choice meanwhile. Their pipelines are compiled before they are first
+   * drawn and the governor judges nothing while they settle, so their coming holds no frame up; the
+   * first visit ends with all of them built, as a later one does.
    */
   let worlds: Worlds | null = null;
-  let worldsAt = 6;
+  let worldsAt = 2;
   let worldsLoading = false;
   let worldWanted: string | null = null;
   let worldsLayer = true;
@@ -758,9 +760,33 @@ export default function create(): UniverseModule {
     if (!c || !sys || !inputs) return;
     worldsLoading = true;
     import('./worlds')
-      .then((m) => m.createWorlds(c, sys, obliquityRad(inputs.physical), detail))
+      .then((m) => m.createWorlds(c, sys, obliquityRad(inputs.physical), detail, () => governor?.holdOff()))
+      .then(async (w) => {
+        // Every part compiled now, drawn yet or not (a comet's tails, a ring, a shadow, a world's
+        // mesh): one first drawn later would build its pipeline then, holding that frame up. The
+        // compile reads what to build as it is called, so each part is shown, and in view, only for the call.
+        const was = new Map<Object3D, readonly [boolean, boolean]>();
+        w.object.traverse((o) => {
+          was.set(o, [o.visible, o.frustumCulled]);
+          o.visible = true;
+          o.frustumCulled = false;
+        });
+        const compiled = compileForFrames([w.object]);
+        for (const [o, [visible, culled]] of was) {
+          o.visible = visible;
+          o.frustumCulled = culled;
+        }
+        await compiled;
+        return w;
+      })
       .then(
         (w) => {
+          // The explorer closed meanwhile: nothing to add them to.
+          if (ctx !== c) {
+            w.dispose();
+            return;
+          }
+          governor?.holdOff();
           worlds = w;
           root.add(w.object);
           (world?.all as NavBody[] | undefined)?.push(...w.navList());
@@ -2665,7 +2691,8 @@ export default function create(): UniverseModule {
       }
       // Clear of what stands over the view inside it (the way back, the readout's card): a pointer at the
       // edge slides along the edge past one; a tag beside its body that would sit under one gives way.
-      let under = form === 'edge' && (minY > maxY || minX > maxX);
+      const cramped = form === 'edge' && (minY > maxY || minX > maxX);
+      let under = cramped;
       if (form !== 'none') {
         const pad = state.blocked ? LABEL.marginPx : 0;
         for (const r of avoid) {
@@ -2684,7 +2711,12 @@ export default function create(): UniverseModule {
       const boxX = offView && edgeDx < 0 ? x + edgeDx - LABEL.widthPx : x + (offView ? edgeDx : LABEL.gapPx);
       const boxY = offView ? y + edgeDy - LABEL.tagPx / 2 : y - LABEL.tagPx;
       const room = state.blocked ? LABEL.clearAgain : 1;
-      let blocked = under;
+      // Under what covers the view wherever it goes: a pointer with no room for it in the clear view (a
+      // phone's sheet pulled up to its readout), or a tag beside its body held a little past the clear
+      // view's top or bottom (so it does not flicker between forms) where that puts it under the readout
+      // across a phone's top or the sheet. It gives way at once, never drawn there while it fades.
+      const covered = cramped || (form !== 'edge' && form !== 'none' && (boxY < insets.top || boxY + LABEL.tagPx > viewportPx - insets.bottom));
+      let blocked = under || covered;
       for (let t = 0; t < takenCount; t++) {
         const other = taken[t];
         if (!other) continue;
@@ -2740,8 +2772,8 @@ export default function create(): UniverseModule {
       const tagWant = showTag && !wait ? LABEL.opacity : 0;
       const edgeWant = showEdge && !wait ? LABEL.opacity : 0;
       const tagWas = state.tag;
-      state.tag = settleTo(tagWas, tagWant, state.edge, edgeWant > 0);
-      state.edge = settleTo(state.edge, edgeWant, tagWas, tagWant > 0);
+      state.tag = covered ? 0 : settleTo(tagWas, tagWant, state.edge, edgeWant > 0);
+      state.edge = covered ? 0 : settleTo(state.edge, edgeWant, tagWas, tagWant > 0);
       labelOpacity.set(id, state.tag);
       if (state.tag > 1e-3) {
         const label = state.tagLabel;
