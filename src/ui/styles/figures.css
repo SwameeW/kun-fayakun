@@ -135,40 +135,6 @@
   white-space: nowrap;
 }
 
-/* The legend's line for Chapter 2's polarisation streaks: its row opens and its text fades in with them. */
-.kf-cmb-lines-row {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 1.2s ease-in-out;
-}
-
-.kf-cmb-lines-row > .kf-cmb-lines {
-  min-block-size: 0;
-  overflow: hidden;
-  margin-block: 0;
-  opacity: 0;
-  transition: opacity 4s ease-in-out;
-}
-
-.kf-cmb-lines-row.is-visible {
-  grid-template-rows: 1fr;
-}
-
-.kf-cmb-lines-row.is-visible > .kf-cmb-lines {
-  opacity: 1;
-}
-
-/* Reduced motion: the row opens at once; its text still fades. */
-@media (prefers-reduced-motion: reduce) {
-  .kf-cmb-lines-row {
-    transition: none;
-  }
-}
-
-:is(.kf-reduced-motion, [data-reduced-motion="true"]) .kf-cmb-lines-row {
-  transition: none;
-}
-
 /* As a cue overlay over the scene: compact, leaving room for verse text below. */
 .kf-overlay-figure {
   inline-size: min(22rem, calc(100vw - 2 * var(--kf-gutter)));

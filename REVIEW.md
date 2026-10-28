@@ -164,35 +164,6 @@ record for anyone reading the code, not a list awaiting an outside reviewer.
   years, z ≈ 1,100, about 3,000 K) and the CMB today (2.7 K). The Planck map:
   correct projection and colour scale, credit "ESA and the Planck
   Collaboration". The fog must never be captioned "smoke".
-- Chapter 2's polarisation lines (from 73 s, after 41:11; built by
-  `scripts/cmb/polarisation.py`, described with their checks in
-  `public/assets/cmb/cmb-polarisation.json`). What was checked:
-  - The source: Q_STOKES, U_STOKES and PMASK of the same PR3 SMICA file as the
-    temperature map, nothing inpainted. PMASK apodised (cosine over 4°, holes
-    included); masked areas carry no lines.
-  - The convention: the file is COSMO (POLCCONV), the lines use the IAU angle
-    from Galactic north through east, U_IAU = -U. The pipeline's check stacks
-    the same direction code around the map's ~11,000 hot and ~11,000 cold spots
-    (20′ smoothing): tangential at 0.6° and radial at 1.2° around hot spots,
-    the reverse around cold ones (Komatsu et al. 2011, §7; Planck 2015 results
-    XVI, §8), at 30 to 50 standard errors; with U's sign left as in the file
-    (the same as a mirrored longitude) the rings average to a few per cent of that.
-    Read back from the published texture through cmb.json's (u, v), the lines
-    follow the field (mean cos 2Δ ≈ 0.83; mirrored, ≈ -0.08).
-  - The filter, which departs from ESA's 2015 image on purpose: in these maps
-    B-mode power (noise and residuals) is 40 to 70 % of E-mode power between
-    ℓ = 30 and 130, so filtered as ESA's image was (E and B around 5°) about a
-    sixth of what would be drawn is CMB signal. The lines follow E modes only,
-    Wiener-weighted by S/(S+N) measured from the maps themselves (N = BB),
-    high-passed from ℓ = 20 to 30 and smoothed to 3°: Planck's best estimate,
-    of which about half the drawn field's variance is signal
-    (`filter.signalFraction`). They fade where the filtered polarisation is
-    weak. The Discover card says as much ("still faint against Planck's noise,
-    so they show its best estimate").
-  - The drawing: evenly spaced streamlines (Jobard & Lefer 1997), 1.5° apart;
-    the directions are measured, where lines start and their spacing are not
-    (said on the card). The legend says "Lines: direction of polarisation
-    (Planck)"; the temperature colours are unchanged under them.
 - Chapter 3: reionisation, drawn as an illustration and tagged "Gas ionised
   by the first stars (illustration; time compressed)", kept apart from the
   dark matter's false colour (`src/chapters/ch03/reionisation.ts`): bubbles

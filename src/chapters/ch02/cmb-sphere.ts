@@ -66,21 +66,6 @@ export interface CmbManifest {
   temperature: { file: string; width: number; height: number; range: readonly [number, number] } | null;
 }
 
-/**
- * The fields of assets/cmb/cmb-polarisation.json this scene relies on (written by
- * scripts/cmb/polarisation.py): the direction of the light's polarisation drawn as thin lines, on
- * the temperature texture's own grid, so it is sampled at exactly the same (u, v).
- */
-export interface CmbLinesManifest {
-  file: string;
-  width: number;
-  height: number;
-  projection: string;
-  frame: string;
-  uAtLon0: number;
-  lonIncreases: string;
-}
-
 /** Radius of the sphere of last scattering in world units (docs/CONTRACTS.md). */
 export const CMB_RADIUS = 10;
 
@@ -107,13 +92,6 @@ const HALO = { radius: 1.7, near: 0.16, nearFalloff: 7, far: 0.04, farFalloff: 2
 const NEAR_FADE = { from: 0.8, to: 5 } as const;
 /** Camera distances (in sphere radii) over which the view turns from "sky" (inside) to "globe" (outside). */
 const OUTSIDE_BLEND = { from: 1.0, to: 1.35 } as const;
-/**
- * The polarisation lines shade the map's own colours, nothing else: a texel holds
- * x = (255 s - neutral) / 127, 0 where there is no line (between lines, masked, or too little
- * polarisation) and down to -1 at a line's core, which darkens the colour by `darken`. They
- * only darken, so the map stays under the bloom threshold and the lines never glow.
- */
-const LINES = { neutral: 128, darken: 0.9 } as const;
 
 export function checkManifest(manifest: CmbManifest): void {
   if (manifest.projection !== 'equirectangular' || manifest.frame !== 'galactic') {
@@ -125,20 +103,6 @@ export function checkManifest(manifest: CmbManifest): void {
   if (!manifest.temperature) throw new Error('ch02: cmb.json has no temperature texture (run npm run preprocess:cmb)');
 }
 
-/** The lines are sampled at the temperature texture's (u, v), so they must share its grid and orientation. */
-export function checkLinesManifest(lines: CmbLinesManifest, manifest: CmbManifest): void {
-  const t = manifest.temperature;
-  const same =
-    lines.projection === manifest.projection &&
-    lines.frame === manifest.frame &&
-    lines.uAtLon0 === manifest.uAtLon0 &&
-    lines.lonIncreases === manifest.lonIncreases &&
-    t !== null &&
-    lines.width === t.width &&
-    lines.height === t.height;
-  if (!same) throw new Error("ch02: cmb-polarisation.json does not share the temperature texture's grid (run npm run preprocess:cmb)");
-}
-
 export interface CmbSphere {
   /** The sphere and its halo. */
   readonly object: Group;
@@ -148,8 +112,6 @@ export interface CmbSphere {
    * warmUp it is drawn (black) even at fade 0, so its pipelines compile up front.
    */
   update(fade: number, spin: number, scale: number, camera: Vector3, warmUp: boolean): void;
-  /** 0..1 (eased by the caller): how strongly the polarisation lines shade the map. */
-  setLines(strength: number): void;
   dispose(): void;
 }
 
@@ -193,17 +155,15 @@ function buildLut(stops: ReadonlyArray<readonly [number, string]>, scale: Colour
   return lut;
 }
 
-export function createCmbSphere(map: Texture, manifest: CmbManifest, options: CmbSphereOptions, lines: Texture): CmbSphere {
+export function createCmbSphere(map: Texture, manifest: CmbManifest, options: CmbSphereOptions): CmbSphere {
   // Longitude wraps; latitude stops at the poles. Rows are stored bottom-up and KTX2
   // textures are never flipped on upload, so v = 0 samples the south galactic pole.
-  for (const t of [map, lines]) {
-    t.wrapS = RepeatWrapping;
-    t.wrapT = ClampToEdgeWrapping;
-    t.minFilter = LinearMipmapLinearFilter;
-    t.magFilter = LinearFilter;
-    t.anisotropy = Math.min(8, options.maxAnisotropy);
-    t.needsUpdate = true;
-  }
+  map.wrapS = RepeatWrapping;
+  map.wrapT = ClampToEdgeWrapping;
+  map.minFilter = LinearMipmapLinearFilter;
+  map.magFilter = LinearFilter;
+  map.anisotropy = Math.min(8, options.maxAnisotropy);
+  map.needsUpdate = true;
 
   const scale = buildColourScale(
     manifest.colormap.stops.map(([, hex]) => hex),
@@ -213,7 +173,6 @@ export function createCmbSphere(map: Texture, manifest: CmbManifest, options: Cm
   const lut = buildLut(manifest.colormap.stops, scale);
 
   const uFade = uniform(0);
-  const uLines = uniform(0);
   const uOutside = uniform(1);
   const uCentre = uniform(new Vector3());
   const uRadius = uniform(CMB_RADIUS);
@@ -249,14 +208,10 @@ export function createCmbSphere(map: Texture, manifest: CmbManifest, options: Cm
     const dudy = select(useA, dFdy(uA), dFdy(uB)).mul(lonSign);
     const v = asin(clamp(dir.y, -1, 1)).div(Math.PI).add(0.5);
     const uTex = uA.sub(0.5).mul(lonSign).add(manifest.uAtLon0);
-    const gradX = vec2(dudx, dFdx(v));
-    const gradY = vec2(dudy, dFdy(v));
-    const value = texture(map, vec2(uTex, v)).grad(gradX, gradY).r;
+    const value = texture(map, vec2(uTex, v)).grad(vec2(dudx, dFdx(v)), vec2(dudy, dFdy(v))).r;
     // Centre of each LUT texel: 0 → first texel, 1 → last.
     const lutU = value.mul((LUT_SIZE - 1) / LUT_SIZE).add(0.5 / LUT_SIZE);
-    // The polarisation lines, texel for texel on the temperature's grid (same u, v and filtering).
-    const line = clamp(texture(lines, vec2(uTex, v)).grad(gradX, gradY).r.mul(255).sub(LINES.neutral).div(127), -1, 0);
-    const mapped = texture(lut, vec2(lutU, 0.5)).rgb.mul(float(1).add(line.mul(LINES.darken).mul(uLines)));
+    const mapped = texture(lut, vec2(lutU, 0.5)).rgb;
 
     // Outside: limb darkening and a warm rim. Inside: a slightly dimmer sky.
     const normal = normalize(positionWorld.sub(uCentre));
@@ -339,9 +294,6 @@ export function createCmbSphere(map: Texture, manifest: CmbManifest, options: Cm
       // Hidden while dark: from inside it would otherwise hide the freed photons beyond it.
       object.visible = fade > 0 || warmUp;
     },
-    setLines(strength) {
-      uLines.value = strength;
-    },
     dispose() {
       geometry.dispose();
       innerMaterial.dispose();
@@ -350,7 +302,6 @@ export function createCmbSphere(map: Texture, manifest: CmbManifest, options: Cm
       haloMaterial.dispose();
       lut.dispose();
       map.dispose();
-      lines.dispose();
     },
   };
 }

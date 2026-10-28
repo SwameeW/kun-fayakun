@@ -411,19 +411,6 @@
             "planck-pr3-smica"
           ]
         }
-      },
-      {
-        "id": "lines",
-        "t": 80,
-        "kind": "measured",
-        "titleKey": "discover.ch02.lines.title",
-        "text": {
-          "key": "discover.ch02.lines.text",
-          "cite": [
-            "planck-pr3-smica",
-            "hu-white-1997"
-          ]
-        }
       }
     ],
     "process": {

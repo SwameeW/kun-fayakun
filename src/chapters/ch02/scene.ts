@@ -1,28 +1,17 @@
 import { ACESFilmicToneMapping, Group, MathUtils, type PerspectiveCamera } from 'three/webgpu';
 import type { ChapterContent, ChapterContext, ChapterModule, QualityProfile } from '../../core/types';
 import contentJson from './content.json';
-import messages from '../../i18n/en.ch02.json';
-import {
-  CMB_RADIUS,
-  checkLinesManifest,
-  checkManifest,
-  createCmbSphere,
-  type CmbLinesManifest,
-  type CmbManifest,
-  type CmbSphere,
-} from './cmb-sphere';
+import { CMB_RADIUS, checkManifest, createCmbSphere, type CmbManifest, type CmbSphere } from './cmb-sphere';
 import { createNoiseVolume } from '../shared/noise-volume';
 import { createMediumState, createPlasmaMedium, type PlasmaMedium } from '../shared/plasma-medium';
 import { createPhotons, type Photons } from './photons';
-import { checkLinesWindow, linesAt, photonLight, readEventTimes, stateAt } from './timing';
+import { photonLight, readEventTimes, stateAt } from './timing';
 
 /**
  * Chapter 2, "The first light": the camera starts inside the glowing, opaque
  * plasma of the early universe; at recombination it cools and clears into dark,
  * transparent space; then the camera draws back to see the sphere of last
- * scattering from outside, mapped with the real Planck CMB. After the verse, the
- * direction of the light's polarisation, as Planck measured it, comes onto the map
- * as fine lines.
+ * scattering from outside, mapped with the real Planck CMB.
  */
 
 const content = contentJson as unknown as ChapterContent;
@@ -61,32 +50,18 @@ interface Parts {
 }
 
 async function buildParts(ctx: ChapterContext, root: Group): Promise<Parts> {
-  const [manifest, linesManifest] = await Promise.all([
-    ctx.assets.json<CmbManifest>('assets/cmb/cmb.json'),
-    ctx.assets.json<CmbLinesManifest>('assets/cmb/cmb-polarisation.json'),
-  ]);
+  const manifest = await ctx.assets.json<CmbManifest>('assets/cmb/cmb.json');
   checkManifest(manifest);
-  checkLinesManifest(linesManifest, manifest);
   const file = manifest.temperature?.file;
   if (!file) throw new Error('ch02: cmb.json lists no temperature texture');
-  // The lines (about 0.4 MB) load with the map, so a seek or a deep link to them shows them at once.
-  const [map, lines, noise] = await Promise.all([
-    ctx.assets.ktx2(`assets/cmb/${file}`),
-    ctx.assets.ktx2(`assets/cmb/${linesManifest.file}`),
-    createNoiseVolume(NOISE_SIZE, NOISE_SEED),
-  ]);
+  const [map, noise] = await Promise.all([ctx.assets.ktx2(`assets/cmb/${file}`), createNoiseVolume(NOISE_SIZE, NOISE_SEED)]);
 
   const plasma = createPlasmaMedium(noise, ctx.quality.tier);
   const photons = createPhotons(ctx.quality.tier);
-  const sphere = createCmbSphere(
-    map,
-    manifest,
-    {
-      maxAnisotropy: ctx.renderer.getMaxAnisotropy(),
-      acesToneMapping: ctx.renderer.toneMapping === ACESFilmicToneMapping,
-    },
-    lines,
-  );
+  const sphere = createCmbSphere(map, manifest, {
+    maxAnisotropy: ctx.renderer.getMaxAnisotropy(),
+    acesToneMapping: ctx.renderer.toneMapping === ACESFilmicToneMapping,
+  });
   root.add(sphere.object, plasma.mesh, photons.field.mesh);
   return {
     plasma,
@@ -104,7 +79,6 @@ async function buildParts(ctx: ChapterContext, root: Group): Promise<Parts> {
 
 export default function create(): ChapterModule {
   const times = readEventTimes(content.cues);
-  checkLinesWindow(content.cues, content.duration);
   const root = new Group();
   root.name = 'ch02';
 
@@ -123,8 +97,6 @@ export default function create(): ChapterModule {
 
     async load(c) {
       ctx = c;
-      // The CMB legend's line for the polarisation lines (src/ui/figures.ts) comes with this chunk.
-      c.i18n?.extend('en.ch02.json', messages);
       parts = await buildParts(c, root);
     },
 
@@ -171,8 +143,6 @@ export default function create(): ChapterModule {
         reducedMotion: reduced,
       });
       parts.sphere.update(state.reveal, state.spin, fitToWidth(ctx.camera), camera, firstFrame);
-      // After the verse: Planck's polarisation directions ease onto the map (a pure function of t).
-      parts.sphere.setLines(linesAt(t) * state.reveal);
       firstFrame = false;
     },
 

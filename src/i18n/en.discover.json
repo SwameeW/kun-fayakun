@@ -30,8 +30,6 @@
   "discover.ch02.sky.text": "This is the Planck satellite’s map of that light, around you in its true directions. Its colours are tiny differences from an average of {temp} kelvin: blue a little colder, red a little warmer, by up to about 300 millionths of a degree.",
   "discover.ch02.globe.title": "The whole sky at once",
   "discover.ch02.globe.text": "Seen from outside, the same map wraps a globe, the sky’s mirror image. Its faint patches are the seeds from which, through gravity, the galaxies grew.",
-  "discover.ch02.lines.title": "Which way the light vibrates",
-  "discover.ch02.lines.text": "This light is slightly polarised: it vibrates a little more in one direction than in others, set when it last bounced off electrons that saw a little more light from some sides than from others. The lines follow that direction as Planck measured it, smoothed to patterns a few degrees across. At that size the signal is still faint against Planck’s noise, so they show its best estimate, and they fade where the signal is weak and near our galaxy’s plane, whose own glow is in the way. Where each line starts, and how close the lines run, is only a way of drawing them.",
   "discover.ch02.process": "Let the first light go",
   "discover.ch02.process.start": "Opaque fog",
   "discover.ch02.process.end": "Transparent: the first light",

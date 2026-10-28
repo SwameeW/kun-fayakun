@@ -19,7 +19,7 @@ export interface ValidationContext {
   content: ContentLoad;
   refs: Array<{ chapter: LoadedChapter; refs: ContentRefs }>;
   i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; worlds: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; aiEngine: MessageLoad; aiTools: MessageLoad; aiMind: MessageLoad; aiUi: MessageLoad; ar: MessageLoad;
-    /** Chapters' own message files (en.ch02.json and so on), added by each chapter's lazy chunk. */
+    /** Chapters' own message files (en.ch03.json and so on), added by each chapter's lazy chunk. */
     scenes: MessageLoad[];
   };
   /** The disclaimer from docs/SPEC.md section 1.7, without its quotation marks. */
