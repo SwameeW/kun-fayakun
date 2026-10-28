@@ -107,11 +107,11 @@ const INSIDE_COLOR = new Color(0.92, 0.58, 0.78);
  * luminance) rather than as more light, so the knots never brighten. Front particles in thin gas grow
  * by up to FRONT_GLOW of their size, their light spread wider rather than raised.
  */
-const FRONT_LIGHT = 0.06;
-const INSIDE_LIGHT = 0.6;
+const FRONT_LIGHT = 0.1;
+const INSIDE_LIGHT = 0.9;
 const INSIDE_CAP = 0.06;
-const INSIDE_TINT = 0.32;
-const FRONT_GLOW = 2.0;
+const INSIDE_TINT = 0.16;
+const FRONT_GLOW = 0.8;
 /** Luminance weights of linear sRGB (Rec. 709), and the rose's own luminance. */
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
 const INSIDE_LUMINANCE = 0.2126 * INSIDE_COLOR.r + 0.7152 * INSIDE_COLOR.g + 0.0722 * INSIDE_COLOR.b;
@@ -208,7 +208,7 @@ export function createWebParticles(field: Data3DTexture, box: number, ionisation
   const glow = front.mul(uGas).mul(thin);
   material.sizeNode = select(total.greaterThan(1e-4), uSize.mul(glow.mul(uGlow).add(1)), float(0));
   material.colorNode = varying(rgb);
-  material.opacityNode = varying(total.mul(near)).mul(softDisc(varying(mix(float(4), float(2), glow))));
+  material.opacityNode = varying(total.mul(near)).mul(softDisc(varying(mix(float(4), float(3), glow))));
 
   const geometry = createQuad();
   const sprite = new Sprite(material);
