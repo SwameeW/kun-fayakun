@@ -143,7 +143,8 @@ export default defineConfig<KfOptions>({
             name: 'visual',
             testMatch: VISUAL_SPECS,
             retries: 0,
-            use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS }, trace: 'off' as const, screenshot: 'off' as const },
+            // Frames uncapped (no vsync, no frame-rate limit): the time per frame is then what a view costs.
+            use: { ...desktopChromium, launchOptions: { args: [...WEBGPU_ARGS, '--disable-gpu-vsync', '--disable-frame-rate-limit'] }, trace: 'off' as const, screenshot: 'off' as const },
           },
         ]
       : []),

@@ -6,8 +6,8 @@
  *
  *   KF_VISUAL=1 KF_VISUAL_OUT=<dir> [KF_VISUAL_ONLY=ch03,explore-earth] npx playwright test --project=visual
  *
- * Writes <dir>/<name>.png and a line per view to <dir>/metrics.jsonl (GPU ms median and p95, the
- * slowest frame and draw calls). Run on a GPU machine. The visual project's forceWebGL option draws with WebGL2.
+ * Writes <dir>/<name>.png and a line per view to <dir>/metrics.jsonl: its median frame time with frames
+ * uncapped (what the view costs), the slowest frame, the timestamp queries' GPU time and draw calls. Run on a GPU machine. The visual project's forceWebGL option draws with WebGL2.
  */
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,7 +34,8 @@ async function shoot(page: Page, name: string, note: string): Promise<void> {
   });
   await page.waitForTimeout(1500);
   const s = (await page.evaluate(() => (window as unknown as KfHook).__kf.frameStats())) as unknown as FrameStats;
-  const line = { name, note, gpuMedianMs: s.gpuMedianMs, gpuP95Ms: s.gpuP95Ms, p99FrameMs: s.p99FrameMs, drawCalls: s.drawCalls, pixelRatio: s.pixelRatio };
+  // Frames are uncapped in the visual project: the median frame is the view's cost (the GPU's or the CPU's, whichever is slower).
+  const line = { name, note, frameMs: s.medianFps > 0 ? 1000 / s.medianFps : 0, p99FrameMs: s.p99FrameMs, gpuMedianMs: s.gpuMedianMs, drawCalls: s.drawCalls, pixelRatio: s.pixelRatio };
   appendFileSync(join(OUT, 'metrics.jsonl'), `${JSON.stringify(line)}\n`);
 }
 
@@ -80,6 +81,16 @@ const VIEWS: Array<{ name: string; pose: UniversePose; note: string }> = [
 
 test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 mkdirSync(OUT, { recursive: true });
+
+/**
+ * The Earth's streamed imagery (Sentinel-2 cloudless, NASA's daily mosaic) and heights come from the
+ * real hosts, as a visitor's do: close up they are most of the picture. The other live services (the
+ * satellites' elements, the earthquakes) keep their canned answers, so the views stay the same run to run.
+ */
+const MAP_HOSTS = ['tiles.maps.eox.at', 'gibs.earthdata.nasa.gov', 's3.amazonaws.com'];
+test.beforeEach(async ({ page }) => {
+  await page.route((url) => MAP_HOSTS.includes(url.hostname), (route) => route.continue());
+});
 
 /** Every shot of the film: once at its middle, or at a third and two thirds when it is longer than 40 s. */
 test('the film, shot by shot', async ({ page, kf }) => {
@@ -152,22 +163,27 @@ test('the explorer: the Earth at several lights and heights, and the other world
   }
 });
 
-/** Walk here from 3000 km: frames every half second of the descent, and the ground once on foot. */
-for (const [name, pose] of [
-  ['descent-day', { body: 'earth', distanceKm: EARTH_KM + 3000, azimuthDeg: -5, elevationDeg: 40 }],
-  ['descent-dusk', { body: 'earth', distanceKm: EARTH_KM + 3000, azimuthDeg: 78, elevationDeg: 30 }],
+/**
+ * A walk asked for from 45,000 km (the explorer's own command): frames every fifth of a second of the way
+ * down, and the ground once on foot. By day below Everest at local noon, looking at it; at dusk in the
+ * Hooker Valley under Aoraki, the Sun about 15 degrees up in the west, looking toward it.
+ */
+for (const [name, walk] of [
+  ['descent-day', { lat: 27.98, lon: 86.83, headingDeg: 80, pitchDeg: 8 }],
+  ['descent-dusk', { lat: -43.7, lon: 170.1, headingDeg: 280, pitchDeg: 3 }],
 ] as const) {
   test(`${name}: from orbit to the ground on foot`, async ({ page, kf }) => {
-    test.setTimeout(30 * 60_000);
+    test.setTimeout(15 * 60_000);
     test.skip(!wanted(name), 'not asked for');
     await openExplorer(page, kf);
-    await settle(page, pose);
-    await page.waitForFunction(() => (window as unknown as KfHook).__kf.universe.state()?.walkHere?.world === 'earth', null, { timeout: 30_000 });
-    await page.getByTestId('world-walk').click();
-    for (let k = 0; k < 40; k += 1) {
+    await settle(page, { body: 'earth', distanceKm: 45_000, azimuthDeg: 0, elevationDeg: 15 });
+    await page.evaluate((w) => {
+      (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', world: 'earth', ...w });
+    }, walk);
+    for (let k = 0; k < 60; k += 1) {
       const state = await page.evaluate(() => {
         const kfHook = (window as unknown as KfHook).__kf;
-        kfHook.step(30, 1 / 60);
+        kfHook.step(12, 1 / 60);
         const v = kfHook.universe.state();
         return { walk: v?.walk?.state ?? null, km: v?.altitudeKm ?? 0 };
       });
@@ -176,5 +192,14 @@ for (const [name, pose] of [
       await shoot(page, `${name}-${String(k).padStart(2, '0')}`, `${state.walk ?? 'descending'}, ${state.km.toFixed(state.km < 10 ? 3 : 0)} km`);
       if (state.walk === 'walking') break;
     }
+    // On foot: five seconds for the eye to adapt to the ground's light and for its finer heights and imagery.
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.step(300, 1 / 60);
+    });
+    await page.waitForTimeout(5000);
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.step(60, 1 / 60);
+    });
+    await shoot(page, `${name}-ground`, 'on foot, five seconds after landing');
   });
 }
