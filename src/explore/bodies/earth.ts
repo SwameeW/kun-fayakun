@@ -72,7 +72,7 @@ const DRIFT_SLOWS = { below: 20_000 / 6371, least: 0.003 } as const;
  * from `crowded[0]` (wholly by `crowded[1]`) that it can show nothing but soft blobs, where the shell
  * gives way as the view closes in (../earth-tiles cloudsAt): from low orbit the near cloud, not the far.
  */
-const CLOUD_CLOSE = { smooth: [6, 14], crowded: [16, 48] } as const;
+const CLOUD_CLOSE = { smooth: [6, 14], crowded: [12, 32] } as const;
 /** Cloud tops' reflectance (bright, slightly short of fresh snow), and how dark a cloud's shadow is on the ground. */
 const CLOUD_ALBEDO = 0.86;
 const CLOUD_SHADOW = 0.7;
