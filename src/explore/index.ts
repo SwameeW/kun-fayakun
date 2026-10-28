@@ -134,6 +134,18 @@ type DescentWorld = 'venus' | 'jupiter';
 const DESCENT_IDS: readonly DescentWorld[] = ['venus', 'jupiter'];
 /** The dip into or out of a walk: seconds to dark, and back to light. */
 const WALK_DIP = { downS: 0.25, upS: 0.4 } as const;
+/**
+ * The way down on the Earth (motion allowed): after the dip into the walk at the lowest orbit, the
+ * camera falls down the walker's vertical through the air to its eye over `seconds`, its height above
+ * the eye easing in log terms (so it falls as fast as it seems to: the ground's flow keeps its pace),
+ * offset by `nearKm` so the last few hundred metres settle rather than crawl; it looks straight down
+ * at first and lifts to the walker's own look as it comes down, by (1 - progress)^`lift`, so the
+ * horizon and the blue limb come into view in its upper half from about 40 km. The rings and the sky
+ * drawn on the way are the walk's own (./walk), with no cut between.
+ */
+const APPROACH = { seconds: 7, nearKm: 0.5, lift: 2.7 } as const;
+/** No input: the walker stands still while the camera comes down to it. */
+const STANDING: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
 /** The worlds there is ground to walk on. */
 type WalkWorld = WalkableWorld;
 const WALKABLE: readonly BodyId[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
@@ -262,6 +274,35 @@ const smootherstep = (a: number, b: number, x: number): number => {
   const u = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return u * u * u * (u * (u * 6 - 15) + 10);
 };
+
+/**
+ * The camera on the way down to the walker's eye (APPROACH), `a.t` seconds in, from `a.fromKm` above
+ * the eye: on the eye's vertical, looking along the walker's heading, tipped from straight down up to
+ * the walker's own pitch; the walker's eye pose itself once it is over. Sets `a`'s progress and height.
+ */
+function approachPose(pose: { position: readonly number[]; forward: readonly number[]; up: readonly number[] }, a: { t: number; fromKm: number; progress: number; km: number }): { position: number[]; forward: number[]; up: number[] } {
+  const p = [pose.position[0] ?? 0, pose.position[1] ?? 0, pose.position[2] ?? 1];
+  const f = [pose.forward[0] ?? 0, pose.forward[1] ?? 0, pose.forward[2] ?? 1];
+  const r = Math.hypot(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0) || 1;
+  const u = p.map((x) => x / r);
+  // The walker's heading (its look made level) and its pitch.
+  const along = f.reduce((sum, x, k) => sum + x * (u[k] ?? 0), 0);
+  const level = f.map((x, k) => x - along * (u[k] ?? 0));
+  const l = Math.hypot(level[0] ?? 0, level[1] ?? 0, level[2] ?? 0) || 1;
+  const h = level.map((x) => x / l);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, along)));
+  const q = smootherstep(0, 1, a.t / APPROACH.seconds);
+  const c = APPROACH.nearKm;
+  const km = Math.max(0, (a.fromKm + c) * (c / (a.fromKm + c)) ** q - c);
+  const tilt = pitch + (-Math.PI / 2 - pitch) * (1 - q) ** APPROACH.lift;
+  a.progress = q;
+  a.km = km;
+  return {
+    position: p.map((x, k) => x + (u[k] ?? 0) * km),
+    forward: h.map((x, k) => x * Math.cos(tilt) + (u[k] ?? 0) * Math.sin(tilt)),
+    up: h.map((x, k) => -x * Math.sin(tilt) + (u[k] ?? 0) * Math.cos(tilt)),
+  };
+}
 
 /** Lambert sphere's phase function: the share of light a sphere sends back at phase angle alpha. */
 function lambertPhase(alpha: number): number {
@@ -437,6 +478,11 @@ export default function create(): UniverseModule {
    */
   let walkShown = false;
   let walkDip: { into: boolean; t: number; switched: boolean } | null = null;
+  /**
+   * The way down to the walker's eye (APPROACH), while it runs: seconds into it, the height above the
+   * eye it began at (km, NaN until its first frame), and this frame's progress (0 to 1) and height.
+   */
+  let approach: { t: number; fromKm: number; progress: number; km: number } | null = null;
   /**
    * Down through an atmosphere (./descent, its own chunk): each world's made the first time, `descent`
    * the one under way, shown once the picture has dipped into it; the on-screen pad's climb (-1 hurry
@@ -855,9 +901,14 @@ export default function create(): UniverseModule {
    * it goes. A reduced-motion cut keeps the old body's until it cuts (then the exposure jumps).
    */
   const exposureTarget = (): number => {
-    // On foot the eye adapts to the light where it stands (./walk/light), not to the distance from the Sun.
+    // On foot the eye adapts to the light where it stands (./walk/light), not to the distance from the Sun;
+    // on the way down to it, from the orbit's exposure to that as it comes down.
     const metered = walking ? walk?.exposure() : null;
-    if (metered) return metered;
+    if (metered) {
+      if (!approach) return metered;
+      const orbit = exposureFor(walkWorld);
+      return Math.exp(Math.log(orbit) + (Math.log(metered) - Math.log(orbit)) * approach.progress);
+    }
     const to = exposureFor(nav.focus);
     if (!navOut.from) return to;
     const from = exposureFor(navOut.from);
@@ -932,7 +983,9 @@ export default function create(): UniverseModule {
     if (walkShown && w) {
       const molar = airMolar[w.world];
       if (w.pressureKpa === null || molar === undefined) return { air: null, suit: true };
-      const densityKgM3 = (w.pressureKpa * 1000 * molar) / (8.314462618 * ((w.meanTempC ?? 15) + 273.15));
+      // On the way down to the walker, the air's density where the camera is (thinning by e every scale height above the feet).
+      const thin = approach ? Math.exp(-approach.km / (walkAir.scaleHeightKm ?? 8.5)) : 1;
+      const densityKgM3 = ((w.pressureKpa * 1000 * molar) / (8.314462618 * ((w.meanTempC ?? 15) + 273.15))) * thin;
       return { air: { densityKgM3, windMs: SOUND_BREEZE[w.world] ?? 5, brightHz: SOUND_BRIGHT[w.world] ?? 1500 }, suit: false };
     }
     const d = viewState.descent;
@@ -984,8 +1037,8 @@ export default function create(): UniverseModule {
     v.time.hijri = lab?.active ? null : hijri;
     v.islamic = lab?.active ? null : (islamic?.view() ?? null);
     const walkView = walk?.view() ?? null;
-    // Landed but not yet shown (the glide down, the dip): still landing, as far as anyone looking can tell.
-    if (walkView?.state === 'walking' && !walkShown) walkView.state = 'landing';
+    // Landed but not yet shown (the glide down, the dip, the way down to the eye): still landing, as far as anyone looking can tell.
+    if (walkView?.state === 'walking' && (!walkShown || approach)) walkView.state = 'landing';
     if (walkView) {
       walkView.fovDeg = navOut.fov;
       walkView.timeCapped = !timePaused && Math.abs(timeRate) > FOOT_MAX_RATE;
@@ -1365,6 +1418,7 @@ export default function create(): UniverseModule {
     // Asked for again while dipping out of a walk on this world, before the dark: the dip turns back in.
     if (walkDip && !walkDip.into && !walkDip.switched && walkWorld === on) walkDip.into = true;
     walkAsked = { on, lat, lon, headingDeg, pitchDeg };
+    approach = null;
     // The descent: with the world in view, the camera glides down over the place to the lowest orbit
     // while the ground loads (at once with reduced motion); the walk is dipped into once both are done.
     if (world && nav.focus === on && !walkShown && !descentShown) {
@@ -1560,6 +1614,7 @@ export default function create(): UniverseModule {
     walkShown = false;
     walkDip = null;
     walkReturn = null;
+    approach = null;
   };
 
   /**
@@ -1913,9 +1968,12 @@ export default function create(): UniverseModule {
           walkShown = true;
           // Landed from a descent (Venus's): the descent ends as the walk shows.
           if (descent) endDescent(true);
+          // On the Earth, with motion: down through the air to the eye from here (reduced motion: at once).
+          if (walkWorld === 'earth' && !c.reducedMotion) approach = { t: 0, fromKm: Number.NaN, progress: 0, km: 0 };
         } else {
           walk?.stop();
           walkShown = false;
+          approach = null;
           // Back up to the orbit the descent left (unless a trip has taken the camera elsewhere).
           const back = walkReturn;
           walkReturn = null;
@@ -1938,7 +1996,8 @@ export default function create(): UniverseModule {
       walkStep.jump = walkInput.jump || walkPad.jump;
       // On foot, Esc is the walk's: the climb back to orbit counts as on foot.
       escapeHeld = performance.now() + 1000;
-      const pose = walk.step(dt, walkStep);
+      // On the way down the walker stands still.
+      const pose = walk.step(dt, approach ? STANDING : walkStep);
       // Landed: once any glide down has ended, the picture dips into the walk.
       if (pose && !walkShown && !walkDip && !nav.gliding) walkDip = { into: true, t: 0, switched: false };
       if (pose && walkShown) {
@@ -1947,7 +2006,18 @@ export default function create(): UniverseModule {
         const at = walkWorld === 'earth' ? walk.where() : null;
         const makkah = at ? site('mecca') : undefined;
         const kaabaKm = at && makkah ? centralAngle(at.lat, at.lon, makkah.lat, makkah.lon) * sys.specs.earth.radiusKm : Infinity;
-        eyeAt(pose, walkWorld, Math.max(walkFov, MathUtils.radToDeg(2 * Math.atan(MAKKAH_FRAME.minWidthKm / 2 / kaabaKm))));
+        const fov = Math.max(walkFov, MathUtils.radToDeg(2 * Math.atan(MAKKAH_FRAME.minWidthKm / 2 / kaabaKm)));
+        const a = approach;
+        if (a) {
+          // Down through the air to the eye (held where it is while the picture dips back out).
+          if (Number.isNaN(a.fromKm)) {
+            const e = sys.bodies[walkWorld].position;
+            a.fromKm = Math.max(1, Math.hypot(navOut.position.x - e.x, navOut.position.y - e.y, navOut.position.z - e.z) - Math.hypot(...pose.position));
+          }
+          if (!walkDip) a.t += dt;
+          eyeAt(approachPose(pose, a), walkWorld, fov);
+          if (a.t >= APPROACH.seconds) approach = null;
+        } else eyeAt(pose, walkWorld, fov);
       }
     }
     // Down through an atmosphere: its dip, then its eye in place of the navigator's.
@@ -1981,8 +2051,8 @@ export default function create(): UniverseModule {
         if (v?.atBottom && descent.world === 'venus' && !walk?.active && !walkAsked) startWalk('venus', v.hereLatDeg, v.hereLonDeg);
       }
     }
-    // Mouse-look lasts only while an eye is shown on foot or on the way down.
-    if (!walking && !descending && document.pointerLockElement === c.renderer.domElement) document.exitPointerLock();
+    // Mouse-look lasts only while an eye is shown on foot (not on its way down to it) or on the way down through a probe's air.
+    if ((!walking || approach) && !descending && document.pointerLockElement === c.renderer.domElement) document.exitPointerLock();
     origin.setCamera(navOut.position);
     BODY_IDS.forEach((id, i) => {
       const p = placed[id];
@@ -2132,7 +2202,8 @@ export default function create(): UniverseModule {
         entering || stretch.amount < 1 || hiddenBodies.has('earth')
           ? null
           : standing
-            ? { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: WALK_FOOTPRINT_KM / sys.specs.earth.radiusKm }
+            ? // On the way down, a pixel's span there from the camera's height (as from orbit), down to the walker's.
+              { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: Math.max(WALK_FOOTPRINT_KM, approach ? approach.km / scenePxPerTan : 0) / sys.specs.earth.radiusKm }
             : earthAim(sys, scenePxPerTan);
       earthTiles.update(aim, dt, c.reducedMotion);
       // How far the lens may narrow: the day mosaic stops at 250 m per pixel, and over Makkah the
@@ -2322,7 +2393,7 @@ export default function create(): UniverseModule {
       unit(scratch, sys.bodies[walkWorld].position, sys.bodies.sun.position);
       const sunWorld: [number, number, number] = [scratch.x * (m[0] ?? 1) + scratch.y * (m[1] ?? 0) + scratch.z * (m[2] ?? 0), scratch.x * (m[3] ?? 0) + scratch.y * (m[4] ?? 1) + scratch.z * (m[5] ?? 0), scratch.x * (m[6] ?? 0) + scratch.y * (m[7] ?? 0) + scratch.z * (m[8] ?? 1)];
       const subSolarLon = MathUtils.radToDeg(Math.atan2(-sunWorld[2], sunWorld[0]));
-      walk.place({ centre: placed[walkWorld].rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt(walkWorld), subSolarLon, near: lens.near, far: lens.far, exposure: adapted, renderer: c.renderer, camera, eye: walking });
+      walk.place({ centre: placed[walkWorld].rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt(walkWorld), subSolarLon, near: lens.near, far: lens.far, exposure: adapted, renderer: c.renderer, camera, shown: walking, eye: walking && !approach });
     }
 
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
@@ -3182,9 +3253,9 @@ export default function create(): UniverseModule {
             return;
           }
           if (walk?.active) {
-            // A drag moves the scene with it if the visitor chose so (mouse-look never does).
+            // A drag moves the scene with it if the visitor chose so (mouse-look never does); on the way down it waits.
             const sense = walkScene && document.pointerLockElement !== c.renderer.domElement ? -1 : 1;
-            walk.look(dx * sense, dy * sense);
+            if (!approach) walk.look(dx * sense, dy * sense);
             return;
           }
           if (descent?.active) {
@@ -3200,7 +3271,7 @@ export default function create(): UniverseModule {
             return;
           }
           if (walk?.active) {
-            walk.look(walkScene ? -dx : dx, walkScene ? -dy : dy);
+            if (!approach) walk.look(walkScene ? -dx : dx, walkScene ? -dy : dy);
             return;
           }
           if (descent?.active) {
@@ -3216,7 +3287,7 @@ export default function create(): UniverseModule {
             return;
           }
           // On foot the view narrows and widens (binoculars to a wide lens).
-          if (walk?.active) walkFov = Math.min(WALK_ZOOM.max, Math.max(WALK_ZOOM.min, walkFov * Math.exp(Number.isFinite(dLn) ? dLn : 0)));
+          if (walk?.active && !approach) walkFov = Math.min(WALK_ZOOM.max, Math.max(WALK_ZOOM.min, walkFov * Math.exp(Number.isFinite(dLn) ? dLn : 0)));
           if (walk?.active || descent?.active) return;
           stretch.steered = true;
           nav.zoom(w, dLn);
@@ -3303,8 +3374,8 @@ export default function create(): UniverseModule {
           }
           return false;
         },
-        // What is shown, not what is asked for: landing, the camera still waits in orbit.
-        onFoot: () => (walking ? 'ground' : descending ? 'air' : null),
+        // What is shown, not what is asked for: landing, the camera still waits in orbit or comes down to the eye.
+        onFoot: () => (walking && !approach ? 'ground' : descending ? 'air' : null),
         orbit: () => {
           if (hoodShown) {
             hood?.toggleMode();

@@ -1,5 +1,5 @@
 import { BufferAttribute, BufferGeometry, DoubleSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, Quaternion, Vector3, Vector4, type Node, type Texture } from 'three/webgpu';
-import { abs, acos, asin, atan, attribute, clamp, cos, Discard, dot, exp, float, Fn, fwidth, If, length, max, min, mix, modelWorldMatrix, normalize, normalWorldGeometry, positionView, positionWorld, pow, smoothstep, step, uniform, vec3, vec4, viewZToLogarithmicDepth } from 'three/tsl';
+import { abs, acos, asin, atan, attribute, clamp, cos, Discard, dot, exp, float, Fn, fwidth, If, length, max, min, mix, modelWorldMatrix, normalize, normalWorldGeometry, positionView, positionWorld, pow, select, smoothstep, step, uniform, vec3, vec4, viewZToLogarithmicDepth } from 'three/tsl';
 import { bumpGradient, tiltNormal } from '../bodies/shading';
 import { sunTransmittance, type AirModel } from '../render/air';
 import { AIRLESS_FILL, GROUND_KNEE, horizonRise, MARS_DUST, NIGHT_SKY, REGOLITH, VENUS_FILL, venusDay, type LightKind } from './light';
@@ -19,7 +19,8 @@ const HELD_KM = [0.2, 2] as const;
 /**
  * The ground under a walker (on the Earth, the Moon, Mars, Mercury or Venus): nested square rings of real terrain (a geometry clipmap),
  * each twice the size and half the detail of the one inside it, from about 8 m between points at
- * the feet to 8 km at 200 km away, so the horizon is real ground at every height a walker reaches.
+ * the feet to 8 km at 200 km away, so the horizon is real ground at every height a walker reaches
+ * (on the Earth, three more out to about 1,600 km for the way down from orbit, drawn only then).
  * Heights come from the terrain tiles (./terrain) a zoom finer than each ring's spacing; each ring re-centres
  * as the walker moves, refilling a few rings a frame, and refills as finer tiles arrive (all at once
  * when the walk lands or re-anchors, so no ring is ever drawn about the wrong anchor). Each ring
@@ -48,7 +49,14 @@ const HELD_KM = [0.2, 2] as const;
  */
 
 export const GROUND = {
+  /** Rings on foot (the outermost about 200 km out: past every horizon a walker sees). */
   levels: 11,
+  /**
+   * Rings more on the Earth, drawn only from above (on the way down through the air): to about 1,600 km
+   * out, past the horizon from the lowest orbit, so the ground is real ground with its relief to the
+   * horizon at every height, with no edge to see.
+   */
+  farLevels: 3,
   /** Cells along each side of a ring. */
   cells: 48,
   /** Metres between points in the innermost ring. */
@@ -86,6 +94,17 @@ export const HORIZON = { directions: 8, penumbraRad: 0.012 } as const;
  * of this roughness (a GGX distribution's alpha) into a path of light toward a low Sun.
  */
 const WATER = { body: 0.35, roughness: 0.18, f0: 0.02 } as const;
+/**
+ * The coast between a ring's sea and land points, where they are `fromKm` or more apart: the imagery's
+ * sea there is dark (linear luminance under `grey[0]`, none over `grey[1]`) and bluer than it is red
+ * (blue over red from `blue[0]`, all of it by `blue[1]`).
+ */
+const COAST = { fromKm: 0.5, grey: [0.02, 0.05], blue: [1.0, 1.4] } as const;
+/**
+ * From above, a ring is kept for `joinSpacings` of its own spacings inside the edge of the ring within
+ * it, `depth` deeper (in the logarithmic depth, 0 to 1): behind any ground over it, in front of the sky.
+ */
+const FILL = { joinSpacings: 2, depth: 0.02 } as const;
 
 /**
  * The fine detail's brightness (its grain's share of the albedo), the steepest it tilts the ground (the
@@ -105,6 +124,8 @@ export interface GroundFrame {
   near: number;
   far: number;
   exposure: number;
+  /** How far the camera is above the walker's eye on the way down (km; on foot 0): the far rings are drawn then, and the joins filled (FILL). */
+  aboveKm?: number;
 }
 
 export interface Ground {
@@ -199,9 +220,10 @@ export const MARS_HAZE = { colour: [MARS_SKY.horizon[0] * MARS_SKY.scale, MARS_S
 /**
  * The ground for a world: its colour at a direction from its centre, its light, whether ground below
  * sea level is drawn at sea level (the Earth's, whose sea is not drawn; elsewhere the heights are the
- * ground's own), and its illustrative surface (./surface).
+ * ground's own), its illustrative surface (./surface), and whether it has the far rings
+ * (GROUND.farLevels: the Earth's, for the way down).
  */
-export function createGround(colour: (direction: Vec3Node) => Vec3Node, options: { light: GroundLight; seaLevel?: boolean; surface?: SurfaceStyle }): Ground {
+export function createGround(colour: (direction: Vec3Node) => Vec3Node, options: { light: GroundLight; seaLevel?: boolean; surface?: SurfaceStyle; farRings?: boolean }): Ground {
   const light = options.light;
   const seaLevel = options.seaLevel ?? true;
   const surface = options.surface ?? EARTH_SURFACE;
@@ -221,6 +243,8 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
   const uCentre = uniform(new Vector3());
   const uRadius = uniform(1);
   const uDay = uniform(1);
+  /** 1 from above (on the way down), where a ring under the one inside it fills any gap at the join (FILL); 0 on foot. */
+  const uFill = uniform(0);
   /** Sunlight reaching the ground for the Sun's height there (mu), setting over its disc. */
   const sunlight = (mu: FloatNode): Vec3Node => {
     const air = light.air;
@@ -281,7 +305,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
   const edge = perimeter();
   const stats = { filled: 0, refills: 0 };
 
-  const rings: Ring[] = Array.from({ length: GROUND.levels }, (_, level) => {
+  const rings: Ring[] = Array.from({ length: GROUND.levels + (options.farRings ? GROUND.farLevels : 0) }, (_, level) => {
     const spacingKm = (GROUND.spacingM * 2 ** level) / 1000;
     const count = GRID + PERIMETER;
     const geometry = new BufferGeometry();
@@ -310,9 +334,15 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
     const material = new MeshBasicNodeMaterial({ side: DoubleSide, fog: false });
     const dir = normalize(attribute<'vec3'>('direction', 'vec3'));
     material.colorNode = Fn(() => {
-      // Where the ring inside lies, this one gives way (its skirt covers the join).
+      // Where the ring inside lies, this one gives way (its skirt covers the join). From above, on the way
+      // down, it stays along the join (FILL: where it faces the camera, behind everything else): seen
+      // steeply, a ray could slip between a ring's edge and the coarser ground beyond it, and showed the
+      // sky below.
       const t = attribute<'vec2'>('tangent2', 'vec2');
-      If(inner.w.greaterThan(0.5).and(abs(t.x.sub(inner.x)).lessThan(inner.z)).and(abs(t.y.sub(inner.y)).lessThan(inner.z)), () => {
+      const into = max(abs(t.x.sub(inner.x)), abs(t.y.sub(inner.y)));
+      const inside = inner.w.greaterThan(0.5).and(into.lessThan(inner.z));
+      const join = into.greaterThan(inner.z.sub(FILL.joinSpacings * spacingKm)).and(uFill.greaterThan(0.5)).and(dot(normalWorldGeometry, positionWorld).lessThan(0));
+      If(inside.and(join.not()), () => {
         Discard();
       });
       // The fine detail, over the ground's own metres (east and north of the anchor).
@@ -352,7 +382,13 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         const spread = float(a2).div(nh.mul(nh).mul(a2 - 1).add(1).pow(2).mul(Math.PI));
         const glint = sunlight(mu).mul(uLight).mul(spread).mul(fresnel).div(nv.mul(4)).mul(shadow);
         const water = base.mul(WATER.body).mul(sunlight(mu).mul(uLight).mul(max(mu, 0)).add(sky)).add(skyLight(mu).mul(uLight).mul(fresnel)).add(glint);
-        const lit = mix(land, water, attribute<'vec2'>('flags', 'vec2').y);
+        // Where a ring's points are far apart, its points' sea and land would draw the coast as straight
+        // lines between them: between a sea point and a land point the coast is where the imagery is the
+        // sea's colour (dark, and bluer than red: COAST).
+        const sea = attribute<'vec2'>('flags', 'vec2').y;
+        const seaLike = smoothstep(COAST.grey[1], COAST.grey[0], dot(base, vec3(0.2126, 0.7152, 0.0722))).mul(smoothstep(COAST.blue[0], COAST.blue[1], base.z.div(max(base.x, 1e-4))));
+        const wet = spacingKm >= COAST.fromKm ? select(sea.greaterThan(0.999), float(1), select(sea.lessThan(0.001), float(0), seaLike)) : sea;
+        const lit = mix(land, water, wet);
         // The air between: the ground dimmed by it, and its own light added (the same light as the sky's).
         // Beyond a few hundred metres the land is held under the bloom (./sky heldUnderBloom, by the far
         // ground's knee, ./light GROUND_KNEE: above the sky's, so sunlit snow stays brighter than shaded
@@ -367,7 +403,9 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       const fade = float(1).sub(exp(length(positionView).div(haze.km).negate()));
       return vec4(mix(land, vec3(...haze.colour).mul(uDay).mul(uLight), fade), 1);
     })();
-    material.depthNode = viewZToLogarithmicDepth(positionView.z, uNear, uFar);
+    const t2 = attribute<'vec2'>('tangent2', 'vec2');
+    const under = inner.w.greaterThan(0.5).and(max(abs(t2.x.sub(inner.x)), abs(t2.y.sub(inner.y))).lessThan(inner.z));
+    material.depthNode = min(viewZToLogarithmicDepth(positionView.z, uNear, uFar).add(select(under, float(FILL.depth), float(0))), 0.99999);
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.name = `explore-walk-ring-${level}`;
@@ -604,7 +642,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         // Where the ring inside lies (less half a spacing, so the two overlap rather than part).
         const inside = rings[level - 1];
         if (inside) ring.inner.value.set(inside.centre[0], inside.centre[1], inside.halfKm - inside.spacingKm / 2, inside.placedFor === '' ? 0 : 1);
-        ring.mesh.visible = ring.placedFor !== '';
+        ring.mesh.visible = ring.placedFor !== '' && (level < GROUND.levels || (frame.aboveKm ?? 0) > 0);
       });
       // The anchor's place relative to the camera, and the world's turn.
       const m = frame.basis;
@@ -641,6 +679,7 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
       const upR = [ax * (m[0] ?? 1) + ay * (m[3] ?? 0) + az * (m[6] ?? 0), ax * (m[1] ?? 0) + ay * (m[4] ?? 1) + az * (m[7] ?? 0), ax * (m[2] ?? 0) + ay * (m[5] ?? 0) + az * (m[8] ?? 1)];
       const l = Math.hypot(upR[0] ?? 0, upR[1] ?? 0, upR[2] ?? 0) || 1;
       const sinSun = ((upR[0] ?? 0) * frame.sun.x + (upR[1] ?? 0) * frame.sun.y + (upR[2] ?? 0) * frame.sun.z) / l;
+      uFill.value = (frame.aboveKm ?? 0) > 0 ? 1 : 0;
       uDay.value = venusDay((Math.asin(Math.max(-1, Math.min(1, sinSun))) * 180) / Math.PI);
     },
     dispose() {

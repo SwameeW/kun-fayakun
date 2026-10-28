@@ -599,6 +599,50 @@ test.describe('with motion, the climb back', () => {
   });
 });
 
+test.describe('with motion, the way down', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  test('on the Earth the camera comes down through the air to the eye (landing until it is there, the walker held), and Esc on the way leaves at once for orbit and no further', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_REAL_FRAMES);
+    test.setTimeout(300_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    const route = await hash(page);
+    const ask = (): Promise<void> =>
+      page.evaluate((a) => {
+        (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', ...a, headingDeg: 0, pitchDeg: 0 });
+      }, HERE);
+    // On the way down: still landing, the camera below the lowest orbit (150 km) and well above the eye, the keys not walking.
+    const onTheWay = async (): Promise<boolean> => {
+      const v = await view(page);
+      return v?.walk?.state === 'landing' && v.altitudeKm < 120 && v.altitudeKm > 2;
+    };
+    await ask();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await expect.poll(onTheWay, LIVE).toBe(true);
+    // W held on the way: no step taken.
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(800);
+    const held = await view(page);
+    await page.keyboard.up('KeyW');
+    if (held?.walk?.state === 'landing') expect(held.walk.walkedM).toBe(0);
+    // Then at the eye, 1.7 m over the mocked ground at 1,000 m: walking.
+    await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('walking');
+    expect((await view(page))?.altitudeKm ?? Infinity).toBeLessThan(1.1);
+    // Back to orbit, then down again, and Esc on the way: the walk ends at once and the camera climbs back.
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => walkView(page), LIVE).toBeNull();
+    await expect.poll(async () => (await view(page))?.altitudeKm ?? 0, LIVE).toBeGreaterThan(100);
+    await ask();
+    await expect.poll(onTheWay, LIVE).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => walkView(page), { timeout: 5_000 * SLOW }).toBeNull();
+    await expect.poll(async () => (await view(page))?.altitudeKm ?? 0, LIVE).toBeGreaterThan(100);
+    expect(await hash(page)).toBe(route);
+    expect(await experience(page)).toBe('universe');
+    expect(pageErrors).toEqual([]);
+  });
+});
+
 test.describe('landing and leaving, small', () => {
   test.use({ viewport: { width: 640, height: 400 } });
   test('landing and leaving ten times: never more than three flashes in any second (WCAG 2.3.1)', async ({ page, kf, pageErrors }) => {
