@@ -1,4 +1,4 @@
-import { AdditiveBlending, Color, Group, Mesh, NoColorSpace, Sprite, SpriteNodeMaterial, type Texture } from 'three/webgpu';
+import { AdditiveBlending, Color, Group, MathUtils, Mesh, NoColorSpace, Sprite, SpriteNodeMaterial, type Texture } from 'three/webgpu';
 import { exp, float, max, uniform, uv, vec3 } from 'three/tsl';
 import type { ChapterContent, ChapterContext, ChapterModule, Cue, QualityTier, SceneLabel } from '../../core/types';
 import { clusteredField, createGalaxySprites, type GalaxySprites } from '../shared/galaxy-sprites';
@@ -24,20 +24,39 @@ const FIELD_RADIUS = 40;
 const COUNT: Readonly<Record<QualityTier, number>> = { high: 80_000, mid: 40_000, low: 16_000 };
 const ATLAS_DIR = 'assets/calligraphy/';
 const ATLAS_META = `${ATLAS_DIR}kama-badana.json`;
-/** World height of the full atlas: the phrase spans a little under half the screen width. */
+/** World height of the full atlas as built (the phrase is then scaled to its place, PLACE). */
 const ATLAS_HEIGHT = 2.5;
 const GLOW_MARGIN_PX = 200;
 const GLOW_FIELD = { downsample: 4, nearSigmaPx: 10, farSigmaPx: 34, widestSigmaPx: 80, rays: { samples: 40, reach: 0.4, decay: 0.95 } } as const;
 const CORE_COLOR = new Color(1, 0.93, 0.8);
 const GLOW_COLOR = new Color(1, 0.76, 0.46);
-/** Raised above the centre so it never meets the verse card in the lower third. */
-const CALLIGRAPHY_Y = 1.25;
+/** The light's rays in the calligraphy's halo: faint, so they never reach across the verse card. */
+const RAYS_WEIGHT = 0.08;
+/**
+ * Where the calligraphy stands: in the band above the verse card (the card is centred low on the
+ * stage, and on 21:104 it is tall), so the verse's text and the light's are never stacked. On a
+ * wide screen its ink spans at most `wide.width` of the view's width and `wide.height` of its
+ * height, centred `wide.fromTop` of the way down from the top; on a narrow one (a phone held
+ * upright, where the notes' sheet lifts the card and the band above it is short) it spans more of
+ * the width but less of the height, nearer the top; between `narrowAspect` and `wideAspect` it
+ * passes from one to the other. Placed for the chapter's last framing (its final camera key), by
+ * the view's shape alone, so a free look does not move it.
+ */
+const PLACE = {
+  wide: { width: 0.5, height: 0.15, fromTop: 0.165 },
+  narrow: { width: 0.86, height: 0.1, fromTop: 0.125 },
+  narrowAspect: 0.6,
+  wideAspect: 1.3,
+} as const;
+/** The calm light everything resolves into: ivory, not sepia. */
+const LIGHT_COLOR = [1, 0.96, 0.9] as const;
 
 const smootherstep = (edge0: number, edge1: number, x: number): number => {
   const u = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return u * u * u * (u * (u * 6 - 15) + 10);
 };
 const span = (a: number, b: number, c: number, d: number, t: number): number => smootherstep(a, b, t) * (1 - smootherstep(c, d, t));
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 function eventTime(cues: readonly Cue[], event: string, fallback: number): number {
   return cues.find((c): c is Extract<Cue, { type: 'scene' }> => c.type === 'scene' && c.event === event)?.t ?? fallback;
@@ -58,7 +77,13 @@ export default function create(): ChapterModule {
   root.name = 'ch10';
   let ctx: ChapterContext | null = null;
   let galaxies: GalaxySprites | null = null;
-  let words: { mesh: Mesh; light: MsdfTextMaterial; atlas: Texture; glowField: Texture } | null = null;
+  let words: { mesh: Mesh; light: MsdfTextMaterial; atlas: Texture; glowField: Texture; inkWidth: number; inkHeight: number } | null = null;
+  // The chapter's last framing, where the calligraphy is seen: its distance from the camera and the view's half height there.
+  const last = content.camera[content.camera.length - 1];
+  const framing = last
+    ? { distance: Math.hypot(last.position[0] - last.target[0], last.position[1] - last.target[1], last.position[2] - last.target[2]), fov: last.fov ?? 49.55 }
+    : { distance: 9, fov: 49.55 };
+  const halfHeight = framing.distance * Math.tan(MathUtils.degToRad(framing.fov / 2));
   let now = 0;
   let exposure = 1;
   // The calm light everything resolves into: a broad soft glow, eased up and down.
@@ -66,7 +91,7 @@ export default function create(): ChapterModule {
   const lightMaterial = new SpriteNodeMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest: false, fog: false });
   const lc = uv().sub(0.5).mul(2);
   const lr = lc.length();
-  lightMaterial.colorNode = vec3(1.0, 0.9, 0.74).mul(exp(lr.mul(-3)).mul(max(float(1).sub(lr), 0))).mul(uLight);
+  lightMaterial.colorNode = vec3(...LIGHT_COLOR).mul(exp(lr.mul(-3)).mul(max(float(1).sub(lr), 0))).mul(uLight);
   lightMaterial.opacityNode = float(1);
   const light = new Sprite(lightMaterial);
   light.scale.setScalar(34);
@@ -107,13 +132,12 @@ export default function create(): ChapterModule {
         atlas.colorSpace = NoColorSpace;
         const quad = createMsdfQuad(meta, ATLAS_HEIGHT, GLOW_MARGIN_PX, GLOW_FIELD.downsample * 2);
         const glowField = createMsdfGlowField(atlas, meta, quad.region, GLOW_FIELD);
-        const text = createMsdfTextMaterial(atlas, meta, { coreColor: CORE_COLOR, glowColor: GLOW_COLOR, glowField, raysWeight: 0.18, maxLuminance: 0.75 });
+        const text = createMsdfTextMaterial(atlas, meta, { coreColor: CORE_COLOR, glowColor: GLOW_COLOR, glowField, raysWeight: RAYS_WEIGHT, maxLuminance: 0.75 });
         const mesh = new Mesh(quad.geometry, text.material);
         mesh.name = 'ch10-calligraphy';
-        mesh.position.y = CALLIGRAPHY_Y;
         mesh.frustumCulled = false;
         root.add(mesh);
-        words = { mesh, light: text, atlas, glowField };
+        words = { mesh, light: text, atlas, glowField, inkWidth: quad.inkWidth, inkHeight: quad.inkHeight };
       }
       galaxies.setCount(COUNT[c.quality.tier]);
     },
@@ -151,6 +175,14 @@ export default function create(): ChapterModule {
       words.light.glowIntensity.value = 1;
       words.light.focus.value = 0.4 + 0.6 * smootherstep(times.calligraphy, times.calligraphy + 6, t);
       words.mesh.visible = word > 1e-3;
+      // In the band above the verse card, sized to the view's shape (PLACE).
+      const aspect = ctx.camera.aspect;
+      const narrow = 1 - smootherstep(PLACE.narrowAspect, PLACE.wideAspect, aspect);
+      const width = lerp(PLACE.wide.width, PLACE.narrow.width, narrow);
+      const height = lerp(PLACE.wide.height, PLACE.narrow.height, narrow);
+      const fit = Math.min((width * 2 * halfHeight * aspect) / words.inkWidth, (height * 2 * halfHeight) / words.inkHeight);
+      words.mesh.scale.setScalar(fit);
+      words.mesh.position.y = halfHeight * (1 - 2 * lerp(PLACE.wide.fromTop, PLACE.narrow.fromTop, narrow));
       // A little less exposure while the light is up, so it stays soft (the engine eases it).
       const target = 1 - 0.25 * span(times.light - 1, times.light + 4, times.silence, times.silence + 4, t);
       if (Math.abs(target - exposure) > 0.005) {
