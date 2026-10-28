@@ -42,6 +42,7 @@ import {
   vec3,
 } from 'three/tsl';
 import type { ChapterContent, ChapterContext, ChapterModule, Cue, QualityTier, SceneLabel, SceneScale } from '../../core/types';
+import { airSteps, createFilmAir, type FilmAir } from '../shared/film-air';
 import { createNoiseVolume } from '../shared/noise-volume';
 import { createEarth, type Earth } from '../shared/planet';
 import { createStarfield, type Starfield } from '../shared/starfield';
@@ -52,12 +53,18 @@ import contentJson from './content.json';
  * surface in shafts and shimmering caustics; specks drift; single cells (illustrative, not a
  * reconstruction of any real microbe) turn slowly in the water. The view rises through the
  * surface in a soft dissolve to the whole planet, whose seas and sky shift colour as oxygen
- * builds up, and whose land later turns green. The chapter ends before the first humans.
+ * builds up, and whose land later turns green, under the explorer's air (shared/film-air.ts).
+ * The chapter ends before the first humans.
  */
 
 const content = contentJson as unknown as ChapterContent;
 
-const SUN = new Vector3(1, 0.3, 0.6).normalize();
+/**
+ * The Sun, low over the southern tropic (23 degrees, as far from the equator as it goes), placed so
+ * that along the camera's slow orbit the planet is seen from about 50 to 110 degrees off the Sun's
+ * direction: a terminator across the disc and a dark night side.
+ */
+const SUN = new Vector3(0.889, -0.391, 0.238).normalize();
 /** Micro scene: one world unit is 10 micrometres; the planet scene: one unit is the Earth's radius. */
 const METRES_PER_UNIT = { micro: 1e-5, planet: 6.371e6 } as const;
 const COUNT: Readonly<Record<QualityTier, { specks: number; cells: number }>> = {
@@ -246,6 +253,7 @@ export default function create(): ChapterModule {
   root.name = 'ch09';
   let ctx: ChapterContext | null = null;
   let noise: Data3DTexture | null = null;
+  let air: FilmAir | null = null;
   let ocean: Ocean | null = null;
   let earth: Earth | null = null;
   let stars: Starfield | null = null;
@@ -270,16 +278,19 @@ export default function create(): ChapterModule {
       if (!ocean) {
         noise = await createNoiseVolume(64, 9_009);
         ocean = createOcean(noise);
-        earth = createEarth(noise, 1);
+        air = createFilmAir(c);
+        earth = createEarth(noise, 1, { model: air.model, table: air.table, steps: airSteps(c.quality.tier) });
         stars = createStarfield();
         root.add(stars.object, ocean.object, earth.object, veil);
       }
       ocean.setCounts(COUNT[c.quality.tier]);
+      earth?.setAirSteps(airSteps(c.quality.tier));
     },
 
     enter(c) {
       ctx = c;
       ocean?.setCounts(COUNT[c.quality.tier]);
+      earth?.setAirSteps(airSteps(c.quality.tier));
       c.exposure.setTarget(1);
       c.scene.add(root);
     },
@@ -291,12 +302,14 @@ export default function create(): ChapterModule {
       const underwater = t < swap;
       ocean.update({ time: t, light: underwater ? smootherstep(0, 3, t) : 0 });
       const planet = underwater ? 0 : 1;
+      air?.bake(ctx.renderer);
       stars.setLight(planet);
       earth.update({
         time: t,
         sun: SUN,
         spin: t * 0.1,
         light: planet,
+        eye: ctx.camera.position,
         epoch: {
           molten: 0,
           steam: 0,
@@ -326,6 +339,7 @@ export default function create(): ChapterModule {
 
     setQuality(profile) {
       ocean?.setCounts(COUNT[profile.tier]);
+      earth?.setAirSteps(airSteps(profile.tier));
     },
 
     exit() {
@@ -338,8 +352,10 @@ export default function create(): ChapterModule {
       earth?.dispose();
       stars?.dispose();
       noise?.dispose();
+      air?.dispose();
       veilGeometry.dispose();
       veilMaterial.dispose();
+      air = null;
       ocean = null;
       earth = null;
       stars = null;

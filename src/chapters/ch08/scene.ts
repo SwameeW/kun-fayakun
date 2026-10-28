@@ -13,6 +13,7 @@ import {
 } from 'three/webgpu';
 import { cos, dot, exp, float, hash, instanceIndex, instancedBufferAttribute, max, mix, pow, select, sin, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import type { ChapterContent, ChapterContext, ChapterModule, Cue, QualityTier, SceneLabel } from '../../core/types';
+import { airSteps, createFilmAir, type FilmAir } from '../shared/film-air';
 import { createNoiseVolume } from '../shared/noise-volume';
 import { createEarth, createSimpleBody, type Earth, type EarthEpoch, type SimpleBody } from '../shared/planet';
 import { createStarfield, type Starfield } from '../shared/starfield';
@@ -23,14 +24,20 @@ import contentJson from './content.json';
  * size of Mars strikes it a glancing blow (an eased glow under a dipped exposure, never a
  * flash), its debris rings the Earth and gathers into the Moon; the crust cools under
  * steam; rain fills the first oceans; plates move and continents rise. One planet shader
- * carries the whole history (shared/planet.ts). Sizes and distances are not to scale, and
- * the continents are illustrative, not a reconstruction of any real ancient geography.
- * Nothing is timed to a verse: the verses come in calm stretches between the events.
+ * carries the whole history (shared/planet.ts), under the explorer's air (shared/film-air.ts).
+ * Sizes and distances are not to scale, and the continents are illustrative, not a
+ * reconstruction of any real ancient geography. Nothing is timed to a verse: the verses come
+ * in calm stretches between the events.
  */
 
 const content = contentJson as unknown as ChapterContent;
 
-const SUN = new Vector3(1, 0.22, 0.55).normalize();
+/**
+ * The Sun, low over the southern tropic (23 degrees: as far from the equator as the Sun goes), and
+ * placed so that along the camera's slow orbit the planet is seen near quarter phase (about 60 to 115
+ * degrees between the Sun and the camera): a terminator across the disc and a dark night side.
+ */
+const SUN = new Vector3(0.907, -0.391, 0.16).normalize();
 const IMPACT = { contact: new Vector3(1, 0.25, 0.35).normalize(), theiaRadius: 0.5, from: new Vector3(7, 1.2, -3.2) } as const;
 /** Where the impactor's centre is at contact: touching the Earth at the contact point. */
 const CONTACT_CENTRE = IMPACT.contact.clone().multiplyScalar(1 + IMPACT.theiaRadius * 0.9);
@@ -102,6 +109,8 @@ function createDebris(maxCount: number): Debris {
   sprite.geometry = geometry;
   sprite.count = maxCount;
   sprite.frustumCulled = false;
+  // After the Earth's air (its shell would dim what is drawn before it, debris in front included).
+  sprite.renderOrder = 4;
   sprite.name = 'ch08-debris';
   return {
     object: sprite,
@@ -137,6 +146,7 @@ export default function create(): ChapterModule {
   root.name = 'ch08';
   let ctx: ChapterContext | null = null;
   let noise: Data3DTexture | null = null;
+  let air: FilmAir | null = null;
   let earth: Earth | null = null;
   let theia: SimpleBody | null = null;
   let moon: SimpleBody | null = null;
@@ -157,6 +167,7 @@ export default function create(): ChapterModule {
   const glow = new Sprite(glowMaterial);
   glow.scale.setScalar(2.6);
   glow.position.copy(IMPACT.contact).multiplyScalar(1.02);
+  glow.renderOrder = 4;
   glow.name = 'ch08-impact-glow';
 
   const epochAt = (t: number): EarthEpoch => {
@@ -183,7 +194,8 @@ export default function create(): ChapterModule {
       ctx = c;
       if (!earth) {
         noise = await createNoiseVolume(64, 8_008);
-        earth = createEarth(noise, 1);
+        air = createFilmAir(c);
+        earth = createEarth(noise, 1, { model: air.model, table: air.table, steps: airSteps(c.quality.tier) });
         theia = createSimpleBody(noise, IMPACT.theiaRadius, { name: 'theia', color: [0.42, 0.3, 0.24], mottle: 0.6, seed: 0.83 });
         moon = createSimpleBody(noise, MOON.radius, { name: 'moon', color: [0.6, 0.58, 0.55], mottle: 0.55, seed: 0.37 });
         debris = createDebris(DEBRIS.high);
@@ -191,12 +203,14 @@ export default function create(): ChapterModule {
         root.add(stars.object, earth.object, theia.object, moon.object, debris.object, glow);
       }
       debris?.setCount(DEBRIS[c.quality.tier]);
+      earth.setAirSteps(airSteps(c.quality.tier));
     },
 
     enter(c) {
       ctx = c;
       exposure = 1;
       debris?.setCount(DEBRIS[c.quality.tier]);
+      earth?.setAirSteps(airSteps(c.quality.tier));
       c.exposure.setTarget(1);
       c.scene.add(root);
     },
@@ -204,8 +218,9 @@ export default function create(): ChapterModule {
     update(t) {
       if (!ctx || !earth || !theia || !moon || !debris || !stars) return;
       now = t;
+      air?.bake(ctx.renderer);
       stars.setLight(1);
-      earth.update({ time: t, sun: SUN, spin: t * 0.12, light: smootherstep(0, 2.5, t), epoch: epochAt(t) });
+      earth.update({ time: t, sun: SUN, spin: t * 0.12, light: smootherstep(0, 2.5, t), epoch: epochAt(t), eye: ctx.camera.position });
 
       // The impactor: in along a gentle curve, gone into the glow at contact.
       const approach = smootherstep(times.impact - 4, contactAt, t);
@@ -255,6 +270,7 @@ export default function create(): ChapterModule {
 
     setQuality(profile) {
       debris?.setCount(DEBRIS[profile.tier]);
+      earth?.setAirSteps(airSteps(profile.tier));
     },
 
     exit() {
@@ -269,7 +285,9 @@ export default function create(): ChapterModule {
       debris?.dispose();
       stars?.dispose();
       noise?.dispose();
+      air?.dispose();
       glowMaterial.dispose();
+      air = null;
       earth = null;
       theia = null;
       moon = null;
