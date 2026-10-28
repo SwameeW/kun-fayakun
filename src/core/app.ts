@@ -216,8 +216,15 @@ class Engine implements KunFayakunApp {
   private pendingCapture: { lines: readonly string[]; resolve: (blob: Blob | null) => void } | null = null;
   /** A video being recorded (startRecording): its canvas, credits and recorder. */
   private recording: Recording | null = null;
-  /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms. */
+  /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms per frame. */
   private lastGpuMs: number | null = null;
+  /**
+   * Frames drawn since the timestamps were last asked for, and whether an answer is awaited. The answer
+   * comes back a few frames later and is the total of every frame drawn since the one before (three's
+   * query pool): it is divided by the frames it covers, never read as one frame's time.
+   */
+  private gpuFrames = 0;
+  private gpuResolving = false;
   /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
   private readonly cadence = createFrameCadence();
   private universeGraphics: UniverseGraphics | null = null;
@@ -675,14 +682,22 @@ class Engine implements KunFayakunApp {
     const { geometries, textures } = renderer.info.memory;
     this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls, geometries, textures, experience: this.experience });
     if (!this.timesGpu) return;
+    this.gpuFrames += 1;
+    if (this.gpuResolving) return;
+    const frames = this.gpuFrames;
+    this.gpuFrames = 0;
+    this.gpuResolving = true;
     renderer
       .resolveTimestampsAsync('render')
       .then((ms) => {
         if (typeof ms !== 'number') return;
-        this.perf.recordGpu(ms);
-        this.lastGpuMs = ms;
+        this.perf.recordGpu(ms / frames);
+        this.lastGpuMs = ms / frames;
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        this.gpuResolving = false;
+      });
   }
 
   /** What the explorer may change about the picture (made once the renderer exists). */
