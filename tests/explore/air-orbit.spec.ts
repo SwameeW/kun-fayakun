@@ -5,6 +5,9 @@
  * - over the sunglint from 8,000 km the cloud tops stay white to the limb under the haze; before, the
  *   shell's dimming was taken back by at most 3 times where it needs hundreds, and a cream band with a
  *   pink line ran along the limb (red less blue about 25 to 31 levels);
+ * - from the lowest orbit the cloud deck along the horizon meets the sky cleanly: the cloud tops are
+ *   drawn between the shell's two draws and the shell hides its light behind them (a cream band with a
+ *   dashed pink line ran along the horizon, where the shell took the whole limb's light over them);
  * - with a crescent filling the exposure the sky beside the Sun is black (it was a flat beige plateau
  *   of about 80 levels: the zodiacal light, which a camera exposed for the day side does not record),
  *   and the readout names no glow; from the night side, the eye adapted to the dark, the glow is shown.
@@ -77,6 +80,45 @@ test('from orbit the cloud tops at the limb are white under the haze, not redden
     expect(warm, `red less blue below the limb at x = ${560 + x}, y = ${top + limb}`).toBeLessThan(12);
   }
   expect(columns, 'cloud at the limb in enough columns').toBeGreaterThanOrEqual(5);
+  expect(pageErrors).toEqual([]);
+});
+
+test('from the lowest orbit the cloud deck meets the sky at the horizon without a band or a line', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await open(page, kf);
+  // The captures' asia-60 view (held at the lowest orbit, 150 km), in photo mode as they are taken:
+  // cloud along the horizon on the right.
+  await page.keyboard.press('h');
+  await settle(page, { body: 'earth', distanceKm: 6371 + 60, azimuthDeg: -5, elevationDeg: 40 });
+  // Columns across the right of the view: below the first bright pixel (the cloud tops at the horizon),
+  // the next ten rows. Before, the rays between the ground's horizon and the cloud tops' took the whole
+  // limb's light and a cloud there divided out a dimming it could not hold: a cream band 7 px high
+  // (green over blue by 12 to 17 levels) with a dashed pink line through it (red over green by 40 or more).
+  const left = 1000;
+  const top = 110;
+  const data = await pixels(page, left, top, 420, 140);
+  let columns = 0;
+  for (let x = 0; x < 420; x += 20) {
+    let limb = -1;
+    for (let y = 0; y < 125 && limb < 0; y += 1) {
+      const i = (y * 420 + x) * 4;
+      if (0.2126 * (data[i] ?? 0) + 0.7152 * (data[i + 1] ?? 0) + 0.0722 * (data[i + 2] ?? 0) > 120) limb = y;
+    }
+    if (limb < 0 || limb + 11 >= 140) continue;
+    columns += 1;
+    let cream = 0;
+    let pink = 0;
+    for (let y = limb + 1; y <= limb + 10; y += 1) {
+      const i = (y * 420 + x) * 4;
+      const [r, g, b] = [data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0];
+      cream += (g - b) / 10;
+      pink = Math.max(pink, r - g);
+    }
+    const at = `at x = ${left + x}, y = ${top + limb}`;
+    expect(cream, `green less blue below the horizon ${at}`).toBeLessThan(6);
+    expect(pink, `red less green below the horizon ${at}`).toBeLessThan(25);
+  }
+  expect(columns, 'cloud at the horizon in enough columns').toBeGreaterThanOrEqual(8);
   expect(pageErrors).toEqual([]);
 });
 
