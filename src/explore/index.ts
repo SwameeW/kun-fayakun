@@ -196,6 +196,15 @@ const SUN_FILTER = { fromPx: 12, toPx: 110, refPx: 800, color: [1, 0.5, 0.12], w
 const MOON_EXPOSURE = 1.1;
 /** The sky's starlight, and how much of the exposure's adaptation it shows (0 none, 1 all of it). */
 const STARS = { light: 0.85, follow: 0.2 } as const;
+/**
+ * The night sky's glows (./worlds/glow: the Milky Way and the zodiacal light) show only to an eye
+ * adapted to the dark: a camera exposed for a sunlit world records neither. So they follow the
+ * world looked at as the Earth's night side does (./bodies/earth darkAdaptation of litShare: gone once
+ * a few percent of its visible disc is sunlit), for any of the worlds, while its disc is large enough
+ * in view to set the exposure (its radius in CSS pixels: below `points` a point among the stars, from
+ * `disc` a disc: illustrative), eased over `seconds` (a cut is followed at once).
+ */
+const NIGHT_SKY = { points: 4, disc: 16, seconds: 1 } as const;
 
 /** Points of light for distant bodies: colour (display terms) and size. Visual constants, not measurements. */
 const DOT: Readonly<Record<BodyId, { tint: readonly [number, number, number]; albedo: number; sizePx: number }>> = {
@@ -650,6 +659,8 @@ export default function create(): UniverseModule {
   let nearestKm = Infinity;
   /** The Earth's air model, a clear day's (its limb reddens the Sun seen through it; the walk is drawn with it too). */
   let earthAirModel: AirModel | null = null;
+  /** How far the eye is adapted to the night sky now (NIGHT_SKY), 0 to 1, eased. */
+  let nightSky = 1;
 
   const placed = Object.fromEntries(
     BODY_IDS.map((id) => [id, { rel: km(), drawn: km(), distance: 0, k: 1, radiusPx: 0, screenX: 0, screenY: 0, inView: false }]),
@@ -2464,7 +2475,9 @@ export default function create(): UniverseModule {
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
     dots.update(dotList, adapted);
-    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, filter: filterAmount, shown: !lab?.active && !walking && !descending && stretch.amount >= 1, focus: nav.focus, span: focusKm, dt, days, running, reduced: c.reducedMotion, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : 1, placed });
+    const darkSky = nightSkyAdaptation(camera);
+    nightSky = entering || navOut.cut || walkCut || !(dt > 0 && dt <= 1) ? darkSky : nightSky + (darkSky - nightSky) * (1 - Math.exp(-dt / NIGHT_SKY.seconds));
+    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, filter: filterAmount, shown: !lab?.active && !walking && !descending && stretch.amount >= 1, focus: nav.focus, span: focusKm, dt, days, running, reduced: c.reducedMotion, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : nightSky, placed });
 
     const sunPlaced = placed.sun;
     // From orbit, the Sun through the Earth's limb (on foot, through the air the walker looks through).
@@ -2555,6 +2568,28 @@ export default function create(): UniverseModule {
       compilesPending -= 1;
       releaseStandIn();
     }
+  };
+
+  /**
+   * The eye's adaptation to the night sky for this frame's view (NIGHT_SKY): 1 unless the world
+   * looked at (one of the ten, not the Sun) is in view, large enough to set the exposure, with some of
+   * its day side showing. In view: its disc reaches into the view's corners' cone.
+   */
+  const nightSkyAdaptation = (view: PerspectiveCamera): number => {
+    const id = nav.focus;
+    if (id === 'sun' || !system || !(BODY_IDS as readonly string[]).includes(id)) return 1;
+    const p = placed[id as BodyId];
+    const presence = smoothstep(NIGHT_SKY.points, NIGHT_SKY.disc, p.radiusPx);
+    if (presence <= 0 || p.distance <= 0) return 1;
+    const radius = system.specs[id as BodyId].radiusKm;
+    const halfDiagonal = Math.atan(Math.tan(MathUtils.degToRad(view.fov / 2)) * Math.hypot(1, view.aspect));
+    const off = Math.acos(Math.min(1, Math.max(-1, (forward.x * p.rel.x + forward.y * p.rel.y + forward.z * p.rel.z) / p.distance)));
+    if (off > halfDiagonal + Math.asin(Math.min(1, radius / p.distance))) return 1;
+    const s = placed.sun;
+    const sunward = { x: s.rel.x - p.rel.x, y: s.rel.y - p.rel.y, z: s.rel.z - p.rel.z };
+    const length = Math.max(1e-9, Math.hypot(sunward.x, sunward.y, sunward.z));
+    const eye = { x: -p.rel.x / radius, y: -p.rel.y / radius, z: -p.rel.z / radius };
+    return 1 - presence * (1 - darkAdaptation(litShare(eye, { x: sunward.x / length, y: sunward.y / length, z: sunward.z / length })));
   };
 
   /** What the view draws now that is illustrative, for the readout to say. */
