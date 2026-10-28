@@ -9,14 +9,18 @@
  * A generation started while another is still under way, every way the app can start one:
  * - through the engine host (each scenario a fresh load, so one that hangs leaves nothing behind):
  *   stopped while it reads a long prompt and asked again at once; stopped while it writes and asked
- *   again; a second started while the first writes, and one while the first reads its prompt, without a
- *   stop; twenty asked and stopped in a row, then one left to finish; the model unloaded and another
- *   loaded while it writes; unloaded while it reads its prompt, then loaded again;
+ *   again; stopped as it starts (right after the page posts its request to the worker, before the
+ *   worker answers that it started: a hook on the worker's postMessage stops it there) and asked again
+ *   at once, three times; a second started while the first writes, and one while the first reads its
+ *   prompt, without a stop; twenty asked and stopped in a row, then one left to finish; the model
+ *   unloaded and another loaded while it writes; unloaded while it reads its prompt, then loaded again;
  * - through the panel, as a visitor (the model chosen with the Intelligence's use(), as the panel's
  *   model section does, and the router skipped so that every question reaches the model): Stop then a
  *   new question; a second question sent over the first (Enter twice); a suggested question pressed
  *   while it answers; the panel closed and opened again while it answers; twenty questions in a row,
- *   every other one stopped; another model chosen while it answers; the guide chosen while it answers.
+ *   every other one stopped; another model chosen while it answers; the guide chosen while it answers;
+ *   the model's worker ended while it answers (the watch then ends the generation, and the model is let
+ *   go: the next question is the guide's, and the model answers again once it is chosen again).
  * For each it writes down whether the second answer came, how long it took, the render budgets still
  * held afterwards (counted through the app's requestRenderBudget) and the explorer's detail as the test
  * hook reports it. Before and after the panel's stress the same question is asked, and its plan, at
@@ -25,7 +29,8 @@
  * A second answer is waited for KF_AI_EVAL_OVERLAP_WAIT_MS (default 60 s); one that has not come by
  * then is written down as hung, and the page is loaded again before the next scenario. KF_AI_EVAL_MODEL
  * (default Qwen3 1.7B) and KF_AI_EVAL_SWITCH_TO (default Qwen3 0.6B) choose the models;
- * KF_AI_EVAL_OVERLAP_PARTS (engine,panel) the parts; KF_AI_EVAL_TAG names the results file,
+ * KF_AI_EVAL_OVERLAP_PARTS (engine,panel) the parts, and KF_AI_EVAL_OVERLAP_ONLY (names, or parts of
+ * names, separated by |) the scenarios; KF_AI_EVAL_TAG names the results file,
  * .work/ai-eval/results/overlap-<model>[-<tag>].json. KF_AI_EVAL_OVERLAP_RECORD=1 writes the results
  * down without failing on them (to record a build that hangs).
  */
@@ -43,6 +48,8 @@ const MODEL_ID = env('KF_AI_EVAL_MODEL') ?? 'Qwen3-1.7B-q4f16_1-MLC';
 const OTHER_ID = env('KF_AI_EVAL_SWITCH_TO') ?? 'Qwen3-0.6B-q4f16_1-MLC';
 const WAIT_MS = Number(env('KF_AI_EVAL_OVERLAP_WAIT_MS') ?? 60_000);
 const PARTS = new Set((env('KF_AI_EVAL_OVERLAP_PARTS') ?? 'engine,panel').split(',').map((p) => p.trim()));
+const ONLY = (env('KF_AI_EVAL_OVERLAP_ONLY') ?? '').split('|').map((p) => p.trim()).filter((p) => p.length > 0);
+const included = (name: string): boolean => ONLY.length === 0 || ONLY.some((p) => name.includes(p));
 const TAG = env('KF_AI_EVAL_TAG');
 const RECORD_ONLY = flag('KF_AI_EVAL_OVERLAP_RECORD');
 const ROOT = new URL('../../', import.meta.url).pathname;
@@ -143,7 +150,36 @@ async function install(page: Page): Promise<void> {
       new Promise((r) => {
         setTimeout(r, ms);
       });
+    // The model's worker as the page posts to it: a stop can be made to land right after a request, and the worker ended.
+    const post = Object.getOwnPropertyDescriptor(Worker.prototype, 'postMessage')?.value as (this: Worker, ...args: unknown[]) => void;
+    let armed: (() => void) | null = null;
+    /** The workers posted a model's request, the last one last. */
+    const modelWorkers: Worker[] = [];
+    Worker.prototype.postMessage = function (this: Worker, ...args: unknown[]): void {
+      post.apply(this, args);
+      const type = (args[0] as { type?: unknown } | null)?.type;
+      if (type === 'load' || type === 'generate' || type === 'pull') {
+        const at = modelWorkers.indexOf(this);
+        if (at >= 0) modelWorkers.splice(at, 1);
+        modelWorkers.push(this);
+      }
+      if (type === 'generate' && armed) {
+        const f = armed;
+        armed = null;
+        f();
+      }
+    } as typeof Worker.prototype.postMessage;
     w.__ov = {
+      /** Calls `f` right after the page next posts a generation's request to its worker. */
+      afterGenerate: (f: () => void) => {
+        armed = f;
+      },
+      /** Ends the model's worker as a crash would (the page is not told). */
+      endModelWorker: () => {
+        const last = modelWorkers.at(-1);
+        last?.terminate();
+        return last !== undefined;
+      },
       holds: () => holds,
       most: () => most,
       resetMost: () => {
@@ -262,7 +298,7 @@ interface Handle {
 
 /** The page as the scenarios reach it (installed by install()). */
 interface ProbeWindow {
-  __ov: { sleep(ms: number): Promise<void>; start(engine: unknown, messages: readonly ChatMessage[], maxTokens: number): Handle };
+  __ov: { sleep(ms: number): Promise<void>; start(engine: unknown, messages: readonly ChatMessage[], maxTokens: number): Handle; afterGenerate(f: () => void): void };
   __ovEngine: { unload(): Promise<void> };
   __kf: { ai: { start(): Promise<{ host: { load(m: ModelSpec, onProgress: () => void, signal: AbortSignal): Promise<{ unload(): Promise<void> }> } }> } };
 }
@@ -315,6 +351,35 @@ const ENGINE_SCENARIOS: Record<string, (a: EngineArgs) => Promise<Outcome>> = {
     const b = await B.wait(a.wait);
     const first = await A.wait(1000);
     return { steps: [{ which: 'A', ...first }, { which: 'B', ...b }], arrived: !b.hung && (b.finish === 'stop' || b.finish === 'length'), secondMs: b.hung ? null : b.wallMs };
+  },
+  // Stopped right after the page posts its request, before the worker answers that it started; the
+  // next asked at once. Three times. The stopped one must write nothing (it is never started).
+  'stopped as it starts, ask again': async (a) => {
+    const { __ov: ov, __ovEngine: e } = window as unknown as ProbeWindow;
+    const steps: Record<string, unknown>[] = [];
+    let arrived = true;
+    let secondMs: number | null = null;
+    for (let i = 1; i <= 3; i++) {
+      let A: Handle | null = null;
+      const stoppedAt = new Promise<number>((resolve) => {
+        ov.afterGenerate(() => {
+          A?.abort();
+          resolve(performance.now());
+        });
+      });
+      A = ov.start(e, a.write, 300);
+      const at = await Promise.race([stoppedAt, ov.sleep(a.wait).then(() => null)]);
+      const B = ov.start(e, a.next, 64);
+      const b = await B.wait(a.wait);
+      const first = await A.wait(a.wait);
+      // B is started as soon as A is stopped: its time is from the stop.
+      steps.push({ which: `A${i}`, landed: at !== null, ...first }, { which: `B${i}`, ...b });
+      const ok = at !== null && !b.hung && (b.finish === 'stop' || b.finish === 'length') && first.finish === 'abort' && first.outputTokens === 0;
+      arrived &&= ok;
+      secondMs = b.hung ? null : Math.max(secondMs ?? 0, b.wallMs);
+      if (b.hung) break;
+    }
+    return { steps, arrived, secondMs };
   },
   // No stop: a second started 200 ms after the first's first word; both must end as written.
   'two at once while writing': async (a) => {
@@ -605,6 +670,31 @@ const PANEL_SCENARIOS: Record<string, PanelStep> = {
     const third = await settle(page, c.id, c.at, WAIT_MS);
     return { steps: [{ which: 'first', reached, ...first }, { which: 'second (the guide)', engine, ...second }, { which: 'third (the model again)', engine: back, ...third }], arrived: second.state === 'done' && third.state === 'done' && third.writer?.startsWith('local:') === true, secondMs: third.hung ? null : third.ms };
   },
+  // The model's worker ended as a crash would, while it answers: after the watch's silence the generation
+  // ends, the model is let go, the next question is the guide's, and the model answers once chosen again.
+  'the model’s worker ended while it answers': async (page) => {
+    const a = await send(page, LONG_QUESTIONS[0]);
+    const reached = await reach(page, a.id, ['answering', ...SETTLED], WAIT_MS);
+    await page.waitForTimeout(500);
+    const t0 = Date.now();
+    const ended = await page.evaluate(() => (window as unknown as { __ov: { endModelWorker(): boolean } }).__ov.endModelWorker());
+    const first = await settle(page, a.id, t0, WAIT_MS);
+    const engine = await page.evaluate(async () => {
+      const ai = await (window as unknown as { __kf: { ai: { start(): Promise<{ engine(): { kind: string; model: string | null; state: string }; turns(): { id: string; blocks: { type: string; key?: string }[] }[] }> } } }).__kf.ai.start();
+      const e = ai.engine();
+      return { engine: `${e.kind}:${e.model ?? ''}:${e.state}`, notices: ai.turns().flatMap((t) => t.blocks.filter((b) => b.type === 'notice').map((b) => `${t.id}:${b.key ?? ''}`)) };
+    });
+    const b = await send(page, QUESTIONS[2]);
+    const second = await settle(page, b.id, b.at, WAIT_MS);
+    const back = await choose(page, MODEL_ID);
+    const c = await send(page, QUESTIONS[3]);
+    const third = await settle(page, c.id, c.at, WAIT_MS);
+    return {
+      steps: [{ which: 'first (its worker ended)', ended, reached, ...first, ...engine }, { which: 'second (the guide)', ...second }, { which: 'third (the model chosen again)', engine: back, ...third }],
+      arrived: ended && first.state === 'done' && engine.engine === `local:${MODEL_ID}:error` && second.state === 'done' && second.writer === null && third.state === 'done' && third.writer === `local:${MODEL_ID}`,
+      secondMs: second.hung ? null : second.ms,
+    };
+  },
 };
 
 /** Asks REFERENCE through the panel and returns its plan as the model wrote it (null: no plan was recorded). */
@@ -642,7 +732,7 @@ test(`overlapping generations on real models: ${MODEL_ID}`, async ({ baseURL }, 
   await context.route((url) => isModelHost(url.hostname), (route) => route.continue());
   const pageErrors: string[] = [];
   const scenarios: (Scenario & { part: 'engine' | 'panel' })[] = [];
-  const out: Record<string, unknown> = { model: MODEL_ID, other: OTHER_ID, waitMs: WAIT_MS, tag: TAG ?? null, startedAt: new Date().toISOString(), loadavgStart: load(), scenarios };
+  const out: Record<string, unknown> = { model: MODEL_ID, other: OTHER_ID, waitMs: WAIT_MS, tag: TAG ?? null, only: ONLY, startedAt: new Date().toISOString(), loadavgStart: load(), scenarios };
   const save = (): void => {
     writeFileSync(outFile, `${JSON.stringify(out, null, 2)}\n`);
   };
@@ -681,6 +771,7 @@ test(`overlapping generations on real models: ${MODEL_ID}`, async ({ baseURL }, 
       const args: EngineArgs = { long: longConversation(), write: WRITE('Tell me about the planets of the solar system, one by one.'), next: short('Why is Mars red?'), questions: ['Why is Mars red?', 'What are Saturn’s rings made of?', 'Why is Venus so hot?', 'Why does the Moon show one face?'], spec, other, wait: WAIT_MS };
       await fresh(page, 'explorer');
       for (const [name, scenario] of Object.entries(ENGINE_SCENARIOS)) {
+        if (!included(name)) continue;
         await loadEngine(page, MODEL_ID);
         const ok = await record('engine', name, () => page.evaluate(scenario, args));
         // The engine is unloaded either way (again, for those that did); after one that hung, the page too (its worker with it).
@@ -704,6 +795,7 @@ test(`overlapping generations on real models: ${MODEL_ID}`, async ({ baseURL }, 
       out.referenceBefore = before;
       save();
       for (const [name, step] of Object.entries(PANEL_SCENARIOS)) {
+        if (!included(name)) continue;
         const ok = await record('panel', name, () => step(page));
         if (!ok) await setUp();
       }

@@ -17,8 +17,9 @@
  *   and the next one gives the same reply as before the stop;
  * - a model switched to (KF_AI_EVAL_SWITCH_TO, a new pipeline) and the first model loaded again (a new
  *   worker) report the setting in effect, and answer.
- * KF_AI_EVAL_MODEL (default Qwen3-1.7B) and KF_AI_EVAL_PREFILL_CHUNK (default: the model's own
- * setting) choose the model and the chunk. Writes .work/ai-eval/results/prefill-probe-<model>.json.
+ * KF_AI_EVAL_MODEL (default Qwen3-1.7B) and KF_AI_EVAL_PREFILL_CHUNK (with KF_AI_EVAL_PREFILL_YIELD=1
+ * for the wait) choose the model and the chunk; without a chunk each model gets its own setting, the
+ * model switched to as well. Writes .work/ai-eval/results/prefill-probe-<model>.json.
  */
 import { chromium, expect, test, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -137,7 +138,10 @@ test(`prefill chunk on real models: ${MODEL_ID}, then ${SWITCH_ID}`, async ({ ba
   expect(spec && other && manifest).toBeTruthy();
   if (!spec || !other || !manifest) return;
   const asked = env('KF_AI_EVAL_PREFILL_CHUNK');
-  const setting: PrefillSetting = asked === undefined ? prefillFor(spec) : { chunkTokens: Number(asked), yieldBetween: env('KF_AI_EVAL_PREFILL_YIELD') === '1' };
+  /** The chunk asked for, or else the model's own setting (the switched-to model's own for it). */
+  const settingOf = (model: ModelSpec): PrefillSetting => (asked === undefined ? prefillFor(model) : { chunkTokens: Number(asked), yieldBetween: env('KF_AI_EVAL_PREFILL_YIELD') === '1' });
+  const setting = settingOf(spec);
+  const otherSetting = settingOf(other);
   expect(setting.chunkTokens, 'a chunk to compare with the compiled one').not.toBeNull();
   const compiled: PrefillSetting = { chunkTokens: null, yieldBetween: false };
 
@@ -148,7 +152,7 @@ test(`prefill chunk on real models: ${MODEL_ID}, then ${SWITCH_ID}`, async ({ ba
   const context = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true, viewport: { width: 1280, height: 800 }, args: server.args(testInfo.project.use.launchOptions?.args ?? []), ...(baseURL ? { baseURL } : {}) });
   await context.route((url) => isModelHost(url.hostname), (route) => route.continue());
   const pageErrors: string[] = [];
-  const out: Record<string, unknown> = { model: MODEL_ID, switchTo: SWITCH_ID, setting, startedAt: new Date().toISOString(), loadavgStart: load() };
+  const out: Record<string, unknown> = { model: MODEL_ID, switchTo: SWITCH_ID, setting, switchSetting: otherSetting, startedAt: new Date().toISOString(), loadavgStart: load() };
   try {
     const page = context.pages()[0] ?? (await context.newPage());
     page.on('pageerror', (e) => pageErrors.push(e.message));
@@ -178,7 +182,7 @@ test(`prefill chunk on real models: ${MODEL_ID}, then ${SWITCH_ID}`, async ({ ba
     await p.unload();
 
     // A model switched to: a new pipeline, the setting made on it.
-    const switched = await p.loadWith(SWITCH_ID, setting);
+    const switched = await p.loadWith(SWITCH_ID, otherSetting);
     const switchedShort = await p.generate(SHORT);
     await p.unload();
 
@@ -210,11 +214,11 @@ test(`prefill chunk on real models: ${MODEL_ID}, then ${SWITCH_ID}`, async ({ ba
     expect(refLong.result.promptTokens + 64).toBeLessThanOrEqual(spec.contextTokens);
     for (const g of [refLong, refShort, long, short, again, switchedShort, reloadedShort]) expect(g.result.finish, g.result.text).toBe('stop');
     expect((asCompiled.prefill as { outcome: string }).outcome).toBe('off');
-    for (const l of [chunked, switched, reloaded]) expect(l.prefill).toMatchObject({ outcome: 'set', chunkTokens: setting.chunkTokens, yieldBetween: setting.yieldBetween });
+    for (const [l, s] of [[chunked, setting], [switched, otherSetting], [reloaded, setting]] as const) expect(l.prefill).toMatchObject({ outcome: 'set', chunkTokens: s.chunkTokens, yieldBetween: s.yieldBetween });
     // Every generation reports it, the stopped one too: a generation with no report fails here.
-    for (const g of [long, short, stopped, again, switchedShort, reloadedShort]) {
-      expect(g.result.engineUsage?.prefill, 'the setting as the generation reported it').toMatchObject({ outcome: 'set', chunkTokens: setting.chunkTokens, yieldBetween: setting.yieldBetween });
-      expect(g.result.engineUsage?.prefill?.chunkAtGeneration, 'the chunk the pipeline held at the generation').toBe(setting.chunkTokens);
+    for (const [g, s] of [[long, setting], [short, setting], [stopped, setting], [again, setting], [switchedShort, otherSetting], [reloadedShort, setting]] as const) {
+      expect(g.result.engineUsage?.prefill, 'the setting as the generation reported it').toMatchObject({ outcome: 'set', chunkTokens: s.chunkTokens, yieldBetween: s.yieldBetween });
+      expect(g.result.engineUsage?.prefill?.chunkAtGeneration, 'the chunk the pipeline held at the generation').toBe(s.chunkTokens);
     }
     // As compiled: no setting, and the pipeline at the chunk its library was compiled with.
     for (const g of [refLong, refShort]) expect(g.result.engineUsage?.prefill, 'as compiled').toMatchObject({ outcome: 'off', chunkAtGeneration: (chunked.prefill as { compiled: number }).compiled });
