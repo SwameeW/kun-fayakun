@@ -197,7 +197,7 @@ export function createAbout(app: App, f: Formatters): About {
       if (nowDetail.textContent !== text) nowDetail.textContent = text;
       return;
     }
-    if (!nowDetail || !files || view.focus.startsWith('w:')) return;
+    if (!nowDetail || !files || view.focus.includes(':')) return;
     const at = (id: BodyId): { x: number; y: number; z: number } | undefined => view.bodies.find((b) => b.id === id)?.ecliptic;
     const body = at(view.focus as BodyId);
     const earth = at('earth');
@@ -214,7 +214,7 @@ export function createAbout(app: App, f: Formatters): About {
       if (world) {
         if (world.id !== shown) buildWorld(world);
         if (slow && open) writeNow(view);
-      } else if (view.focus.startsWith('w:')) return;
+      } else if (view.focus.includes(':')) return;
       else if (view.focus !== shown) build(view.focus as BodyId, view);
       else if (slow && open) writeNow(view);
     },

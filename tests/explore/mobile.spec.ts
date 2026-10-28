@@ -757,6 +757,7 @@ test('the small worlds at Low on a phone: frame rate and slowest frames in four 
 });
 
 test('slowed for an impact on a phone: the sheet’s header says the rate shown and offers Full speed, a 44 px touch target, folded or pulled up', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);

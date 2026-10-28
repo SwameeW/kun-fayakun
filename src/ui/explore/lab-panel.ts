@@ -391,9 +391,11 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const remove = button(i18n.t('ui.universe.lab.remove'), 'lab-remove', () => {
     if (selectedId) send({ kind: 'remove', id: selectedId });
   });
+  // The camera goes to it and frames it, then keeps it framed as it moves: one of the ten as the explorer's own focus, any other as the laboratory's.
   const follow = button(i18n.t('ui.universe.lab.follow'), 'lab-follow', () => {
     const b = selectedBody();
     if (b?.builtIn) app.focusBody(b.builtIn);
+    else if (b) send({ kind: 'follow', id: b.id });
   });
   // How far ahead, and how finely; the encounters on the way.
   const horizonId = uniqueId('lab-horizon');
@@ -1310,7 +1312,6 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         warning.hidden = warn === '';
         write(warning, warn);
         remove.hidden = b.persistent;
-        follow.hidden = !b.builtIn;
         if (`${b.id}:${String(b.fixed)}` !== fixedShown) {
           fixedShown = `${b.id}:${String(b.fixed)}`;
           fixedBox.checked = b.fixed;

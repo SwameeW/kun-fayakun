@@ -83,6 +83,7 @@ platform.
 | SB-35 | Graphs over time that survive a merger | A tracked quantity per id, following the survivor through a merger; coarsening, never ending | SB-12 | | implemented (`lab-tools.spec`) |
 | SB-36 | Pinned external reference fixture | REBOUND 5.2.2 IAS15, one year of the seed (data only; the code is GPL) | SB-4 | Fixture hash and agreement recorded | implemented (`rebound.spec`; `docs/LAB.md` gives the agreement) |
 | SB-37 | Share link for small scenarios | Seed + log deflated into the URL (up to 8,000 characters) | SB-11 | | implemented (`lab-tools.spec`) |
+| SB-38 | Follow and frame any body of the experiment | The camera's own bodies (`lab:<id>`, where they are drawn), framed as the small worlds are and kept framed as they move; the survivor after a merger, the largest of what is left after a breakup, the first piece of a torn body, also mid-trip; let go of where the camera is when removed; a body not followed changes nothing; leaving, the camera stays by the nearest real body shown | SB-9 | A breakup's first piece within 5% of its framing for 10 s of its flight; the camera never below any body's surface | implemented (2026-10-28, with the review's fixes the same day: `lab-tools.spec`, `navigation.spec`, `impacts.spec`; docs/SANDBOX-ROADMAP.md W1.9) |
 
 ## Phase 2: impacts and debris (US)
 

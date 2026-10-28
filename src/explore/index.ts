@@ -88,7 +88,7 @@ import { DETAIL, EXPLORE_TIERS, type ExploreDetail, type ExploreTier } from './d
 import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
 import { createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
 import { createInput, type ExploreInput } from './input';
-import { LENS as ZOOM_LENS, Navigator, navOutput, type NavBody, type NavWorld } from './navigation';
+import { isLabBody, LENS as ZOOM_LENS, Navigator, navOutput, type NavBody, type NavWorld } from './navigation';
 import { createOrbits, moonOrbit, planetOrbit, type Orbits, type OrbitPath } from './orbits';
 import { availableTiers, createDetailGovernor, initialTier, type DetailChoice, type DetailGovernor, type GovernorDecision } from './quality';
 import { lensFor, LENS, nearestAltitude, type Lens, type Sphere } from './space/lens';
@@ -387,7 +387,10 @@ export default function create(): UniverseModule {
   let dots: Impostors | null = null;
   let glare: SunGlare | null = null;
   let input: ExploreInput | null = null;
+  /** The camera's bodies: one NavWorld for the explorer's life (the input holds it), its list kept up to date in place (relist). */
   let world: NavWorld | null = null;
+  /** The laboratory's bodies and the ten it hides as `world` last listed them (Lab.navRevision, and a bit for each one hidden). */
+  let navFor = -1;
   let range = { startJd: 0, endJd: Infinity };
   /** JPL's tables' own spans (positions beyond them come from the published theories: UniverseTime.beyond). */
   let tables: ReturnType<typeof tableRange> | null = null;
@@ -785,7 +788,7 @@ export default function create(): UniverseModule {
           governor?.holdOff();
           worlds = w;
           root.add(w.object);
-          (world?.all as NavBody[] | undefined)?.push(...w.navList());
+          relist();
           // The layer and the detail level chosen meanwhile (the governor may have changed it while they came).
           w.setLayer(worldsLayer);
           w.setDetail(detail);
@@ -817,8 +820,8 @@ export default function create(): UniverseModule {
   /** What holds the clock below the rate set: a trip (real time), or being on foot or on the way down (FOOT_MAX_RATE); null when nothing does. */
   const clockHold = (): 'trip' | 'foot' | null => (nav.travelling ? 'trip' : walk?.active || descent?.active ? 'foot' : null);
 
-  /** The body a world belongs to (its planet; the Sun for the rest); a body is its own. */
-  const host = (id: FocusId): BodyId => worlds?.host(id) ?? (id as BodyId);
+  /** The body a world belongs to (its planet; the Sun for the rest, and for the laboratory's own); a body is its own. */
+  const host = (id: FocusId): BodyId => (isLabBody(id) ? 'sun' : (worlds?.host(id) ?? (id as BodyId)));
 
   const exposureFor = (id: FocusId): number => {
     if (!world || !system || id === 'sun') return 1;
@@ -1311,8 +1314,12 @@ export default function create(): UniverseModule {
       }
       for (const c of labQueue.splice(0)) void lab.command(c);
     } else if (!wantLab && lab.active) {
+      // The camera on one of the experiment's own bodies (or on its way from one) is let go of where it is, by the nearest of the
+      // ten it showed (in a laboratory of its own, the Sun its star stood in for), never by one it hid at its epoch.
+      if (world && (isLabBody(nav.focus) || (navOut.from !== null && isLabBody(navOut.from)))) nav.release({ ...world, all: world.all.filter((b) => !b.id.includes(':')) }, true);
       lab.stop();
       hiddenBodies.clear();
+      relist();
       if (beforeLab) {
         timeRate = beforeLab.rate;
         timePaused = beforeLab.paused;
@@ -1322,6 +1329,11 @@ export default function create(): UniverseModule {
         markerSet = beforeLab.markers;
       }
       beforeLab = null;
+      // The real bodies back at the explorer's date at once, the camera carried with the one it is by (as with a body it
+      // orbits), so that a trip the address asks for next starts from where they and the camera are, not the experiment's places.
+      system.update(jdTdb);
+      worlds?.advance(jdTdb);
+      if (world) nav.update(world, 0, navOut);
     }
   };
 
@@ -1760,11 +1772,24 @@ export default function create(): UniverseModule {
     // In the laboratory the experiment puts the worlds where it has them (their turn still the IAU models').
     if (lab?.active) {
       lab.applyBuiltIns(sys, hiddenBodies);
-      const refocus = lab.takeRefocus();
-      if (refocus && !hiddenBodies.has(refocus)) nav.flyTo(world, refocus);
+      // Its own bodies changed (one added, merged, broken up or removed; another experiment), or the ten it hides: the camera's bodies listed again.
+      let listed = lab.navRevision * 1024;
+      for (const id of hiddenBodies) listed += 2 ** BODY_IDS.indexOf(id);
+      if (listed !== navFor) {
+        navFor = listed;
+        relist();
+      }
+      const on = nav.focus;
+      const refocus = lab.takeRefocus(on);
+      if (refocus && !hiddenBodies.has(refocus as BodyId)) nav.flyTo(world, refocus);
+      // One of its own in view, gone: let go of where the camera is (removed), or flown on from there to what goes on for it
+      // (a merger's survivor, asked for while the trip to the one that went was under way).
+      else if (isLabBody(on)) {
+        if (!lab.navBodies().includes(world.body(on))) nav.release(world);
+      }
       // A laboratory of its own (two or three bodies, none of them the worlds): the view goes to its star, at the Sun's place, never to a world it lacks
       // (at once: the entry glide toward the world it left gives way).
-      else if ((hiddenBodies.has(nav.focus as BodyId) || nav.focus !== host(nav.focus)) && nav.focus !== 'sun' && !nav.travelling) nav.flyTo(world, 'sun');
+      else if ((hiddenBodies.has(on as BodyId) || on !== host(on)) && on !== 'sun' && !nav.travelling) nav.flyTo(world, 'sun');
     }
     // Too fast to show a world turning: held at an hour of its day (./time-beyond), let go only as the clock runs on its own (not paused, not a trip).
     const running = clockRate !== 0 && (lab?.active === true || !nav.travelling);
@@ -1974,7 +1999,7 @@ export default function create(): UniverseModule {
     ringSphere.pole.x = pole[3] ?? 0;
     ringSphere.pole.y = pole[4] ?? 1;
     ringSphere.pole.z = pole[5] ?? 0;
-    nearestKm = Math.min(nearestAltitude(spheres), worlds?.nearestKm(origin.camera) ?? Infinity);
+    nearestKm = Math.min(nearestAltitude(spheres), worlds?.nearestKm(origin.camera) ?? Infinity, lab?.active ? lab.nearestKm(origin.camera) : Infinity);
     lensFor(nearestKm, lens);
     if (walking || descending) {
       lens.near = WALK_LENS.near;
@@ -2941,14 +2966,27 @@ export default function create(): UniverseModule {
     });
     const byId = new Map(list.map((b) => [b.id, b]));
     return {
-      all: list,
+      all: [],
       sun: sys.bodies.sun.position,
       body(id) {
-        const found = byId.get(id) ?? worlds?.nav(id);
+        const found = byId.get(id) ?? worlds?.nav(id) ?? lab?.nav(id);
         if (!found) throw new Error(`no body ${id}`);
         return found;
       },
     };
+  };
+
+  /**
+   * The bodies the camera keeps out of and flies freely by, listed again in place: the ten (in an experiment those it
+   * shows, and the Sun, which a laboratory of its own's star stands in for), the worlds (not drawn in an experiment),
+   * and the laboratory's own. Hidden ones would be unseen walls, at the experiment's epoch.
+   */
+  const relist = (): void => {
+    if (!world) return;
+    const all = world.all as NavBody[];
+    all.length = 0;
+    for (const id of BODY_IDS) if (id === 'sun' || !hiddenBodies.has(id)) all.push(world.body(id));
+    all.push(...(lab?.active ? lab.navBodies() : (worlds?.navList() ?? [])));
   };
 
   const steer = (command: UniverseSteer): boolean => {
@@ -2988,6 +3026,7 @@ export default function create(): UniverseModule {
       labInputs = { planets, moon, physical };
       skyData = skyFile;
       world = navBodies(system);
+      relist();
       ringSphere.innerKm = physical.saturnRings.innerKm;
       ringSphere.outerKm = physical.saturnRings.outerKm;
 
