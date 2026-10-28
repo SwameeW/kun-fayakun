@@ -1,0 +1,4 @@
+{
+  "$comment": "Chapter 2's own messages, loaded with its chunk (src/chapters/ch02/scene.ts): the CMB legend's line for the polarisation lines (src/ui/figures.ts).",
+  "ch02.cmb.lines": "Lines: direction of polarisation (Planck)"
+}

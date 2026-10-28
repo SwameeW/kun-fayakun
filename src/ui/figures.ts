@@ -1,4 +1,5 @@
 import type { App, FigureId, I18n, ScienceConstant } from '../core/types';
+import { CMB_LINES } from '../chapters/ch02/lines-window';
 import { h, srOnly, svg, uniqueId } from './dom';
 import { constantField, formatConstant, scientificNode, tryConstant } from './format';
 import './styles/figures.css';
@@ -83,6 +84,30 @@ function renderCmbScale(meta: CmbMeta, i18n: I18n): HTMLElement {
   return h('div', { class: 'kf-cmb-scale', dir: 'ltr' }, bar, ticks);
 }
 
+/** The legend's line for Chapter 2's polarisation lines; its message comes with the chapter's chunk (en.ch02.json). */
+const CMB_LINES_KEY = 'ch02.cmb.lines';
+
+/**
+ * Says what the lines on the globe are, from the moment they ease in (lines-window.ts) to the
+ * chapter's end: its row opens and its text fades in with them, and both go when the film is
+ * taken back before them or leaves the chapter.
+ */
+function cmbLinesLine(app: App): HTMLElement {
+  const text = h('p', { class: 'kf-credit kf-cmb-lines', 'data-testid': 'cmb-lines', 'aria-hidden': 'true' });
+  const row = h('div', { class: 'kf-cmb-lines-row' }, text);
+  let shown = false;
+  const sync = ({ chapter, t }: { chapter: string; t: number }): void => {
+    const want = chapter === CMB_LINES.chapter && t >= CMB_LINES.from && app.i18n.has(CMB_LINES_KEY);
+    if (want === shown) return;
+    shown = want;
+    if (want) text.textContent = app.i18n.t(CMB_LINES_KEY);
+    row.classList.toggle('is-visible', want);
+    text.setAttribute('aria-hidden', String(!want));
+  };
+  app.events.on('time', sync);
+  return row;
+}
+
 /** The CMB colour scale with microkelvin labels and the Planck credit. */
 export function cmbLegend(app: App, attrs: Record<string, string> = {}): HTMLElement {
   const { i18n } = app;
@@ -99,6 +124,7 @@ export function cmbLegend(app: App, attrs: Record<string, string> = {}): HTMLEle
     h('figcaption', { class: 'kf-figure-title' }, i18n.t('ui.cmb.title')),
     scaleSlot,
     h('p', { class: 'kf-figure-note' }, cmbCaption(app)),
+    cmbLinesLine(app),
     credit,
   );
 }

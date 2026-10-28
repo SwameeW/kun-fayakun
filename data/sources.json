@@ -193,7 +193,24 @@
       "license": "Public data from the ESA Planck Legacy Archive, free to use with acknowledgement. ESA asks users to include: 'Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada.'",
       "licenseUrl": "https://www.cosmos.esa.int/web/planck/planck-data-use",
       "credit": "ESA and the Planck Collaboration",
-      "notes": "Mirror: https://irsa.ipac.caltech.edu/data/Planck/release_3/all-sky-maps/maps/component-maps/cmb/COM_CMB_IQU-smica_2048_R3.00_full.fits (2,013,312,960 bytes, last modified 2018-06-04). The HEALPix temperature map is converted offline into the equirectangular textures described by public/assets/cmb/cmb.json. ESA's own image pages for this map print the credit as 'ESA/Planck Collaboration'; this project uses the spec's wording 'ESA and the Planck Collaboration'.",
+      "notes": "Mirror: https://irsa.ipac.caltech.edu/data/Planck/release_3/all-sky-maps/maps/component-maps/cmb/COM_CMB_IQU-smica_2048_R3.00_full.fits (2,013,312,960 bytes, last modified 2018-06-04). The HEALPix temperature map is converted offline into the equirectangular textures described by public/assets/cmb/cmb.json; its Q and U polarisation maps and polarisation mask (PMASK) into Chapter 2's polarisation lines, described with their checks by public/assets/cmb/cmb-polarisation.json. ESA's own image pages for this map print the credit as 'ESA/Planck Collaboration'; this project uses the spec's wording 'ESA and the Planck Collaboration'.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hu-white-1997",
+      "kind": "paper",
+      "title": "A CMB polarization primer",
+      "author": "Hu & White",
+      "url": "https://doi.org/10.1016/S1384-1076(97)00022-5",
+      "version": "New Astronomy 2, 323 (1997)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Hu & White, New Astronomy 2, 323 (1997)",
+      "notes": "How the first light became polarised: scattered off electrons that saw slightly more light from some directions than from others (a quadrupole), at the last scattering. Cited by Chapter 2's Discover card on the polarisation lines.",
       "review": {
         "reviewer": null,
         "role": null,

@@ -1,4 +1,5 @@
 import type { Cue } from '../../core/types';
+import { CMB_LINES } from './lines-window';
 
 /** Scene events of Chapter 2, in story order (docs/CONTRACTS.md). */
 export const CH02_EVENTS = ['plasma', 'recombination', 'cmb-reveal', 'cmb-hold'] as const;
@@ -87,6 +88,40 @@ export function stateAt(t: number, times: EventTimes, reducedMotion: boolean): C
   // camera draws back out through it to see the whole shell, so the reveal depends on time only.
   const reveal = smootherstep((t - times['cmb-reveal']) / REVEAL_SECONDS[pace]);
   return { clear, reveal, spin: reducedMotion ? 0 : spinAt(t - times['cmb-hold']) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Polarisation lines                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Nothing new appears under a verse or a hadith, or in the seconds before one. */
+const QUIET_BEFORE_TEXT_SECONDS = 2;
+
+/**
+ * Throws when the lines' window (lines-window.ts) would reach under a verse or a hadith or into
+ * the seconds before one: content.json's cues are the timing's single source, so a change there
+ * that collides with the lines is a content error, not something to show.
+ */
+export function checkLinesWindow(cues: readonly Cue[], duration: number): void {
+  for (const cue of cues) {
+    if (cue.type !== 'verse' && cue.type !== 'hadith') continue;
+    const quietFrom = cue.t - QUIET_BEFORE_TEXT_SECONDS;
+    const quietTo = cue.t + cue.duration;
+    if (quietFrom < duration && quietTo > CMB_LINES.from) {
+      const name = cue.type === 'verse' ? cue.key : cue.id;
+      throw new Error(`ch02: the polarisation lines (from ${CMB_LINES.from} s) would show under ${cue.type} ${name} or just before it`);
+    }
+  }
+}
+
+/**
+ * 0..1: how strongly the polarisation lines darken the globe at chapter time t (held at 1 to the
+ * end). The eye judges darkness about as the cube root of light, so a line at half strength looks
+ * barely there; the square root of the ease spreads their coming-in evenly to the eye across the
+ * window instead of bunching it at its end (it still starts and ends with zero slope).
+ */
+export function linesAt(t: number): number {
+  return Math.sqrt(smootherstep((t - CMB_LINES.from) / (CMB_LINES.to - CMB_LINES.from)));
 }
 
 /** Angle after `s` seconds of a spin whose speed ramps linearly up to full over SPIN_RAMP_SECONDS. */
