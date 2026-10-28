@@ -14,6 +14,11 @@
  * goes), and only then is the next one asked for. Requests are handled in the order they came: a start
  * waits for the starts before it.
  *
+ * A stop asked before WebLLM has been asked for a generation's first piece is kept here, not passed on:
+ * asyncGenerate clears WebLLM's interrupt once it has taken the lock, on that first step, so the stop
+ * would be lost and the whole reply written. Such a generation is never started: its iterator is
+ * returned before its first step, and it never takes the lock.
+ *
  * Plain data in, plain data out, with WebLLM's engine given as two functions, so tests drive it with
  * WebLLM's own MLCEngine and a stand-in pipeline (tests/unit/ai-generations.spec.ts).
  */
@@ -31,7 +36,10 @@ export interface Generations {
   start(id: number, request: ChatCompletionRequestStreaming): Promise<void>;
   /** The next piece of generation `id`, decoded now; null once it has ended, or when it is not the one under way. */
   pull(id: number): Promise<ChatCompletionChunk | null>;
-  /** Asks generation `id` (without one, the one under way) to stop at its next token; its pieces up to the stop still come. */
+  /**
+   * Asks generation `id` (without one, the one under way) to stop at its next token; its pieces up to
+   * the stop still come. One not yet started, or not yet asked for its first piece, is never started.
+   */
   interrupt(id?: number): Promise<void>;
   /** Ends the generation under way as a start would, and waits until it has (before an unload). */
   end(): Promise<void>;
@@ -44,6 +52,10 @@ interface Stream {
   pieces: AsyncIterator<ChatCompletionChunk>;
   /** The step under way (a piece being decoded, or the prompt being read), or null. */
   step: Promise<IteratorResult<ChatCompletionChunk>> | null;
+  /** WebLLM has been asked for its first piece (it has taken, or is taking, the lock). */
+  begun: boolean;
+  /** A stop was asked before that: it is ended at its first pull without being started. */
+  stopAsked: boolean;
   /** No more pieces are asked of it: it has finished, failed, or is being ended. */
   closed: boolean;
   /** Settles once its iterator has been returned (WebLLM's lock let go). */
@@ -57,6 +69,10 @@ export function createGenerations(source: GenerationSource): Generations {
   let current: Stream | null = null;
   /** Starts and ends in the order they were asked for. */
   let queue: Promise<void> = Promise.resolve();
+  /** Generations asked for and not yet under way (waiting for the one before them, or being created). */
+  const starting = new Set<number>();
+  /** Those of them stopped already. */
+  const stoppedEarly = new Set<number>();
 
   const serial = <T>(work: () => Promise<T>): Promise<T> => {
     const run = queue.then(work);
@@ -72,10 +88,13 @@ export function createGenerations(source: GenerationSource): Generations {
     if (s.ending) return s.ending;
     s.closed = true;
     s.ending = (async () => {
-      try {
-        await source.interrupt();
-      } catch {
-        // An engine that cannot be interrupted still has its iterator returned below.
+      // One never started has nothing to interrupt (and WebLLM's interrupt would wait for the next).
+      if (s.begun) {
+        try {
+          await source.interrupt();
+        } catch {
+          // An engine that cannot be interrupted still has its iterator returned below.
+        }
       }
       // WebLLM reads the interrupt between tokens: the token (or the prompt) under way is finished first.
       if (s.step) await s.step.catch(() => undefined);
@@ -96,10 +115,16 @@ export function createGenerations(source: GenerationSource): Generations {
       return current?.id ?? null;
     },
     start(id, request) {
+      starting.add(id);
       return serial(async () => {
-        if (current) await finish(current);
-        const created = await source.create(request);
-        current = { id, pieces: created[Symbol.asyncIterator](), step: null, closed: false, ending: null };
+        try {
+          if (current) await finish(current);
+          const created = await source.create(request);
+          current = { id, pieces: created[Symbol.asyncIterator](), step: null, begun: false, stopAsked: stoppedEarly.has(id), closed: false, ending: null };
+        } finally {
+          starting.delete(id);
+          stoppedEarly.delete(id);
+        }
       });
     },
     async pull(id) {
@@ -108,6 +133,12 @@ export function createGenerations(source: GenerationSource): Generations {
       // The page pulls one piece at a time; a second pull waits for the first.
       if (s.step) await s.step.catch(() => undefined);
       if (isClosed(s)) return null;
+      if (!s.begun && s.stopAsked) {
+        // Stopped before its first step: returned without being started, so it never takes the lock.
+        await finish(s);
+        return null;
+      }
+      s.begun = true;
       const step = s.pieces.next();
       s.step = step;
       try {
@@ -131,8 +162,17 @@ export function createGenerations(source: GenerationSource): Generations {
       }
     },
     async interrupt(id) {
+      if (id !== undefined && starting.has(id)) {
+        stoppedEarly.add(id);
+        return;
+      }
       const s = current;
       if (!s || s.closed || (id !== undefined && s.id !== id)) return;
+      // WebLLM clears its interrupt on a generation's first step: a stop before it is kept here instead.
+      if (!s.begun) {
+        s.stopAsked = true;
+        return;
+      }
       await source.interrupt();
     },
     end() {

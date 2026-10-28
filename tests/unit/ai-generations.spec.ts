@@ -8,20 +8,23 @@
  *
  * The worker as it was (an unfinished stream dropped when the next began) is run first: there the
  * next generation never gets its answer and its render budget stays held. Then the worker as it is:
- * stopped while the prompt is read and asked again, stopped while it writes, two at once without a
- * stop, an interrupt that lands while the prompt's wrapper waits for the device, twenty asked and
- * stopped, an unload under way, and the watch on a worker that stops answering, on a long step it must
- * not cut, and on a step that never ends.
+ * stopped while the prompt is read and asked again, stopped while it writes, stopped after the page
+ * asked for it but before it started (WebLLM clears its interrupt on a generation's first step), and
+ * while it waits for the one before it, two at once without a stop, an interrupt that lands while the
+ * prompt's wrapper waits for the device, twenty asked and stopped, an unload under way, stopped while
+ * the tab is hidden, and the watch on a worker that stops answering, on a long step it must not cut,
+ * and on a step that never ends; a lost device.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { MLCEngine, type ChatCompletionChunk, type ChatCompletionRequestStreaming } from '@mlc-ai/web-llm';
 import { buildAppConfig, VISITOR_MODELS } from '../../src/ai/engine/catalogue';
-import type { Pacer } from '../../src/ai/engine/pacing';
+import { createPacer, type Pacer } from '../../src/ai/engine/pacing';
 import type { FromModelWorker, ToModelWorker } from '../../src/ai/engine/protocol';
 import { connectModelWorker, loadWebLLM, toCompletionRequest, type Watch, type WebLlmEngine, type WorkerPort } from '../../src/ai/engine/webllm';
 import { createWorkerHandler, type WebLlmRuntime } from '../../src/ai/engine/worker-handler';
 import type { ChatMessage, GenerateResult, ModelSpec } from '../../src/ai/types';
+import type { App } from '../../src/core/types';
 
 const WEBLLM = readFileSync(new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url), 'utf8');
 
@@ -131,6 +134,10 @@ class Pipeline {
   chunks = 0;
   /** Rounds (generations) whose prompt was read to the end. */
   read = 0;
+  /** Rounds begun (a generation that took the lock and began to read its prompt). */
+  begun = 0;
+  /** Set to make the next token fail as WebLLM does when the GPU device is lost. */
+  loseDevice = false;
   constructor(
     private readonly gpu: Gpu,
     private readonly timing: Timing,
@@ -242,6 +249,7 @@ function standIn(gpu: Gpu, timing: Timing): { runtime: WebLlmRuntime; pipelines:
       };
       // As WebLLM's forwardPrefill and samplePrefillStep: every chunk through embedAndForward, one sync, the first token.
       own.prefill = async (request, pipeline) => {
+        pipeline.begun += 1;
         pipeline.message = '';
         pipeline.stoppedFlag = false;
         pipeline.finish = undefined;
@@ -257,6 +265,7 @@ function standIn(gpu: Gpu, timing: Timing): { runtime: WebLlmRuntime; pipelines:
       own.decode = async (pipeline) => {
         gpu.queue(timing.tokenMs);
         await gpu.sync();
+        if (pipeline.loseDevice) throw new Error('DeviceLostError: the GPUDevice was lost');
         pipeline.token();
       };
       return engine;
@@ -314,7 +323,7 @@ const asTheWorkerWas: Handler = (runtime, post) => {
 };
 
 /** A port to the handler in this process, passing each message as a worker does: copied, a task later. `mute` makes the worker go silent. */
-function inProcess(runtime: WebLlmRuntime, handler: Handler = createWorkerHandler): WorkerPort & { readonly ended: boolean; mute(): void; readonly log: readonly (ToModelWorker | FromModelWorker)[] } {
+function inProcess(runtime: WebLlmRuntime, handler: Handler = createWorkerHandler): WorkerPort & { readonly ended: boolean; mute(): void; readonly log: readonly (ToModelWorker | FromModelWorker)[]; afterPost: ((m: ToModelWorker) => void) | null } {
   let deliver: ((m: FromModelWorker) => void) | null = null;
   let ended = false;
   let muted = false;
@@ -328,16 +337,19 @@ function inProcess(runtime: WebLlmRuntime, handler: Handler = createWorkerHandle
       deliver?.(copy);
     }, 0);
   });
-  return {
+  const port = {
     log,
-    post(message) {
+    /** Called as the page posts each message, right after (a stop can land there). */
+    afterPost: null as ((m: ToModelWorker) => void) | null,
+    post(message: ToModelWorker) {
       log.push(message);
       const copy = structuredClone(message);
       setTimeout(() => {
         if (!ended) void handle(copy);
       }, 0);
+      port.afterPost?.(message);
     },
-    listen(onMessage) {
+    listen(onMessage: (m: FromModelWorker) => void) {
       deliver = onMessage;
     },
     terminate() {
@@ -350,6 +362,7 @@ function inProcess(runtime: WebLlmRuntime, handler: Handler = createWorkerHandle
       muted = true;
     },
   };
+  return port;
 }
 
 /** A pacer that counts the budgets held (the render budget, §6). */
@@ -436,7 +449,8 @@ test('the stand-in is WebLLM 0.2.86’s own: asyncGenerate takes the model’s l
   const generator = WEBLLM.slice(WEBLLM.indexOf('    asyncGenerate(request, model, pipeline, chatConfig, genConfig, timeReceived, journal) {'), WEBLLM.indexOf('    interruptGenerate() {'));
   expect(generator).toMatch(/const lock = this\.loadedModelIdToLock\.get\(model\);\s+yield __await\(lock\.acquire\(\)\);/u);
   expect(generator).toMatch(/finally \{[\s\S]*yield __await\(lock\.release\(\)\);/u);
-  expect(generator).toContain('this.interruptSignal = false;');
+  // It clears the interrupt once it has the lock, on its first step: a stop sent before that step is lost (generations.ts keeps it).
+  expect(generator).toMatch(/yield __await\(lock\.acquire\(\)\);[\s\S]*this\.interruptSignal = false;[\s\S]*yield __await\(this\.prefill\(/u);
   const lock = WEBLLM.slice(WEBLLM.indexOf('class CustomLock {'), WEBLLM.indexOf('class CustomLock {') + 1400).replace(/\s+/gu, ' ');
   for (const line of ['if (!this.acquired) { // If lock is free, directly return this.acquired = true; }', 'this.queue.push(resolve);', 'if (this.queue.length === 0) { // No one is waiting for the lock, so we free it this.acquired = false; return; }', 'const cont = this.queue.shift(); return new Promise((res) => { cont(); res(); });']) {
     expect(lock).toContain(line);
@@ -525,6 +539,121 @@ test('stopped while it writes and asked again: it ends at its next token, the se
   expect(second.finish).toBe('length');
   expect(s.pacer.holds).toBe(0);
   expect(s.lock().acquired).toBe(false);
+});
+
+test('stopped after the page asked the worker for it, before it started: it is never started, ends as stopped at once, and the next answers', async () => {
+  const s = await setUp();
+  const a = ask(s.engine, SHORT, 400);
+  // The stop lands right after the page posts its request, before the worker's answer that it started.
+  s.port.afterPost = (m) => {
+    if (m.type !== 'generate') return;
+    s.port.afterPost = null;
+    a.stop();
+  };
+  const first = await a.result;
+  expect(first.finish).toBe('abort');
+  expect(first.outputTokens).toBe(0);
+  // It reached the worker, which started it as asked; then the stop, then a pull that ended it.
+  const log = s.port.log;
+  const started = log.findIndex((m) => m.type === 'started');
+  expect(started).toBeGreaterThan(-1);
+  expect(log.findIndex((m) => m.type === 'interrupt')).toBeGreaterThan(started);
+  // WebLLM never took the lock for it, nor read its prompt.
+  expect(s.pipeline().begun).toBe(0);
+  expect(s.lock().acquired).toBe(false);
+  expect(a.streamed()).toBe('');
+  const t0 = performance.now();
+  const second = await ask(s.engine, SHORT).result;
+  expect(second.finish).toBe('length');
+  expect(second.text).toBe(Array.from({ length: 16 }, (_, i) => `w${i + 1}`).join(' '));
+  // Sixteen tokens at 5 ms, not the first's 400 first.
+  expect(performance.now() - t0).toBeLessThan(1000);
+  expect(s.pipeline().begun).toBe(1);
+  expect(s.pacer.holds).toBe(0);
+  expect(s.lock().acquired).toBe(false);
+});
+
+test('the worker: a stop for a generation still waiting for the one before it, or not yet pulled, means it is never started', async () => {
+  const gpu = new Gpu();
+  const { runtime, pipelines, locks } = standIn(gpu, { chunkMs: 30, tokenMs: 5 });
+  const port = inProcess(runtime);
+  const worker = connectModelWorker(port);
+  const request = (messages: readonly ChatMessage[], maxTokens = 16): ChatCompletionRequestStreaming => toCompletionRequest({ messages, format: { kind: 'text' }, maxTokens });
+  /** Pulls a stream to its end; resolves to the pieces' text. */
+  const drain = async (stream: number): Promise<string> => {
+    let text = '';
+    for (;;) {
+      const p = await worker.call({ type: 'pull', stream });
+      if (p.type !== 'piece' || p.done || !p.piece) return text;
+      text += p.piece.delta;
+    }
+  };
+  try {
+    await worker.call({ type: 'load', appConfig: buildAppConfig([MODEL]), model: MODEL.id, prefill: { chunkTokens: 256, yieldBetween: true } });
+    const pipeline = pipelines[0] as Pipeline;
+    // A reads its long prompt; B is asked for meanwhile (its start waits for A to end) and stopped while it waits.
+    const a = await worker.call({ type: 'generate', request: request(LONG) });
+    const aFirst = worker.call({ type: 'pull', stream: a.id });
+    await expect.poll(() => pipeline.begun).toBe(1);
+    const bStarted = worker.call({ type: 'generate', request: request(SHORT, 400) });
+    const bId = (port.log.filter((m): m is Extract<ToModelWorker, { type: 'generate' }> => m.type === 'generate').at(-1) as { id: number }).id;
+    worker.interrupt(bId);
+    // A starting B ends A (its prompt finished first).
+    await aFirst;
+    expect(await drain(a.id)).toBe('');
+    const b = await bStarted;
+    expect(b.type).toBe('started');
+    expect(await drain(b.id)).toBe('');
+    expect(pipeline.begun).toBe(1);
+    // C: started, stopped before its first pull with no stream named (the one under way), then pulled.
+    const c = await worker.call({ type: 'generate', request: request(SHORT, 400) });
+    worker.interrupt();
+    expect(await drain(c.id)).toBe('');
+    expect(pipeline.begun).toBe(1);
+    expect(locks[0]?.acquired).toBe(false);
+    // D, not stopped, is written in full.
+    const d = await worker.call({ type: 'generate', request: request(SHORT) });
+    expect(await drain(d.id)).toBe(Array.from({ length: 16 }, (_, i) => `w${i + 1}`).join(' '));
+    expect(pipeline.begun).toBe(2);
+    expect(locks[0]?.acquired).toBe(false);
+  } finally {
+    worker.terminate();
+  }
+});
+
+test('stopped while the tab is hidden: it ends as stopped and leaves no listener behind', async () => {
+  const g = globalThis as Record<string, unknown>;
+  const saved = { window: g.window, document: g.document, requestAnimationFrame: g.requestAnimationFrame };
+  const listeners = new Set<unknown>();
+  const doc = {
+    hidden: false,
+    addEventListener: (_type: string, f: unknown) => listeners.add(f),
+    removeEventListener: (_type: string, f: unknown) => listeners.delete(f),
+  };
+  g.window = { addEventListener: () => undefined, removeEventListener: () => undefined };
+  g.document = doc;
+  g.requestAnimationFrame = (cb: (t: number) => void) =>
+    setTimeout(() => {
+      cb(performance.now());
+    }, 16);
+  const pacer = createPacer({ universe: () => null, requestRenderBudget: () => () => undefined } as unknown as App);
+  try {
+    const gpu = new Gpu();
+    const { runtime } = standIn(gpu, { chunkMs: 30, tokenMs: 5 });
+    const engine = await loadWebLLM(MODEL, () => undefined, new AbortController().signal, pacer, () => connectModelWorker(inProcess(runtime)), { chunkTokens: 256, yieldBetween: true }, WATCH);
+    doc.hidden = true;
+    const a = ask(engine, SHORT);
+    // A hidden tab starts nothing: it waits for the tab to show.
+    await expect.poll(() => listeners.size).toBe(1);
+    a.stop();
+    const result = await a.result;
+    expect(result.finish).toBe('abort');
+    expect(listeners.size).toBe(0);
+    await engine.unload();
+  } finally {
+    pacer.dispose();
+    Object.assign(g, saved);
+  }
 });
 
 test('two at once without a stop: the second waits for the first, which is written to its end, not cut', async () => {
@@ -622,6 +751,8 @@ test('a worker that stops answering: the watch ends it and says so, the generati
     expect(result.finish).toBe('error');
     expect(performance.now() - started).toBeLessThan(WATCH.silentMs + 4 * WATCH.pingMs + 200);
     expect(s.engine.lastError?.detail).toMatch(/did not answer for/u);
+    // The engine says it can no longer generate (the assistant then lets it go: tests/unit/ai-orchestrator.spec.ts).
+    expect(s.engine.lost?.detail).toMatch(/did not answer for/u);
     expect(warnings.some((w) => /did not answer/u.test(w))).toBe(true);
     expect(s.port.ended).toBe(true);
     expect(s.pacer.holds).toBe(0);
@@ -659,4 +790,34 @@ test('a step that never ends, the worker still answering, is ended after the ste
     console.warn = warn;
     s.gpu.release();
   }
+});
+
+test('a lost device: the generation ends with that error, and the engine says it can no longer generate', async () => {
+  const s = await setUp();
+  expect(s.engine.lost).toBeNull();
+  const a = ask(s.engine, SHORT, 400);
+  await expect.poll(() => a.streamed().length).toBeGreaterThan(5);
+  s.pipeline().loseDevice = true;
+  const result = await a.result;
+  expect(result.finish).toBe('error');
+  expect(s.engine.lastError?.code).toBe('device-lost');
+  expect(s.engine.lost?.code).toBe('device-lost');
+  expect(s.pacer.holds).toBe(0);
+  await s.engine.unload();
+});
+
+test('lastError is that of the last generation to end: one stopped while it waits clears it', async () => {
+  const s = await setUp();
+  const a = ask(s.engine, SHORT, 400);
+  await expect.poll(() => a.streamed().length).toBeGreaterThan(5);
+  s.pipeline().loseDevice = true;
+  expect((await a.result).finish).toBe('error');
+  expect(s.engine.lastError?.code).toBe('device-lost');
+  const b = ask(s.engine, SHORT);
+  b.stop();
+  expect((await b.result).finish).toBe('abort');
+  expect(s.engine.lastError).toBeNull();
+  // The device stays lost.
+  expect(s.engine.lost?.code).toBe('device-lost');
+  await s.engine.unload();
 });

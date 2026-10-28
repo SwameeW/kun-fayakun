@@ -190,6 +190,8 @@ export interface LanguageEngine {
   /** Stops the generation under way at its next token (and, for the local model, any waiting for it to end). */
   interrupt(): void;
   unload(): Promise<void>;
+  /** Set once it can no longer generate (the local model's worker ended by its watch, or its GPU device lost): why. */
+  readonly lost?: EngineError | null;
 }
 
 /** Loads engines and manages what is stored (src/ai/engine/index.ts). */

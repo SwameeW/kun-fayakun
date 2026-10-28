@@ -480,6 +480,23 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     if (e) await e.unload().catch(() => undefined);
   }
 
+  /**
+   * An engine that can no longer generate (the local model's worker ended by its watch, or its device
+   * lost) is let go, so the next question is not sent to it: the engine reads 'error', the panel says the
+   * guide answers, and the model loads again only when it is chosen again.
+   */
+  function letGoIfLost(e: LanguageEngine): void {
+    const error = e.lost;
+    if (!error || engine !== e) return;
+    engine = null;
+    chosen = null;
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = null;
+    void e.unload().catch(() => undefined);
+    setEngine({ kind: e.kind, model: e.model, state: 'error', error });
+    announce('ai.mind.announce.engineLost', { model: e.model });
+  }
+
   /** A model chosen but unloaded while idle loads again before it is needed. */
   async function ensureEngine(signal: AbortSignal): Promise<void> {
     if (engine || !chosen) return;
@@ -695,6 +712,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const tools = registry.shortlist(question, rec.ctx, SHORTLIST);
     const schema = planSchema(tools, rec.ctx);
     let messagesNow: ChatMessage[] = buildPlanMessages(question, rec.ctx, tools, history(rec));
+    let failed = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const request = { messages: messagesNow, format: { kind: 'json' as const, schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal };
       const began = now();
@@ -706,10 +724,14 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         rec.planner = { kind: e.kind, model: e.model };
         return parsed.plan;
       }
-      if (result.finish === 'error') break;
+      if (result.finish === 'error') {
+        failed = true;
+        break;
+      }
       messagesNow = buildRepairMessages(messagesNow, result.text, parsed.problems);
     }
-    addBlock(rec, { type: 'notice', key: 'ai.mind.notice.planFallback' });
+    // An engine that stopped with an error says so, as it does while answering; a plan it wrote that could not be used says that.
+    addBlock(rec, { type: 'notice', key: failed ? 'ai.mind.notice.engineError' : 'ai.mind.notice.planFallback' });
     rec.guideOnly = true;
     return null;
   }
@@ -821,12 +843,13 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     });
     lastGeneration = before.then(() => mine);
     generating += 1;
-    setEngine({ ...engineState, state: 'busy' });
+    if (engine === e) setEngine({ ...engineState, state: 'busy' });
     try {
       await endedOrStopped(before, rec.controller.signal);
       checkpoint(rec);
       const result = await e.generate(request);
       rec.turn.timings.tokens += result.promptTokens + result.outputTokens;
+      if (result.finish === 'error') letGoIfLost(e);
       if (result.finish === 'abort' || rec.controller.signal.aborted) throw new Cancelled();
       return result;
     } finally {

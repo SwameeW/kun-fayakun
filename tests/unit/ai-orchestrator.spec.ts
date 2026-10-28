@@ -19,7 +19,7 @@ import { createScriptedEngine, type ScriptedEngine, type ScriptedReply } from '.
 import { createRetriever } from '../../src/ai/knowledge/retrieve';
 import { buildAnswerMessages, LEVEL_LINES } from '../../src/ai/prompts';
 import type { AiMemory, MemoryEntry } from '../../src/ai/memory';
-import type { AiContext, AnswerBlock, EngineHost, EvaluationOptions, GenerationRecord, IntelligenceEvents, JsonSchema, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
+import type { AiContext, AnswerBlock, EngineError, EngineHost, EvaluationOptions, GenerationRecord, IntelligenceEvents, JsonSchema, LanguageEngine, ModelSpec, Passage, ToolDefinition, ToolOutcome, ToolProblem, ToolRegistry, Turn, UndoOutcome } from '../../src/ai/types';
 import { BODY_IDS, type App, type I18n } from '../../src/core/types';
 
 const index = JSON.parse(readFileSync(new URL('../../public/assets/ai/index.json', import.meta.url), 'utf8')) as { passages: Passage[] };
@@ -510,7 +510,8 @@ test.describe('with a model', () => {
   });
 
   test('a plan that stays invalid falls back to retrieval, and says so: the guide answers, as the notice says', async () => {
-    const h = harness([{ format: 'json', match: 'the beginning', reply: plan({ intent: 'act', calls: [{ tool: 'universe.delete', args: {} }] }) }, { format: 'text', match: 'the beginning', reply: 'The data describes an early hot, dense state [[passage:prose:ch01.science.hotDense]].' }]);
+    // The repair is answered with the same invalid plan (a request no reply matches would end as an engine error, which the notice names instead).
+    const h = harness([{ format: 'json', match: /the beginning|not offered/iu, reply: plan({ intent: 'act', calls: [{ tool: 'universe.delete', args: {} }] }) }, { format: 'text', match: 'the beginning', reply: 'The data describes an early hot, dense state [[passage:prose:ch01.science.hotDense]].' }]);
     h.ai.attach(h.engine);
     await expect.poll(() => h.ai.engine().state).toBe('ready');
     const turn = await h.ai.ask('Tell me about the beginning of the universe');
@@ -642,6 +643,63 @@ test.describe('with a model', () => {
     // Never ready while a generation was under way (a stopped one ending as the next began once read so).
     expect(said.filter((e) => e.state === 'ready' && e.running > 0)).toEqual([]);
     expect(said.at(-1)?.state).toBe('ready');
+  });
+
+  test('an engine that can no longer generate (its worker ended by the watch) is let go: the turn says the model stopped, the engine reads error, the next question is the guide’s', async () => {
+    const h = harness();
+    let lost: EngineError | null = null;
+    let calls = 0;
+    let unloads = 0;
+    const ended: LanguageEngine = {
+      kind: 'local',
+      model: SPEC.id,
+      get lost() {
+        return lost;
+      },
+      generate() {
+        calls += 1;
+        lost = { code: 'unknown', messageKey: 'ai.engine.error.unknown', detail: 'The model’s worker did not answer for 30 s; it was ended' };
+        return Promise.resolve({ text: '', finish: 'error', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 });
+      },
+      interrupt: () => undefined,
+      unload() {
+        unloads += 1;
+        return Promise.resolve();
+      },
+    };
+    h.ai.attach(ended);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    const turn = await h.ai.ask('Why do stars shine?');
+    expect(calls).toBe(1);
+    expect(turn.state).toBe('done');
+    expect(turn.blocks).toContainEqual({ type: 'notice', key: 'ai.mind.notice.engineError' });
+    expect(turn.blocks).not.toContainEqual({ type: 'notice', key: 'ai.mind.notice.planFallback' });
+    // The guide answered.
+    expect(ofType(turn, 'text')).toHaveLength(1);
+    expect(ofType(turn, 'text')[0]?.by).toBeUndefined();
+    expect(h.ai.engine()).toEqual({ kind: 'local', model: SPEC.id, state: 'error' });
+    expect(h.engineEvents.at(-1)).toMatchObject({ state: 'error', error: { detail: 'The model’s worker did not answer for 30 s; it was ended' } });
+    expect(h.announced.some((a) => a.includes('stopped working'))).toBe(true);
+    expect(unloads).toBe(1);
+    // The next question is not sent to it, and the engine still reads error.
+    const next = await h.ai.ask('Why is Mars red?');
+    expect(calls).toBe(1);
+    expect(next.state).toBe('done');
+    expect(next.engine).toBe('guide');
+    expect(h.ai.engine().state).toBe('error');
+  });
+
+  test('an engine error from an engine that can still generate keeps it: the next question goes to it again', async () => {
+    const h = harness([{ format: 'json', match: 'mars red', reply: plan({ intent: 'answer', query: 'mars red', calls: [] }) }, { format: 'text', match: 'mars red', reply: 'Iron in its dust has rusted.' }]);
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    // No reply matches: the scripted engine ends it with finish 'error'.
+    const failed = await h.ai.ask('Why do stars shine?');
+    expect(failed.blocks).toContainEqual({ type: 'notice', key: 'ai.mind.notice.engineError' });
+    expect(h.ai.engine().state).toBe('ready');
+    const next = await h.ai.ask('Why is Mars red?');
+    expect(next.engine).toBe('scripted');
+    expect(ofType(next, 'text')[0]?.by).toBe('model');
   });
 
   test('while it streams, words presented as the Quran are never on screen, not even before their closing mark', async () => {

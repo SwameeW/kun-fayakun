@@ -35,8 +35,10 @@ import type { FromModelWorker, ModelPiece, ToModelWorker } from './protocol';
 /** A loaded WebLLM model: a LanguageEngine that also says why its last generation failed. */
 export interface WebLlmEngine extends LanguageEngine {
   readonly kind: 'local';
-  /** The failure behind the last finish 'error' (device lost, say), or null. */
+  /** Why the last generation to end failed (device lost, say), or null when it did not. */
   readonly lastError: EngineError | null;
+  /** Why it can no longer generate (its worker ended by the watch, or its GPU device lost), or null. */
+  readonly lost: EngineError | null;
   /** How the model reads its prompt, as its worker set it after the load (prefill.ts). */
   readonly prefill: PrefillReport;
 }
@@ -437,6 +439,8 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
 
   let prefilled = false;
   let lastError: EngineError | null = null;
+  /** A device lost in a generation: the model cannot generate again until it is loaded again. */
+  let deviceLost: EngineError | null = null;
   /** Read through functions: the flags change in callbacks while a generation awaits. */
   const isUnloaded = (): boolean => stopped;
   const wasStopped = (run: Run): boolean => run.interrupted;
@@ -535,16 +539,20 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     const release = pacer.hold();
     try {
       await Promise.race([before, run.woken]);
-      await Promise.race([pacer.visible(), run.woken]);
-      if (wasStopped(run)) return { text, finish: 'abort', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
+      // Its listener goes once it is stopped, too (a hidden tab may stay hidden).
+      await pacer.visible(run.woken);
+      if (wasStopped(run)) {
+        lastError = null;
+        return { text, finish: 'abort', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
+      }
       if (isUnloaded()) throw lost ?? engineError('unknown', 'The model was unloaded');
-      lastError = null;
       firstPrefill = !prefilled;
       if (firstPrefill) markStage('prefill', model.id);
       const begun = await watched(worker.call({ type: 'generate', request: toCompletionRequest(request) }));
       if (begun.type !== 'started') throw engineError('unknown', `Unexpected answer: ${begun.type}`);
       run.stream = begun.id;
-      // A stop that came while it was starting reaches the worker now.
+      // A stop that came while it was starting reaches the worker now: it ends the generation at the
+      // pull below without starting it (./generations.ts).
       if (wasStopped(run) && !isUnloaded()) worker.interrupt(begun.id);
       for (;;) {
         // The worker decodes the next piece only now: this is where the scene gets its frames. A stopped
@@ -574,11 +582,15 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
         if (request.format.kind === 'text' && !wasStopped(run)) request.onText?.(rest);
       }
       if (wasStopped(run)) finish = 'abort';
+      lastError = null;
     } catch (err) {
-      if (wasStopped(run)) finish = 'abort';
-      else {
+      if (wasStopped(run)) {
+        finish = 'abort';
+        lastError = null;
+      } else {
         finish = 'error';
         lastError = toEngineError(err);
+        if (lastError.code === 'device-lost') deviceLost ??= lastError;
       }
     } finally {
       request.signal?.removeEventListener('abort', onAbort);
@@ -617,6 +629,9 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     model: model.id,
     get lastError() {
       return lastError;
+    },
+    get lost() {
+      return lost ?? deviceLost;
     },
     prefill: prefillReport,
     generate,

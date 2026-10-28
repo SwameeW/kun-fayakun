@@ -63,6 +63,7 @@
   "ai.mind.announce.engineLoading": "Loading {model}.",
   "ai.mind.announce.engineReady": "{model} is ready.",
   "ai.mind.announce.engineError": "{model} could not be loaded. The guide answers meanwhile.",
+  "ai.mind.announce.engineLost": "{model} stopped working and was unloaded. The guide answers meanwhile; choose the model again to load it.",
   "ai.mind.announce.engineOff": "The model was unloaded after ten idle minutes, to free memory. It loads again with your next question.",
   "ai.mind.announce.guide": "Using the guide: no model, answers from the app’s own content.",
   "ai.mind.suggest.verse": "Explain {key}",
