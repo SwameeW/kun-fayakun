@@ -125,6 +125,17 @@ export type MergeEvent = ContactEvent;
 /** Whether a collision ended the projectile (a merger or a breakup), as against a graze it carried on from. */
 export const consumes = (e: ContactEvent): boolean => e.kind !== 'graze';
 
+/**
+ * The body that goes on for one a collision or the tides ended (the camera that followed it follows this):
+ * a merger's survivor; after a breakup the largest of what is left (the remnant keeping the target's id, or
+ * a piece); torn apart, its largest piece (the first of equals). `radiusOf` gives each one's radius now, km.
+ */
+export function heir(e: Pick<ContactEvent, 'kind' | 'survivor' | 'created'>, radiusOf: (id: string) => number): string {
+  let best = e.kind === 'disrupt' ? (e.created[0] ?? e.survivor) : e.survivor;
+  for (const id of e.created) if (radiusOf(id) > radiusOf(best)) best = id;
+  return best;
+}
+
 /** The most bodies a scenario holds (the engine's import limit too). */
 export const MAX_BODIES = 64;
 /** Debris bodies one collision may make, besides the second remnant. */

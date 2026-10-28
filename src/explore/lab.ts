@@ -3,7 +3,7 @@ import type { Ephemeris } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
 import { utcToTdb } from '../astro/time';
 import type { KfTestHandle } from '../core/hooks';
-import { BODY_IDS, type BodyId, type LabAim, type LabCommand, type LabEditResult, type LabImpactor, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody, type UniverseTimeCommand } from '../core/types';
+import { BODY_IDS, type BodyId, type FocusId, type LabAim, type LabCommand, type LabEditResult, type LabImpactor, type LabQuantity, type SceneLabel, type UniverseLab, type UniverseLabBody, type UniverseTimeCommand } from '../core/types';
 import labMessages from '../i18n/en.lab.json';
 import type { ThrowPlan } from '../sim/aim';
 import { commandId, RING_MAX_BODIES, STALE, validateScenario, type BodySpec, type Command, type Encounter, type Scenario } from '../sim/engine';
@@ -11,7 +11,7 @@ import { dayWithin, type Within } from '../sim/goto';
 import type { Look } from '../sim/looks';
 import { bulkDensity, joules, SOLID_MAX_GM } from '../sim/craters';
 import { breakupPeriodS, elementsFromState, hillRadiusKm, lagrangePoints, measure as measureBetween, orbitalFrame, rocheLimits, separation, stateFromElements, type Vec3 } from '../sim/elements';
-import { circularOrbit, consumes, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
+import { circularOrbit, consumes, heir, MAX_BODIES, primaryOf, type SimState } from '../sim/nbody';
 import { burnDuration, deltaVLeft, G0, hohmann, ROUND_E, type Transfer } from '../sim/ships';
 import { SWARM_LIMITS } from '../sim/swarms';
 import { airlessRock, climateSummary, noonK, worldClimates } from '../sim/climate';
@@ -26,6 +26,7 @@ import type { FireballEvent, FxBody, FxPlume, FxReport, FxSwarm, LabFx } from '.
 import { crustK, giantMeltK, MELT } from './lab-fx/heat';
 import { incandescence } from './lab-fx/incandescence';
 import { LabClock, placeAt } from './lab-clock';
+import type { NavBody } from './navigation';
 import { createOrbits, type OrbitFrame, type OrbitPath, type Orbits } from './orbits';
 import { km, type Km } from './space/origin';
 import { placeScaled } from './space/scaled-space';
@@ -127,8 +128,23 @@ export interface Lab {
   /** A command; its answer once the run has it (an edit applied, with the bodies it made, or refused with the reason). */
   command(c: LabCommand): Promise<LabEditResult>;
   view(): UniverseLab | null;
-  /** A body merged away or removed: the one the camera should go to instead (its survivor), once. */
-  takeRefocus(): BodyId | null;
+  /**
+   * Where the camera should go now, once: a body asked to be followed; when the body it is on (`focus`)
+   * merged away or broke up, its survivor or largest piece (./sim/nbody heir); else, when one of the ten
+   * merged away or was removed, its survivor or the Sun.
+   */
+  takeRefocus(focus: FocusId): FocusId | null;
+  /**
+   * The laboratory's own bodies (not the ten) as the camera sees them ('lab:' ids, where they are drawn,
+   * at their size now), and a count that moves on whenever they change: one added, merged, broken up or
+   * removed, another experiment, or none.
+   */
+  navBodies(): readonly NavBody[];
+  readonly navRevision: number;
+  /** The camera's height above the nearest of them (km; Infinity with none): the near plane keeps clear of it. */
+  nearestKm(camera: Km): number;
+  /** One of them by its focus id: one gone keeps its last place (a trip from it still starts there) until the laboratory opens again; null for an id it never had. */
+  nav(id: FocusId): NavBody | null;
   /** The explorer's camera, for the pointer. */
   setPointerView(view: LabPointerView): void;
   /** A press at a canvas point (client px): true when it takes the chosen body's velocity arrow by its tip (the drag then moves the arrow, not the camera). */
@@ -268,8 +284,8 @@ const DONE: Promise<LabEditResult> = Promise.resolve({ ok: true, created: [] });
 const no = (reason: string): Promise<LabEditResult> => Promise.resolve({ ok: false, reason });
 /** Commands that are edits to the run (their answer is the worker's), those that need the run's first snapshot, and those naming a body by `id`. */
 const EDITS: ReadonlySet<LabCommand['kind']> = new Set(['mass', 'radius', 'density', 'spin', 'fixed', 'rename', 'impulse', 'elements', 'addPreset', 'addLagrange', 'velocity', 'addOrbit', 'addState', 'duplicate', 'remove', 'addSwarm', 'addRing', 'removeSwarm', 'atmosphere', 'addShip', 'burn', 'circularise', 'transfer', 'cancelBurns', 'throw'] as const);
-const NEEDS_RUN: ReadonlySet<LabCommand['kind']> = new Set([...EDITS, 'aim', 'seek', 'place', 'removeMany', 'duplicateMany'] as const);
-const NAMES_BODY: ReadonlySet<LabCommand['kind']> = new Set(['mass', 'radius', 'density', 'spin', 'fixed', 'rename', 'impulse', 'elements', 'velocity', 'duplicate', 'remove', 'burn', 'circularise', 'transfer', 'cancelBurns', 'atmosphere'] as const);
+const NEEDS_RUN: ReadonlySet<LabCommand['kind']> = new Set([...EDITS, 'aim', 'seek', 'place', 'removeMany', 'duplicateMany', 'follow'] as const);
+const NAMES_BODY: ReadonlySet<LabCommand['kind']> = new Set(['follow', 'mass', 'radius', 'density', 'spin', 'fixed', 'rename', 'impulse', 'elements', 'velocity', 'duplicate', 'remove', 'burn', 'circularise', 'transfer', 'cancelBurns', 'atmosphere'] as const);
 /** A body's look before the run has said (./sim/looks: rock). */
 const ROCK_LOOK: Look = { albedo: 0.12, tint: [1, 0.96, 0.9], material: 'rock' };
 /** Bodies that may shade others (the largest; ./lab-fx eclipses). */
@@ -279,6 +295,14 @@ const PICK_PX = 22;
 /** The chosen body's pointer when it is off the view: this far inside the clear view (CSS px), its arrow by direction (east, then clockwise on screen). */
 const EDGE_PX = 28;
 const EDGE_ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'] as const;
+/** The laboratory's own bodies as the camera frames them: as the small worlds are (./worlds), seen from ecliptic north's side. */
+const NAV_VIEW = { azimuth: 0.85, latitude: 0.12, litFace: false } as const;
+const NAV_NORTH = km(0, 1, 0);
+interface NavProxy extends NavBody {
+  radiusKm: number;
+  boundKm: number;
+  minAltitudeKm: number;
+}
 
 /** Ecliptic (the scenario's frame) to the render frame: (x, z, -y). */
 const toRender = (x: number, y: number, z: number, out: Km): Km => {
@@ -473,6 +497,21 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let saveRequest = 0;
   const saveWaiters = new Map<number, (s: Scenario) => void>();
   let refocus: BodyId | null = null;
+  /** A body asked to be followed (its focus id), and each body merged away or broken up since the camera last asked: the one that goes on for it. */
+  let followAsked: FocusId | null = null;
+  const heirs = new Map<string, string>();
+  /**
+   * The laboratory's own bodies for the camera, by id (its last place kept for one gone); those of the
+   * snapshot they were listed from (with their indices in it), its ids, and the count of changes.
+   */
+  const proxies = new Map<string, NavProxy>();
+  let navList: NavProxy[] = [];
+  let navAt: number[] = [];
+  let navFor: LabSnapshot | null = null;
+  let navKey = '';
+  let navRevision = 0;
+  /** The camera's lowest height above any of the laboratory's own bodies since the tests last read it (km). */
+  let lowestKm = Number.POSITIVE_INFINITY;
   const edited = new Set<string>();
   const seenEvents = new Set<string>();
   /** Craters placed on the worlds drawn, by event: where (the world's own frame, as its surface stood at the impact), and as drawn now. */
@@ -951,6 +990,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         }
         const b = builtIn(e.absorbed);
         if (b) refocus = builtIn(e.survivor) ?? 'sun';
+        heirs.set(e.absorbed, heir(e, (id) => msg.radius[msg.ids.indexOf(id)] ?? 0));
       }
       // A body just added or duplicated is chosen at once; a snapshot taken before the worker had the edit does not have it yet.
       if (selected && msg.applied >= sentEdits && !msg.ids.includes(selected)) selected = null;
@@ -1589,6 +1629,9 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         selected = c.id;
         prediction = null;
         requestPrediction();
+        return;
+      case 'follow':
+        followAsked = builtIn(c.id) ?? `lab:${c.id}`;
         return;
       case 'slow':
         // The visitor's setting (kept in this browser), or the slowing under way called off.
@@ -2285,6 +2328,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       return active;
     },
     start(seed, jdTdb) {
+      if (!active) proxies.clear();
       active = true;
       selected = null;
       status = null;
@@ -2328,6 +2372,15 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       slow = null;
       aim = null;
       report = null;
+      // Its bodies leave the camera's list (the explorer lets go of one it was on); their last places stay
+      // until the laboratory opens again, so a trip from one of them still starts where it was.
+      navList = [];
+      navAt = [];
+      navFor = null;
+      navKey = '';
+      navRevision += 1;
+      heirs.clear();
+      followAsked = null;
       for (const resolve of acks.values()) resolve({ ok: false, reason: 'the laboratory was left' });
       acks.clear();
       for (const q of queued.splice(0)) q.resolve({ ok: false, reason: 'the laboratory was left' });
@@ -2393,6 +2446,34 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         const had = builtScale.get(id);
         // Eased over RESIZE_S, and never more than a thirtieth of what is left in a frame (a long frame is no jump).
         builtScale.set(id, had === undefined ? want : had + (want - had) * Math.min(1 / 30, 1 - Math.exp(-dtS / RESIZE_S)));
+      }
+      // The laboratory's own bodies for the camera, where they are drawn and at their size now: listed anew
+      // (the count moving on) when they change, a body added, merged, broken up or removed, or another experiment.
+      if (navFor !== s) {
+        navFor = s;
+        navAt = [];
+        for (let k = 0; k < s.ids.length; k += 1) if (!builtIn(s.ids[k] ?? '')) navAt.push(k);
+        const key = navAt.map((k) => s.ids[k]).join();
+        if (key !== navKey) {
+          navKey = key;
+          navRevision += 1;
+        }
+        navList = navAt.map((k) => {
+          const id = s.ids[k] ?? '';
+          const known = proxies.get(id) ?? { id: `lab:${id}` as const, radiusKm: 1, boundKm: 1, minAltitudeKm: 0.02, fill: 0.6, view: NAV_VIEW, position: km(), pole: NAV_NORTH };
+          proxies.set(id, known);
+          return known;
+        });
+      }
+      for (let j = 0; j < navAt.length; j += 1) {
+        const k = navAt[j] ?? 0;
+        const n = navList[j];
+        if (!n) continue;
+        const p = place(s, k);
+        toRender(p[0], p[1], p[2], n.position);
+        // As the small worlds' floor (./worlds): 2 per cent of the radius, at least 3 m.
+        n.radiusKm = n.boundKm = s.radius[k] ?? 0;
+        n.minAltitudeKm = Math.max(0.02 * n.radiusKm, 0.003);
       }
       // A laboratory of its own: the hidden Sun stands at its heaviest body (its star), so the view goes round that.
       standIn = -1;
@@ -2548,6 +2629,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         const r = relative(toRender(p[0], p[1], p[2], km()), km());
         standInAltitudeKm = Math.hypot(r.x, r.y, r.z) - (s.radius[standIn] ?? 0);
       }
+      // The camera's height above the laboratory's own bodies (for the tests: never below a surface).
+      lowestKm = Math.min(lowestKm, lab.nearestKm(frame.camera));
       /** How far the drawn clock is past the snapshot (s), for paths integrated from it. */
       const ahead = clock.shown - s.t;
       /** Where body `k` is as drawn (scenario frame). */
@@ -3059,11 +3142,27 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         latest,
       };
     },
-    takeRefocus() {
-      const r = refocus;
+    takeRefocus(focus) {
+      // The body the camera is on merged away or broke up: on with what goes on for it (and for that, if it went too).
+      let id = focus.startsWith('lab:') ? focus.slice(4) : focus;
+      const went = heirs.has(id);
+      for (let hops = 0; heirs.has(id) && hops < MAX_BODIES; hops += 1) id = heirs.get(id) ?? id;
+      const r = followAsked ?? (went ? (builtIn(id) ?? `lab:${id}`) : refocus);
+      followAsked = null;
       refocus = null;
+      heirs.clear();
       return r;
     },
+    navBodies: () => navList,
+    nearestKm(camera) {
+      let h = Number.POSITIVE_INFINITY;
+      for (const n of navList) h = Math.min(h, Math.hypot(n.position.x - camera.x, n.position.y - camera.y, n.position.z - camera.z) - n.radiusKm);
+      return h;
+    },
+    get navRevision() {
+      return navRevision;
+    },
+    nav: (id) => (id.startsWith('lab:') ? (proxies.get(id.slice(4)) ?? null) : null),
     setPointerView(view) {
       pointerView = view;
     },
@@ -3152,7 +3251,11 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   if (kf) {
     kf.universe.lab = (c) => lab.command(c);
     kf.universe.labEffects = (parts) => fx?.toggle(parts) ?? null;
-    kf.universe.labDraw = () => (active ? { ...report, scale: Object.fromEntries(BODY_IDS.map((id) => [id, lab.scale(id)])), clock: { ms: clockWall, shownS: clock.shown, fxS: fxClock }, camera: pointerView?.forward() ?? null, heat: { marks: heatMarks.size, bodies: heats.size } } : null);
+    kf.universe.labDraw = () => {
+      const lowest = lowestKm;
+      lowestKm = Number.POSITIVE_INFINITY;
+      return active ? { ...report, scale: Object.fromEntries(BODY_IDS.map((id) => [id, lab.scale(id)])), clock: { ms: clockWall, shownS: clock.shown, fxS: fxClock }, camera: pointerView?.forward() ?? null, heat: { marks: heatMarks.size, bodies: heats.size }, lowestKm: lowest } : null;
+    };
   }
   return lab;
 }

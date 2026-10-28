@@ -1,4 +1,4 @@
-import type { BodyId, FocusId, I18n } from '../../core/types';
+import type { BodyId, FocusId, I18n, UniverseLab } from '../../core/types';
 
 /** Names of the explorer's bodies (existing HUD keys). */
 export const NAME_KEYS: Readonly<Record<BodyId, string>> = {
@@ -27,7 +27,9 @@ const keepTogether = (text: string): string => text.replace(/(\d) (?=\S)/gu, `$1
 export interface Formatters {
   /** km per astronomical unit, from the explorer's data (physical.json, the DE440 header); set from each view. */
   auKm: number;
-  /** A body's name, or a world's (its name from the data, after 'w:'). */
+  /** The experiment running (set from each view), for the names of its own bodies. */
+  lab: UniverseLab | null;
+  /** A body's name, a world's (its name from the data, after 'w:'), or one of the laboratory's own (as the experiment names it, after 'lab:'). */
   name(id: FocusId): string;
   /** Three significant figures in km, or au from 0.1 au out. */
   distance(km: number): string;
@@ -50,7 +52,13 @@ export function formatters(i18n: I18n): Formatters {
   const words = new Intl.NumberFormat(i18n.locale, { notation: 'compact', compactDisplay: 'long', maximumSignificantDigits: 2 });
   return {
     auKm: Infinity,
-    name: (id) => (id.startsWith('w:') ? id.slice(2) : i18n.t(NAME_KEYS[id as BodyId])),
+    lab: null,
+    name(id) {
+      if (id.startsWith('w:')) return id.slice(2);
+      if (!id.startsWith('lab:')) return i18n.t(NAME_KEYS[id as BodyId]);
+      const own = id.slice(4);
+      return this.lab?.bodies.find((b) => b.id === own)?.name ?? own;
+    },
     number,
     keep: keepTogether,
     coordinates: (lat, lon, digits = 1) =>
