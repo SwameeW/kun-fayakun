@@ -1449,6 +1449,8 @@ All of the above, plus:
 
 Interim choices, until the owner says otherwise (2026-10-26): D8 on by default; D3 switches the sunlight off honestly; D6 waits; D1 is avoided by splitting the explorer chunk rather than raising its limit.
 
+D1, the owner's answer (2026-10-27): keep the explorer's limit at 150,000 B for now. The glue that does not fit (following lab bodies with the camera, M2's, the Earth spin blur) comes by splitting the explorer chunk.
+
 ## 11. Out of scope here, but sharing the same controls
 
 These come from the time and graphics diagnoses and ship on the explorer track. They do not count against this plan's explorer bytes, except where noted:
