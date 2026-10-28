@@ -225,6 +225,8 @@ class Engine implements KunFayakunApp {
    */
   private gpuFrames = 0;
   private gpuResolving = false;
+  /** The frame being advanced, seconds on the app's clock (ChapterContext.frameSeconds). */
+  private frameSeconds = 0;
   /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
   private readonly cadence = createFrameCadence();
   private universeGraphics: UniverseGraphics | null = null;
@@ -460,9 +462,13 @@ class Engine implements KunFayakunApp {
     const backend = (): BackendName => this.backendName;
     const quality = (): QualityProfile => this.profile;
     const reduced = (): boolean => this.reduced;
+    const frameSeconds = (): number => this.frameSeconds;
     return {
       get renderer() {
         return renderer();
+      },
+      get frameSeconds() {
+        return frameSeconds();
       },
       get backend() {
         return backend();
@@ -637,6 +643,7 @@ class Engine implements KunFayakunApp {
 
   /** Moves the active experience (the film clock, or the explorer), the exposure and the grain on by dt seconds. */
   private advance(gfx: Graphics, dt: number): void {
+    this.frameSeconds = dt;
     // The explorer takes the frame only once the film has faded out and been removed, and gives
     // it back only after its own fade, so exactly one experience moves the scene at a time.
     const universe = this.universeHost.owns;

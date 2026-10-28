@@ -110,14 +110,18 @@ test('the film, shot by shot', async ({ page, kf }) => {
     });
     // The scene at the stage's full width: the notes folded away, as a visitor can.
     if (await page.locator('html.kf-panel-open').count()) await page.getByTestId('panel-toggle').click();
+    // The page's own fades run on real time, not the held clock: cards show as their cues have left them.
+    await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; animation: none !important; }' });
     for (const [k, s] of list.entries()) {
       const at = s.duration > 40 ? [s.start + s.duration / 3, s.start + (2 * s.duration) / 3] : [s.start + s.duration / 2];
       for (const t of at) {
-        // A second of the film played into the instant, the same second on every run.
+        // Six seconds of the film played into the instant, the same six on every run: the eye's
+        // adaptation (at most 1.4 stops a second, from 8 stops down after a seek) has settled by then.
         await page.evaluate((time) => {
           const kfHook = (window as unknown as KfHook).__kf;
-          kfHook.app.seek(Math.max(0, time - 1));
-          kfHook.step(60, 1 / 60);
+          const from = Math.max(0, time - 6);
+          kfHook.app.seek(from);
+          kfHook.step(Math.round((time - from) * 60), 1 / 60);
         }, t);
         await page.waitForTimeout(300);
         await shoot(page, `${chapter}-${String(k + 1).padStart(2, '0')}-${t.toFixed(1)}s`, s.subject);

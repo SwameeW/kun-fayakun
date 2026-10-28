@@ -366,6 +366,12 @@ export interface ChapterContext {
   assets: AssetLoader;
   data: DataStore;
   exposure: ExposureControl;
+  /**
+   * Seconds since the previous frame on the app's clock, whether or not the film is paused (the
+   * update's dt stops while paused): real time in playback, the step's dt under __kf.step. Absent in
+   * tests that build a context by hand.
+   */
+  readonly frameSeconds?: number;
   /** The app's sound (src/core/audio.ts): its ambient bus is silenced under a recitation. Absent in tests that build a context by hand. */
   audio?: AudioBuses;
 }
