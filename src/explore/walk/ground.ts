@@ -2,9 +2,9 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Group, Matrix4, Mesh, Mesh
 import { abs, acos, asin, atan, attribute, clamp, cos, Discard, dot, exp, float, Fn, fwidth, If, length, max, min, mix, modelWorldMatrix, normalize, normalWorldGeometry, positionView, positionWorld, pow, select, smoothstep, step, uniform, vec3, vec4, viewZToLogarithmicDepth } from 'three/tsl';
 import { bumpGradient, tiltNormal } from '../bodies/shading';
 import { sunTransmittance, type AirModel } from '../render/air';
-import { AIRLESS_FILL, GROUND_KNEE, horizonRise, MARS_DUST, NIGHT_SKY, REGOLITH, VENUS_FILL, venusDay, type LightKind } from './light';
+import { AIRLESS_FILL, GROUND_KNEE, horizonRise, MARS_DUST, NIGHT_SKY, REGOLITH, SKY_KNEE, VENUS_FILL, venusDay, type LightKind } from './light';
 import { scatter } from './scatter';
-import { heldUnderBloom, MARS_SKY, VENUS_SKY } from './sky';
+import { heldUnderBloomBetween, MARS_SKY, VENUS_SKY } from './sky';
 import { EARTH_SURFACE, earthGround, sunInFrame, surfaceDetail, type SurfaceStyle } from './surface';
 import { localFrame } from './walker';
 import { zoomFor, type Heights } from './terrain';
@@ -15,6 +15,11 @@ type FloatNode = Node<'float'>;
 /** Steps along each ground pixel's ray through the Earth's air (its aerial perspective), and the distances (km) over which the land comes to be held as the sky is. */
 const AIR_STEPS = 5;
 const HELD_KM = [0.2, 2] as const;
+/**
+ * The far ground's knee by the share of what is seen that is the ground's own light (the rest the air's
+ * between): the sky's knee up to the first, the far ground's from the second (./light SKY_KNEE, GROUND_KNEE).
+ */
+const AIR_HELD = [0.3, 0.75] as const;
 
 /**
  * The ground under a walker (on the Earth, the Moon, Mars, Mercury or Venus): nested square rings of real terrain (a geometry clipmap),
@@ -390,12 +395,16 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         const wet = spacingKm >= COAST.fromKm ? select(sea.greaterThan(0.999), float(1), select(sea.lessThan(0.001), float(0), seaLike)) : sea;
         const lit = mix(land, water, wet);
         // The air between: the ground dimmed by it, and its own light added (the same light as the sky's).
-        // Beyond a few hundred metres the land is held under the bloom (./sky heldUnderBloom, by the far
-        // ground's knee, ./light GROUND_KNEE: above the sky's, so sunlit snow stays brighter than shaded
-        // snow), so at the horizon it never blooms nor stands as a bright line under the sky above it.
+        // Beyond a few hundred metres it is held under the bloom (./sky), by a knee set by what is seen
+        // (AIR_HELD): where the ground's own light is most of it, the far ground's (./light GROUND_KNEE:
+        // above the sky's, so sunlit snow stays brighter than shaded snow); where the air's light is, the
+        // sky's own (SKY_KNEE), so a ridge veiled in the haze toward a low Sun is held as the sky above it
+        // is and never stands out brighter than it. At the horizon it never blooms.
         const { light: between, transmittance } = scatter(air.model, air.table, uCentre.negate().div(uRadius), normalize(positionWorld), uSun, AIR_STEPS, length(positionWorld).div(uRadius));
-        const seen = lit.mul(transmittance).add(between.mul(uLight));
-        return vec4(mix(seen, heldUnderBloom(seen, uExposure, GROUND_KNEE), smoothstep(HELD_KM[0], HELD_KM[1], length(positionWorld))), 1);
+        const reflected = lit.mul(transmittance);
+        const seen = reflected.add(between.mul(uLight));
+        const own = smoothstep(AIR_HELD[0], AIR_HELD[1], dot(reflected, vec3(0.2126, 0.7152, 0.0722)).div(max(dot(seen, vec3(0.2126, 0.7152, 0.0722)), 1e-9)));
+        return vec4(mix(seen, heldUnderBloomBetween(seen, uExposure, SKY_KNEE, GROUND_KNEE, own), smoothstep(HELD_KM[0], HELD_KM[1], length(positionWorld))), 1);
       }
       const haze = light.haze;
       if (!haze) return vec4(land, 1);

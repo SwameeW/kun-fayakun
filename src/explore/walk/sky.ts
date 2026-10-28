@@ -70,12 +70,25 @@ function elevation(up: { x: number; y: number; z: number }, sun: { x: number; y:
   return (Math.asin(Math.max(-1, Math.min(1, sin))) * 180) / Math.PI;
 }
 
+/** A colour held under the bloom by a knee and a ceiling (display terms) and its tail: ./light skyCompression's curve. */
+function held(colour: Vec3Node, exposure: FloatNode, knee: FloatNode, ceiling: FloatNode, tail: number): Vec3Node {
+  const l = dot(colour.mul(exposure), vec3(0.2126, 0.7152, 0.0722));
+  const span = ceiling.sub(knee);
+  const factor = knee.add(span.mul(float(1).sub(pow(l.sub(knee).div(span.mul(tail)).add(1), -tail)))).div(max(l, 1e-6));
+  return colour.mul(select(l.greaterThan(knee), factor, float(1)));
+}
+
 /** A sky's colour held under the bloom (./light skyCompression, on its luminance after the exposure; hue kept), by the sky's knee or another (the far ground's: ./light GROUND_KNEE). */
 export function heldUnderBloom(colour: Vec3Node, exposure: FloatNode, knee: Knee = SKY_KNEE): Vec3Node {
-  const l = dot(colour.mul(exposure), vec3(0.2126, 0.7152, 0.0722));
-  const span = knee.ceiling - knee.knee;
-  const held = float(knee.knee).add(float(span).mul(float(1).sub(pow(l.sub(knee.knee).div(knee.tail * span).add(1), -knee.tail)))).div(max(l, 1e-6));
-  return colour.mul(select(l.greaterThan(knee.knee), held, float(1)));
+  return held(colour, exposure, float(knee.knee), float(knee.ceiling), knee.tail);
+}
+
+/**
+ * As heldUnderBloom, by a knee and a ceiling `t` of the way from `from`'s to `to`'s (0 to 1; their
+ * tails alike): the far ground's, where the air's own light is so much of what is seen (./ground).
+ */
+export function heldUnderBloomBetween(colour: Vec3Node, exposure: FloatNode, from: Knee, to: Knee, t: FloatNode): Vec3Node {
+  return held(colour, exposure, mix(float(from.knee), float(to.knee), t), mix(float(from.ceiling), float(to.ceiling), t), to.tail);
 }
 
 export function createWalkSky(kind: SkyKind = 'earth', air: { model: AirModel; table: Texture } | null = null): WalkSky {
