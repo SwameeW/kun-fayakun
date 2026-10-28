@@ -33,7 +33,9 @@ import type { ChapterContent, ChapterId, Cue } from './types';
  *   The dark ages' deep rumble, the wind over new land, the body of the first sea, the breath of air
  *   as the word forms and the exhale at recombination are made the same way. Each noise is long
  *   (white 17 s, pink 27 s, brown 67 s) and every looping layer's speed wanders a little at random,
- *   so no layer, made or recorded, ever lines up with itself again: nothing repeats.
+ *   so no layer's waveform, made or recorded, lines up with itself again. A recording's events still
+ *   come back once a loop (lava 16 s, surf 29 s, steam 30 s), a little moved; the lava's is the one
+ *   most likely to be heard.
  * Silence is kept where the film asks for it: before the word forms, after the plasma's sound ends,
  * for the verses of the end and after its light. A verse on screen sinks the sound to near silence
  * (the spec: ambient sound fades for the Quran, 7:204), a hadith card a little less; the sound eases
@@ -389,7 +391,8 @@ function noise(mix: Mix, color: Color): AudioBuffer {
 
 /**
  * A looping layer's speed, wandering slowly at random about `rate` (WANDER) for the next twenty
- * minutes: a loop then never meets itself again at the same place and speed, so it never repeats.
+ * minutes: a loop then never meets itself again at the same place and speed, so its waveform never
+ * repeats (a recorded event still comes back about once a loop).
  * Far too slow and small to hear as a change of pitch in noise, rain or the sea.
  */
 function wander(param: AudioParam, rate: number, seed: number, at: number): void {
