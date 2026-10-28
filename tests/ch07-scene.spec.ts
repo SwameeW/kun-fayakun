@@ -1,6 +1,8 @@
 /**
  * Chapter 7 in the browser, on the manual clock (__kf.step):
  *
+ * - the young Sun's jets (src/chapters/ch07/jets.ts) rise red above it while its disk turns, tagged as
+ *   an illustration, not to scale, and are gone, tag and all, once it shines;
  * - the orrery's Earth (src/chapters/shared/planet.ts without the air) has no lava on its night side
  *   (its crust's noise once left orange sparks there on a cooled world);
  * - the chapter loads without the explorer's air, which only Chapters 8 and 9 draw (shared/film-air.ts).
@@ -8,6 +10,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from './support/fixtures';
 
+const TAG = 'Jets of a young star (illustration, not to scale)';
 const HIDE_UI = 'body > :not(#scene) { visibility: hidden !important; }';
 
 /** Plays the six seconds of film up to chapter time t, on the manual clock. */
@@ -67,6 +70,26 @@ async function sample(page: Page): Promise<Sampled> {
     return { axis: column(cx), beside: Math.max(column(cx - Math.round(width * 0.12)), column(cx + Math.round(width * 0.12))), lava };
   }, btoa(binary));
 }
+
+test('the young Sun’s jets rise above its disk, tagged as an illustration, and are gone once it shines', async ({ page, kf, pageErrors }) => {
+  await kf.openChapter('ch07', { autoplay: true, query: { tier: 'high' } });
+  if (await page.locator('html.kf-panel-open').count()) await page.getByTestId('panel-toggle').click();
+  const tag = page.locator('.kf-hud-tag', { hasText: TAG });
+
+  await showAt(page, 8);
+  await expect(tag).toHaveCount(1);
+  await expect.poll(async () => Number(await tag.evaluate((el) => el.style.opacity))).toBeGreaterThan(0.9);
+  const jets = await sample(page);
+  expect(jets.axis, JSON.stringify(jets)).toBeGreaterThan(6);
+  expect(jets.axis, JSON.stringify(jets)).toBeGreaterThan(4 * jets.beside);
+
+  await showAt(page, 36);
+  await expect(tag).toHaveCount(0);
+  // The lit disk is warm on every side now; up the middle it is no redder than beside.
+  const shining = await sample(page);
+  expect(shining.axis, JSON.stringify(shining)).toBeLessThan(1.3 * shining.beside + 2);
+  expect(pageErrors).toEqual([]);
+});
 
 test('the orrery’s Earth shows no lava on its night side', async ({ page, kf, pageErrors }) => {
   // The orrery is placed for the visitor's date: held at one where the close-up passes the night side.

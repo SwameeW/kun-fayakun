@@ -89,6 +89,8 @@
   "discover.ch06.process.end": "Elements scattered",
   "discover.ch07.disk.title": "A disk of dust",
   "discover.ch07.disk.text": "The Sun and planets formed from a disk of gas and dust about {age} billion years ago. The gaps show where growing planets gathered material.",
+  "discover.ch07.jets.title": "Jets of a young star",
+  "discover.ch07.jets.text": "A young star still gathering gas from its disk, as the Sun is thought to have done, drives two narrow jets out along its poles at a few hundred kilometres a second. Where faster gas catches up with slower, and where the jets plough into the cloud around them, the gas is shocked and glows red, in knots and bow-shaped fronts. The star’s light escapes through funnels the outflow has cleared in the dust. The James Webb Space Telescope has imaged both: the jets of HH 211 and the hourglass of L1527 (NASA, ESA, CSA, STScI). Shown here short and not to scale: real jets can stretch for light-years.",
   "discover.ch07.sun.title": "The living Sun",
   "discover.ch07.sun.text": "The Sun’s surface: granulation (the tops of rising currents of hot gas), its darker edge, and the faint corona around it. Its surface is about {temp} kelvin.",
   "discover.ch07.orrery.title": "Real orbits, today",
