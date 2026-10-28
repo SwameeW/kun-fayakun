@@ -1,6 +1,8 @@
 /**
  * The film's sound (src/core/film-score.ts, src/ui/film-sound.ts). Its recordings (public/assets/sound)
- * are all there and decode, each the length its loop needs. Rendered offline, every chapter stays well
+ * are all there and decode, each the length its loop needs; one that is slow to come, stalls or is
+ * missing silences only its own layer, and the chapter's made sound and its one-shots play on time
+ * without it. Rendered offline, every chapter stays well
  * clear of clipping, sinks to near silence under each verse and comes back slowly after it, keeps its
  * silences (before the word forms, after the plasma's sound ends at recombination, at the end of the
  * end) and sounds where the picture has sound to give, the recorded sounds among them. Live, it follows
@@ -9,7 +11,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import type { ChapterContent, ChapterId } from '../src/core/types';
 import { chapterContent } from './support/data';
 import { SLOW } from './support/env';
@@ -39,6 +41,26 @@ async function render(page: Page, chapter: ChapterId): Promise<{ rms: number[]; 
 
 const state = (page: Page): Promise<FilmSoundState | null> => page.evaluate(() => (window as unknown as KfHook).__kf.filmSound?.state() ?? null);
 
+/** The loudest RMS (dB) the speaker gets over a couple of seconds of the live film, read off the scene bus. */
+const liveLevel = (page: Page): Promise<number> =>
+  page.evaluate(async () => {
+    const bus = (window as unknown as KfHook).__kf.app.audio.bus('scene') as GainNode;
+    const analyser = bus.context.createAnalyser();
+    analyser.fftSize = 2048;
+    bus.connect(analyser);
+    const data = new Float32Array(analyser.fftSize);
+    let most = 0;
+    for (let i = 0; i < 40; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      analyser.getFloatTimeDomainData(data);
+      let sum = 0;
+      for (const x of data) sum += x * x;
+      most = Math.max(most, Math.sqrt(sum / data.length));
+    }
+    bus.disconnect(analyser);
+    return most > 0 ? 20 * Math.log10(most) : -Infinity;
+  });
+
 test('every recording the score plays is there and decodes, each the length its loop needs', async ({ page, kf, pageErrors }) => {
   test.setTimeout(120_000 * SLOW);
   await kf.open('/');
@@ -60,6 +82,80 @@ test('every recording the score plays is there and decodes, each the length its 
   const files = readdirSync(new URL('../public/assets/sound/', import.meta.url)).filter((f) => f.endsWith('.m4a')).map((f) => f.slice(0, -4));
   expect(files.sort()).toEqual(recordings.map((r) => r.name).sort());
   expect(pageErrors).toEqual([]);
+});
+
+test('a recording slow to come silences only its own layer: the made sound and the one-shots play on time without it, and a stalled download is let go', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  // Every recording held back, as on a connection that has stalled, until the test lets them go.
+  const held: Route[] = [];
+  await page.route('**/assets/sound/*.m4a', (route) => {
+    held.push(route);
+  });
+  const ch08 = chapterContent('ch08');
+  const thuds = [3, 9, 15].map((s) => eventAt(ch08, 'molten') + s);
+  await kf.openChapter('ch08', { autoplay: true, t: 1 });
+  await page.keyboard.press('Shift');
+  await expect.poll(async () => (await state(page))?.voices.lava ?? 0, LIVE).toBeGreaterThan(0.3);
+  // The bombardment's thuds fire as the film plays across them, recording or none: the first is on time.
+  const firedAt = await page.evaluate(async (limit) => {
+    const hook = (window as unknown as KfHook).__kf;
+    const end = performance.now() + limit;
+    while (performance.now() < end) {
+      if (hook.filmSound?.state()?.shots.includes('ch08:thud')) return hook.app.time;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return -1;
+  }, 30_000 * SLOW);
+  expect(thuds.some((t) => firedAt >= t && firedAt < t + 1), `a thud fired at ${firedAt.toFixed(2)} s (due at ${thuds.join(', ')} s)`).toBe(true);
+  // Meanwhile the chapter's made layers reach the speaker, with none of its recordings in hand.
+  expect(await liveLevel(page), 'the made sound, live').toBeGreaterThan(-55);
+  expect(held.length, 'its recordings were asked for').toBeGreaterThan(0);
+  expect((await state(page))?.recordings, 'none has come').toEqual([]);
+  // A chapter rendered while its downloads stall waits only until they are let go (15 s without a byte),
+  // then plays its made sound: Chapter 6's churning (its low weight) and the swell of the collapse.
+  const ch06 = await render(page, 'ch06');
+  const collapse = eventAt(ch06.content, 'collapse');
+  const bed = ch06.rms.slice(2, Math.floor(collapse)).map(db);
+  expect(Math.min(...bed), 'Chapter 6 before the collapse, without its recording').toBeGreaterThan(-50);
+  expect(Math.max(...ch06.rms.slice(Math.ceil(collapse) + 1, Math.ceil(collapse) + 10).map(db)), 'the collapse swell').toBeGreaterThan(median(bed) + 6);
+  await Promise.all(held.map((route) => route.abort().catch(() => undefined)));
+  expect(pageErrors).toEqual([]);
+});
+
+test('a chapter’s recordings are kept with the next chapter’s, fetched while it plays, and all let go when the explorer opens', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.openChapter('ch07', { autoplay: true, t: 2 });
+  await page.keyboard.press('Shift');
+  // Chapter 7's (the vent's hiss, the thunder of its swell) and then Chapter 8's, and no others.
+  const held = async (): Promise<string[]> => [...((await state(page))?.recordings ?? [])].sort();
+  await expect.poll(held, LIVE).toEqual(['bolide', 'crackle', 'lava', 'mud', 'rain', 'steam', 'surf', 'thunder']);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.openUniverse();
+  });
+  await waitForUniverse(page);
+  await expect
+    .poll(async () => {
+      const s = await state(page);
+      return s ? { chapter: s.chapter, recordings: s.recordings } : 'no score';
+    }, LIVE)
+    .toEqual({ chapter: null, recordings: [] });
+  expect(pageErrors).toEqual([]);
+});
+
+test('with every recording missing, the chapters that use them still play their made sound, without an error', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await page.route('**/assets/sound/*.m4a', (route) => route.fulfill({ status: 404, body: '' }));
+  await kf.open('/');
+  for (const chapter of ['ch06', 'ch07', 'ch08', 'ch09', 'ch10'] as const) {
+    const { rms, content } = await render(page, chapter);
+    expect(rms.length, chapter).toBe(Math.ceil(content.duration));
+    expect(rms.every(Number.isFinite), `${chapter}: every second's level is a number`).toBe(true);
+    const heard = rms.map(db).filter((v) => v > -80);
+    expect(heard.length, `${chapter}: seconds with sound`).toBeGreaterThan(content.duration / 4);
+    expect(median(heard), `${chapter}: its usual level without its recordings`).toBeGreaterThan(-50);
+  }
+  // The browser logs each missing file; nothing else may go wrong.
+  expect(pageErrors.filter((e) => !/Failed to load resource: .*404.*assets\/sound\//u.test(e))).toEqual([]);
 });
 
 test('rendered, every chapter is clear of clipping and near silent under its verses, its silences kept', async ({ page, kf, pageErrors }) => {

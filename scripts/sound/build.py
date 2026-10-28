@@ -10,10 +10,13 @@ anything CC BY or CC BY-NC). The originals are never committed: the first run do
 Sounds of Yellowstone files are 8 hours long, so only a 16 MB byte range of each is fetched (about
 1 h 44 min in); the two USGS videos are fetched whole and their sound taken out with afconvert.
 
-Each sound is a window of its original: made mono where stereo adds nothing (the film widens a mono
-loop by playing two copies of it apart), high-passed under the wind on the microphone, notched at a
-mains hum, resampled to 32 kHz, crossfaded into a seamless loop (equal power) or faded as a one-shot,
-set to a common loudness (-20 LUFS, peaks under -1 dBFS, so the film's levels stay in
+Each sound is a window of its original: a tick in it repaired (the few milliseconds round it
+predicted from the sound on either side), made mono where stereo adds nothing (the film widens a
+mono loop by playing two copies of it apart), high-passed under the wind on the microphone, notched
+at a mains hum, resampled to 32 kHz, low-passed where the AAC encoder would otherwise make a
+bright sound sizzle above 8 kHz, its sudden puffs held to a few dB over the sound around them (so
+none jumps out of a small speaker), crossfaded into a seamless loop (equal power) or faded as a
+one-shot, set to a common loudness (-20 LUFS, peaks under -1 dBFS, so the film's levels stay in
 src/core/film-score.ts) and encoded to AAC (.m4a, which every browser decodes) with macOS afconvert.
 A loop is written with a quarter second of itself on each side (its end before it, its start after
 it), so it loops without a seam from 0.25 s for its length whatever a decoder does with the AAC
@@ -35,7 +38,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from scipy import signal
+from scipy import ndimage, signal
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'public' / 'assets' / 'sound'
@@ -143,6 +146,10 @@ class Sound:
     notch: tuple[float, ...] = ()
     fade_in: float = 0.0
     fade_out: float = 0.0
+    # Ticks to repair: the time of each in the original (seconds), the middle of TICK_S around it.
+    ticks: tuple[float, ...] = ()
+    # Hold every sudden peak to this many dB over the sound of the second around it (None: as recorded).
+    soften: float | None = None
 
 
 SOUNDS: tuple[Sound, ...] = (
@@ -155,14 +162,18 @@ SOUNDS: tuple[Sound, ...] = (
     Sound('mud', 'usgs-mud-pool-artists-paintpots-ep9-excerpt.mp3', (348.0, 380.0), 30.0, highpass=80),
     # Congress Pool's roiling, its steadiest stretch; slowed in the film into a star's convection.
     Sound('roil', 'usgs-congress-pool-ep5-excerpt.mp3', (376.0, 408.0), 30.0, highpass=40, lowpass=5000),
-    # Blue Mud Steam Vent's steady hiss and soft puffs.
-    Sound('steam', 'usgs-blue-mud-steam-vent-ep2-excerpt.mp3', (125.0, 157.0), 30.0, highpass=100),
+    # Blue Mud Steam Vent's steady hiss and its puffs, which came 20 dB out of the hiss (in every
+    # window of the excerpt) and are held to 8 dB over it: soft puffs.
+    Sound('steam', 'usgs-blue-mud-steam-vent-ep2-excerpt.mp3', (125.0, 157.0), 30.0, highpass=100, soften=8.0),
     # Terrace Springs: carbon dioxide bubbling up through hot water; its 60 Hz line notched.
     Sound('bubbles', 'usgs-terrace-springs-co2-bubbles-excerpt.mp3', (70.0, 102.0), 30.0, notch=(60.0, 120.0)),
     # Light rain in woods (CC0), between the distant thunder and the bird; high-passed under the drops on the windscreen.
     Sound('rain', 'commons-light-rain-distant-thunder-2016.wav', (36.0, 68.0), 30.0, mono=False, highpass=160),
-    # Waves on a sandy beach, cut at their troughs (a 4 s crossfade).
-    Sound('surf', 'commons-beach-sounds-south-carolina.ogg', (15.0, 49.0), 30.0, mono=False, highpass=60),
+    # Waves on a sandy beach, cut at their troughs (a 4 s crossfade). A 2 ms tick in the original at
+    # 44.485 s (16 dB over the waves, and it came back every 30 s) is repaired; low-passed at 8 kHz, as
+    # at 112 kbit/s the encoder broke the spray above it into a sizzle (narrow peaks in a fifth of its
+    # frames, none in the original).
+    Sound('surf', 'commons-beach-sounds-south-carolina.ogg', (15.0, 49.0), 30.0, mono=False, highpass=60, lowpass=8000, ticks=(44.4862,)),
     # One long rolling thunder (NPS), after its crack; slowed and darkened in the film into a felt swell.
     Sound('thunder', 'nps-thunder-nsnsd.mp3', (3.5, 33.5), None, fade_in=1.0, fade_out=6.0),
     # A meteor exploding over Yellowstone, its infrasound sped up ten times (USGS): one deep, distant thud.
@@ -211,6 +222,50 @@ def decode(path: Path, work: Path) -> tuple[np.ndarray, int]:
     return data, rate
 
 
+TICK_S = 0.004
+
+
+def predict(history: np.ndarray, n: int, order: int = 32) -> np.ndarray:
+    """n samples carrying on from `history`, by a linear predictor of `order` fitted to it (least squares)."""
+    rows = np.lib.stride_tricks.sliding_window_view(history, order + 1)
+    coef = np.linalg.lstsq(rows[:, :-1], rows[:, -1], rcond=None)[0]
+    out = np.concatenate([history[-order:], np.zeros(n)])
+    for i in range(n):
+        out[order + i] = coef @ out[i:order + i]
+    return out[order:]
+
+
+def repair(x: np.ndarray, rate: int, at: float) -> None:
+    """Takes out a tick: TICK_S round `at` replaced, in place, by the sound before it carried forward and
+    the sound after it carried back (each predicted from 30 ms of it), crossfaded across the gap."""
+    a = int(round((at - TICK_S / 2) * rate))
+    n = int(round(TICK_S * rate))
+    context = int(round(0.03 * rate))
+    fade = 0.5 - 0.5 * np.cos(np.pi * np.arange(n) / (n - 1))
+    for ch in range(x.shape[1]):
+        y = x[:, ch]
+        forward = predict(y[a - context:a], n)
+        backward = predict(y[a + n:a + n + context][::-1], n)[::-1]
+        y[a:a + n] = forward * (1 - fade) + backward * fade
+
+
+def soften(x: np.ndarray, over_db: float) -> np.ndarray:
+    """Holds every sudden peak to `over_db` over the sound around it: the 5 ms level against the median
+    of the surrounding second, the gain eased (a minimum over 4 ms, then smoothed both ways over 30 ms)
+    so a puff is turned down, never cut off."""
+    power = (x ** 2).mean(axis=1)
+    n = int(0.005 * RATE)
+    level = np.sqrt(np.convolve(power, np.ones(n) / n, mode='same'))
+    hop = int(0.01 * RATE)
+    bed = ndimage.median_filter(level[::hop], size=101, mode='nearest')
+    bed = np.interp(np.arange(len(level)), np.arange(len(bed)) * hop, bed)
+    g = np.minimum(1.0, bed * 10 ** (over_db / 20) / np.maximum(level, 1e-12))
+    g = ndimage.minimum_filter1d(g, size=int(0.004 * RATE), mode='nearest')
+    a = np.exp(-1 / (0.03 * RATE))
+    g = np.minimum(g, signal.filtfilt([1 - a], [1, -a], g))
+    return x * g[:, None]
+
+
 def resample(x: np.ndarray, rate: int) -> np.ndarray:
     if rate == RATE:
         return x
@@ -257,6 +312,10 @@ def loudness(x: np.ndarray) -> float:
 
 
 def shape(sound: Sound, x: np.ndarray, rate: int) -> np.ndarray:
+    if sound.ticks:
+        x = x.copy()
+        for at in sound.ticks:
+            repair(x, rate, at)
     a, b = sound.window
     x = x[int(round(a * rate)):int(round(b * rate))]
     if sound.mono:
@@ -269,6 +328,8 @@ def shape(sound: Sound, x: np.ndarray, rate: int) -> np.ndarray:
     for hz in sound.notch:
         bn, an = signal.iirnotch(hz, 25.0, fs=RATE)
         x = signal.filtfilt(bn, an, x, axis=0)
+    if sound.soften is not None:
+        x = soften(x, sound.soften)
     if sound.loop is None:
         n = len(x)
         envelope = np.ones(n)

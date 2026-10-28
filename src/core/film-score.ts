@@ -31,27 +31,39 @@ import type { ChapterContent, ChapterId, Cue } from './types';
  *   over the granulation's broad roar.
  * - Out in space, where nothing carries sound, a hush: bands of noise that drift slowly at random.
  *   The dark ages' deep rumble, the wind over new land, the body of the first sea, the breath of air
- *   as the word forms and the exhale at recombination are made the same way.
+ *   as the word forms and the exhale at recombination are made the same way. Each noise is long
+ *   (white 17 s, pink 27 s, brown 67 s) and every looping layer's speed wanders a little at random,
+ *   so no layer, made or recorded, ever lines up with itself again: nothing repeats.
  * Silence is kept where the film asks for it: before the word forms, after the plasma's sound ends,
  * for the verses of the end and after its light. A verse on screen sinks the sound to near silence
  * (the spec: ambient sound fades for the Quran, 7:204), a hadith card a little less; the sound eases
  * down just before a card and back up slowly after it, darkening as it sinks, and two cards close
- * together share one dip. Every swell eases in; nothing startles.
+ * together share one dip. Every swell eases in; nothing startles: the breath out of silence (as the
+ * word forms, and as the word of the return forms) rises over three seconds to about -36 LUFS, about
+ * level with the hush that follows it; nothing crackles like a record or static (the disk's dust is a
+ * smooth hiss, the tearing's crackle and the lava's are softened above 3.5 kHz, the steam's puffs are
+ * held down), and a star's glint shimmers above 5 kHz rather than in the band a small speaker makes
+ * harsh.
  *
  * Loudness, the target (measured offline; tests/film-sound.spec.ts holds the film to it): outside its
  * verses and silences every chapter sits at -27 LUFS integrated, within 1.5 LU (Chapter 0, a breath
- * and a faint hush, about -36), its beds -28 to -24 LUFS short-term, the swells a few LU above them
+ * and a faint hush, about -39), its beds -28 to -24 LUFS short-term, the swells a few LU above them
  * (about -20 LUFS momentary at most), true peaks under -3 dBFS; on a laptop's speakers within about
- * 3 dB of that, on a phone's within about 6. Under a verse it sinks to -51 to -60 LUFS. The master:
- * a high-pass under 32 Hz, harmonics of the deepest sound added an octave and more up so a rumble is
- * still felt on a laptop, a high shelf so no bed hisses on a phone, a gentle bus compressor, a
- * limiter, and a soft clip that holds any peak under -1 dBFS. A long reverb (an impulse made here,
- * darkening as it decays) gives the one-shots and resonances their space.
+ * 3 dB of that, on a phone's within about 6. Under a verse it sinks to -52 to -61 LUFS. The master:
+ * a high-pass under 32 Hz; harmonics of the deepest sound (under 110 Hz) added from 200 to 700 Hz,
+ * where a laptop's speakers play, so a swell or rumble is still felt there (measured: with them the
+ * swells of Chapters 6 and 8 are 2.5 to 3.3 dB louder on a laptop, about 1 dB over the full range);
+ * a high shelf so no bed hisses on a phone; a gentle bus compressor; a limiter; and a soft clip that
+ * holds any peak under -1 dBFS. A long reverb (an impulse made here, darkening as it decays) gives the
+ * one-shots and resonances their space.
  *
  * Levels are written per chapter against its scene events (content.json), so re-timing a chapter
  * moves its sound with its picture. Loaded with its own chunk the first time a chapter plays with
- * sound on (./film-sound decides when); a chapter's recordings are fetched then, decoded once and kept
- * while it and the chapter after it play.
+ * sound on (./film-sound decides when). A chapter's voices all play at once; each recording joins its
+ * layer when it arrives (a slow or missing one leaves only that layer silent, and a one-shot due
+ * before it plays its made part), and a download that stalls is let go after STALL_S. Once a
+ * chapter's recordings are in, the next chapter's are fetched; only those two chapters' are kept,
+ * and all are let go, with the noises, when the film's sound stops or the explorer opens.
  */
 
 type VoiceName = 'hush' | 'rumble' | 'roar' | 'convection' | 'sun' | 'infall' | 'dust' | 'tear' | 'rain' | 'surf' | 'wind' | 'underwater' | 'lava';
@@ -185,6 +197,8 @@ const RECORDINGS: Readonly<Record<RecordingName, number | null>> = {
 const PAD_S = 0.25;
 /** The recordings' own rate: decoded at it, so a 32 kHz file takes no more memory than it needs. */
 const RECORDING_RATE = 32_000;
+/** How long a recording's download may go without a byte before it is let go (it is tried again the next time its chapter plays). */
+const STALL_S = 15;
 const VOICE_RECORDINGS: Partial<Readonly<Record<VoiceName, readonly RecordingName[]>>> = {
   convection: ['roil'],
   infall: ['steam'],
@@ -209,9 +223,9 @@ const GAIN: Readonly<Record<VoiceName, number>> = {
   roar: 0.68,
   convection: 0.5,
   sun: 0.69,
-  infall: 2.15,
-  dust: 1.39,
-  tear: 0.97,
+  infall: 1.38,
+  dust: 0.92,
+  tear: 0.95,
   rain: 1.16,
   surf: 0.67,
   wind: 0.52,
@@ -235,7 +249,7 @@ const SEND: Readonly<Record<VoiceName, number>> = {
   lava: 0.15,
 };
 /** The one-shots' own loudness and reverb (the reverb is the space a glint or a swell rings in). */
-const SHOT_GAIN: Readonly<Record<ShotName, number>> = { breath: 0.32, exhale: 0.34, swell: 0.5, glint: 0.45, rise: 0.3, surface: 0.32, gather: 0.3, thud: 0.5 };
+const SHOT_GAIN: Readonly<Record<ShotName, number>> = { breath: 0.145, exhale: 0.34, swell: 0.5, glint: 0.37, rise: 0.3, surface: 0.32, gather: 0.3, thud: 0.5 };
 const SHOT_SEND: Readonly<Record<ShotName, number>> = { breath: 0.3, exhale: 0.35, swell: 0.4, glint: 0.8, rise: 0.3, surface: 0.25, gather: 0.3, thud: 0.4 };
 /** Under a verse the sound sinks to near silence; under a hadith card, a little less (dB). */
 const DUCK_DB = { verse: -26, hadith: -14 } as const;
@@ -250,6 +264,18 @@ const MAKEUP_DB = { glue: 4.5, limiter: 1.7 } as const;
 
 type Color = 'white' | 'pink' | 'brown';
 
+/**
+ * The noises: each colour its own length, so no two line up, and made at no higher a rate than its
+ * sound needs (brown is all under a few hundred hertz), which keeps them to about 8 MB.
+ */
+const NOISE: Readonly<Record<Color, { seconds: number; rate: number }>> = {
+  white: { seconds: 17.3, rate: 32_000 },
+  pink: { seconds: 26.9, rate: 32_000 },
+  brown: { seconds: 67.1, rate: 8000 },
+};
+/** How far a looping layer's speed wanders at random (a fraction either way), and the wander's period (s). */
+const WANDER = { depth: 0.02, period: 9 } as const;
+
 interface Voice {
   /** Level 0..1 and the parameter, eased from `now`; the voice's own slow movement goes on with it. */
   set(level: number, param: number, now: number): void;
@@ -262,9 +288,11 @@ interface Mix {
   dry: GainNode;
   wet: GainNode;
   noise: Map<Color, AudioBuffer>;
-  /** The chapter's recordings, decoded. */
+  /** The recordings in hand (the chapter playing and the next), decoded. */
   recordings: Map<RecordingName, AudioBuffer>;
   reversed: Map<RecordingName, AudioBuffer>;
+  /** A recording, fetched and decoded once while it is wanted: resolves as it arrives, or null if it cannot be had. */
+  load(name: RecordingName): Promise<AudioBuffer | null>;
 }
 
 const db = (decibels: number): number => 10 ** (decibels / 20);
@@ -309,16 +337,18 @@ function drift(seed: number, period: number): (t: number) => number {
   return (t) => (layer(seed, period, t) + 0.45 * layer(seed + 101, period / 2.7, t)) / 1.15;
 }
 
-/** Ten seconds of mono noise of a colour, its ends crossfaded so it loops without a seam. Each layer plays it at its own speed and start. */
+/** Mono noise of a colour (NOISE: its length and rate), its ends crossfaded so it loops without a seam. Each layer plays it at its own speed and start. */
 function noise(mix: Mix, color: Color): AudioBuffer {
   const cached = mix.noise.get(color);
   if (cached) return cached;
-  const rate = mix.context.sampleRate;
-  const length = Math.floor(rate * 9.73);
+  const rate = Math.min(NOISE[color].rate, mix.context.sampleRate);
+  const length = Math.floor(rate * NOISE[color].seconds);
   const fade = Math.floor(rate * 0.5);
   const buffer = mix.context.createBuffer(1, length, rate);
   const rnd = random(hash(color));
   const raw = new Float32Array(length + fade);
+  // Brown noise leaks back to zero with a corner near 150 Hz, whatever the rate.
+  const leak = Math.exp((-2 * Math.PI * 150) / rate);
   let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, brown = 0;
   for (let i = 0; i < raw.length; i += 1) {
     const white = rnd() * 2 - 1;
@@ -335,7 +365,7 @@ function noise(mix: Mix, color: Color): AudioBuffer {
       b6 = white * 0.115926;
     } else {
       // Integrated white noise, leaking back to zero so it cannot wander off.
-      brown = (brown + 0.02 * white) / 1.02;
+      brown = brown * leak + white * (1 - leak);
       raw[i] = brown;
     }
   }
@@ -349,30 +379,24 @@ function noise(mix: Mix, color: Color): AudioBuffer {
     } else out[i] = head;
     sum += (out[i] ?? 0) ** 2;
   }
-  // Every colour at the same power (an RMS of 0.2), so a filter's band holds what the colour gives it.
-  const scale = sum > 0 ? 0.2 / Math.sqrt(sum / length) : 0;
+  // Every colour at the power it has at 48 kHz with an RMS of 0.2 (white keeps that power per hertz at
+  // its lower rate), so a filter's band holds what the colour gives it.
+  const scale = sum > 0 ? (color === 'white' ? 0.2 * Math.sqrt(rate / 48_000) : 0.2) / Math.sqrt(sum / length) : 0;
   for (let i = 0; i < length; i += 1) out[i] = (out[i] ?? 0) * scale;
   mix.noise.set(color, buffer);
   return buffer;
 }
 
-/** Fine grit: some 35 grains of noise a second, each a few milliseconds long (dust, sand). */
-function grit(context: BaseAudioContext): AudioBuffer {
-  const rate = context.sampleRate;
-  const length = Math.floor(rate * 6.71);
-  const buffer = context.createBuffer(1, length, rate);
-  const data = buffer.getChannelData(0);
-  const rnd = random(hash('grit'));
-  for (let g = 0; g < 6.71 * 35; g += 1) {
-    const at = Math.floor(rnd() * length);
-    const span = Math.floor(rate * (0.002 + 0.008 * rnd()));
-    const amp = 0.15 + 0.85 * rnd() ** 2;
-    for (let j = 0; j < span; j += 1) {
-      const i = (at + j) % length;
-      data[i] = (data[i] ?? 0) + (rnd() * 2 - 1) * amp * Math.sin((Math.PI * j) / span) ** 2;
-    }
-  }
-  return buffer;
+/**
+ * A looping layer's speed, wandering slowly at random about `rate` (WANDER) for the next twenty
+ * minutes: a loop then never meets itself again at the same place and speed, so it never repeats.
+ * Far too slow and small to hear as a change of pitch in noise, rain or the sea.
+ */
+function wander(param: AudioParam, rate: number, seed: number, at: number): void {
+  const d = drift(seed, WANDER.period);
+  const curve = new Float32Array(2400);
+  for (let i = 0; i < curve.length; i += 1) curve[i] = rate * (1 + WANDER.depth * d(i / 2));
+  param.setValueCurveAtTime(curve, at, (curve.length - 1) / 2);
 }
 
 /**
@@ -473,8 +497,11 @@ interface Kit {
   noise(color: Color): AudioBufferSourceNode;
   /** A buffer of the voice's own, looping from a random start. */
   loop(buffer: AudioBuffer): AudioBufferSourceNode;
-  /** A recording looping (or, for a one-shot, from `offset`); null if it did not load. */
-  recording(name: RecordingName, rate: number, offset: number): AudioBufferSourceNode | null;
+  /**
+   * Where a recording plays (looping from `offset`) once it arrives: silent until then, and silent
+   * for good if it cannot be had. One that comes after the voice has begun eases in.
+   */
+  recording(name: RecordingName, rate: number, offset: number): AudioNode;
   drift(period: number): (t: number) => number;
   level(level: number, now: number): void;
   stop(now: number, seconds: number): void;
@@ -483,19 +510,27 @@ interface Kit {
 function kit(mix: Mix, name: VoiceName): Kit {
   const { context } = mix;
   const out = gain(context, 0);
+  const send = gain(context, SEND[name]);
   out.connect(mix.dry);
-  out.connect(gain(context, SEND[name])).connect(mix.wet);
+  out.connect(send).connect(mix.wet);
   const sources: AudioScheduledSourceNode[] = [];
   const seed = hash(name);
   const rnd = random(seed);
+  const born = context.currentTime;
   let drifts = 0;
+  let wanders = 0;
+  let stopped = false;
+  const wanderFrom = (source: AudioBufferSourceNode, rate: number): void => {
+    wanders += 1;
+    wander(source.playbackRate, rate, seed + 104_729 * wanders, context.currentTime);
+  };
   return {
     context,
     out,
     rnd,
     noise(color) {
       const source = this.loop(noise(mix, color));
-      source.playbackRate.value = 0.93 + 0.14 * rnd();
+      wanderFrom(source, 0.93 + 0.14 * rnd());
       return source;
     },
     loop(buffer) {
@@ -507,9 +542,18 @@ function kit(mix: Mix, name: VoiceName): Kit {
       return source;
     },
     recording(recording, rate, offset) {
-      const source = play(mix, recording, rate, offset, 0);
-      if (source) sources.push(source);
-      return source;
+      const inlet = gain(context, 0);
+      void mix.load(recording).then(() => {
+        const source = stopped ? null : play(mix, recording, rate, offset, 0);
+        if (!source) return;
+        sources.push(source);
+        wanderFrom(source, rate);
+        source.connect(inlet);
+        const now = context.currentTime;
+        if (now - born < 0.25) inlet.gain.value = 1;
+        else inlet.gain.setTargetAtTime(1, now, 0.7);
+      });
+      return inlet;
     },
     drift(period) {
       drifts += 1;
@@ -519,12 +563,18 @@ function kit(mix: Mix, name: VoiceName): Kit {
       out.gain.setTargetAtTime(level * GAIN[name], now, TAU.level);
     },
     stop(now, seconds) {
+      stopped = true;
       out.gain.cancelScheduledValues(now);
       out.gain.setTargetAtTime(0, now, seconds / 4);
       for (const s of sources) s.stop(now + seconds);
-      // Disconnected once silent, so nothing of a past chapter lingers in the graph.
+      // Disconnected once silent, its send too, so nothing of a past chapter lingers in the graph.
+      const release = (): void => {
+        out.disconnect();
+        send.disconnect();
+      };
       const first = sources[0];
-      if (first) first.onended = () => { out.disconnect(); };
+      if (first) first.onended = release;
+      else release();
     },
   };
 }
@@ -654,7 +704,7 @@ function convection(mix: Mix): Voice {
   const c = k.context;
   const layers = ([[0.42, 0, -0.5], [0.36, 13.7, 0.5]] as const).map(([rate, offset, side]) => {
     const g = gain(c, 1);
-    k.recording('roil', rate, offset)?.connect(filter(c, 'lowpass', 1600, 0.6)).connect(g).connect(pan(c, side)).connect(k.out);
+    k.recording('roil', rate, offset).connect(filter(c, 'lowpass', 1600, 0.6)).connect(g).connect(pan(c, side)).connect(k.out);
     return { g, swell: k.drift(9) };
   });
   const sub = gain(c, 0.25);
@@ -708,10 +758,14 @@ function sun(mix: Mix): Voice {
   };
 }
 
+/** The disk's fine sand: a band of noise (centre, top, level against the vent's hiss). */
+const SAND = { hz: 1400, top: 3000, gain: 0.54 } as const;
+
 /**
  * A steam vent's hiss, filtered: gas falling onto a white dwarf (a soft rush whose band wanders),
- * dust in the young Sun's disk (darker, with fine grit), or the Big Rip's tearing (a band that rises
- * and widens with the param, the vent's crackle coming faster).
+ * dust in the young Sun's disk (darker, with a smooth wash of fine sand over it that swells and fades:
+ * never grains, so nothing crackles like a record), or the Big Rip's tearing (a band that rises and
+ * widens with the param, the vent's crackle coming faster).
  */
 function hiss(mix: Mix, name: 'infall' | 'dust' | 'tear'): Voice {
   const k = kit(mix, name);
@@ -725,13 +779,12 @@ function hiss(mix: Mix, name: 'infall' | 'dust' | 'tear'): Voice {
   const layers = ([[1, 0, -0.5], [0.9, 14.2, 0.5]] as const).map(([rate, offset, side]) => {
     const band = filter(c, 'bandpass', 1200, name === 'tear' ? 3 : 0.9);
     const g = gain(c, 1);
-    k.recording('steam', rate, offset)?.connect(band).connect(g).connect(pan(c, side)).connect(shelf);
+    k.recording('steam', rate, offset).connect(band).connect(g).connect(pan(c, side)).connect(shelf);
     return { band, g, place: k.drift(9), swell: k.drift(6) };
   });
   const sand = gain(c, 0);
-  if (name === 'dust') {
-    k.loop(grit(c)).connect(filter(c, 'highpass', 1500)).connect(filter(c, 'lowpass', 6000, 0.6)).connect(sand).connect(pan(c, -0.2)).connect(k.out);
-  }
+  if (name === 'dust') k.noise('pink').connect(filter(c, 'bandpass', SAND.hz, 0.7)).connect(filter(c, 'lowpass', SAND.top, 0.6)).connect(sand).connect(pan(c, -0.2)).connect(k.out);
+  const sandSwell = k.drift(7);
   const rnd = random(hash(`${name}-crackle`));
   let next = -1;
   let level = 0;
@@ -745,12 +798,12 @@ function hiss(mix: Mix, name: 'infall' | 'dust' | 'tear'): Voice {
         if (name === 'tear') ease(layer.band.Q, 3 - 2.3 * p, now, 0.8);
         ease(layer.g.gain, db(3 * layer.swell(now)), now);
       }
-      if (name === 'dust') ease(sand.gain, 0.6, now);
+      if (name === 'dust') ease(sand.gain, SAND.gain * db(4 * sandSwell(now)), now);
       if (name !== 'tear' || level < 0.02) return;
       // The tearing: crackle grains, faster as the band widens.
       if (next < now) next = now;
       while (next < now + 0.2) {
-        grain(mix, 'crackle', next, k.out, rnd, 0.5 + rnd());
+        grain(mix, 'crackle', next, k.out, rnd, 0.35 + 0.7 * rnd());
         next += -Math.log(1 - rnd()) / (0.6 + 4 * p);
       }
     },
@@ -758,7 +811,10 @@ function hiss(mix: Mix, name: 'infall' | 'dust' | 'tear'): Voice {
   };
 }
 
-/** One grain of a recording: a slice a few tenths of a second long at a random place, eased in and out, panned at random. */
+/**
+ * One grain of a recording: a slice a few tenths of a second long at a random place, eased in and
+ * out, panned at random, its top softened (under 3.5 kHz) so a crackle never turns to static.
+ */
 function grain(mix: Mix, name: RecordingName, at: number, to: AudioNode, rnd: () => number, loudness: number): void {
   const buffer = mix.recordings.get(name);
   if (!buffer) return;
@@ -769,7 +825,7 @@ function grain(mix: Mix, name: RecordingName, at: number, to: AudioNode, rnd: ()
   const length = 0.15 + 0.4 * rnd();
   const env = gain(c, 0);
   const p = pan(c, (rnd() - 0.5) * 1.4);
-  source.connect(env).connect(p).connect(to);
+  source.connect(filter(c, 'lowpass', 3500, 0.6)).connect(env).connect(p).connect(to);
   envelope(env.gain, at, loudness, 0.01, length - 0.06, 0.05);
   source.start(at, rnd() * Math.max(0, buffer.duration - 1));
   source.stop(at + length + 0.05);
@@ -783,10 +839,10 @@ function rain(mix: Mix): Voice {
   const tone = filter(c, 'lowpass', 8000, 0.5);
   tone.connect(k.out);
   const near = gain(c, 1);
-  k.recording('rain', 1, 0)?.connect(near).connect(tone);
+  k.recording('rain', 1, 0).connect(near).connect(tone);
   const far = gain(c, 0.55);
   const second = k.recording('rain', 0.92, 14.3);
-  if (second) mirror(c, second).connect(filter(c, 'lowpass', 4500, 0.6)).connect(far).connect(tone);
+  mirror(c, second).connect(filter(c, 'lowpass', 4500, 0.6)).connect(far).connect(tone);
   const washes = [-0.5, 0.5].map((side) => {
     const g = gain(c, 0.3);
     k.noise('pink').connect(filter(c, 'highpass', 300)).connect(filter(c, 'lowpass', 3000)).connect(g).connect(pan(c, side)).connect(tone);
@@ -813,10 +869,10 @@ function surf(mix: Mix): Voice {
   const tone = filter(c, 'lowpass', 6000, 0.5);
   tone.connect(k.out);
   const near = gain(c, 1);
-  k.recording('surf', 1, 0)?.connect(filter(c, 'highpass', 70)).connect(near).connect(tone);
+  k.recording('surf', 1, 0).connect(filter(c, 'highpass', 70)).connect(near).connect(tone);
   const far = gain(c, 0.6);
   const second = k.recording('surf', 0.96, 17);
-  if (second) mirror(c, second).connect(filter(c, 'lowpass', 1500, 0.6)).connect(far).connect(tone);
+  mirror(c, second).connect(filter(c, 'lowpass', 1500, 0.6)).connect(far).connect(tone);
   const swell = k.drift(19);
   return {
     set(level, p, now) {
@@ -878,7 +934,7 @@ function underwater(mix: Mix): Voice {
   const bubbles = ([[0.66, 0, -0.5], [0.58, 12.9, 0.5]] as const).map(([rate, offset, side]) => {
     const tone = filter(c, 'lowpass', 2200, 0.6);
     const g = gain(c, 0.8);
-    k.recording('bubbles', rate, offset)?.connect(tone).connect(g).connect(pan(c, side)).connect(k.out);
+    k.recording('bubbles', rate, offset).connect(tone).connect(g).connect(pan(c, side)).connect(k.out);
     return { tone, g, swell: k.drift(5) };
   });
   return {
@@ -903,11 +959,11 @@ function lava(mix: Mix): Voice {
   const c = k.context;
   const roars = ([[0.86, 0, -0.45], [0.78, 8.3, 0.45]] as const).map(([rate, offset, side]) => {
     const g = gain(c, 0.8);
-    k.recording('lava', rate, offset)?.connect(filter(c, 'highpass', 100)).connect(filter(c, 'lowpass', 3200, 0.6)).connect(g).connect(pan(c, side)).connect(k.out);
+    k.recording('lava', rate, offset).connect(filter(c, 'highpass', 100)).connect(filter(c, 'lowpass', 3200, 0.6)).connect(g).connect(pan(c, side)).connect(k.out);
     return { g, swell: k.drift(8) };
   });
   const plops = gain(c, 1.4);
-  k.recording('mud', 0.55, 3)?.connect(filter(c, 'lowpass', 1800, 0.6)).connect(plops).connect(pan(c, 0.1)).connect(k.out);
+  k.recording('mud', 0.55, 3).connect(filter(c, 'lowpass', 1800, 0.6)).connect(plops).connect(pan(c, 0.1)).connect(k.out);
   const sub = gain(c, 0.2);
   k.noise('brown').connect(filter(c, 'lowpass', 90, 0.6)).connect(filter(c, 'highpass', 28)).connect(sub).connect(k.out);
   const plopSwell = k.drift(10);
@@ -969,26 +1025,28 @@ function shot(mix: Mix, name: ShotName, now: number, scale: number): void {
   const c = mix.context;
   const rnd = random(hash(name) + Math.floor(now * 1000));
   const out = gain(c, SHOT_GAIN[name]);
+  const send = gain(c, SHOT_SEND[name]);
   out.connect(mix.dry);
-  out.connect(gain(c, SHOT_SEND[name])).connect(mix.wet);
+  out.connect(send).connect(mix.wet);
   const sources: AudioScheduledSourceNode[] = [];
   const noiseSource = (color: Color): AudioBufferSourceNode => {
     const s = c.createBufferSource();
     s.buffer = noise(mix, color);
     s.loop = true;
     s.playbackRate.value = 0.93 + 0.14 * rnd();
-    s.start(now, rnd() * 9);
+    s.start(now, rnd() * s.buffer.duration);
     sources.push(s);
     return s;
   };
   let end = now;
   if (name === 'breath' || name === 'exhale') {
-    // Air: one broad band of noise moving as a gust passes (a breath rises and falls; an exhale falls away).
+    // Air: one broad band of noise moving as a gust passes (a breath rises slowly out of silence and
+    // falls; an exhale falls away).
     const env = gain(c, 0);
     const band = filter(c, 'bandpass', 600, 0.6);
     const p = pan(c, 0);
     noiseSource('pink').connect(filter(c, 'highpass', 150)).connect(band).connect(env).connect(p).connect(out);
-    const [rise, hold, fall] = name === 'breath' ? [1.2, 0.4, 3.4] : [0.9 * scale, 0.3 * scale, 5.3 * scale];
+    const [rise, hold, fall] = name === 'breath' ? [3.2, 0.6, 3.6] : [0.9 * scale, 0.3 * scale, 5.3 * scale];
     end = envelope(env.gain, now, 1, rise, hold, fall);
     sweep(band.frequency, now, end - now, name === 'breath' ? [350, 1400, 600] : [1500, 900, 260]);
     sweep(p.pan, now, end - now, name === 'breath' ? [-0.35, 0.35] : [0.2, -0.15]);
@@ -1011,14 +1069,15 @@ function shot(mix: Mix, name: ShotName, now: number, scale: number): void {
     noiseSource('pink').connect(filter(c, 'bandpass', 260, 0.7)).connect(gain(c, 0.35)).connect(body);
     noiseSource('pink').connect(filter(c, 'bandpass', 1800, 0.8)).connect(gain(c, 0.06)).connect(env);
   } else if (name === 'glint') {
-    // A glint of high air as a star ignites: a few short grains of noise, scattered across the field.
+    // A glint of high air as a star ignites: a few short grains of noise, scattered across the field,
+    // up where air shimmers (5.5 to 8.5 kHz) rather than where a small speaker turns a burst harsh.
     const source = noiseSource('white');
     const grains = 3 + Math.floor(rnd() * 3);
     for (let i = 0; i < grains; i += 1) {
       const at = now + rnd() * 0.8;
       const env = gain(c, 0);
-      source.connect(filter(c, 'bandpass', 2500 + 2500 * rnd(), 1.2)).connect(env).connect(pan(c, (rnd() - 0.5) * 1.4)).connect(out);
-      end = Math.max(end, envelope(env.gain, at, 0.4 + 0.6 * rnd(), 0.015, 0.01, 0.08 + 0.17 * rnd()));
+      source.connect(filter(c, 'bandpass', 5500 + 3000 * rnd(), 0.9)).connect(env).connect(pan(c, (rnd() - 0.5) * 1.4)).connect(out);
+      end = Math.max(end, envelope(env.gain, at, 0.4 + 0.6 * rnd(), 0.03, 0.01, 0.08 + 0.17 * rnd()));
     }
   } else if (name === 'rise' || name === 'surface') {
     // Air rising: a band sweeping up; rising to the surface, bubbles rising with it, growing smaller and quicker.
@@ -1062,9 +1121,14 @@ function shot(mix: Mix, name: ShotName, now: number, scale: number): void {
     end = now + 4;
   }
   for (const s of sources) s.stop(end + 0.05);
+  // Let go once it has run out, its send too.
+  const release = (): void => {
+    out.disconnect();
+    send.disconnect();
+  };
   const first = sources[0];
-  if (first) first.onended = () => { out.disconnect(); };
-  else out.disconnect();
+  if (first) first.onended = release;
+  else release();
 }
 
 function eventTimes(content: ChapterContent): Map<string, number> {
@@ -1156,9 +1220,18 @@ interface Master {
 }
 
 /**
+ * The harmonics of the deepest sound: how hard the sound under 110 Hz (taken steeply, so nothing above
+ * it passes through the stage unchanged and colours the mix) drives the saturation, the band its
+ * overtones are kept in (a steep high-pass at `from`, so they land where a laptop's speakers play
+ * rather than just above the fundamentals, and a low-pass at `to`), and how much of them is added.
+ */
+const WARMTH = { drive: 14, from: 200, to: 700, gain: 0.17 } as const;
+
+/**
  * The master: the duck (a gain, and a low-pass that darkens the sound as it sinks), the app's level,
- * a high-pass under 32 Hz, harmonics of the deepest sound added above it (so a rumble is still felt
- * on a laptop's speakers), a high shelf, a gentle bus compressor, a limiter, and a soft clip at -1 dBFS.
+ * a high-pass under 32 Hz, harmonics of the deepest sound added from 200 to 700 Hz (so a rumble is
+ * still felt on a laptop's speakers), a high shelf, a gentle bus compressor, a limiter, and a soft
+ * clip at -1 dBFS.
  */
 function master(context: BaseAudioContext, destination: AudioNode): Master {
   const input = gain(context, 1);
@@ -1169,10 +1242,10 @@ function master(context: BaseAudioContext, destination: AudioNode): Master {
   input.connect(duck).connect(tone).connect(level).connect(floor);
   const sum = gain(context, 1);
   floor.connect(sum);
-  const drive = gain(context, 14);
+  const drive = gain(context, WARMTH.drive);
   const shaper = context.createWaveShaper();
   shaper.curve = warmth();
-  floor.connect(filter(context, 'lowpass', 110)).connect(drive).connect(shaper).connect(filter(context, 'highpass', 150)).connect(filter(context, 'lowpass', 480)).connect(gain(context, 0.07)).connect(sum);
+  floor.connect(filter(context, 'lowpass', 110)).connect(filter(context, 'lowpass', 110)).connect(drive).connect(shaper).connect(filter(context, 'highpass', WARMTH.from)).connect(filter(context, 'highpass', WARMTH.from)).connect(filter(context, 'lowpass', WARMTH.to)).connect(gain(context, WARMTH.gain)).connect(sum);
   const shelf = context.createBiquadFilter();
   shelf.type = 'highshelf';
   shelf.frequency.value = 6500;
@@ -1196,50 +1269,76 @@ function master(context: BaseAudioContext, destination: AudioNode): Master {
   return { input, duck, tone, level };
 }
 
-/** Decoded recordings, by name (shared by every score: a decoded buffer plays in any context). */
-const decoded = new Map<RecordingName, Promise<AudioBuffer | null>>();
+/** Decodes the recordings at their own rate (a decoded buffer plays in any context). */
 let decoder: OfflineAudioContext | null = null;
 
 function recordingUrl(name: RecordingName): string {
   return new URL(`assets/sound/${name}.m4a`, document.baseURI).href;
 }
 
-/** A recording, fetched and decoded once (at its own rate); null if it cannot be had, and then tried again next time. */
-function decode(name: RecordingName, context: BaseAudioContext): Promise<AudioBuffer | null> {
-  const cached = decoded.get(name);
-  if (cached) return cached;
-  const promise = fetch(recordingUrl(name))
-    .then((response) => {
-      if (!response.ok) throw new Error(`${name}: ${response.status}`);
-      return response.arrayBuffer();
-    })
-    .then((bytes) => {
-      try {
-        decoder ??= new OfflineAudioContext(1, 1, RECORDING_RATE);
-      } catch {
-        return context.decodeAudioData(bytes);
-      }
-      return decoder.decodeAudioData(bytes);
-    })
-    .catch(() => {
-      decoded.delete(name);
-      return null;
-    });
-  decoded.set(name, promise);
-  return promise;
+/**
+ * A recording, fetched and decoded at its own rate; null if it cannot be had: missing, undecodable,
+ * let go (`signal`), or stalled, with no byte for STALL_S.
+ */
+async function fetchRecording(name: RecordingName, context: BaseAudioContext, signal: AbortSignal): Promise<AudioBuffer | null> {
+  const stall = new AbortController();
+  const abort = (): void => {
+    stall.abort();
+  };
+  signal.addEventListener('abort', abort);
+  let timer = 0;
+  const wait = (): void => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(abort, STALL_S * 1000);
+  };
+  try {
+    wait();
+    const response = await fetch(recordingUrl(name), { signal: stall.signal });
+    if (!response.ok || !response.body) throw new Error(`${name}: ${response.status}`);
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      wait();
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+    const bytes = new Uint8Array(size);
+    let at = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    try {
+      decoder ??= new OfflineAudioContext(1, 1, RECORDING_RATE);
+    } catch {
+      return await context.decodeAudioData(bytes.buffer);
+    }
+    return await decoder.decodeAudioData(bytes.buffer);
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+  }
 }
 
-function recordingsOf(score: Score): Set<RecordingName> {
+function recordingsOf(score: Score | undefined): Set<RecordingName> {
   const names = new Set<RecordingName>();
-  for (const track of score.tracks) for (const name of VOICE_RECORDINGS[track.voice] ?? []) names.add(name);
-  for (const s of score.shots ?? []) for (const name of SHOT_RECORDINGS[s[1]] ?? []) names.add(name);
+  for (const track of score?.tracks ?? []) for (const name of VOICE_RECORDINGS[track.voice] ?? []) names.add(name);
+  for (const s of score?.shots ?? []) for (const name of SHOT_RECORDINGS[s[1]] ?? []) names.add(name);
   return names;
 }
+
+/** The chapters in the film's order: the one after a chapter is the one whose recordings are fetched while it plays. */
+const ORDER = Object.keys(SCORES) as ChapterId[];
 
 interface Playing {
   chapter: ChapterId;
   content: ChapterContent;
-  tracks: Array<{ name: VoiceName; voice: Voice | null; level: Array<[number, number]>; param: Array<[number, number]> }>;
+  tracks: Array<{ name: VoiceName; voice: Voice; level: Array<[number, number]>; param: Array<[number, number]> }>;
   shots: Array<[number, ShotName, number]>;
   last: number | null;
   ready: Promise<void>;
@@ -1254,12 +1353,18 @@ export interface FilmScoreState {
   duck: number;
   /** One-shots fired so far, by name, for the tests. */
   shots: string[];
+  /** The recordings in hand now (the chapter playing and the next), for the tests. */
+  recordings: string[];
 }
 
 export interface FilmScore {
-  /** The chapter that plays, or null for none (its sound fades out); its recordings are fetched now. */
+  /**
+   * The chapter that plays: its voices begin at once and its recordings are fetched (each joins its
+   * layer as it arrives), then the next chapter's. Null for none: the sound fades out, and every
+   * recording and noise is let go.
+   */
   setChapter(chapter: ChapterId | null, content: ChapterContent | null): void;
-  /** Resolves once the chapter's recordings are decoded and its voices play. */
+  /** Resolves once each of the chapter's recordings has arrived or failed (the voices do not wait for it). */
   ready(): Promise<void>;
   /** The chapter's time; `playing` false (paused, held, seeking) never fires a one-shot. */
   update(t: number, playing: boolean): void;
@@ -1278,19 +1383,54 @@ export function createFilmScore(context: BaseAudioContext, destination: AudioNod
   reverb.buffer = impulse(context);
   dry.connect(out.input);
   wet.connect(filter(context, 'highpass', 150)).connect(reverb).connect(gain(context, 0.5)).connect(out.input);
-  const mix: Mix = { context, dry, wet, noise: new Map(), recordings: new Map(), reversed: new Map() };
+  /** Each recording being fetched or in hand, and which are wanted (the chapter playing and the next). */
+  const loads = new Map<RecordingName, { promise: Promise<AudioBuffer | null>; abort: AbortController }>();
+  let wanted = new Set<RecordingName>();
+  const mix: Mix = {
+    context,
+    dry,
+    wet,
+    noise: new Map(),
+    recordings: new Map(),
+    reversed: new Map(),
+    load(name) {
+      const known = loads.get(name);
+      if (known) return known.promise;
+      const abort = new AbortController();
+      const promise = fetchRecording(name, context, abort.signal).then((buffer) => {
+        if (buffer && wanted.has(name)) {
+          mix.recordings.set(name, buffer);
+          return buffer;
+        }
+        // Failed (tried again the next time it is wanted) or no longer wanted.
+        if (loads.get(name)?.abort === abort) loads.delete(name);
+        return null;
+      });
+      loads.set(name, { promise, abort });
+      return promise;
+    },
+  };
+  /** Keeps only these recordings, letting the rest go (a download under way is stopped). */
+  const keep = (names: ReadonlySet<RecordingName>): void => {
+    wanted = new Set(names);
+    for (const [name, load] of loads) {
+      if (names.has(name)) continue;
+      load.abort.abort();
+      loads.delete(name);
+      mix.recordings.delete(name);
+      mix.reversed.delete(name);
+    }
+  };
   let playing: Playing | null = null;
   let duckNow = 1;
   let levelNow = 0;
-  let lastT = 0;
-  let kept = new Set<RecordingName>();
   const fired: string[] = [];
   const levels = new Map<VoiceName, number>();
 
   const stopPlaying = (): void => {
     if (!playing) return;
     const now = context.currentTime;
-    for (const track of playing.tracks) track.voice?.stop(now, 2);
+    for (const track of playing.tracks) track.voice.stop(now, 2);
     playing = null;
     levels.clear();
   };
@@ -1300,48 +1440,52 @@ export function createFilmScore(context: BaseAudioContext, destination: AudioNod
     for (const track of p.tracks) {
       const level = valueAt(track.level, t);
       levels.set(track.name, level);
-      track.voice?.set(level, valueAt(track.param, t), now);
+      track.voice.set(level, valueAt(track.param, t), now);
     }
   };
 
+  const setChapter = (chapter: ChapterId | null, content: ChapterContent | null): void => {
+    if (playing?.chapter === chapter && playing.content === content) return;
+    stopPlaying();
+    if (!chapter || !content) {
+      // The film's sound has stopped, or the explorer is open: nothing is kept for it.
+      keep(new Set());
+      mix.noise.clear();
+      return;
+    }
+    const score = SCORES[chapter];
+    const events = eventTimes(content);
+    const curve = (c: Curve | undefined, fallback: number): Array<[number, number]> =>
+      (c ?? [[0, fallback]]).map(([at, v]) => [resolveAt(at, events, content.duration), v] as [number, number]).filter(([t]) => Number.isFinite(t));
+    // The recordings kept: this chapter's and the next's; any others are let go.
+    const after = ORDER[ORDER.indexOf(chapter) + 1];
+    const own = recordingsOf(score);
+    const next = recordingsOf(after && SCORES[after]);
+    keep(new Set([...own, ...next]));
+    const p: Playing = {
+      chapter,
+      content,
+      tracks: score.tracks.map((track) => ({ name: track.voice, voice: makeVoice(mix, track.voice), level: curve(track.level, 0), param: curve(track.param, track.voice === 'roar' ? 1 : 0.5) })),
+      shots: (score.shots ?? []).map(([at, name, scale]) => [resolveAt(at, events, content.duration), name, scale ?? 1] as [number, ShotName, number]).filter(([t]) => Number.isFinite(t)),
+      last: null,
+      ready: Promise.resolve(),
+    };
+    playing = p;
+    apply(p, 0);
+    // Once this chapter's recordings are in (or have failed), the next chapter's are fetched while it plays.
+    p.ready = Promise.all([...own].map((name) => mix.load(name))).then(() => {
+      if (playing === p) for (const name of next) void mix.load(name);
+    });
+  };
+
   return {
-    setChapter(chapter, content) {
-      if (playing?.chapter === chapter && playing.content === content) return;
-      stopPlaying();
-      lastT = 0;
-      if (!chapter || !content) return;
-      const score = SCORES[chapter];
-      const events = eventTimes(content);
-      const curve = (c: Curve | undefined, fallback: number): Array<[number, number]> =>
-        (c ?? [[0, fallback]]).map(([at, v]) => [resolveAt(at, events, content.duration), v] as [number, number]).filter(([t]) => Number.isFinite(t));
-      // The chapter's recordings: fetched now; any not needed by it or the chapter before it are let go.
-      const needed = recordingsOf(score);
-      for (const name of decoded.keys()) if (!needed.has(name) && !kept.has(name)) decoded.delete(name);
-      kept = needed;
-      const p: Playing = {
-        chapter,
-        content,
-        tracks: score.tracks.map((track) => ({ name: track.voice, voice: null, level: curve(track.level, 0), param: curve(track.param, track.voice === 'roar' ? 1 : 0.5) })),
-        shots: (score.shots ?? []).map(([at, name, scale]) => [resolveAt(at, events, content.duration), name, scale ?? 1] as [number, ShotName, number]).filter(([t]) => Number.isFinite(t)),
-        last: null,
-        ready: Promise.resolve(),
-      };
-      playing = p;
-      p.ready = Promise.all([...needed].map(async (name) => [name, await decode(name, context)] as const)).then((list) => {
-        if (playing !== p) return;
-        mix.recordings = new Map(list.flatMap(([name, buffer]) => (buffer ? [[name, buffer] as const] : [])));
-        mix.reversed = new Map();
-        for (const track of p.tracks) track.voice = makeVoice(mix, track.name);
-        apply(p, lastT);
-      });
-    },
+    setChapter,
     ready() {
       return playing?.ready ?? Promise.resolve();
     },
     update(t, isPlaying) {
       const p = playing;
       if (!p) return;
-      lastT = t;
       const now = context.currentTime;
       apply(p, t);
       const d = duckAt(p.content.cues, t);
@@ -1350,8 +1494,8 @@ export function createFilmScore(context: BaseAudioContext, destination: AudioNod
       // The duck darkens the sound as it sinks: open at full, about 350 Hz under a verse.
       const sink = clamp01(Math.log(d) / Math.log(db(DUCK_DB.verse)));
       ease(out.tone.frequency, Math.exp(Math.log(18000) + (Math.log(350) - Math.log(18000)) * sink), now, 0.12);
-      const built = p.tracks.every((track) => track.voice !== null);
-      if (built && isPlaying && p.last !== null && t > p.last && t - p.last < MAX_STEP_S) {
+      // A one-shot plays when the film plays across it, whether or not its recording has come (its made part plays regardless).
+      if (isPlaying && p.last !== null && t > p.last && t - p.last < MAX_STEP_S) {
         for (const [at, name, scale] of p.shots) {
           if (p.last < at && at <= t) {
             shot(mix, name, now, scale);
@@ -1366,10 +1510,10 @@ export function createFilmScore(context: BaseAudioContext, destination: AudioNod
       out.level.gain.setTargetAtTime(level, context.currentTime, TAU.change);
     },
     state() {
-      return { chapter: playing?.chapter ?? null, level: levelNow, voices: Object.fromEntries(levels), duck: duckNow, shots: [...fired] };
+      return { chapter: playing?.chapter ?? null, level: levelNow, voices: Object.fromEntries(levels), duck: duckNow, shots: [...fired], recordings: [...mix.recordings.keys()] };
     },
     dispose() {
-      stopPlaying();
+      setChapter(null, null);
       out.level.disconnect();
     },
   };
@@ -1378,7 +1522,7 @@ export function createFilmScore(context: BaseAudioContext, destination: AudioNod
 /**
  * Renders a stretch of a chapter's sound offline, for the tests: per second, the louder channel's RMS
  * and peak. The film is played across it (one-shots fire), with the app's level at 1, once the
- * chapter's recordings are in.
+ * chapter's recordings are in or have failed.
  */
 export async function renderFilmSound(chapter: ChapterId, content: ChapterContent, from: number, to: number, sampleRate = 22050): Promise<{ rms: number[]; peak: number[] }> {
   const seconds = Math.max(1, Math.ceil(to - from));
@@ -1398,6 +1542,7 @@ export async function renderFilmSound(chapter: ChapterId, content: ChapterConten
     });
   }
   const buffer = await context.startRendering();
+  score.dispose();
   const rms: number[] = [];
   const peak: number[] = [];
   for (let s = 0; s < seconds; s += 1) {
@@ -1440,7 +1585,7 @@ export async function checkFilmRecordings(): Promise<FilmRecordingCheck[]> {
   return Promise.all(
     [...names].map(async (name) => {
       const url = recordingUrl(name);
-      const buffer = await decode(name, context);
+      const buffer = await fetchRecording(name, context, new AbortController().signal);
       const loop = RECORDINGS[name];
       let sum = 0;
       const data = buffer?.getChannelData(0) ?? new Float32Array(0);

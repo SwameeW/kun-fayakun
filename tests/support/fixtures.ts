@@ -86,6 +86,8 @@ export interface FilmSoundState {
   voices: Record<string, number>;
   duck: number;
   shots: string[];
+  /** The recordings in hand (the chapter playing and the next). */
+  recordings: string[];
 }
 
 export interface OpenOptions {
