@@ -6,9 +6,9 @@
 # Usage: bash scripts/preprocess-planets.sh
 #
 # Needs network access (first run only; files already in .cache/planets/download are checked,
-# not fetched again) to assets.science.nasa.gov, eoimages.gsfc.nasa.gov (fallback
-# web.archive.org), www.ngdc.noaa.gov, raw.githubusercontent.com, svs.gsfc.nasa.gov and
-# archive.stsci.edu, about 690 MB; pypi.org and files.pythonhosted.org (tifffile, imagecodecs);
+# not fetched again) to assets.science.nasa.gov, gibs.earthdata.nasa.gov (the clouds' day, 26
+# map requests), www.ngdc.noaa.gov, raw.githubusercontent.com, svs.gsfc.nasa.gov and
+# archive.stsci.edu, about 735 MB; pypi.org and files.pythonhosted.org (tifffile, imagecodecs);
 # github.com and its release-asset hosts (KTX-Software, first run). The Cassini ring profile comes
 # from the JPL builder's cache (run npm run preprocess:jpl first). Peak memory is about 4 GB.
 #

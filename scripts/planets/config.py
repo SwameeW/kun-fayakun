@@ -51,10 +51,12 @@ class SourceFile:
     sha256: str
     last_modified: str
     fallback: str | None = None
+    # For a URL whose last segment is no file name (a map server's query).
+    file_name: str | None = None
 
     @property
     def name(self) -> str:
-        return self.url.rsplit("/", 1)[-1]
+        return self.file_name or self.url.rsplit("/", 1)[-1]
 
     @property
     def path(self) -> Path:
@@ -64,7 +66,6 @@ class SourceFile:
 SVS = "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/"
 OPAL = "https://archive.stsci.edu/missions/hlsp/opal/cycle32/"
 NE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/"
-CLOUDS_URL = "https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif"
 
 FILES: dict[str, SourceFile] = {
     "bmng": SourceFile(
@@ -76,14 +77,6 @@ FILES: dict[str, SourceFile] = {
         "nasa-black-marble-2016",
         "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144897/BlackMarble_2016_3km_gray.jpg",
         3_064_569, "3fbc8aae3529dc1ebfcf3aa9361bd3dfc11d19950a6af6d8ed2df61bd8b0134d", "2024-11-27",
-    ),
-    "clouds": SourceFile(
-        "nasa-blue-marble-clouds-2002",
-        CLOUDS_URL,
-        35_870_468, "d137775d8966ab8d443fd5126dc6e7ad72072bc1ed50555c5818d221735daf0f", "2011-10-05",
-        # eoimages.gsfc.nasa.gov is the last host still serving the 2002 files (assets.science.nasa.gov
-        # answers 404); this Wayback copy has the same byte count.
-        fallback="http://web.archive.org/web/20260318202426/" + CLOUDS_URL,
     ),
     "etopo": SourceFile(
         "noaa-etopo-2022",
@@ -139,6 +132,91 @@ FILES: dict[str, SourceFile] = {
     ),
 }
 
+# The Earth's clouds: one day of NASA VIIRS imagery from the three satellites that carry it, as NASA's
+# Global Imagery Browse Services (GIBS) serves it. Each satellite's day is a mosaic of afternoon passes
+# (about 13:30 local time) with sunglint down the middle of every orbit; the three fly the same orbit
+# some minutes apart, so their glints fall on different stretches of sea and their median is free of
+# them (build.py). The date is the September equinox, when the Sun lights both poles.
+GIBS_WMS = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi"
+CLOUDS_DATE = "2025-09-22"
+CLOUDS_SOURCE = "nasa-gibs-viirs-2025-09-22"
+CLOUDS_SATELLITES = ("NOAA20", "SNPP", "NOAA21")
+# True colour at 16384 x 8192 (twice the widest level, reduced 2 x 2 in build.py), in tiles of 90 by 90
+# degrees: GIBS times out on a whole globe at that size. The snow maps need less (4096 x 2048).
+CLOUDS_TILE_DEG = 90
+CLOUDS_TILE_PX = 4096
+CLOUDS_TILES = tuple((lat0, lon0) for lat0 in (0, -90) for lon0 in (-180, -90, 0, 90))
+CLOUDS_SNOW_SIZE = (4096, 2048)
+
+
+def gibs_map(layer: str, bbox: tuple[float, float, float, float], size: tuple[int, int], fmt: str) -> str:
+    """A GIBS WMS 1.3.0 GetMap request for the cloud date (EPSG:4326 boxes are lat, lon, lat, lon)."""
+    lat0, lon0, lat1, lon1 = bbox
+    return (
+        f"{GIBS_WMS}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS={layer}&STYLES=&CRS=EPSG:4326"
+        f"&BBOX={lat0:g},{lon0:g},{lat1:g},{lon1:g}&WIDTH={size[0]}&HEIGHT={size[1]}&FORMAT={fmt}&TIME={CLOUDS_DATE}"
+    )
+
+
+def clouds_tile(satellite: str, lat0: int, lon0: int) -> str:
+    return f"clouds{satellite}_{lat0}_{lon0}"
+
+
+def clouds_snow(satellite: str) -> str:
+    return f"cloudsSnow{satellite}"
+
+
+# Byte counts and sha256 of the GIBS responses, taken on first download ("served" is that day).
+CLOUDS_PINS: dict[str, tuple[int, str]] = {
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_0_-180.jpg": (3_870_605, "83ec9e7eec7bbb5a0ee0cc648ee33693406b784dbaaa0720a2d70c89978b9b64"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_0_-90.jpg": (3_781_092, "055006baa6dad51e27a4753c60868b9563d57440b68f9f98aeb1da95e1aff5ac"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_0_0.jpg": (3_429_805, "e88f41ba56228b222d229c8e1259000c0c5fd0bf488e330755baffe1d01deb3e"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_0_90.jpg": (3_529_513, "3cab7caaf8cbc68f00540a69a6222bef14a99f337951e079ceb8a038c3c8e771"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_-90_-180.jpg": (3_413_467, "8af001c27e1acfa9f41440301106cf9f295effc3ccb44372dd34368b2660c1a9"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_-90_-90.jpg": (3_127_683, "32e1070bd512bba0d30ed5b4946ff8f41c9b135686cb70bc8d57c3d9320333c0"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_-90_0.jpg": (3_155_006, "a9cd65a38839398e4e2a87e5c9906a83b3dcedb2cef02cc792890803d5862db3"),
+    "VIIRS_NOAA20_CorrectedReflectance_TrueColor_2025-09-22_-90_90.jpg": (3_054_059, "7ac4e901937cc3ff05fa77a496feead38df22b0c113b28848863ab6a499a34be"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_0_-180.jpg": (3_834_829, "3c606089cc7f0aeef508f612ce50e2540743f66ba1ab1b776cbb57d34ff4b5e0"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_0_-90.jpg": (3_702_350, "646f25aeb89d7f4868ab2efd91cede9b35b652db99940453cfb38d5974fdca22"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_0_0.jpg": (3_421_176, "9b81f7f3eb2fd261bbbc94399424d08344c997ea541575e8f23dce2241b7448b"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_0_90.jpg": (3_487_949, "a9765f43c9bd61c2bec3dc1d82ad2401ec591d1de9909e5c3f916b6af36f2816"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_-90_-180.jpg": (3_332_319, "74be36a670ae8f4cf415d33ad2c39e7db6c9fb2b0cbd6fb56f7cf0dde33b3676"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_-90_-90.jpg": (3_062_302, "24e5974ca3417f8213ee65e9daed5305df5f2b68eb7891a946f19527d888959c"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_-90_0.jpg": (3_082_000, "75d32ab3568b5c9648e30e1bce9990275df829227d8e62f0cae4e1cdb73c2cee"),
+    "VIIRS_SNPP_CorrectedReflectance_TrueColor_2025-09-22_-90_90.jpg": (2_954_381, "22a3a7802582fd64eefd73742f6c0a7fac2e73318078757f6f49938fe207ee28"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_0_-180.jpg": (3_855_323, "f990d5055eb3959a4b0639c8e6f77b777513a8fcad49e52357c31aca4cf41c4b"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_0_-90.jpg": (3_778_315, "1449911591b9650173c9c7857c3df0873fffcc621b719445edc39aa7b6b39b3b"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_0_0.jpg": (3_479_112, "427d4a07df0ebceb3655d95198a0e45c11b4b5bf1f1de609b78af4c8f269d39e"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_0_90.jpg": (3_481_414, "e0d1e17acf74096228f01bc3ce38b2d71ba88041ea7d9b8da97d2262c759d962"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_-90_-180.jpg": (3_378_625, "b6b9068a781871b214126a5773cad45812c50b6d62c66c71fa3093428738ae6d"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_-90_-90.jpg": (3_164_078, "5d94124cf0f3f3d416ae31ec89f232c957a590ba11283114f0b4651d390b2d61"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_-90_0.jpg": (3_098_400, "6b91e1b967aebe524a20de5d40f4764585d56c7f520722c0ae8bbc701bc09449"),
+    "VIIRS_NOAA21_CorrectedReflectance_TrueColor_2025-09-22_-90_90.jpg": (2_981_669, "f8e088f3b2a6361ef8290cdced5886a17594023d5f8287d5beb94b1126e77d42"),
+    "VIIRS_NOAA20_NDSI_Snow_Cover_2025-09-22.png": (407_641, "c28794448bc7004c359f801c2230171f8ec83ca9bfa065eed5a2611e7be44634"),
+    "VIIRS_SNPP_NDSI_Snow_Cover_2025-09-22.png": (386_398, "1a4e615b91d0751eea75377650d9dcc05d538b9679ef4863ac1073cd8bde2926"),
+}
+CLOUDS_SERVED = "served 2026-10-28"
+
+
+def _gibs_file(name: str, url: str) -> SourceFile:
+    size, digest = CLOUDS_PINS[name]
+    return SourceFile(CLOUDS_SOURCE, url, size, digest, CLOUDS_SERVED, file_name=name)
+
+
+for _satellite in CLOUDS_SATELLITES:
+    _layer = f"VIIRS_{_satellite}_CorrectedReflectance_TrueColor"
+    for _lat0, _lon0 in CLOUDS_TILES:
+        _box = (_lat0, _lon0, _lat0 + CLOUDS_TILE_DEG, _lon0 + CLOUDS_TILE_DEG)
+        FILES[clouds_tile(_satellite, _lat0, _lon0)] = _gibs_file(
+            f"{_layer}_{CLOUDS_DATE}_{_lat0}_{_lon0}.jpg", gibs_map(_layer, _box, (CLOUDS_TILE_PX, CLOUDS_TILE_PX), "image/jpeg"),
+        )
+# The VIIRS snow maps (NDSI snow cover, clear-sky snow only) of the two satellites that have one for the date.
+for _satellite in ("NOAA20", "SNPP"):
+    _layer = f"VIIRS_{_satellite}_NDSI_Snow_Cover"
+    FILES[clouds_snow(_satellite)] = _gibs_file(
+        f"{_layer}_{CLOUDS_DATE}.png", gibs_map(_layer, (-90, -180, 90, 180), CLOUDS_SNOW_SIZE, "image/png"),
+    )
+
 # The ring optical-depth table comes from the JPL builder's cache; this is the sha256 that
 # public/assets/jpl/physical.json records for it (sources.rings).
 RINGS_TABLE = JPL_CACHE / "RSS_2005_123_X43_E_TAU_10KM.TAB"
@@ -190,14 +268,18 @@ OPAL_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 # The form of NASA/ESA OPAL image releases; the HLSP page names Amy Simon as the maps' author. Unconfirmed
 # by the owner (M. H. Wong, co-author of the OPAL papers, is not named).
 OPAL_CREDIT = "NASA, ESA, A. Simon (NASA GSFC) and the OPAL team"
-# Visible Earth record 57747's credit line, verbatim up to its "Additional data" clause (topography,
-# Antarctica and city lights), which is about the other Blue Marble 2002 layers, not the clouds.
-CLOUDS_CREDIT = (
-    "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by "
-    "Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; "
-    "MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group"
+# GIBS's own acknowledgement (its API documentation, "Data Use Guidance and Acknowledgements").
+GIBS_ACKNOWLEDGEMENT = (
+    "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of "
+    "NASA's Earth Science Data and Information System (ESDIS)."
 )
-CLOUDS_RECORD = "https://web.archive.org/web/20250109030918/https://visibleearth.nasa.gov/images/57747/blue-marble-clouds"
+ESDIS_TERMS = (
+    "CC0 / public domain. NASA's Earth science data use guidance: ESDIS content (imagery, data, products) is generally "
+    "not copyrighted, and data from NASA-led missions without a marked restriction are licensed as Creative Commons Zero "
+    "(CC0); NOAA-20 and NOAA-21 are NOAA satellites (JPSS), whose data are U.S. Government works. NASA asks to be "
+    "acknowledged as the source, and use must not imply NASA endorsement."
+)
+ESDIS_POLICY = "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance"
 
 SOURCES: list[SourceEntry] = [
     SourceEntry(
@@ -213,8 +295,8 @@ SOURCES: list[SourceEntry] = [
             "The Earth's daytime colour in exploration (public/assets/planets/earth/day-*.ktx2). The base map has no "
             "topographic or bathymetric shading baked in, so relief comes only from the ETOPO 2022 normal map. "
             "Collection page: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/. "
-            "The exploration Earth is a composite of several epochs (land and sea ice July 2004, clouds 2001, night lights "
-            "2016) and is captioned as such."
+            "The base map has no sea ice: the ocean is open to the poles. The exploration Earth is a composite of several "
+            "epochs (land July 2004, clouds and sea ice 22 September 2025, night lights 2016) and is captioned as such."
         ),
     ),
     SourceEntry(
@@ -233,19 +315,32 @@ SOURCES: list[SourceEntry] = [
         ),
     ),
     SourceEntry(
-        id="nasa-blue-marble-clouds-2002",
-        title="Blue Marble: clouds (cloud_combined_8192.tif), 2002",
-        author="Reto Stöckli, NASA Goddard Space Flight Center (Blue Marble 2002, MODIS data)",
-        url=FILES["clouds"].url,
-        version="Blue Marble 2002 cloud composite, 8192 x 4096",
-        license=EO_TERMS,
-        license_url=EO_POLICY,
-        credit=CLOUDS_CREDIT,
+        id=CLOUDS_SOURCE,
+        title="VIIRS Corrected Reflectance, true colour, 22 September 2025: Suomi NPP, NOAA-20 and NOAA-21 (NASA GIBS)",
+        author=(
+            "NASA Earth Science Data and Information System (ESDIS), Global Imagery Browse Services (GIBS); VIIRS on "
+            "Suomi NPP (NASA and NOAA), NOAA-20 and NOAA-21 (NOAA JPSS)"
+        ),
+        url="https://nasa-gibs.github.io/gibs-api-docs/",
+        version=(
+            f"Daily mosaics of {CLOUDS_DATE} from the GIBS WMS (EPSG:4326, best available), true colour (bands I1, M4, M3) "
+            "read at 16384 x 8192, NDSI snow cover at 4096 x 2048"
+        ),
+        license=ESDIS_TERMS,
+        license_url=ESDIS_POLICY,
+        credit="NASA GIBS (ESDIS): VIIRS on Suomi NPP, NOAA-20 and NOAA-21",
         notes=(
-            "The cloud layer of the exploration Earth (public/assets/planets/earth/clouds-*.ktx2): two days of visible "
-            "imagery plus thermal infrared over the poles, from 2001 (so Antarctica reads as cloud-bright). "
-            f"Credit as printed on the archived Visible Earth record 57747 ({CLOUDS_RECORD}), up to its \"Additional "
-            f"data\" clause, which names the topography, Antarctica and city-light layers. Fallback copy: {FILES['clouds'].fallback}."
+            "The cloud layer of the exploration Earth (public/assets/planets/earth/clouds-*.ktx2), with the sea ice of the "
+            "same day, which the July 2004 day map lacks. Made by scripts/planets/build.py from GIBS's daily true-colour "
+            "mosaics of the three satellites (layers VIIRS_NOAA20_, VIIRS_SNPP_ and VIIRS_NOAA21_CorrectedReflectance_"
+            "TrueColor): whiteness is the darkest of a pixel's three bands as reflectance (cloud is white, bright ground "
+            "coloured); the median of the three satellites, which cross the same sea minutes apart, drops the sunglint each "
+            "has down the middle of its orbits; opacity is the share of the way from the ground's own whiteness (the day "
+            "map's, or open sea's) to thick cloud's. None is drawn over the ice sheets the day map shows white, nor over the "
+            "day's clear-sky snow on land (layers VIIRS_NOAA20_ and VIIRS_SNPP_NDSI_Snow_Cover), where visible light cannot "
+            "tell cloud from snow. Poleward of the imagery (about 83 N and 75 S, where the equinox Sun was too low) open "
+            "water is filled as opaque pack ice and cloud. Thin smoke and dust over dark ground count as faint cloud. "
+            f"Acknowledgement GIBS asks for: \"{GIBS_ACKNOWLEDGEMENT}\""
         ),
     ),
     SourceEntry(
@@ -423,9 +518,15 @@ MAPS: list[MapSpec] = [
         encoding="R8, sRGB-encoded brightness (decode with the sRGB curve before adding as emission).",
     ),
     MapSpec(
-        "earth", "clouds", "grey", "nasa-blue-marble-clouds-2002",
-        description="Cloud cover (2001 composite; the poles from thermal infrared, so Antarctica reads as cloud).",
-        encoding="R8, cloud opacity 0..1 (linear).",
+        "earth", "clouds", "grey", CLOUDS_SOURCE,
+        description=(
+            "Cloud cover of 22 September 2025 (VIIRS), with that day's sea ice, which the day map lacks; none over the ice "
+            "sheets, where cloud cannot be told from ice in visible light."
+        ),
+        encoding=(
+            "R8, cloud cover 0..1 (linear), seen from afar as opacity smoothstep(0.08, 0.9, cover) x 0.97, the curve "
+            "src/explore/bodies/earth.ts reads it with."
+        ),
     ),
     MapSpec(
         "earth", "water", "grey", "natural-earth-5.1.2",
@@ -495,7 +596,7 @@ BODIES = {
         "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
         "uAtLon0": 0.5,
         "lonIncreases": "right",
-        "caption": "A composite of several epochs: land and sea ice July 2004, clouds 2001, night lights 2016.",
+        "caption": "A composite of several epochs: land July 2004, clouds and sea ice 22 September 2025, night lights 2016.",
     },
     "moon": {
         "longitude": "east longitude (mean Earth / polar axis frame, centre of the near side at u = 0.5)",

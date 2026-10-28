@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -323,6 +324,167 @@ def rasterise_water(width: int, height: int, supersample: int = 4) -> Float:
     return (1.0 - land_frac).astype(np.float32)
 
 
+# --- Earth: the clouds of one day ---------------------------------------------------------------
+
+# Byte values of GIBS's corrected-reflectance true colour back to reflectance: the imagery is published
+# through a non-linear stretch (reflectance 0..1.1 scaled to 0..255, then this curve), taken here as the
+# classic MODIS Rapid Response one. Only its shape matters below: the opacity is calibrated on the
+# imagery itself (thick cloud, open sea and land against the day map).
+CR_REFLECTANCE_MAX = 1.1
+CR_STRETCH_IN = np.array([0.0, 30.0, 60.0, 120.0, 190.0, 255.0], dtype=np.float32)
+CR_STRETCH_OUT = np.array([0.0, 110.0, 160.0, 210.0, 240.0, 255.0], dtype=np.float32)
+# A pixel with less than this in its three bytes together is outside the day's imagery (black), and
+# JPEG ringing reaches this many pixels into the data from such an edge.
+CR_NO_DATA = 24
+CR_EDGE_PX = 2
+# Whiteness (the darkest band's reflectance) of thick cloud, of open sea, and of clear land as a
+# function of the day map's own whiteness (fitted on clear land: the lowest tenth at each), and a
+# margin above the ground below which nothing counts as cloud (haze, aerosol, the scatter of the fit),
+# wider over bright land, where dust and the fit's scatter are larger.
+CLOUD_WHITENESS = 0.85
+SEA_WHITENESS = 0.045
+LAND_WHITENESS = (0.05, 0.6)
+CLOUD_MARGIN = (0.03, 0.25)
+# Day-map whiteness from which the ground is ice (Greenland, Antarctica, glaciers): no cloud is drawn
+# over it. Snowfields on land the day map lacks are left out too (the VIIRS snow product says where;
+# viirs_snow), as a share of the ground around each texel.
+ICE_SHEET_WHITENESS = (0.3, 0.55)
+SNOW_COVER = (0.3, 0.6)
+SNOW_SPREAD = 1.5
+# Poleward of the imagery (beyond about 83 N and 75 S at the equinox, the Sun too low): open water in
+# the day map takes the opacity of pack ice and cloud, which cover the central Arctic and the far
+# Southern Ocean every September; the imagery eases into it over about a degree.
+POLAR_ICE_OPACITY = 1.0
+POLAR_FILL_LATITUDE = 60.0
+POLAR_EASE_DEG = 1.0
+# src/explore/bodies/earth.ts reads the map's cover as opacity smoothstep(0.08, 0.9, cover) x 0.97 from
+# afar (coverOpacity); the map stores the cover that gives the measured opacity, so it shows as seen.
+# Below an opacity of a few percent (too faint to see) the cover eases to 0, so clear sky stays clear
+# where the explorer reads the cover directly (cloud dimming the city lights at night).
+COVER_EDGES = (0.08, 0.9)
+COVER_PEAK = 0.97
+COVER_CLEAR = (0.005, 0.03)
+
+
+def smoothstep(e0: float, e1: float, x: Float) -> Float:
+    t = np.clip((x - e0) / (e1 - e0), 0.0, 1.0)
+    return (t * t * (3.0 - 2.0 * t)).astype(np.float32)
+
+
+def blur(values: Float, sigma: float) -> Float:
+    """Gaussian blur of `sigma` texels, wrapping in longitude and clamped at the poles."""
+    radius = int(3 * sigma) + 1
+    kernel = np.exp(-0.5 * (np.arange(-radius, radius + 1) / sigma) ** 2).astype(np.float32)
+    kernel /= kernel.sum()
+    padded = np.concatenate([values[:, -radius:], values, values[:, :radius]], axis=1)
+    across = sum(k * padded[:, i : i + values.shape[1]] for i, k in enumerate(kernel))
+    padded = np.concatenate([np.repeat(across[:1], radius, 0), across, np.repeat(across[-1:], radius, 0)], axis=0)
+    return np.asarray(sum(k * padded[i : i + values.shape[0]] for i, k in enumerate(kernel)), dtype=np.float32)
+
+
+def erode(mask: NDArray[np.bool_], px: int) -> NDArray[np.bool_]:
+    """Pixels whose whole (2 px + 1) square is in the mask (edges repeat)."""
+    padded = np.pad(mask, px, mode="edge")
+    h, w = mask.shape
+    out = np.ones_like(mask)
+    for dy in range(2 * px + 1):
+        for dx in range(2 * px + 1):
+            out &= padded[dy : dy + h, dx : dx + w]
+    return out
+
+
+def viirs_whiteness(width: int, height: int) -> tuple[Float, Float]:
+    """The day's whiteness, north-up at width x height, and the share of each texel any satellite saw.
+
+    Whiteness is the darkest of a pixel's three bands as reflectance: cloud is white, bright ground (desert,
+    rock) is coloured. Each satellite's mosaic has sunglint down the middle of its orbits, where the sea
+    mirrors the Sun; the three satellites cross the same sea minutes apart, at other angles, so the median
+    of what they saw keeps the cloud and drops the glint (where only one or two saw a pixel, their median).
+    The tiles are twice the width wanted, so the median is reduced 2 x 2.
+    """
+    tile = config.CLOUDS_TILE_PX
+    factor = tile * 360 // config.CLOUDS_TILE_DEG // width
+    out_tile = tile // factor
+    white = np.zeros((height, width), dtype=np.float32)
+    seen = np.zeros((height, width), dtype=np.float32)
+    lut = (np.interp(np.arange(256, dtype=np.float32), CR_STRETCH_OUT, CR_STRETCH_IN) / 255.0 * CR_REFLECTANCE_MAX).astype(np.float32)
+    for lat0, lon0 in config.CLOUDS_TILES:
+        stack = np.full((len(config.CLOUDS_SATELLITES), tile, tile), np.nan, dtype=np.float32)
+        for i, satellite in enumerate(config.CLOUDS_SATELLITES):
+            codes = np.asarray(Image.open(config.FILES[config.clouds_tile(satellite, lat0, lon0)].path).convert("RGB"))
+            if codes.shape[:2] != (tile, tile):
+                raise SystemExit(f"{satellite} tile {lat0}, {lon0}: {codes.shape[1]} x {codes.shape[0]}, expected {tile} x {tile}")
+            valid = erode(codes.astype(np.int16).sum(axis=2) > CR_NO_DATA, CR_EDGE_PX)
+            # The stretch is monotonic, so the darkest byte is the darkest band.
+            stack[i][valid] = lut[codes.min(axis=2)][valid]
+        with warnings.catch_warnings():
+            # A pixel no satellite saw (beyond the polar edges) has no median: nan, as wanted.
+            warnings.simplefilter("ignore", RuntimeWarning)
+            median = np.nanmedian(stack, axis=0)
+        any_seen = np.isfinite(median)
+        blocks = (out_tile, factor, out_tile, factor)
+        share = any_seen.reshape(blocks).mean(axis=(1, 3), dtype=np.float32)
+        total = np.where(any_seen, median, 0.0).reshape(blocks).sum(axis=(1, 3), dtype=np.float32)
+        r0 = int(round((90 - (lat0 + config.CLOUDS_TILE_DEG)) / 180 * height))
+        c0 = int(round((lon0 + 180) / 360 * width))
+        white[r0 : r0 + out_tile, c0 : c0 + out_tile] = total / np.maximum(share * factor * factor, 1.0)
+        seen[r0 : r0 + out_tile, c0 : c0 + out_tile] = share
+    return white, seen
+
+
+def viirs_snow(width: int, height: int) -> Float:
+    """The share of the ground near each texel where either satellite's snow product found snow on the day
+    (clear sky only), north-up. The product, read at 4096 from 375 m swaths, also flags lone pixels inside
+    cloud; averaged over 1.5 texels (about 15 km) they fall below SNOW_COVER and only snowfields count. Snow
+    it reports only in scattered pixels (most of the September snow on the Himalaya) stays in as cloud."""
+    snow = np.zeros(config.CLOUDS_SNOW_SIZE[::-1], dtype=bool)
+    for satellite in ("NOAA20", "SNPP"):
+        image = np.asarray(Image.open(config.FILES[config.clouds_snow(satellite)].path).convert("RGBA"))
+        # GIBS's palette draws only snow cover (1 to 100) opaque: no snow, cloud, night and water are transparent.
+        snow |= image[..., 3] > 0
+    share = blur(snow.astype(np.float32), SNOW_SPREAD)
+    return rs.resample(share, width, height, rs.lanczos2).clip(0.0, 1.0)
+
+
+def cloud_cover(day_white: Float, water: Float, report: dict[str, Any]) -> Float:
+    """The map's cloud cover (north-up, the day map's size) from the day's VIIRS imagery.
+
+    Opacity is the share of the way the day's whiteness goes from the ground's own (the day map's, or open
+    sea's) to thick cloud's, so cloud over the ground the explorer draws looks as the satellites saw it. Sea
+    ice counts: the day map has none, and from space it is as white as cloud.
+    """
+    height, width = day_white.shape
+    white, seen = viirs_whiteness(width, height)
+    snow = viirs_snow(width, height)
+    ground = water * SEA_WHITENESS + (1.0 - water) * (LAND_WHITENESS[0] + LAND_WHITENESS[1] * day_white)
+    clear = ground + CLOUD_MARGIN[0] + CLOUD_MARGIN[1] * (1.0 - water) * day_white
+    opacity = np.clip((white - clear) / np.maximum(CLOUD_WHITENESS - clear, 0.05), 0.0, 1.0)
+    sheet = smoothstep(*ICE_SHEET_WHITENESS, day_white)
+    opacity *= (1.0 - sheet) * (1.0 - smoothstep(*SNOW_COVER, snow) * (1.0 - water))
+    keep = smoothstep(0.5, 0.95, blur(seen, POLAR_EASE_DEG * width / 360)) * (seen > 0)
+    lat = 90.0 - (np.arange(height) + 0.5) * 180.0 / height
+    polar = (np.abs(lat) > POLAR_FILL_LATITUDE)[:, None]
+    fill = POLAR_ICE_OPACITY * (1.0 - sheet) * smoothstep(0.5, 0.9, water) * polar
+    opacity = opacity * keep + fill * (1.0 - keep)
+    # Inverse of the explorer's smoothstep: t from opacity, then the cover that gives it (and on to 1
+    # for the thickest cloud, where the explorer's opacity has already reached its peak).
+    y = np.clip(opacity / COVER_PEAK, 0.0, 1.0)
+    t = 0.5 - np.sin(np.arcsin(1.0 - 2.0 * y) / 3.0)
+    cover = COVER_EDGES[0] + (COVER_EDGES[1] - COVER_EDGES[0]) * t + (1.0 - COVER_EDGES[1]) * np.clip((opacity - COVER_PEAK) / (1.0 - COVER_PEAK), 0.0, 1.0)
+    cover = (cover * smoothstep(*COVER_CLEAR, opacity)).astype(np.float32)
+    weights = np.cos(np.radians(lat))[:, None] * np.ones((1, width), dtype=np.float32)
+    rows = np.nonzero((seen > 0).any(axis=1))[0]
+    report["imagery"] = {
+        "date": config.CLOUDS_DATE,
+        "satellites": list(config.CLOUDS_SATELLITES),
+        "seenShare": round(float(np.average(seen > 0, weights=weights)), 4),
+        "seenLatitudes": [round(float(lat[rows[0]]), 2), round(float(lat[rows[-1]]), 2)],
+        "meanOpacity": round(float(np.average(opacity, weights=weights)), 4),
+        "snowShare": round(float(np.average(snow > SNOW_COVER[1], weights=weights)), 4),
+    }
+    return cover
+
+
 def night_floor(codes: Codes) -> float:
     """The faint floor over unlit land: the 99th percentile in four large regions without towns."""
     regions = [
@@ -345,6 +507,8 @@ def build_earth() -> dict[str, Any]:
     top = rs.resample_rows(linear_columns(day, width, srgb=True), height)
     del day
     write_levels("earth", "day", colour_levels(top))
+    # The clouds are measured against the ground the explorer draws: the darkest band of the day map.
+    day_white = top.min(axis=2)
     del top
 
     print("earth/night: Black Marble 2016")
@@ -362,23 +526,20 @@ def build_earth() -> dict[str, Any]:
     write_levels("earth", "night", levels)
     del top, levels
 
-    print("earth/clouds: Blue Marble 2002 clouds")
-    clouds = read_image("clouds")
-    if clouds.ndim == 3:
-        if not (np.array_equal(clouds[..., 0], clouds[..., 1]) and np.array_equal(clouds[..., 1], clouds[..., 2])):
-            raise SystemExit("cloud_combined_8192.tif: channels differ; expected a grey image stored as RGB")
-        clouds = np.ascontiguousarray(clouds[..., 0])
-    report["maps"]["clouds"] = {"landmarks": landmarks.earth_clouds(clouds, "clouds source")}
-    top = rs.resample(clouds.astype(np.float32) / 255.0, width, height)
-    del clouds
-    write_levels("earth", "clouds", grey_levels(top))
-    del top
-
     print("earth/water: Natural Earth land and lakes")
     water = rasterise_water(width, height)
     report["maps"]["water"] = {"landmarks": landmarks.earth_water(water, "water mask (rasterised)")}
     water_levels = rs.chain(water, box=True)
     write_levels("earth", "water", [rs.to_unorm8(level) for level in water_levels])
+
+    print(f"earth/clouds: VIIRS of {config.CLOUDS_DATE} (GIBS)")
+    report["maps"]["clouds"] = {}
+    top = cloud_cover(day_white, water, report["maps"]["clouds"])
+    del day_white
+    levels = grey_levels(top)
+    report["maps"]["clouds"]["landmarks"] = landmarks.earth_clouds(levels[0], "cloud cover (top level)")
+    write_levels("earth", "clouds", levels)
+    del top, levels
 
     print("earth/normal: ETOPO 2022 relief")
     relief = np.asarray(read_image("etopo"), dtype=np.float32)
