@@ -20,7 +20,8 @@
  *   while it answers; the panel closed and opened again while it answers; twenty questions in a row,
  *   every other one stopped; another model chosen while it answers; the guide chosen while it answers;
  *   the model's worker ended while it answers (the watch then ends the generation, and the model is let
- *   go: the next question is the guide's, and the model answers again once it is chosen again).
+ *   go: the page's live region says so, the next question is the guide's, and the model answers again
+ *   once it is chosen again, which asks the model server for nothing).
  * For each it writes down whether the second answer came, how long it took, the render budgets still
  * held afterwards (counted through the app's requestRenderBudget) and the explorer's detail as the test
  * hook reports it. Before and after the panel's stress the same question is asked, and its plan, at
@@ -35,7 +36,7 @@
  * down without failing on them (to record a build that hangs).
  */
 import { chromium, expect, test, type Page } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { findModel } from '../../src/ai/engine/catalogue';
 import type { ChatMessage, ModelSpec } from '../../src/ai/types';
@@ -56,6 +57,12 @@ const ROOT = new URL('../../', import.meta.url).pathname;
 const OUT_DIR = env('KF_AI_EVAL_OUT') ?? `${ROOT}.work/ai-eval/results`;
 
 const load = (): number[] => loadavg().map((x) => Math.round(x * 100) / 100);
+
+/** What the page's live region says when a model is let go, for the model under test. */
+const MIND = JSON.parse(readFileSync(new URL('../../src/i18n/en.ai.mind.json', import.meta.url), 'utf8')) as Record<string, string>;
+const LOST_SAID = (MIND['ai.mind.announce.engineLost'] ?? '?').replace('{model}', findModel(MODEL_ID)?.name ?? MODEL_ID);
+/** Requests the model server has answered so far (set once it runs). */
+let servedRequests = (): number => 0;
 
 /** A conversation of about 3,600 tokens (as in ./prefill.spec.ts): long enough that a stop lands while it is read. */
 function longConversation(): ChatMessage[] {
@@ -169,7 +176,17 @@ async function install(page: Page): Promise<void> {
         f();
       }
     } as typeof Worker.prototype.postMessage;
+    // Every text the page's live region (src/ui/announcer.ts) is given, as it writes it.
+    const said: string[] = [];
+    const region = document.querySelector('div.kf-sr-only[aria-live="polite"][aria-atomic="true"]');
+    if (region)
+      new MutationObserver(() => {
+        const text = region.textContent;
+        if (text) said.push(text);
+      }).observe(region, { childList: true, characterData: true, subtree: true });
     w.__ov = {
+      /** The texts the live region was given since the last call. */
+      said: () => said.splice(0),
       /** Calls `f` right after the page next posts a generation's request to its worker. */
       afterGenerate: (f: () => void) => {
         armed = f;
@@ -676,9 +693,13 @@ const PANEL_SCENARIOS: Record<string, PanelStep> = {
     const a = await send(page, LONG_QUESTIONS[0]);
     const reached = await reach(page, a.id, ['answering', ...SETTLED], WAIT_MS);
     await page.waitForTimeout(500);
+    await page.evaluate(() => (window as unknown as { __ov: { said(): string[] } }).__ov.said());
     const t0 = Date.now();
     const ended = await page.evaluate(() => (window as unknown as { __ov: { endModelWorker(): boolean } }).__ov.endModelWorker());
     const first = await settle(page, a.id, t0, WAIT_MS);
+    // The live region writes its text 60 ms after it is given it.
+    await page.waitForTimeout(150);
+    const heard = await page.evaluate(() => (window as unknown as { __ov: { said(): string[] } }).__ov.said());
     const engine = await page.evaluate(async () => {
       const ai = await (window as unknown as { __kf: { ai: { start(): Promise<{ engine(): { kind: string; model: string | null; state: string }; turns(): { id: string; blocks: { type: string; key?: string }[] }[] }> } } }).__kf.ai.start();
       const e = ai.engine();
@@ -686,12 +707,15 @@ const PANEL_SCENARIOS: Record<string, PanelStep> = {
     });
     const b = await send(page, QUESTIONS[2]);
     const second = await settle(page, b.id, b.at, WAIT_MS);
+    const served = servedRequests();
     const back = await choose(page, MODEL_ID);
+    const requests = servedRequests() - served;
     const c = await send(page, QUESTIONS[3]);
     const third = await settle(page, c.id, c.at, WAIT_MS);
+    const told = heard.some((t) => t.includes(LOST_SAID));
     return {
-      steps: [{ which: 'first (its worker ended)', ended, reached, ...first, ...engine }, { which: 'second (the guide)', ...second }, { which: 'third (the model chosen again)', engine: back, ...third }],
-      arrived: ended && first.state === 'done' && engine.engine === `local:${MODEL_ID}:error` && second.state === 'done' && second.writer === null && third.state === 'done' && third.writer === `local:${MODEL_ID}`,
+      steps: [{ which: 'first (its worker ended)', ended, reached, ...first, ...engine, heard, told }, { which: 'second (the guide)', ...second }, { which: 'third (the model chosen again)', engine: back, requests, ...third }],
+      arrived: ended && first.state === 'done' && engine.engine === `local:${MODEL_ID}:error` && told && second.state === 'done' && second.writer === null && requests === 0 && third.state === 'done' && third.writer === `local:${MODEL_ID}`,
       secondMs: second.hung ? null : second.ms,
     };
   },
@@ -728,6 +752,7 @@ test(`overlapping generations on real models: ${MODEL_ID}`, async ({ baseURL }, 
   mkdirSync(OUT_DIR, { recursive: true });
   const outFile = `${OUT_DIR}/overlap-${MODEL_ID}${TAG ? `-${TAG}` : ''}.json`;
   const server = await serveModel(manifest);
+  servedRequests = () => server.served.requests;
   const context = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true, viewport: { width: 1280, height: 800 }, args: server.args(testInfo.project.use.launchOptions?.args ?? []), ...(baseURL ? { baseURL } : {}) });
   await context.route((url) => isModelHost(url.hostname), (route) => route.continue());
   const pageErrors: string[] = [];
