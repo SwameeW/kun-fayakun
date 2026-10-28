@@ -41,14 +41,14 @@
  */
 
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Data3DTexture, type Object3D, type Texture } from 'three/webgpu';
-import { clamp, dot, exp, float, max, min, mix, normalize, positionLocal, pow, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
+import { clamp, dot, exp, float, length, max, min, mix, normalize, positionLocal, pow, select, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import type { PlanetTextures } from '../assets/streaming';
 import { exactSurface, type EarthTiles } from '../earth-tiles';
 import { textureTier, type ExploreDetail } from '../detail';
 import { sunTransmittance, transmittanceToTop, type AirModel } from '../render/air';
 import { blendPremultiplied } from '../render/blending';
 import { decodeNormal, magnification, mapCoords, sampleSlot, sampleSlotSmooth, shiftCoords, tangentFrame, type FloatNode, type MapCoords, type Vec3Node } from '../render/sampling';
-import { createAir, type AirUniforms, type ExploreAir } from './atmosphere';
+import { airThrough, createAir, type AirUniforms, type ExploreAir } from './atmosphere';
 import { createClimateView } from './climate-view';
 import { createMarks, type SurfaceMark } from './marks';
 import { bumpGradient, keepOnSphere, litCosine, noiseIfKept, sphereFootprint, sunlit, tiltNormal } from './shading';
@@ -439,11 +439,19 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     const light = sunColour.mul(lit).mul(relief).add(skyFill(nDotL).mul(0.6)).add(nightLight(top, nDotL, 0.2));
     let colour: Vec3Node = light.mul(CLOUD_ALBEDO).mul(uLight);
     if (scatter && table) {
-      // The air's shell dims everything behind it by the whole column down to the ground; a cloud top
-      // sits above most of that air, so it is brightened back by what lies below it along the view.
-      const aboveCloud = transmittanceToTop(air, table.texture, float(1 + CLOUD_HEIGHT), up);
-      const fromGround = transmittanceToTop(air, table.texture, float(1), up);
-      colour = colour.mul(min(aboveCloud.div(max(fromGround, 1e-3)), 3));
+      // The air's shell dims everything behind it by what this ray crosses down to the ground (or past
+      // the limb: ./atmosphere airThrough); a cloud top sits above most of that air, so it takes back
+      // that dimming and keeps only the air between it and the eye. Near the limb that is most of the
+      // light: a cloud there is white under a pale haze, not reddened by the air beneath it. (This
+      // fragment's own ray, as the shell's pixel in front of it has it: by the limb the sphere's point
+      // under it would cross a hundred times the air.) From inside the air, on the way down to the
+      // ground, the shell is not drawn: the cloud is dimmed by the air between the eye and it alone.
+      const ray = normalize(positionLocal.sub(uEye));
+      const aboveCloud = transmittanceToTop(air, table.texture, length(positionLocal), max(dot(n, ray.negate()), 0));
+      const eyeRadius = length(uEye);
+      const aboveEye = transmittanceToTop(air, table.texture, eyeRadius, max(dot(uEye.div(eyeRadius), ray.negate()), 0));
+      const dimmed = select(eyeRadius.lessThan(air.top), aboveEye, airThrough(air, table.texture, uEye, ray));
+      colour = colour.mul(aboveCloud.div(max(dimmed, 1e-4)));
     }
     const material = blendPremultiplied(new MeshBasicNodeMaterial({ side: FrontSide, transparent: true, depthWrite: false, fog: false }));
     // Close in the shell fades around the place the view is aimed at and where its map is magnified

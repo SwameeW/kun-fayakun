@@ -12,12 +12,17 @@
  * - A transmittance table (Hillaire 2020; Bruneton's parameterisation) baked once into a 256 x 64 half
  *   float render target by a full-screen quad, so WebGL2 needs no compute: transmittance from any
  *   height along any direction to the top of the air.
+ * - Beside it, the light scattered more than once (Hillaire 2020, his multiple-scattering table): for
+ *   every height and Sun elevation, what a point of air receives from the sunlit air all round it and
+ *   the sunlit ground below, summed over all the orders of scattering. It is what makes a thick column
+ *   of air pale rather than deep blue: the haze over the far land and along the limb.
  * - Lookups into it, and the sunlight that reaches a point (the planet's own shadow included, its
  *   edge spread over the Sun's angular radius: the penumbra).
  *
- * Every number comes from data/constants.json (and the Sun's angular size from physical.json);
- * nothing here is tuned by eye. The explorer draws it on a clear day (clearDayAir: more aerosols than
- * the reference's).
+ * Every number comes from data/constants.json (and the Sun's angular size from physical.json), but
+ * the ground's albedo the light scattered more than once sees (MULTIPLE_GROUND_ALBEDO, a typical
+ * land's); nothing here is tuned by eye. The explorer draws it on a clear day (clearDayAir: more
+ * aerosols than the reference's).
  */
 
 import {
@@ -32,7 +37,7 @@ import {
   type Texture,
   type WebGPURenderer,
 } from 'three/webgpu';
-import { abs, exp, float, Fn, Loop, max, min, select, smoothstep, sqrt, texture, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { abs, cos, dot, exp, float, Fn, length, Loop, max, min, normalize, select, sin, smoothstep, sqrt, texture, uv, vec2, vec3, vec4 } from 'three/tsl';
 import type { DataStore } from '../../core/types';
 import type { FloatNode, Vec3Node } from './sampling';
 
@@ -132,6 +137,16 @@ export function limbTransmittance(air: AirModel, heightRadii: number): [number, 
 }
 
 export const LUT = { width: 256, height: 64, steps: 40 } as const;
+/**
+ * The multiple-scattering table: Sun elevation (cosine, -1 to 1) by height (ground to top), the
+ * directions about each point (a square of them, spread evenly over the sphere) and the steps along each.
+ */
+export const MULTIPLE_LUT = { width: 32, height: 32, directions: 8, steps: 20 } as const;
+/**
+ * The ground's albedo the light scattered more than once sees below (typical land, illustrative: the
+ * walk's own, ../walk/light GROUND_ALBEDO; Hillaire's and Bruneton's demonstrations take 0.1 to 0.3).
+ */
+const MULTIPLE_GROUND_ALBEDO = 0.15;
 
 /** Air density at height h (radii) for Rayleigh, Mie and ozone, as (x, y, z). */
 export function densities(air: AirModel, h: FloatNode): Vec3Node {
@@ -165,12 +180,93 @@ function lutUv(air: AirModel, r: FloatNode, mu: FloatNode): Node<'vec2'> {
   return vec2(centre(xMu, LUT.width), centre(xR, LUT.height));
 }
 
-/** The transmittance table: bake once (needs a renderer), then sample it with transmittanceToTop. */
+/**
+ * The transmittance table: bake once (needs a renderer), then sample it with transmittanceToTop. The
+ * multiple-scattering table is baked with it (it reads the transmittance) and found from the
+ * transmittance table's texture (multipleScattering), so whatever is handed the one has the other.
+ */
 export interface TransmittanceTable {
   readonly texture: Texture;
   readonly baked: boolean;
   bake(renderer: WebGPURenderer): void;
   dispose(): void;
+}
+
+/** Each transmittance table's multiple-scattering table, by the transmittance table's texture. */
+const multipleTables = new WeakMap<Texture, Texture>();
+
+/** Table coordinates of (r, muSun) in the multiple-scattering table: the Sun's cosine across, the height up. */
+function multipleUv(air: AirModel, r: FloatNode, muSun: FloatNode): Node<'vec2'> {
+  const centre = (x: FloatNode, n: number): FloatNode => x.clamp(0, 1).mul(1 - 1 / n).add(0.5 / n);
+  return vec2(centre(muSun.mul(0.5).add(0.5), MULTIPLE_LUT.width), centre(r.sub(1).div(air.top - 1), MULTIPLE_LUT.height));
+}
+
+/**
+ * The multiple-scattering table's light for one point (Hillaire 2020, section 5.5): the second order,
+ * the mean over the sphere of the light each direction brings (the sunlit air along it, scattered
+ * isotropically, and the sunlit ground it may end on), and the higher orders as the geometric series of
+ * f, the share of light the air about the point scatters back toward it: L2 / (1 - f).
+ */
+function bakeMultiple(air: AirModel, table: Texture): Vec3Node {
+  const n = MULTIPLE_LUT.directions;
+  const p = uv();
+  const muSun = p.x.sub(0.5 / MULTIPLE_LUT.width).div(1 - 1 / MULTIPLE_LUT.width).clamp(0, 1).mul(2).sub(1);
+  const r = p.y.sub(0.5 / MULTIPLE_LUT.height).div(1 - 1 / MULTIPLE_LUT.height).clamp(0, 1).mul(air.top - 1).add(1);
+  const x = vec3(0, r, 0);
+  const sun = vec3(sqrt(max(float(1).sub(muSun.mul(muSun)), 0)), muSun, 0);
+  const [rr, rg, rb] = air.rayleigh;
+  const rayleigh = vec3(rr, rg, rb);
+  const second = vec3(0, 0, 0).toVar();
+  const back = vec3(0, 0, 0).toVar();
+  Loop(n * n, ({ i }) => {
+    // Evenly over the sphere: cos(zenith) and azimuth each in n even bands. (Held in variables before
+    // the steps' loop, whose own index takes the same name.)
+    const k = float(i);
+    const row = k.div(n).floor();
+    const cosZenith = float(1).sub(row.add(0.5).mul(2 / n));
+    const azimuth = k.sub(row.mul(n)).add(0.5).mul((2 * Math.PI) / n);
+    const sinZenith = sqrt(max(float(1).sub(cosZenith.mul(cosZenith)), 0));
+    const ray = vec3(sinZenith.mul(cos(azimuth)), cosZenith, sinZenith.mul(sin(azimuth))).toVar();
+    const b = r.mul(cosZenith);
+    const c = r.mul(r);
+    const discGround = b.mul(b).sub(c).add(1);
+    const tGround = b.negate().sub(sqrt(max(discGround, 0)));
+    const hits = discGround.greaterThan(0).and(tGround.greaterThan(0)).toVar();
+    const tTop = b.negate().add(sqrt(max(b.mul(b).sub(c).add(air.top * air.top), 0)));
+    const dt = select(hits, tGround, tTop).div(MULTIPLE_LUT.steps).toVar();
+    const through = vec3(1, 1, 1).toVar();
+    Loop(MULTIPLE_LUT.steps, ({ i: step }) => {
+      const q = x.add(ray.mul(float(step).add(0.5).mul(dt)));
+      const rq = length(q);
+      const density = densities(air, rq.sub(1));
+      const scattering = rayleigh.mul(density.x).add(density.y.mul(air.mieScattering));
+      const extinct = max(extinction(air, density), 1e-9);
+      const kept = exp(extinct.mul(dt).negate());
+      // Each step's light integrated exactly across it for its own extinction (Hillaire's energy-conserving form).
+      const across = float(1).sub(kept).div(extinct);
+      // Sunlight (1/4: the isotropic phase times pi) scattered at q, and the share of all light scattered there.
+      second.addAssign(through.mul(scattering).mul(across).mul(sunTransmittance(air, table, rq, dot(q, sun).div(rq))).mul(0.25));
+      back.addAssign(through.mul(scattering).mul(across));
+      through.mulAssign(kept);
+    });
+    // The ground the direction ends on, sunlit, reflecting as a Lambert surface.
+    const normal = normalize(x.add(ray.mul(tGround)));
+    const muGround = dot(normal, sun);
+    const ground = sunTransmittance(air, table, float(1), muGround).mul(max(muGround, 0)).mul(MULTIPLE_GROUND_ALBEDO);
+    second.addAssign(select(hits, through.mul(ground), vec3(0, 0, 0)));
+  });
+  const count = n * n;
+  return second.div(count).div(max(float(1).sub(back.div(count)), 1e-3));
+}
+
+/**
+ * The light scattered more than once that reaches a point at radius r whose zenith makes cosine muSun
+ * with the Sun, per unit of its scattering coefficient (isotropic): from the transmittance table's own
+ * multiple-scattering table. Black for a table that has none.
+ */
+export function multipleScattering(air: AirModel, table: Texture, r: FloatNode, muSun: FloatNode): Vec3Node {
+  const multiple = multipleTables.get(table);
+  return multiple ? texture(multiple, multipleUv(air, min(r, air.top), muSun)).level(float(0)).rgb : vec3(0, 0, 0);
 }
 
 export function createTransmittanceTable(air: AirModel): TransmittanceTable {
@@ -205,6 +301,16 @@ export function createTransmittanceTable(air: AirModel): TransmittanceTable {
     return vec4(exp(extinction(air, column).negate()), 1);
   })();
   const quad = new QuadMesh(material);
+  const multipleTarget = new RenderTarget(MULTIPLE_LUT.width, MULTIPLE_LUT.height, { type: HalfFloatType, format: RGBAFormat, depthBuffer: false, generateMipmaps: false });
+  multipleTarget.texture.minFilter = LinearFilter;
+  multipleTarget.texture.magFilter = LinearFilter;
+  multipleTarget.texture.wrapS = ClampToEdgeWrapping;
+  multipleTarget.texture.wrapT = ClampToEdgeWrapping;
+  multipleTarget.texture.name = 'explore-air-multiple-scattering';
+  const multipleMaterial = new MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+  multipleMaterial.colorNode = Fn(() => vec4(bakeMultiple(air, target.texture), 1))();
+  const multipleQuad = new QuadMesh(multipleMaterial);
+  multipleTables.set(target.texture, multipleTarget.texture);
   let baked = false;
   return {
     texture: target.texture,
@@ -215,12 +321,18 @@ export function createTransmittanceTable(air: AirModel): TransmittanceTable {
       const previous = renderer.getRenderTarget();
       renderer.setRenderTarget(target);
       quad.render(renderer);
+      // Then the light scattered more than once, which reads the transmittance just baked.
+      renderer.setRenderTarget(multipleTarget);
+      multipleQuad.render(renderer);
       renderer.setRenderTarget(previous);
       baked = true;
     },
     dispose() {
       target.dispose();
       material.dispose();
+      multipleTarget.dispose();
+      multipleMaterial.dispose();
+      multipleTables.delete(target.texture);
     },
   };
 }

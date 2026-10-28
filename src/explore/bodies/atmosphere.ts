@@ -2,10 +2,12 @@
  * The Earth's air as seen from space: a shell at the top of the atmosphere, drawn over the ground
  * and the clouds (and over whatever lies behind the limb).
  *
- * 'scatter' (Medium and up): single scattering. Each pixel's ray through the air is marched in
- * `steps` steps; at each, the sunlight that reaches it (the transmittance table, the planet's shadow
- * and its penumbra included) scatters toward the eye by Rayleigh's phase and Mie's forward lobe, and
- * is dimmed by the air between it and the eye. Two draws of the shell: the first multiplies what is
+ * 'scatter' (Medium and up): each pixel's ray through the air is marched in `steps` steps, placed by
+ * height where the air is (STEP_CROWDING); at each, the sunlight that reaches it (the transmittance
+ * table, the planet's shadow and its penumbra included) scatters toward the eye by Rayleigh's phase and
+ * Mie's forward lobe, with the light scattered more than once (../render/air's multiple-scattering
+ * table: the sunlit air all round and the ground below), and is dimmed by the air between it and the
+ * eye. Two draws of the shell: the first multiplies what is
  * behind by the ray's transmittance (per colour: the ground reddens toward the limb, stars dim
  * behind it), the second adds the scattered light. Blue limb glow and blue haze over the oceans by
  * day, a warm band where the light grazes the terminator (sunlight that crossed the most air), the
@@ -50,8 +52,8 @@ import {
   type Texture,
   type UniformNode,
 } from 'three/webgpu';
-import { dot, exp, float, Fn, fwidth, int, length, Loop, max, min, mix, normalize, positionLocal, select, smoothstep, sqrt, vec3, vec4 } from 'three/tsl';
-import { densities, extinction, miePhase, rayleighPhase, sunTransmittance, transmittanceToTop, type AirModel } from '../render/air';
+import { clamp, dot, exp, float, Fn, fwidth, int, length, Loop, max, min, mix, normalize, positionLocal, select, smoothstep, sqrt, vec3, vec4 } from 'three/tsl';
+import { densities, extinction, miePhase, multipleScattering, rayleighPhase, sunTransmittance, transmittanceToTop, type AirModel } from '../render/air';
 import type { FloatNode, Vec3Node } from '../render/sampling';
 
 export interface AirUniforms {
@@ -105,16 +107,18 @@ const LIMB_PIXELS = 2;
 /** Rays through that band. */
 const LIMB_RAYS = 4;
 
-/**
- * Light scattered more than once, approximated: every sample is also lit by the sky around it, as a
- * uniform glow of the share of sunlight the air's vertical column scatters (bluest where the air is
- * most), fading through twilight. An approximation of the higher orders (not the cited model's own
- * multiple-scattering integral), so the haze is brighter and less saturated than single scattering
- * alone makes it, as real haze is. Isotropic.
- */
-const MULTIPLE_SCATTERING = 0.6;
 /** Share of the march's steps a ray that reaches the ground takes. */
 const GROUND_STEP_SHARE = 0.6;
+/**
+ * Where the march's steps fall: by height, not evenly along the ray. A ray's height falls to its lowest
+ * point (the ground it meets, or where it grazes past the limb) and rises after it; the steps' bounds
+ * are spread over each side's span of heights as the cube of an even measure, so they crowd where the
+ * air is densest and thin out toward the top. Evenly spaced, 12 steps through the 60 km of air are 5
+ * km apart (7.5 km for a ray to the ground), and the aerosols, whose scale height is 1.2 km, fell
+ * between them: a ray to the ground caught a third of their light or less. Placed by height, the
+ * lowest steps are a hundred metres to a kilometre apart and catch nine tenths of it.
+ */
+const STEP_CROWDING = 3;
 /**
  * The airglow as drawn: the layer's half-width (radii, about 4 km: illustrative), its colour (the green
  * line, linear RGB) and the light it adds per radius of layer the eye looks through (illustrative: a
@@ -152,18 +156,44 @@ function march(air: AirModel, table: Texture, u: AirUniforms, ray: Vec3Node, ste
   const countF = select(hits, float(groundSteps), float(steps));
   const count = int(countF);
   const sun = u.sun;
-  const [tr, tg, tb] = air.verticalDepth;
-  const skyGlow = float(1).sub(exp(vec3(tr, tg, tb).negate())).mul(MULTIPLE_SCATTERING);
   const [rr, rg, rb] = air.rayleigh;
   const rayleigh = vec3(rr, rg, rb);
-  const dt = max(end.sub(start), 0).div(countF);
+  // The ray's lowest point in the air (STEP_CROWDING): its tangent, or its end at the ground. Distances
+  // along the ray are taken from the tangent (tc), heights from the tangent's radius, so neither loses
+  // precision far from the planet.
+  const b = dot(u.eye, ray);
+  const tc = b.negate();
+  const closest = u.eye.sub(ray.mul(b));
+  const tangent2 = dot(closest, closest);
+  const hc = sqrt(tangent2).sub(1);
+  const heightAt = (t: FloatNode): FloatNode => {
+    const along = t.sub(tc);
+    return sqrt(along.mul(along).add(tangent2)).sub(1);
+  };
+  const lowest = heightAt(min(max(tc, start), end));
+  const down = max(heightAt(start).sub(lowest), 0);
+  const up = max(heightAt(end).sub(lowest), 0);
+  // The share of the steps on the way down: all of them for a ray to the ground, about half across the limb.
+  const split = select(hits, float(1), down.div(max(down.add(up), 1e-9)));
+  /** The bound `v` of the way along the steps (0 the start, 1 the end), as a signed distance from the tangent. */
+  const bound = (v: FloatNode): FloatNode => {
+    const falling = hits.or(v.lessThan(split));
+    const x = clamp(select(falling, split.sub(v).div(max(split, 1e-6)), v.sub(split).div(max(float(1).sub(split), 1e-6))), 0, 1);
+    const h = lowest.add(select(falling, down, up).mul(x.pow(STEP_CROWDING)));
+    const s = sqrt(max(h.sub(hc).mul(h.add(hc).add(2)), 0));
+    return select(falling, s.negate(), s);
+  };
+  const before = bound(float(0)).toVar();
   const column = vec3(0, 0, 0).toVar();
   const sumR = vec3(0, 0, 0).toVar();
   const sumM = vec3(0, 0, 0).toVar();
   const sumMs = vec3(0, 0, 0).toVar();
   Loop({ start: int(0), end: count, type: 'int', condition: '<' }, ({ i }) => {
-    const t = start.add(float(i).add(0.5).mul(dt));
-    const q = u.eye.add(ray.mul(t));
+    // (Held in variables: the bound carried to the next step is replaced at the end of this one.)
+    const after = bound(float(i).add(1).div(countF)).toVar();
+    const dt = after.sub(before).toVar();
+    const t = tc.add(before.add(after).mul(0.5));
+    const q = u.eye.add(ray.mul(t)).toVar();
     const r = length(q);
     const density = densities(air, r.sub(1));
     // Air between the eye and this sample: the column so far and half of this step's.
@@ -173,16 +203,16 @@ function march(air: AirModel, table: Texture, u: AirUniforms, ray: Vec3Node, ste
     const lit = toEye.mul(toSun).mul(dt);
     sumR.addAssign(lit.mul(density.x));
     sumM.addAssign(lit.mul(density.y));
-    // The sky's own glow around this sample, scattered toward the eye by both kinds of air.
+    // The light scattered more than once about this sample (the sunlit air all round it and the
+    // ground below: ../render/air's table), scattered toward the eye by both kinds of air.
     const scattering = rayleigh.mul(density.x).add(density.y.mul(air.mieScattering));
-    sumMs.addAssign(toEye.mul(dt).mul(smoothstep(-0.25, 0.3, muSun)).mul(scattering));
+    sumMs.addAssign(toEye.mul(dt).mul(scattering).mul(multipleScattering(air, table, r, muSun)));
     column.addAssign(density.mul(dt));
+    before.assign(after);
   });
   const cosTheta = dot(ray, sun);
   const single = sumR.mul(rayleigh).mul(rayleighPhase(cosTheta)).add(sumM.mul(air.mieScattering).mul(miePhase(air, cosTheta)));
-  // Isotropic phase times pi is 1/4.
-  const multiple = sumMs.mul(skyGlow).mul(0.25);
-  return single.add(multiple);
+  return single.add(sumMs);
 }
 
 /**
@@ -216,17 +246,31 @@ function scatter(air: AirModel, table: Texture, u: AirUniforms, steps: number): 
   return light.mul(u.light);
 }
 
-/** The ray's transmittance from the table alone (no march): through to the ground, or across the limb. */
-function shellTransmittance(air: AirModel, table: Texture, u: AirUniforms): Vec3Node {
-  const { ray, hits, ground } = rayThroughShell(air, u.eye);
+/**
+ * What the shell lets through along a ray from `eye` (unit `ray`, the Earth's frame in radii), from the
+ * table alone (no march): down to the ground, or across the limb. The shell multiplies whatever lies
+ * behind it by this; a surface above the ground (the cloud tops) divides it back out for its own.
+ */
+export function airThrough(air: AirModel, table: Texture, eye: Vec3Node, ray: Vec3Node): Vec3Node {
+  const { tGround } = shellSegment(air, eye, ray);
   // Down to the ground: the way back up from the ground point to the top along the reversed ray.
-  const up = dot(normalize(ground), ray).negate();
+  const up = dot(normalize(eye.add(ray.mul(tGround))), ray).negate();
   const toGround = transmittanceToTop(air, table, float(1), max(up, 0));
   // Over the limb: twice the horizontal ray from the lowest point to the top.
-  const b = dot(u.eye, ray);
-  const lowest = sqrt(max(dot(u.eye, u.eye).sub(b.mul(b)), 1));
-  const half = transmittanceToTop(air, table, min(lowest, air.top), float(0));
-  return select(hits, toGround, half.mul(half));
+  const b = dot(eye, ray);
+  const tangent = sqrt(max(dot(eye, eye).sub(b.mul(b)), 0));
+  const half = transmittanceToTop(air, table, min(max(tangent, 1), air.top), float(0));
+  // From one to the other across the horizon over a pixel: a ray just over it crosses twice the air
+  // of one just short of it, and the shell and a cloud top in front of it must agree on that step even
+  // where their rays part by a rounding (a hard step would flip between them, a dashed line).
+  const pixel = max(fwidth(tangent), 1e-7);
+  return mix(toGround, half.mul(half), smoothstep(pixel.negate(), pixel, tangent.sub(1)));
+}
+
+/** The shell's own pixel's transmittance (airThrough). */
+function shellTransmittance(air: AirModel, table: Texture, u: AirUniforms): Vec3Node {
+  const { ray } = rayThroughShell(air, u.eye);
+  return airThrough(air, table, u.eye, ray);
 }
 
 /** The analytic 'chord' air: (in-scattered light, the green share of what it lets through). */
