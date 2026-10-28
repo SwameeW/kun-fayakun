@@ -113,7 +113,7 @@ Ideas were kept only if they are verified as feasible and honest. Duplicates acr
 | Earth-Moon tides can be seen in real time | At 30 days a second the Moon recedes about 0.3 cm per wall second | Secular tides in deep time; in real time, a number in the inspector (W7.4) |
 | Stellar mass loss emerges from the N-body over 1e8 years | That is about 8e9 steps: hours to a day | Secular a·M = constant in deep time, labelled (W7.5) |
 | Eight pieces reproduce Kokubo et al. 2000; Bridges' restitution law applies | Eight pieces cannot reproduce it, and that law is for icy cm/s collisions | A demonstration of the criterion only, with a labelled constant restitution (W5.3) |
-| Following lab bodies costs 400 B of explorer glue | `nav.focus` is typed `BodyId` with 33 uses, and `NavWorld` is built once | 0.8 to 1.2 KB, counted (W1.9) |
+| Following lab bodies costs 400 B of explorer glue | `nav.focus` is typed `BodyId` with 33 uses, and `NavWorld` is built once | 0.8 to 1.2 KB, counted (W1.9); measured +295 B explorer, +610 B laboratory (2026-10-28) |
 | The incandescence table "matches the Sun" | A 5,772 K blackbody is about 15% brighter than the real Sun's mean | The test checks the table against the Planck integral only (W1.14) |
 | Zero allocations in all of `lab.ts`; heap slope ≤ 0 | Too large a refactor, and flaky | Hot loops are allocation-free, and the retained heap after GC stays level (W1.0) |
 | A 10-solar-mass black hole is an ordinary body | `dtMinS = 1 s` clamps far above its dynamical time, and `luminosityW: 0` is ignored | A compact-object policy and honest light (W6.3) |
@@ -143,7 +143,7 @@ Ideas were kept only if they are verified as feasible and honest. Duplicates acr
 
 | Milestone | Glue | Items |
 |---|---|---|
-| M1 | ≈ 2.1 KB | finite checks +60; lab time branch moved out −150; radius seam +250; lab bodies as camera targets +1,000; label layout (net) +400; navigator and phone time row +400; `tier` field +30; inset exclusion rects +150 |
+| M1 | ≈ 2.1 KB | finite checks +60; lab time branch moved out −150; radius seam +250; lab bodies as camera targets +1,000 (measured +295, W1.9); label layout (net) +400; navigator and phone time row +400; `tier` field +30; inset exclusion rects +150 |
 | M2 | ≈ 0.7 KB | marks vec4 glow +250; air column +80; per-axis scale +120; director pose +250 |
 | M5 | 0.15 KB | thermal glow |
 | M6 | 0.15 KB | Sun off, if D3 is approved |
@@ -421,6 +421,23 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1** (ans
 ### W1.9 Pick, follow and frame any lab body (Vis-F13, Exp-F4; time diagnosis item 13; AI audit)
 **Status (2026-10-27): built in part.** A tap or click chooses any of the laboratory's own bodies; off the view, the chosen one has a pointer at the clear view's edge (its name and an arrow); a laboratory of its own opens on its star at once (the explorer's entry glide gave way only after it ended, leaving the view on the hidden Earth); on a coarse pointer the velocity handle is a 44 px target (`tests/explore/mobile.spec.ts`). Not built: following and framing lab bodies with the camera: `NavBody.id` widened to lab bodies costs 0.8 to 1.2 KB of explorer glue (decision D1).
 
+**Status (2026-10-28): built.** Following and framing, on branch `lab-follow`:
+- **Ids.** A body of the laboratory's own is `lab:` and its id (`LabFocusId`), so `FocusId` is `BodyId | WorldId | LabFocusId` and `NavBody.id` takes one unchanged (the narrow type, not `string`). The ten keep their own ids.
+- **The camera's bodies.** `Lab.navBodies()` gives them where they are drawn (position, the radius as bound, a floor of 2% of the radius, as the small worlds'); `Lab.navRevision` moves when they change (one added, merged, broken up or removed; a laboratory of its own opened; the laboratory left), and the explorer lists its `NavWorld` again then, the small worlds with it. The camera keeps out of every one, and the near plane stays clear of them (`Lab.nearestKm`).
+- **Guards.** Every read of the real system by the focus goes through `host()`, which gives the Sun for a lab id, so none indexes the ten with one; the rule that sends a laboratory of its own to its star leaves a lab focus alone.
+- **Follow.** The inspector's Follow with the camera (`lab-follow`, after Remove, reached by Tab) is offered for every body: one of the ten stays the explorer's own focus, any other is the `follow` command. A followed body that merges hands the camera to its survivor, one that breaks up to the largest of what is left, one torn apart to its first piece (`heir` in `src/sim/nbody.ts`, through `takeRefocus(focus)`). One removed is let go of (`Navigator.release`): the camera stays where it is, at rest in free flight; a reduced-motion cut to it finishes first, so the light never steps. Leaving the laboratory does the same by the nearest real body, and the real bodies are flown to as before.
+- **Framing beside a remnant.** A trip whose framing would end inside another body turns to that body's far side (`Navigator.clearOf`). Without it, a piece beside its remnant was framed from inside the remnant: the camera slid along its surface and its distance from the piece varied by 15%.
+- **Bytes** (`scripts/check-bundle.ts`, before and after on this branch). Explorer 148,280 to 148,575 B (+295: its chunk +244, the interface's +53). Laboratory 106,026 to 106,636 B (+610: the adapter +557, the panel +5, their shared chunk +48; the worker unchanged). Shell +6,112 to +6,103 (chunk names). The estimate was 0.8 to 1.2 KB explorer and about 1 KB lab: the widening is a type, the guards are one function, and the proxies live in the laboratory's chunk.
+- **The two-body laboratory, decided.** The list below asks for it to start on `planet`. It keeps opening on its star, the hidden Sun standing in, the readout naming and measuring the star. That is what the 2026-10-27 status line built and two tests hold (`lab.spec.ts`, a laboratory of its own; `lab-throw.spec.ts`, its opening during the entry glide); the star is the experiment's centre, and its planet is now one press of Follow away. The rest holds as the list asks. With the Earth hidden, its tiles are aimed at nothing: no tile is asked for, though one already on its way still lands. The tiles have no `visible` field, so `earthTiles.visible === false` is read as `imagery.clear.zoom` −1 with none showing. With the planet followed, the readout shows its own name and height.
+- **Tests.** `tests/explore/lab-tools.spec.ts`:
+  - followed by the keyboard;
+  - handed on through a breakup and a merger;
+  - a breakup's first piece, `debris-<step>-1`, followed for 10 s of its flight at a minute a second: its distance within 5% of its framing on every frame (measured 0%), the camera above every body of the experiment on every frame, there and through a stone's fall into the planet;
+  - a removal let go of where the camera is (it moved less than 1 km);
+  - the two-body laboratory as decided, its planet followed and measured, and the Earth flown to after leaving.
+
+  Unit: `tests/unit/navigation.spec.ts` (a body followed at 40 km/s held at its framing distance to 1e-9, the camera held at the floor of one it passes; let go where it is; a cut finishing first) and `tests/unit/impacts.spec.ts` (`heir` on the engine's own merger, breakup and tidal disruption). The mobile project's 44 px handle test is unchanged. `tests/explore/lab-perf.spec.ts` gained a phase with the breakup's first piece followed: 59.88 fps and p99 16.8 ms at High and at Low, on WebGPU and WebGL2, run alone (2026-10-28), as every other phase.
+
 - **Change in `src/explore/navigation.ts`:** `NavBody.id` becomes `BodyId | string`.
 - **Change in `src/explore/index.ts`.**
   - `navBodies()` appends lab proxies (position, radius, bound, minimum altitude).
@@ -430,12 +447,12 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1** (ans
   - Clicking or tapping selects a rock, a piece or a swarm (the nearest particle selects its swarm).
   - On a coarse pointer the velocity handle's hit area is 44 px.
   - Follow is offered for every body. When a followed body merges, the camera follows the survivor (`takeRefocus`).
-  - The two-body lab starts focused on its own planet. The Earth's terrain tiles are suspended while the Earth is hidden, and the readout shows the lab body's figures.
+  - The two-body lab starts focused on its own planet (decided otherwise, 2026-10-28: on its star, as built; see the status). The Earth's terrain tiles are suspended while the Earth is hidden, and the readout shows the lab body's figures.
 - **Cost:** 0.8 to 1.2 KB explorer, about 1 KB lab.
 - **Tests (`lab-tools.spec.ts`).**
   - Follow `debris-<step>-1` after a breakup: the camera distance stays within 5% of its framing for 10 s.
   - The camera's altitude above every lab body stays above 0.
-  - The two-body lab starts focused on `planet`, with `earthTiles.visible === false`.
+  - The two-body lab starts focused on `planet` (on its star, as decided), with `earthTiles.visible === false`.
   - The handle's hit area is at least 44 px on the mobile project.
 
 ### W1.10 Labels that never pile up (Vis-F24; visual diagnosis item 2; navigator diagnosis label items)
