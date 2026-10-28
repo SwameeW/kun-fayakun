@@ -6,7 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NEEDS_GPU, NO_GPU, SLOW } from '../support/env';
 import { JD, view, waitForUniverse } from '../support/universe';
 
 test.use({ reducedMotion: 'reduce' });
@@ -22,6 +22,7 @@ const walkOn = (page: Page, world: 'mars' | 'moon', lat: number, lon: number): P
   );
 
 test('sound only where there is air: none in space, Mars’s wind, the suit’s fans on the Moon, and off when asked', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(300_000 * SLOW);
   await kf.open('/universe/mars', { query: { jd: JD } });
   await waitForUniverse(page);
