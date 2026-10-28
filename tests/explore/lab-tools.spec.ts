@@ -10,7 +10,7 @@
 import type { Page } from '@playwright/test';
 import type { LabCommand, LabEditResult, UniverseLab } from '../../src/core/types';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 
 const LIVE = { timeout: 60_000 * SLOW };
@@ -430,6 +430,7 @@ test('the tides tear a moon apart: the Moon sent inside the Earth’s Roche limi
 });
 
 test('the camera follows and frames the laboratory’s own bodies: by the keyboard; a body that breaks up hands it to the largest of what is left, one that merges to its survivor; a piece kept framed as it flies, the camera above every body', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   test.setTimeout(300_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -566,6 +567,7 @@ test('the two-body laboratory opens on its star, the Earth’s tiles aimed at no
 });
 
 test('a real world removed that the camera is not on leaves the follow of the laboratory’s own body as it was', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
   test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -617,6 +619,7 @@ test.describe('with motion', () => {
     }, ms);
 
   test('the flight keys while a laboratory of its own’s planet is followed fly on by the planet: never to the star, nor by a hidden world', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_REAL_FRAMES);
     test.setTimeout(180_000 * SLOW);
     await kf.open('/universe/earth', { query: { jd: JD } });
     await waitForUniverse(page);
@@ -643,6 +646,7 @@ test.describe('with motion', () => {
   });
 
   test('flying freely in a laboratory of its own where a hidden world stands: the camera flies on, by a body the experiment shows', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_REAL_FRAMES);
     test.setTimeout(180_000 * SLOW);
     await kf.open('/universe/earth', { query: { jd: JD } });
     await waitForUniverse(page);
@@ -697,6 +701,7 @@ test.describe('with motion', () => {
   });
 
   test('leaving a laboratory of its own while its planet is followed: the camera keeps its place by the Sun its star stood in for, then flies to the Earth', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_REAL_FRAMES);
     test.setTimeout(180_000 * SLOW);
     await kf.open('/universe/earth', { query: { jd: JD } });
     await waitForUniverse(page);

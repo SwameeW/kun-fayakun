@@ -55,9 +55,9 @@ jobs:
   # release (GPU_SPECS in playwright.config.ts); the rest are split across twenty runners.
   browser:
     runs-on: ubuntu-latest
-    # A shard can need well over an hour in software rendering; the limit is there to stop a hung job,
-    # not a slow one.
-    timeout-minutes: 120
+    # A shard can need two hours in software rendering (the walks' shard about 130 minutes on
+    # 2026-10-28); the limit is there to stop a hung job, not a slow one.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
