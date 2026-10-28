@@ -845,7 +845,8 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   dynamic resolution, or the explorer's scene pass) and the film's and the explorer's quality
   governors rest, so the model's load on the GPU is not read as the scene's (no tier drops, none is
   locked). The returned function releases it (idempotent); the picture goes back to what the
-  governors chose. The assistant's pacer (`src/ai/engine/pacing.ts`) holds one at scale 0.75 for
+  governors chose. The assistant's pacer (`src/ai/engine/pacing.ts`; `visible(until?)` waits for a
+  hidden tab to show, or for `until`, and removes its listener either way) holds one at scale 0.75 for
   each generation, prefill included, from when it is asked for (while it waits for the one before
   it) to its end, let go on every way out (done, stopped, failed, the worker ended, unloaded), and
   while a model loads from its weights' upload (or its shaders' compilation) to the end of the load.
@@ -862,14 +863,23 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   the model's lock until its generator ends, fails or is returned. In the worker
   (`src/ai/engine/generations.ts`, `createGenerations(source)`) a `generate` first ends the
   generation under way: interrupted, its step under way finished, its iterator returned (the lock
-  let go); a stopped stream's pieces up to the stop and its usage still come to its pulls. The page's
-  engine (`loadWebLLM` in `src/ai/engine/webllm.ts`) asks for a generation only once the one before
-  it has ended; `interrupt()` stops the one under way and any waiting; `unload()` ends them as
-  stopped. While it waits on the worker during a generation it pings it (`WATCH`: every 5 s); a ping
-  unanswered for 30 s or a step over 5 minutes ends the worker and the generation (finish `error`,
-  `lastError` saying which, a console warning). The orchestrator's turns ask for one generation at a
-  time too (`ask`, `confirm` and `use` stop the turn under way first), and the engine state stays
-  `busy` until the last has ended.
+  let go); a stopped stream's pieces up to the stop and its usage still come to its pulls. A stop
+  for a generation not yet started, or not yet pulled, is kept there and the generation is never
+  started (WebLLM clears its interrupt on a generation's first step). The page's engine
+  (`loadWebLLM` in `src/ai/engine/webllm.ts`) asks for a generation only once the one before it has
+  ended; `interrupt()` stops the one under way and any waiting, a stop that comes while the worker
+  starts one included; `unload()` ends them as stopped. While it waits on the worker during a
+  generation it pings it (`WATCH`: every 5 s); a ping unanswered for 30 s or a step over 5 minutes
+  ends the worker and the generation (finish `error`, `lastError` saying which, a console warning).
+  `lastError` is that of the last generation to end (null when it did not fail); `lost` is set once
+  the engine can no longer generate (the watch ended its worker, or a generation lost the GPU
+  device), and `LanguageEngine.lost` (optional) says so for any engine. The orchestrator's turns ask
+  for one generation at a time too (`ask`, `confirm` and `use` stop the turn under way first), and
+  the engine state stays `busy` until the last has ended. A generation that ends in error on an
+  engine that is `lost` lets the engine go: it is unloaded, the engine state reads `error` with that
+  EngineError, `ai.mind.announce.engineLost` is announced, and the guide answers until a model is
+  chosen again (a plan that ended in an engine error shows `ai.mind.notice.engineError`, as an
+  answer does).
 - **How a model reads its prompt** (`src/ai/engine/prefill.ts`, docs/AI-INTELLIGENCE.md §6). A
   `load` message carries a `PrefillSetting` (`chunkTokens`, null for none; `yieldBetween`), the
   model's own from `prefillFor(model)` unless the evaluation gives another; after every load the
