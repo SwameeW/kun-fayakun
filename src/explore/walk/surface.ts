@@ -62,6 +62,14 @@ export const VENUS_SURFACE: SurfaceStyle = { craters: null, rocks: { cellsM: [0.
  * octave); each kept while it spans at least `keepPx` pixels, gone by half that.
  */
 export const GRAIN = { tilesM: [0.06, 0.24, 0.8, 3.2, 12.8, 51.2], weights: [0.3, 0.38, 0.42, 0.55, 0.7, 0.65], relief: 0.04, keepPx: 12 } as const;
+/**
+ * The Earth's rock bands' strength (the thin layers' and the thick ones', a share of the rock's
+ * brightness: faint, as weathered cliffs show them), and snow and ice in the imagery: its linear
+ * luminance (from `grey[0]`, all of it by `grey[1]`) and how little colour it has (its spread from the
+ * brightest channel to the darkest over its luminance, snow below `chroma[0]`, none above `chroma[1]`).
+ */
+const STRATA = { thin: 0.15, thick: 0.28 } as const;
+const SNOW = { grey: [0.45, 0.65], chroma: [0.08, 0.25] } as const;
 /** The golden angle (radians): each octave turned by it against the one before. */
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 /** A crater's shape, in its radii: the rim's height, the floor's depth below the surroundings, the ejecta's reach, and how far the crest is rounded. */
@@ -218,20 +226,24 @@ export function surfaceDetail(metres: Vec2Node, span: FloatNode, sun: Vec3Node, 
  * The Earth's ground up close (illustrative: between the imagery's 10 m pixels and the terrain's 30 m
  * heights): `base` the imagery's colour, `steep` 0 on the level to 1 on a cliff, `heightM` the ground's
  * height above sea level, `metres` its place east and north of the walk's anchor, `span` the ground's
- * metres per pixel. Rock on the steep, a little paler and greyer than the imagery, banded by height
- * (layers a few metres and a few tens of metres thick, wavering along the cliff, as the Grand Canyon's
- * walls are); plants in tufts where the imagery is green (an excess of green over red and blue); soil
- * elsewhere.
+ * metres per pixel. Rock on the steep, a little paler and greyer than the imagery, faintly banded by
+ * height (layers a few metres and a few tens of metres thick, wavering along the cliff, as the Grand
+ * Canyon's walls are), but not where the imagery is snow or ice (bright and colourless: SNOW), which
+ * lies over the layers; plants in tufts where the imagery is green (an excess of green over red and
+ * blue); soil elsewhere.
  */
 export function earthGround(base: Vec3Node, steep: FloatNode, heightM: FloatNode, metres: Vec2Node, span: FloatNode): Vec3Node {
   const grey = dot(base, vec3(0.2126, 0.7152, 0.0722));
   const green = base.y.sub(base.x.add(base.z).mul(0.5)).div(max(grey, 0.02));
   const plants = smoothstep(0.02, 0.35, green).mul(float(1).sub(steep));
+  // Snow and ice: bright, and nearly as bright in red as in blue (sand and pale rock are as bright, but coloured).
+  const chroma = max(base.x, max(base.y, base.z)).sub(min(base.x, min(base.y, base.z))).div(max(grey, 0.02));
+  const snow = smoothstep(SNOW.grey[0], SNOW.grey[1], grey).mul(float(1).sub(smoothstep(SNOW.chroma[0], SNOW.chroma[1], chroma)));
   // Strata: thin layers seen up close, thick ones from afar, each faded as it nears a pixel.
   const waver = mx_noise_float(metres.div(220)).mul(9);
   const thin = mx_noise_float(vec2(heightM.add(waver).div(4.5), 0.37)).mul(float(1).sub(smoothstep(0.6, 2.5, span)));
   const thick = mx_noise_float(vec2(heightM.add(waver.mul(3)).div(38), 5.1)).mul(float(1).sub(smoothstep(8, 30, span)));
-  const rock = mix(base, vec3(grey, grey, grey), 0.2).mul(thin.mul(0.3).add(thick.mul(0.55)).add(1.1));
+  const rock = mix(base, vec3(grey, grey, grey), 0.2).mul(thin.mul(STRATA.thin).add(thick.mul(STRATA.thick)).mul(float(1).sub(snow)).add(1.1));
   // Tufts: darker and greener clumps a third of a metre across, only where they span a few pixels.
   const tuft = smoothstep(-0.05, 0.3, mx_noise_float(metres.div(0.33))).mul(float(1).sub(smoothstep(0.03, 0.12, span)));
   const leafy = mix(vec3(1, 1, 1), vec3(0.72, 0.86, 0.64), tuft.mul(0.8).add(0.2));

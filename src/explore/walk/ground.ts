@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Group, Matrix4, Mesh, Mesh
 import { abs, acos, asin, atan, attribute, clamp, cos, Discard, dot, exp, float, Fn, fwidth, If, length, max, min, mix, modelWorldMatrix, normalize, normalWorldGeometry, positionView, positionWorld, pow, smoothstep, step, uniform, vec3, vec4, viewZToLogarithmicDepth } from 'three/tsl';
 import { bumpGradient, tiltNormal } from '../bodies/shading';
 import { sunTransmittance, type AirModel } from '../render/air';
-import { AIRLESS_FILL, horizonRise, MARS_DUST, NIGHT_SKY, REGOLITH, VENUS_FILL, venusDay, type LightKind } from './light';
+import { AIRLESS_FILL, GROUND_KNEE, horizonRise, MARS_DUST, NIGHT_SKY, REGOLITH, VENUS_FILL, venusDay, type LightKind } from './light';
 import { scatter } from './scatter';
 import { heldUnderBloom, MARS_SKY, VENUS_SKY } from './sky';
 import { EARTH_SURFACE, earthGround, sunInFrame, surfaceDetail, type SurfaceStyle } from './surface';
@@ -23,7 +23,8 @@ const HELD_KM = [0.2, 2] as const;
  * Heights come from the terrain tiles (./terrain) a zoom finer than each ring's spacing; each ring re-centres
  * as the walker moves, refilling a few rings a frame, and refills as finer tiles arrive (all at once
  * when the walk lands or re-anchors, so no ring is ever drawn about the wrong anchor). Each ring
- * hides where the ring inside it lies and hangs a skirt from its edge, so no seam opens between them.
+ * hides where the ring inside it lies and hangs a skirt from its edge, so no seam opens between them
+ * (the outermost, with no ring beyond it, hangs none).
  *
  * Positions are kept relative to an anchor near the walker, in the world's own frame (the object
  * turns with the world), so the GPU's single precision is centimetres here, not metres. The colour is
@@ -353,12 +354,12 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         const water = base.mul(WATER.body).mul(sunlight(mu).mul(uLight).mul(max(mu, 0)).add(sky)).add(skyLight(mu).mul(uLight).mul(fresnel)).add(glint);
         const lit = mix(land, water, attribute<'vec2'>('flags', 'vec2').y);
         // The air between: the ground dimmed by it, and its own light added (the same light as the sky's).
-        // Beyond a few hundred metres the land is held as the sky is (./sky heldUnderBloom: what is seen
-        // there is mostly the air's light, and the ground lit at a grazing angle), so at the horizon it
-        // never stands as a bright line under the sky above it.
+        // Beyond a few hundred metres the land is held under the bloom (./sky heldUnderBloom, by the far
+        // ground's knee, ./light GROUND_KNEE: above the sky's, so sunlit snow stays brighter than shaded
+        // snow), so at the horizon it never blooms nor stands as a bright line under the sky above it.
         const { light: between, transmittance } = scatter(air.model, air.table, uCentre.negate().div(uRadius), normalize(positionWorld), uSun, AIR_STEPS, length(positionWorld).div(uRadius));
         const seen = lit.mul(transmittance).add(between.mul(uLight));
-        return vec4(mix(seen, heldUnderBloom(seen, uExposure), smoothstep(HELD_KM[0], HELD_KM[1], length(positionWorld))), 1);
+        return vec4(mix(seen, heldUnderBloom(seen, uExposure, GROUND_KNEE), smoothstep(HELD_KM[0], HELD_KM[1], length(positionWorld))), 1);
       }
       const haze = light.haze;
       if (!haze) return vec4(land, 1);
@@ -471,8 +472,10 @@ export function createGround(colour: (direction: Vec3Node) => Vec3Node, options:
         nz /= l;
         nor.set([nx, ny, nz], v * 3);
       }
-    // The skirt: the edge again, hung below it (its horizons copied when they are made).
-    const drop = GROUND.skirtSpacings * ring.spacingKm;
+    // The skirt: the edge again, hung below it (its horizons copied when they are made). Only between
+    // rings: the outermost has nothing beyond it to meet, and seen from above, on the way down, a skirt
+    // there would hang as a curtain round the ground.
+    const drop = ring === rings[rings.length - 1] ? 0 : GROUND.skirtSpacings * ring.spacingKm;
     const above = ring.above.array as Float32Array;
     above.set(ring.metres);
     edge.forEach((g, k) => {

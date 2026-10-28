@@ -3,7 +3,7 @@ import { acos, cameraPosition, clamp, dot, exp, float, Fn, max, mix, normalize, 
 import type { AirModel } from '../render/air';
 import type { FloatNode, Vec3Node } from '../render/sampling';
 import { starlight } from './daylight';
-import { SKY_KNEE } from './light';
+import { SKY_KNEE, type Knee } from './light';
 import { scatter } from './scatter';
 
 /**
@@ -70,12 +70,12 @@ function elevation(up: { x: number; y: number; z: number }, sun: { x: number; y:
   return (Math.asin(Math.max(-1, Math.min(1, sin))) * 180) / Math.PI;
 }
 
-/** A sky's colour held under the bloom (./light skyCompression, on its luminance after the exposure; hue kept). */
-export function heldUnderBloom(colour: Vec3Node, exposure: FloatNode): Vec3Node {
+/** A sky's colour held under the bloom (./light skyCompression, on its luminance after the exposure; hue kept), by the sky's knee or another (the far ground's: ./light GROUND_KNEE). */
+export function heldUnderBloom(colour: Vec3Node, exposure: FloatNode, knee: Knee = SKY_KNEE): Vec3Node {
   const l = dot(colour.mul(exposure), vec3(0.2126, 0.7152, 0.0722));
-  const span = SKY_KNEE.ceiling - SKY_KNEE.knee;
-  const held = float(SKY_KNEE.knee).add(float(span).mul(float(1).sub(pow(l.sub(SKY_KNEE.knee).div(SKY_KNEE.tail * span).add(1), -SKY_KNEE.tail)))).div(max(l, 1e-6));
-  return colour.mul(select(l.greaterThan(SKY_KNEE.knee), held, float(1)));
+  const span = knee.ceiling - knee.knee;
+  const held = float(knee.knee).add(float(span).mul(float(1).sub(pow(l.sub(knee.knee).div(knee.tail * span).add(1), -knee.tail)))).div(max(l, 1e-6));
+  return colour.mul(select(l.greaterThan(knee.knee), held, float(1)));
 }
 
 export function createWalkSky(kind: SkyKind = 'earth', air: { model: AirModel; table: Texture } | null = null): WalkSky {

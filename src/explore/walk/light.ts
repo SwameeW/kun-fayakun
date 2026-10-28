@@ -320,12 +320,22 @@ export function sunDiscTint(through: readonly [number, number, number], out: [nu
  * and below the Sun's own disc (SUN_DISC): above `knee` it rises ever more slowly toward `ceiling` (a
  * pale grey on screen, never white), smoothly (its slope 1 at the knee) and with a long tail (the
  * power `tail`), so a glow ten times brighter still shows a little brighter; hue kept. Only the Sun's
- * disc and its glare are brighter, and bloom. Returns the factor to scale the colour by.
+ * disc and its glare are brighter, and bloom. Returns the factor to scale the colour by (by the sky's
+ * knee, or another: GROUND_KNEE).
  */
 export const SKY_KNEE = { knee: 0.3, ceiling: 0.5, tail: 0.3 } as const;
-export function skyCompression(displayLuminance: number): number {
+export type Knee = { readonly knee: number; readonly ceiling: number; readonly tail: number };
+export function skyCompression(displayLuminance: number, held: Knee = SKY_KNEE): number {
   const l = displayLuminance;
-  if (!(l > SKY_KNEE.knee)) return 1;
-  const span = SKY_KNEE.ceiling - SKY_KNEE.knee;
-  return (SKY_KNEE.knee + span * (1 - (1 + (l - SKY_KNEE.knee) / (SKY_KNEE.tail * span)) ** -SKY_KNEE.tail)) / l;
+  if (!(l > held.knee)) return 1;
+  const span = held.ceiling - held.knee;
+  return (held.knee + span * (1 - (1 + (l - held.knee) / (held.tail * span)) ** -held.tail)) / l;
 }
+/**
+ * The far ground's hold (./ground: beyond a few hundred metres, where what is seen is the ground and the
+ * air's light together): the same curve as the sky's, from a higher knee to a ceiling still under the
+ * bloom's threshold (0.75 on screen). Below the knee nothing changes, so the ground keeps the contrast of
+ * its sunlit and shaded faces (snow toward the Sun brighter than snow turned from it), and it still never
+ * blooms nor stands out under the sky above the horizon.
+ */
+export const GROUND_KNEE = { knee: 0.5, ceiling: 0.72, tail: 0.3 } as const;

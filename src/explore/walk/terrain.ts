@@ -6,9 +6,11 @@
  * data underneath is about 30 m in most places, finer where national surveys give it).
  *
  * Tiles are decoded once and kept (the most recently used, up to CACHE_TILES); a height is read by
- * bilinear interpolation between pixel centres, across tile edges where the neighbour is loaded, from
- * the finest zoom at or below the one asked for that holds the place, so the ground is there at once
- * (coarse) and sharpens as finer tiles arrive. Pure apart from the loader it is given.
+ * Catmull-Rom's cubic over the four by four pixel centres around it (exact on a plane, and its slope
+ * continuous, so a low Sun finds no crease at every pixel's edge, as it did between bilinear patches;
+ * kept within the four nearest, so a cliff does not ring), across tile edges where the neighbour is
+ * loaded, from the finest zoom at or below the one asked for that holds the place, so the ground is
+ * there at once (coarse) and sharpens as finer tiles arrive. Pure apart from the loader it is given.
  */
 
 import { decodePng } from './png';
@@ -80,6 +82,11 @@ export function mercatorPixel(latDeg: number, lonDeg: number, zoom: number): { x
 export function zoomFor(metres: number, latDeg: number, radiusKm = MERCATOR_RADIUS_KM): number {
   const z = Math.log2((TERRAIN.metresPerPixel0 * (radiusKm / MERCATOR_RADIUS_KM) * Math.cos((latDeg * Math.PI) / 180)) / Math.max(metres, 1e-3));
   return Math.max(0, Math.min(TERRAIN.maxZoom, Math.round(z)));
+}
+
+/** Catmull-Rom's cubic through four evenly spaced values, at `t` (0 to 1) between the second and the third. */
+export function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
 }
 
 /** A tile's heights (metres, row-major from the north-west corner), or null where it could not be loaded. */
@@ -187,9 +194,17 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
     pump();
   };
 
-  /** A pixel's height at global pixel (px, py) of a zoom, from whichever loaded tile holds it. */
   // The tile read last (a ring's neighbouring points nearly always share one): no key built for it.
   let last: { z: number; tx: number; ty: number; heights: Float32Array } | null = null;
+  /** A loaded tile's heights, or null. */
+  const tileAt = (z: number, tx: number, ty: number): Float32Array | null => {
+    if (last && last.z === z && last.tx === tx && last.ty === ty) return last.heights;
+    const entry = tiles.get(key(z, tx, ty));
+    if (!entry || entry.state !== 'ready' || !entry.heights) return null;
+    last = { z, tx, ty, heights: entry.heights };
+    return entry.heights;
+  };
+  /** A pixel's height at global pixel (px, py) of a zoom, from whichever loaded tile holds it. */
   const pixel = (z: number, px: number, py: number): number | null => {
     const n = 2 ** z;
     const size = n * TERRAIN.tilePx;
@@ -197,17 +212,16 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
     const gy = Math.max(0, Math.min(size - 1, Math.floor(py)));
     const tx = Math.floor(gx / TERRAIN.tilePx);
     const ty = Math.floor(gy / TERRAIN.tilePx);
-    let heights = last && last.z === z && last.tx === tx && last.ty === ty ? last.heights : null;
-    if (!heights) {
-      const entry = tiles.get(key(z, tx, ty));
-      if (!entry || entry.state !== 'ready' || !entry.heights) return null;
-      heights = entry.heights;
-      last = { z, tx, ty, heights };
-    }
-    return heights[(gy - ty * TERRAIN.tilePx) * TERRAIN.tilePx + (gx - tx * TERRAIN.tilePx)] ?? null;
+    const heights = tileAt(z, tx, ty);
+    return heights ? (heights[(gy - ty * TERRAIN.tilePx) * TERRAIN.tilePx + (gx - tx * TERRAIN.tilePx)] ?? null) : null;
   };
 
-  /** Bilinear between the four pixel centres around a point, at one zoom; null if its own pixel is not loaded. */
+  /** The 4 x 4 pixels around a point (row by row from its north-west), read by `sample`. */
+  const near = new Float64Array(16);
+  /**
+   * Catmull-Rom's cubic over the 4 x 4 pixel centres around a point, at one zoom, kept within the four
+   * nearest; null if its own pixel is not loaded.
+   */
   const sample = (z: number, latDeg: number, lonDeg: number): number | null => {
     const p = mercatorPixel(latDeg, lonDeg, z);
     const x = p.x - 0.5;
@@ -216,28 +230,63 @@ export function createHeights(load: TileLoader, maxZoom: number = TERRAIN.maxZoo
     const y0 = Math.floor(y);
     const fx = x - x0;
     const fy = y - y0;
-    const h00 = pixel(z, x0, y0);
-    if (h00 === null) return null;
-    // A neighbour across an edge whose tile has not arrived reads as its loaded side.
-    const h10 = pixel(z, x0 + 1, y0) ?? h00;
-    const h01 = pixel(z, x0, y0 + 1) ?? h00;
-    const h11 = pixel(z, x0 + 1, y0 + 1) ?? h10;
-    return (h00 * (1 - fx) + h10 * fx) * (1 - fy) + (h01 * (1 - fx) + h11 * fx) * fy;
+    const size = 2 ** z * TERRAIN.tilePx;
+    const gx = ((x0 % size) + size) % size;
+    // Most points: all sixteen in one loaded tile, read straight from it.
+    const tx = Math.floor((gx - 1) / TERRAIN.tilePx);
+    const ty = Math.floor((y0 - 1) / TERRAIN.tilePx);
+    const tile = tx === Math.floor((gx + 2) / TERRAIN.tilePx) && ty === Math.floor((y0 + 2) / TERRAIN.tilePx) ? tileAt(z, tx, ty) : null;
+    if (tile) {
+      const ox = gx - 1 - tx * TERRAIN.tilePx;
+      const oy = y0 - 1 - ty * TERRAIN.tilePx;
+      for (let j = 0; j < 4; j += 1) for (let i = 0; i < 4; i += 1) near[j * 4 + i] = tile[(oy + j) * TERRAIN.tilePx + ox + i] ?? 0;
+    } else {
+      const h00 = pixel(z, x0, y0);
+      if (h00 === null) return null;
+      // A neighbour across an edge whose tile has not arrived reads as its loaded side; the outer ring
+      // of pixels, where missing, carries on the slope of the two inside it.
+      const h10 = pixel(z, x0 + 1, y0) ?? h00;
+      const h01 = pixel(z, x0, y0 + 1) ?? h00;
+      const h11 = pixel(z, x0 + 1, y0 + 1) ?? h10;
+      near[5] = h00;
+      near[6] = h10;
+      near[9] = h01;
+      near[10] = h11;
+      for (const j of [1, 2]) {
+        const a = near[j * 4 + 1] ?? 0;
+        const b = near[j * 4 + 2] ?? 0;
+        near[j * 4] = pixel(z, x0 - 1, y0 + j - 1) ?? 2 * a - b;
+        near[j * 4 + 3] = pixel(z, x0 + 2, y0 + j - 1) ?? 2 * b - a;
+      }
+      for (let i = 0; i < 4; i += 1) {
+        const a = near[4 + i] ?? 0;
+        const b = near[8 + i] ?? 0;
+        near[i] = pixel(z, x0 + i - 1, y0 - 1) ?? 2 * a - b;
+        near[12 + i] = pixel(z, x0 + i - 1, y0 + 2) ?? 2 * b - a;
+      }
+    }
+    const row = (j: number): number => catmullRom(near[j * 4] ?? 0, near[j * 4 + 1] ?? 0, near[j * 4 + 2] ?? 0, near[j * 4 + 3] ?? 0, fx);
+    const value = catmullRom(row(0), row(1), row(2), row(3), fy);
+    const h00 = near[5] ?? 0;
+    const h10 = near[6] ?? 0;
+    const h01 = near[9] ?? 0;
+    const h11 = near[10] ?? 0;
+    return Math.min(Math.max(h00, h10, h01, h11), Math.max(Math.min(h00, h10, h01, h11), value));
   };
 
   const want = (latDeg: number, lonDeg: number, zoom: number): void => {
     const z = Math.max(0, Math.min(maxZoom, Math.round(zoom)));
     for (const zz of z > 0 ? [z - 1, z] : [z]) {
-      // Every tile the interpolation reads: near an edge, the neighbour's too, so the ground has no seam.
+      // Every tile the interpolation reads (the 4 x 4 pixels' corners): near an edge, the neighbour's too, so the ground has no seam.
       const p = mercatorPixel(latDeg, lonDeg, zz);
       const x0 = Math.floor(p.x - 0.5);
       const y0 = Math.floor(p.y - 0.5);
       const seen = new Set<string>();
       for (const [dx, dy] of [
-        [0, 0],
-        [1, 0],
-        [0, 1],
-        [1, 1],
+        [-1, -1],
+        [2, -1],
+        [-1, 2],
+        [2, 2],
       ] as const) {
         const tx = Math.floor((x0 + dx) / TERRAIN.tilePx);
         const ty = Math.floor((y0 + dy) / TERRAIN.tilePx);

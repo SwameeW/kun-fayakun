@@ -100,6 +100,45 @@ test('heights: exact on a plane across tile edges, and from a coarser tile until
   expect(h.stats().ready).toBeGreaterThan(0);
 });
 
+test('heights: their slope continuous across every pixel (no crease for a low Sun to find), and a cliff never overshot', async () => {
+  // A valley's curve east and west (the height the square of the pixel's distance from a column, m), and a
+  // cliff 500 m high, at zoom 3.
+  const at = (z: number, x: number, i: number): number => (x * TERRAIN.tilePx + i + 0.5 - 1000) ** 2 * 0.01 * 2 ** (3 - z);
+  const valley: TileLoader = (z, x) => {
+    const out = new Float32Array(TERRAIN.tilePx * TERRAIN.tilePx);
+    for (let j = 0; j < TERRAIN.tilePx; j += 1) for (let i = 0; i < TERRAIN.tilePx; i += 1) out[j * TERRAIN.tilePx + i] = at(z, x, i);
+    return Promise.resolve(out);
+  };
+  const h = createHeights(valley, 3);
+  const lonOf = (px: number): number => (px / (TERRAIN.tilePx * 8)) * 360 - 180;
+  h.want(10, lonOf(1100), 3);
+  await settle();
+  // About a pixel's centre (x 1100.5), the slope just west of it and just east of it: the same (bilinear's
+  // differed by the curve's whole second difference, 0.02 m a pixel).
+  const read = (px: number): number => h.at(10, lonOf(px), 3)?.metres ?? Number.NaN;
+  const e = 1e-3;
+  const west = (read(1100.5) - read(1100.5 - e)) / e;
+  const east = (read(1100.5 + e) - read(1100.5)) / e;
+  expect(Math.abs(east - west)).toBeLessThan(0.002);
+  // Exact at the pixels' centres, and a parabola's cubic interpolation near the curve between them.
+  expect(read(1100.5)).toBeCloseTo(at(3, 0, 1100), 3);
+  expect(Math.abs(read(1100.75) - (1100.75 - 1000) ** 2 * 0.01)).toBeLessThan(0.01);
+  // A cliff: nowhere above its top or below its foot, however near the edge.
+  const cliff: TileLoader = (_z, x) => {
+    const out = new Float32Array(TERRAIN.tilePx * TERRAIN.tilePx);
+    for (let j = 0; j < TERRAIN.tilePx; j += 1) for (let i = 0; i < TERRAIN.tilePx; i += 1) out[j * TERRAIN.tilePx + i] = x * TERRAIN.tilePx + i < 1100 ? 1000 : 1500;
+    return Promise.resolve(out);
+  };
+  const c = createHeights(cliff, 3);
+  c.want(10, lonOf(1100), 3);
+  await settle();
+  for (let px = 1097; px <= 1103; px += 0.1) {
+    const m = c.at(10, lonOf(px), 3)?.metres ?? Number.NaN;
+    expect(m).toBeGreaterThanOrEqual(1000);
+    expect(m).toBeLessThanOrEqual(1500);
+  }
+});
+
 test('the walker: its frame, a jump of v^2 / 2g on the Earth and the Moon, walking speed, a place it may not enter', () => {
   // The local frame is orthonormal, up out of the sphere.
   const f = localFrame(30, 45);
