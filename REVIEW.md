@@ -201,6 +201,20 @@ scholarly text or science text change later, that area needs review again.
   0.0561 ± 0.0071 and midpoint z = 7.82 ± 0.71 (tanh model, the BAO column,
   as universe.age), about 657 million years; the end by z ≈ 5.3 (Bosman et
   al. 2022), about 1.1 billion years.
+- Chapter 6: the supernova remnant's structure as it shows from 31 to 40 s
+  (`src/chapters/ch06/ejecta.ts` and `remnant.ts`, with the Discover card
+  `discover.ch06.remnant.*` in `src/i18n/en.discover.json`), labelled an
+  illustration and a composite after Cassiopeia A and the Crab Nebula: plumes
+  of iron overtaking the silicon (Hughes et al. 2000), a pair of silicon jets
+  (Hwang et al. 2004), cavities in the inner debris that may have been opened
+  by plumes rich in nickel-56 (Milisavljevic & Fesen 2015), the blast wave as a
+  faint rim ahead of the debris (Gotthelf et al. 2001), the neutron star at the
+  centre ("or, for the most massive stars, a black hole"; Ho & Heinke 2009)
+  and a still glow round it borrowed from the Crab's wind nebula (Hester 2008),
+  which Cassiopeia A lacks (Pavlov & Luna 2009). Check that no caption makes a
+  claim that holds only for Cassiopeia A, that the remnant keeps the chapter's
+  element colours, and that the sizes (the rim, the jets past it, the glow)
+  read as illustrative.
 - Open questions must be presented as open; the science layer must never be
   presented as an interpretation of a verse.
 

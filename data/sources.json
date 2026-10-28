@@ -1576,6 +1576,125 @@
       }
     },
     {
+      "id": "hughes-2000-cas-a",
+      "kind": "paper",
+      "title": "Nucleosynthesis and Mixing in Cassiopeia A",
+      "author": "J. P. Hughes, C. E. Rakowski, D. N. Burrows and P. O. Slane (2000), ApJ 528, L109",
+      "url": "https://doi.org/10.1086/312438",
+      "version": "arXiv:astro-ph/9910474, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Hughes et al. (2000)",
+      "notes": "In parts of Cassiopeia A, iron-rich debris from explosive silicon burning lies outside the silicon-rich debris: the explosion turned over part of the star’s core, probably in plumes rising from its convection. Chapter 6 shows it as the iron plumes out past the silicon.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hwang-2004-cas-a",
+      "kind": "paper",
+      "title": "A Million Second Chandra View of Cassiopeia A",
+      "author": "U. Hwang, J. M. Laming et al. (2004), ApJ 615, L117",
+      "url": "https://doi.org/10.1086/426186",
+      "version": "arXiv:astro-ph/0409760, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Hwang et al. (2004)",
+      "notes": "Silicon-rich debris in a bipolar structure: a jet to the north-east and its counterpart to the south-west, chemically alike. Chapter 6 shows them as the pair of silicon jets.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "milisavljevic-fesen-2015-cas-a",
+      "kind": "paper",
+      "title": "The Bubble-like Interior of the Core-Collapse Supernova Remnant Cassiopeia A",
+      "author": "D. Milisavljevic and R. A. Fesen (2015), Science 347, 526",
+      "url": "https://doi.org/10.1126/science.1261949",
+      "version": "arXiv:1501.07283, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Milisavljevic & Fesen (2015)",
+      "notes": "A 3D map of the inner, unshocked debris of Cassiopeia A: bubble-like cavities joined to the rings of its bright outer shell, which may have come from outward plumes of debris rich in radioactive nickel-56 (its iron-56 perhaps still inside them). Chapter 6 shows them as the cavities in the inner debris.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "gotthelf-2001-cas-a",
+      "kind": "paper",
+      "title": "Chandra Detection of the Forward and Reverse Shocks in Cassiopeia A",
+      "author": "E. V. Gotthelf, B. Koralesky, L. Rudnick, T. W. Jones, U. Hwang and R. Petre (2001), ApJ 552, L39",
+      "url": "https://doi.org/10.1086/320250",
+      "version": "arXiv:astro-ph/0104161, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Gotthelf et al. (2001)",
+      "notes": "Cassiopeia A’s blast wave (its forward shock): a faint thin rim of X-rays about 2.7 arcminutes in radius, outside the bright shell of debris; the reverse shock lies at about two thirds of its radius. Chapter 6 shows it as the faint rim ahead of the debris.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "ho-heinke-2009-cas-a",
+      "kind": "paper",
+      "title": "A Neutron Star with a Carbon Atmosphere in the Cassiopeia A Supernova Remnant",
+      "author": "W. C. G. Ho and C. O. Heinke (2009), Nature 462, 71",
+      "url": "https://doi.org/10.1038/nature08525",
+      "version": "arXiv:0911.0672, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Ho & Heinke (2009)",
+      "notes": "The compact X-ray source at the centre of Cassiopeia A is a very young neutron star, about 330 years old.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "pavlov-luna-2009-cas-a",
+      "kind": "paper",
+      "title": "A Dedicated Chandra ACIS Observation of the Central Compact Object in the Cassiopeia A Supernova Remnant",
+      "author": "G. G. Pavlov and G. J. M. Luna (2009), ApJ 703, 910",
+      "url": "https://doi.org/10.1088/0004-637X/703/1/910",
+      "version": "arXiv:0905.3190, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Pavlov & Luna (2009)",
+      "notes": "No extended emission (no wind nebula) is seen round the central compact object of Cassiopeia A, and no significant pulsations.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hester-2008-crab",
+      "kind": "paper",
+      "title": "The Crab Nebula: An Astrophysical Chimera",
+      "author": "J. J. Hester (2008), Annual Review of Astronomy and Astrophysics 46, 127",
+      "url": "https://doi.org/10.1146/annurev.astro.45.051806.110608",
+      "version": "ARA&A 46, 127-155 (2008)",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Hester (2008)",
+      "notes": "The Crab Nebula glows with synchrotron light from the wind of particles its young pulsar drives, its wisps changing over days. Chapter 6 shows a faint, still glow of this kind round the neutron star.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "planck-2018-cosmology",
       "kind": "paper",
       "title": "Planck 2018 results. VI. Cosmological parameters (table 2)",

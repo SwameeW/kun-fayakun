@@ -1,0 +1,4 @@
+{
+  "$comment": "Chapter 6's own strings, added with its chunk (src/chapters/ch06/scene.ts, load: i18n.extend).",
+  "ch06.tag.neutronStar": "Neutron star"
+}
