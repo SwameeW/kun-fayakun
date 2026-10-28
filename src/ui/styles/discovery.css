@@ -509,41 +509,7 @@
   }
 }
 
-/*
- * Finding the analysis: the invitation on the stage under the verse it reads (eased in and out with
- * the verse's cue, never a pop), and the button under that verse in the notes.
- */
-.kf-discovery-invite {
-  display: block;
-  margin: var(--kf-space-3) auto 0;
-  pointer-events: auto;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(4px);
-  transition:
-    opacity 600ms var(--kf-ease),
-    transform 600ms var(--kf-ease),
-    visibility 0s linear 600ms;
-}
-
-.kf-discovery-invite.is-shown {
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-  transition:
-    opacity 600ms var(--kf-ease),
-    transform 600ms var(--kf-ease),
-    visibility 0s linear 0s;
-}
-
+/* The button under that verse in the notes. */
 .kf-discovery-inline {
   margin-block: var(--kf-space-2) var(--kf-space-4);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .kf-discovery-invite,
-  .kf-discovery-invite.is-shown {
-    transform: none;
-    transition: none;
-  }
 }
