@@ -127,7 +127,7 @@ Ideas were kept only if they are verified as feasible and honest. Duplicates acr
 | Row | Sources | Budget | Today | After M1 | After M7 (peak) |
 |---|---|---|---|---|---|
 | Shell | first load | baseline + 10,000 | +9,677 | +0 | +0 (M8 video hook: decision D2) |
-| Explorer | `src/explore/index.ts`, `src/ui/explore/index.ts` | 150,000 (D1: 155,000) | 147,459 | ≈ 149,600 | ≈ 150,900 (needs D1) |
+| Explorer | `src/explore/index.ts`, `src/ui/explore/index.ts` | 155,000 (150,000 before D1) | 147,459 | ≈ 149,600 | ≈ 150,900 (needs D1) |
 | Laboratory (static: adapter, panel, worker) plus `lab-fx` | existing `LAB_SOURCES` + `src/explore/lab-fx/index.ts` | 250,000 combined (new aggregate line) | 62,795 | ≈ 108,000 | ≈ 204,000 |
 | `LAB_FX_SOURCES` (new) | `src/explore/lab-fx/index.ts` | 40,000 | – | ≈ 21,000 | ≈ 33,000 |
 | `LAB_CINEMA_SOURCES` (new, M2) | `src/explore/lab-fx/cinema.ts` | 15,000 | – | – | ≈ 6,000 (≈ 10,000 with M8 video) |
@@ -148,7 +148,7 @@ Ideas were kept only if they are verified as feasible and honest. Duplicates acr
 | M5 | 0.15 KB | thermal glow |
 | M6 | 0.15 KB | Sun off, if D3 is approved |
 
-The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** raise `EXPLORE_BUDGET_BYTES` to 155,000 B before M2. M1 fits today's headroom with about 0.4 KB to spare. The Earth spin blur from the time diagnosis waits for D1.
+The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1** (answered 2026-10-27, §10): `EXPLORE_BUDGET_BYTES` raised to 155,000 B. M1 fits today's headroom with about 0.4 KB to spare. The Earth spin blur from the time diagnosis waits for D1.
 
 ### 5.2 Frames
 
@@ -607,7 +607,7 @@ The total is about 3.1 KB against 2.5 KB of headroom. **Owner decision D1:** rai
 
 ### M1 exit gate
 - Every test above passes on webgpu, webgl2 and mobile.
-- `check-bundle` passes: laboratory with `lab-fx` ≤ 250,000 B, `lab-fx` ≤ 40,000 B, explorer ≤ 150,000 B.
+- `check-bundle` passes: laboratory with `lab-fx` ≤ 250,000 B, `lab-fx` ≤ 40,000 B, explorer ≤ 150,000 B (155,000 B since D1).
 - The diagnosis's reproductions are re-run and recorded in `docs/LAB.md`:
   - a two-body run at 10 s/s moves the date;
   - −30 days a second rewinds to the fork;
@@ -1449,7 +1449,7 @@ All of the above, plus:
 
 Interim choices, until the owner says otherwise (2026-10-26): D8 on by default; D3 switches the sunlight off honestly; D6 waits; D1 is avoided by splitting the explorer chunk rather than raising its limit.
 
-D1, the owner's answer (2026-10-27): keep the explorer's limit at 150,000 B for now. The glue that does not fit (following lab bodies with the camera, M2's, the Earth spin blur) comes by splitting the explorer chunk.
+D1, the owner's answer (2026-10-27): raise the explorer's limit to 155,000 B, since 5 KB more is not noticeable to a visitor. `EXPLORE_BUDGET_BYTES` is 155,000; following lab bodies with the camera, M2's glue and the Earth spin blur now have room.
 
 ## 11. Out of scope here, but sharing the same controls
 

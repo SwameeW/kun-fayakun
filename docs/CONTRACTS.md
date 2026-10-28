@@ -690,7 +690,7 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   `lab-checkpoint-<step>`, `lab-replay`, `lab-reset`, `lab-preset-solar|two|three`. In an
   experiment the navigator hides About, Living Earth and the rows of removed worlds.
 - **Budget.** `scripts/check-bundle.ts` holds the laboratory's lazy files (adapter, panel, worker)
-  to 250,000 bytes gzipped, apart from the explorer's 150,000.
+  to 250,000 bytes gzipped, apart from the explorer's 155,000.
 - **Messages.** `ui.universe.lab.*` in `src/i18n/en.explore.json`; the validator's "reflection, not
   proof" phrasing rule applies to them too (paths are "integrated ahead", never "predicted").
 

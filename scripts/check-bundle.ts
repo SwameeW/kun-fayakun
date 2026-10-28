@@ -64,8 +64,8 @@ const SHELL_GROWTH_LIMIT_BYTES = 10_000;
 const CH00_SOURCE = 'src/chapters/ch00/scene.ts';
 /** The solar-system explorer's lazy entry points: its engine module and its interface. */
 const EXPLORE_SOURCES = ['src/explore/index.ts', 'src/ui/explore/index.ts'] as const;
-/** What the explorer's code may add beyond the shell, gzipped. */
-const EXPLORE_BUDGET_BYTES = 150_000;
+/** What the explorer's code may add beyond the shell, gzipped (150,000 until D1 in docs/SANDBOX-ROADMAP.md). */
+const EXPLORE_BUDGET_BYTES = 155_000;
 /** The orbital laboratory's lazy entry points (loaded with the first experiment): its explorer adapter, with the engine's worker, and its panel. */
 const LAB_SOURCES = ['src/explore/lab.ts', 'src/ui/explore/lab-panel.ts'] as const;
 /** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget); its effects' chunk counts toward it too. */

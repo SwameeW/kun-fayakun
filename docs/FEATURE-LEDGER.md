@@ -196,7 +196,7 @@ tests and what remains open (the translation's licence above all): docs/REFINEME
 | Area | Budget | Measured (2026-10-26, evening) |
 |---|---|---|
 | Shell (first load) | baseline 327,629 B gzipped + 10,000 | 337,119 (+9,490) |
-| Explorer (lazy) | 150,000 B gzipped | 147,489 |
+| Explorer (lazy) | 155,000 B gzipped | 147,489 |
 | Orbital laboratory (lazy: adapter, panel, worker) | 250,000 B gzipped | 62,782 |
 | The qibla and the new moon (lazy) | 40,000 B gzipped | 18,492 |
 | Walking (lazy) | 30,000 B gzipped | 11,328 |
