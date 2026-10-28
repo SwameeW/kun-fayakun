@@ -1,4 +1,5 @@
 /** Everything the validation rules read, loaded once. */
+import { readdirSync } from 'node:fs';
 import type { ConstantsFile, HadithFile, QuranFile, SourcesFile } from '../../src/core/types';
 import { loadCitations, type CitationsFile } from './citations';
 import { collectRefs, loadChapters, type ContentLoad, type ContentRefs, type LoadedChapter } from './content';
@@ -17,7 +18,10 @@ export interface ValidationContext {
   constants: Loaded<ConstantsFile>;
   content: ContentLoad;
   refs: Array<{ chapter: LoadedChapter; refs: ContentRefs }>;
-  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; worlds: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; aiEngine: MessageLoad; aiTools: MessageLoad; aiMind: MessageLoad; aiUi: MessageLoad; ar: MessageLoad };
+  i18n: { en: MessageLoad; chapters: MessageLoad; explore: MessageLoad; living: MessageLoad; lab: MessageLoad; islamic: MessageLoad; stars: MessageLoad; worlds: MessageLoad; photo: MessageLoad; help: MessageLoad; plain: MessageLoad; discover: MessageLoad; aiEngine: MessageLoad; aiTools: MessageLoad; aiMind: MessageLoad; aiUi: MessageLoad; ar: MessageLoad;
+    /** Chapters' own message files (en.ch02.json and so on), added by each chapter's lazy chunk. */
+    scenes: MessageLoad[];
+  };
   /** The disclaimer from docs/SPEC.md section 1.7, without its quotation marks. */
   specDisclaimer: string;
 }
@@ -61,6 +65,10 @@ export function loadContext(online: boolean): ValidationContext {
       aiMind: loadMessages('src', 'i18n', 'en.ai.mind.json'),
       aiUi: loadMessages('src', 'i18n', 'en.ai.json'),
       ar: loadMessages('src', 'i18n', 'ar.json'),
+      scenes: readdirSync(rootPath('src', 'i18n'))
+        .filter((name) => /^en\.ch\d\d\.json$/u.test(name))
+        .sort()
+        .map((name) => loadMessages('src', 'i18n', name)),
     },
     specDisclaimer: readSpecDisclaimer(),
   };

@@ -52,7 +52,8 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   const aiTools = available(ctx.i18n.aiTools, 'assistant builder', log);
   const aiMind = available(ctx.i18n.aiMind, 'assistant builder', log);
   const aiUi = available(ctx.i18n.aiUi, 'assistant interface builder', log);
-  const files = [en, chapters, explore, living, lab, islamic, stars, worlds, photo, help, plain, discover, aiEngine, aiTools, aiMind, aiUi].filter((f): f is MessageFile => f !== null);
+  const scenes = ctx.i18n.scenes.map((load) => available(load, 'chapter builder', log));
+  const files = [en, chapters, explore, living, lab, islamic, stars, worlds, photo, help, plain, discover, aiEngine, aiTools, aiMind, aiUi, ...scenes].filter((f): f is MessageFile => f !== null);
   const ar = ctx.i18n.ar.status === 'ok' ? ctx.i18n.ar.file : null;
 
   const parseIssues = [...files.flatMap((f) => fileProblems(f, true)), ...(ar ? fileProblems(ar, false) : [])];
@@ -60,7 +61,7 @@ export function checkI18n(ctx: ValidationContext, log: RuleLog): void {
   log.expectNone(parseIssues, `${messageCount} English message(s) parse with intl-messageformat and avoid forbidden phrasing`);
 
   const collisions = files.flatMap((a, i) => files.slice(i + 1).flatMap((b) => [...a.messages.keys()].filter((k) => !k.startsWith('$') && b.messages.has(k)).map((k) => `${k}: defined in both ${a.path} and ${b.path}`)));
-  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json, en.explore.json, en.living.json, en.lab.json, en.islamic.json, en.stars.json, en.worlds.json, en.photo.json, en.help.json, en.plain.json, en.discover.json, en.ai.engine.json, en.ai.tools.json, en.ai.mind.json and en.ai.json');
+  log.expectNone(collisions, 'no key is defined in more than one of en.json, en.chapters.json, en.explore.json, en.living.json, en.lab.json, en.islamic.json, en.stars.json, en.worlds.json, en.photo.json, en.help.json, en.plain.json, en.discover.json, en.ai.engine.json, en.ai.tools.json, en.ai.mind.json, en.ai.json and the chapters\' own en.chNN.json');
 
   const merged = new Map<string, string>();
   for (const f of files) for (const [k, v] of f.messages) merged.set(k, v);

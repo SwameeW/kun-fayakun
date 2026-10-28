@@ -23,7 +23,7 @@ function describe(value: unknown): string {
 
 function messageKeys(ctx: ValidationContext): Set<string> {
   const keys = new Set<string>();
-  for (const load of Object.values(ctx.i18n)) {
+  for (const load of Object.values(ctx.i18n).flat()) {
     if (load.status !== 'ok') continue;
     for (const key of load.file.messages.keys()) keys.add(key);
   }
