@@ -148,6 +148,13 @@ const BASALT = vec3(0.07, 0.06, 0.055);
 const ROCK = vec3(0.27, 0.19, 0.13);
 const HIGHLAND = vec3(0.42, 0.37, 0.32);
 const GREEN = vec3(0.09, 0.21, 0.07);
+/**
+ * Under the air, the land once life has spread over it, as the Earth's land looks from space (NASA's
+ * Blue Marble, DSCOVR EPIC): forest and grassland a dark olive, over the lowlands and up the lower
+ * slopes, the subtropics' deserts thinner. A little darker than GREEN and much more saturated: the
+ * air's own haze lightens and greys it on the way to the eye, so from space it ends a muted olive.
+ */
+const VEGETATION = vec3(0.06, 0.2, 0.024);
 const EARLY_SEA = vec3(0.03, 0.08, 0.05);
 const SEA = vec3(0.008, 0.045, 0.14);
 const SHALLOW = vec3(0.04, 0.19, 0.24);
@@ -210,7 +217,19 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
   // Day-side colour: crust, land rising out of it, seas in the low ground.
   const latitude = abs(n.y);
   const moist = smoothstep(0.35, 0.7, c2).mul(float(1).sub(smoothstep(0.55, 0.85, latitude)));
-  const landColor = mix(mix(ROCK.mul(c3.mul(0.5).add(0.75)), GREEN, u.life.mul(moist)), HIGHLAND, smoothstep(0.06, 0.16, elevation));
+  const bare = ROCK.mul(c3.mul(0.5).add(0.75));
+  let landColor: Node<'vec3'>;
+  if (air) {
+    // Wetter ground wider than without the air, thinner in the desert belts near 25 degrees (sin = 0.42).
+    const desert = exp(latitude.sub(0.42).div(0.12).pow(2).negate()).mul(smoothstep(0.3, 0.6, c3));
+    const green = smoothstep(0.12, 0.42, c2).mul(float(1).sub(smoothstep(0.62, 0.86, latitude))).mul(float(1).sub(desert.mul(0.6)));
+    const cover = u.life.mul(green);
+    // Life climbs the slopes: only the highest ground stays bare once it has spread.
+    const highland = max(smoothstep(0.06, 0.16, elevation).mul(float(1).sub(cover.mul(0.75))), smoothstep(0.2, 0.32, elevation));
+    landColor = mix(mix(bare, VEGETATION.mul(c3.mul(0.4).add(0.8)), cover), HIGHLAND, highland);
+  } else {
+    landColor = mix(mix(bare, GREEN, u.life.mul(moist)), HIGHLAND, smoothstep(0.06, 0.16, elevation));
+  }
   // With the air the ice's edge is broken by the noise, as real ice edges are.
   const iceLatitude = air ? latitude.add(c3.sub(0.5).mul(0.09)) : latitude;
   const ice = smoothstep(0.86, 0.93, iceLatitude).mul(u.land).mul(float(1).sub(u.molten));

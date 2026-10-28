@@ -61,10 +61,10 @@ const content = contentJson as unknown as ChapterContent;
 
 /**
  * The Sun, low over the southern tropic (23 degrees, as far from the equator as it goes), placed so
- * that along the camera's slow orbit the planet is seen from about 50 to 110 degrees off the Sun's
- * direction: a terminator across the disc and a dark night side.
+ * that along the camera's slow orbit the planet is seen from about 40 to 90 degrees off the Sun's
+ * direction: a terminator across the disc, and at the end half the living Earth still in daylight.
  */
-const SUN = new Vector3(0.889, -0.391, 0.238).normalize();
+const SUN = new Vector3(0.725, -0.391, 0.567).normalize();
 /** Micro scene: one world unit is 10 micrometres; the planet scene: one unit is the Earth's radius. */
 const METRES_PER_UNIT = { micro: 1e-5, planet: 6.371e6 } as const;
 const COUNT: Readonly<Record<QualityTier, { specks: number; cells: number }>> = {
@@ -318,7 +318,8 @@ export default function create(): ChapterModule {
           drift: 3 + t * 0.03,
           oxygen: smootherstep(times.oxygen, times.oxygen + 26, t),
           life: smootherstep(times.green, times.green + 26, t),
-          clouds: 0.55 + 0.15 * smootherstep(times.oxygen, times.green + 20, t),
+          // More cloud as the air changes, then thinner as the land greens, so the continents show.
+          clouds: 0.55 + 0.15 * smootherstep(times.oxygen, times.green + 20, t) - 0.3 * smootherstep(times.green, times.green + 26, t),
         },
       });
       veil.position.copy(ctx.camera.position);
