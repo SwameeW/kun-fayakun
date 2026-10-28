@@ -103,7 +103,7 @@ export function createStageCards(app: App): StageCards {
     if (!next && index >= 0) outro.prepend(credits());
   }
 
-  /** End credits: the app's name, then every source and licence, the review status and the disclaimer. */
+  /** End credits: the app's name, then every source and licence, any recorded review and the disclaimer. */
   function credits(): HTMLElement {
     const file = app.data.sources();
     const roll = h(
@@ -112,10 +112,7 @@ export function createStageCards(app: App): StageCards {
       h('p', { class: 'kf-credits-made' }, i18n.t('ui.credits.app')),
       h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.sources')),
       h('ul', { class: 'kf-credits-list' }, ...file.sources.map((s) => h('li', {}, h('span', { class: 'kf-credits-title' }, s.title), h('span', { class: 'kf-credits-credit' }, s.credit), h('span', { class: 'kf-credits-license' }, s.license)))),
-      h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.reviews')),
-      file.reviews.length > 0
-        ? h('ul', { class: 'kf-credits-list' }, ...file.reviews.map((r) => h('li', {}, `${r.reviewer}, ${r.role} (${r.area}, ${r.date})`)))
-        : h('p', { class: 'kf-credits-note' }, i18n.t('ui.credits.reviewsPending')),
+      file.reviews.length > 0 ? h('ul', { class: 'kf-credits-list' }, ...file.reviews.map((r) => h('li', {}, `${r.reviewer}, ${r.role} (${r.area}, ${r.date})`))) : null,
       h('p', { class: 'kf-credits-disclaimer' }, i18n.t('ui.disclaimer')),
     );
     return h('section', { class: 'kf-credits', 'aria-label': i18n.t('ui.credits.title'), 'data-testid': 'credits' }, roll);

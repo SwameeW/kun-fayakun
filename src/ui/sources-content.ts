@@ -20,7 +20,6 @@ import { formatConstant } from './format';
 import { hadithGrading, hadithReference, sunnahUrl } from './scripture';
 import { section } from './sources-page';
 
-const REVIEW_AREAS = ['scripture', 'tafsir', 'hadith', 'science', 'accessibility'] as const;
 const KIND_ORDER: readonly SourceKind[] = [
   'scripture-text',
   'translation',
@@ -48,8 +47,9 @@ function compareVerseKeys(a: VerseKey, b: VerseKey): number {
   return sa - sb || aa - ab;
 }
 
-function reviewText(review: SourceEntry['review'], i18n: I18n): string {
-  if (!review.reviewer) return i18n.t('ui.sources.reviewPending');
+/** Who reviewed a source, once someone has; nothing before (no outside review is required: REVIEW.md). */
+function reviewText(review: SourceEntry['review'], i18n: I18n): string | null {
+  if (!review.reviewer) return null;
   return i18n.t('ui.sources.reviewedBy', {
     reviewer: review.reviewer,
     role: review.role ?? '',
@@ -208,24 +208,10 @@ function sourcesListSection(data: SourcesData, i18n: I18n): HTMLElement {
   return section(i18n.t('ui.sources.list'), ...groups);
 }
 
+/** How the content is checked (REVIEW.md), and any review a person has recorded. */
 function reviewsSection(data: SourcesData, i18n: I18n): HTMLElement {
-  const rows = REVIEW_AREAS.map((area) => {
-    const done = data.sources.reviews.filter((r) => r.area === area);
-    const status =
-      done.length === 0
-        ? h('span', { class: 'kf-src-status' }, i18n.t('ui.sources.reviewPending'))
-        : h(
-            'span',
-            { class: 'kf-src-status is-done' },
-            done.map((r) => i18n.t('ui.sources.reviewedBy', { reviewer: r.reviewer, role: r.role, date: r.date })).join('; '),
-          );
-    return h('tr', {}, h('th', { scope: 'row' }, i18n.t(`ui.sources.area.${area}`)), h('td', {}, status));
-  });
-  return section(
-    i18n.t('ui.sources.reviews'),
-    h('p', {}, i18n.t('ui.sources.reviewsIntro')),
-    h('table', { class: 'kf-src-table' }, h('tbody', {}, ...rows)),
-  );
+  const done = data.sources.reviews.map((r) => h('li', {}, i18n.t('ui.sources.reviewedBy', { reviewer: r.reviewer, role: r.role, date: r.date })));
+  return section(i18n.t('ui.sources.reviews'), h('p', {}, i18n.t('ui.sources.reviewsIntro')), done.length > 0 ? h('ul', {}, ...done) : null);
 }
 
 function licencesSection(data: SourcesData, i18n: I18n): HTMLElement {

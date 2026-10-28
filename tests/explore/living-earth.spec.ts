@@ -129,7 +129,7 @@ test('the prophets’ lands: the 25 with their honorifics, by tradition, named o
   await expect(entries.nth(5)).toContainText('Ibrahim (Abraham), peace be upon him');
   await expect(entries.last()).toContainText('Muhammad ﷺ');
   await expect(prophets).toContainText('Peace be upon them all.');
-  await expect(prophets).toContainText('These notes await review by a qualified scholar.');
+  await expect(prophets).toContainText('it is not evidence of an event');
   await expect(entries.nth(1)).toContainText('No place is marked.');
   await expect(entries.nth(2).getByRole('button', { name: 'Go to Mount Judi' })).toBeVisible();
 

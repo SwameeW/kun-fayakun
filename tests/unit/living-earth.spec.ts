@@ -173,10 +173,10 @@ test('the prophets: the 25 named in the Quran, with honorifics, "by tradition", 
     if (p.sites.length === 0) expect(text, p.id).toMatch(/no place is marked/iu);
   }
   expect(PROPHETS.filter((p) => p.sites.length === 0).map((p) => p.id)).toEqual(['idris', 'ayyub', 'dhul-kifl', 'ilyas', 'al-yasa']);
-  // The section says what the places are, and that they await a scholar's review.
+  // The section says what the places are: where a tradition points, not evidence of an event.
   expect(en['ui.universe.field.prophets']).toMatch(/by tradition/u);
   expect(en['ui.universe.field.prophetsIntro']).toMatch(/Peace be upon them all/u);
-  expect(en['ui.universe.field.prophetsReview']).toMatch(/qualified scholar/u);
+  expect(en['ui.universe.field.prophetsIntro']).toMatch(/not evidence of an event/u);
 });
 
 test('Makkah is framed as a city in its valley: its site and every place near it frame at least MAKKAH_FRAME', () => {

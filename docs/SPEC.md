@@ -298,12 +298,11 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 - All chapters work with forceWebGL: true.
 - Strict TypeScript with zero errors, ESLint clean, Playwright smoke test per chapter.
 
-## 9. REVIEW (required before public release)
+## 9. REVIEW (before each release)
 
-1. Automated: all Arabic checked against Tanzil.
-2. A qualified Islamic scholar signs off on translations, tafsir summaries, honorifics, hadith gradings, and the range-of-views statements (seven heavens, six days, evolution).
-3. An astrophysicist reviews the science layer.
-4. Record names and dates in REVIEW.md and on the Sources page.
+1. Automated: all Arabic checked against Tanzil (`npm run validate`, and `-- --online` before a release).
+2. Everything else is checked within the project, with no outside sign-off (the owner's decision, 2026-10-28: no Islamic scholar's or astrophysicist's sign-off is sought): the commentary only summarises the classical works it cites and labels modern readings as modern; the hadith carry their collection, number and grading; every number in the science is cited; the data pipelines check themselves; and each change is tested and independently reviewed.
+3. REVIEW.md records what those checks cover; the Sources page says how the content is checked.
 
 ## 10. DELIVERABLE (milestones)
 

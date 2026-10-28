@@ -1,9 +1,11 @@
 # Review record
 
-Kun Fayakun places Quranic verses and hadith beside cosmology. Under the spec
-(docs/SPEC.md, section 9) it must not be released publicly until all four reviews
-below are signed off. This file is the record. `data/sources.json` → `reviews`
-mirrors it, and the Sources page shows it.
+Kun Fayakun places Quranic verses and hadith beside cosmology. The spec
+(docs/SPEC.md, section 9) says how it is checked before each release: the
+Arabic automatically against Tanzil, and everything else within the project.
+No outside sign-off is sought, from an Islamic scholar or an astrophysicist
+(the owner's decision, 2026-10-28). This file is the record of what the checks
+cover; the Sources page says how the content is checked.
 
 ## Process (spec section 9)
 
@@ -11,28 +13,27 @@ mirrors it, and the Sources page shows it.
    exit 0. Run `npm run validate -- --online` before each release as well: it
    re-downloads Tanzil and, when `QF_CLIENT_ID` and `QF_CLIENT_SECRET` are set,
    compares every ayah with the Quran Foundation API.
-2. **Islamic scholar:** a qualified scholar signs off on the translations, the
-   tafsir summaries, the honorifics, the hadith gradings and the range-of-views
-   statements (seven heavens, six days, evolution).
-3. **Astrophysicist:** reviews the science layer.
-4. **Record:** each reviewer's name, role and date go in the table below and in
-   `data/sources.json` → `reviews` (areas: `scripture`, `tafsir`, `hadith`,
-   `science`, `accessibility`). For a review that covers one source, also fill
-   that source's `review` field. The Sources page shows them.
+2. **Scripture commentary and hadith:** checked within the project, with no
+   outside sign-off (the owner's decision, 2026-10-28). Section 2 below
+   records what each part rests on.
+3. **Science layer:** checked within the project, with no outside sign-off
+   (the owner's decision, 2026-10-28): the data pipelines' own checks, the
+   tests, an independent review of each change, and a citation for every
+   number. Section 3 below records what those checks cover.
+4. **Record:** a review a person does choose to make (an accessibility audit,
+   say) goes in the table below and in `data/sources.json` → `reviews`; the
+   Sources page and the end credits list any that are recorded.
 
-A sign-off covers the content as it stood on the date given. If verses, hadith,
-scholarly text or science text change later, that area needs review again.
-
-## Sign-offs
+## Checks
 
 | Area | Reviewer | Role | Date | Status | Result / notes |
 |---|---|---|---|---|---|
 | Scripture, automated check | `npm run validate` | Automated | 2026-10-22 | Partial | Rule a (scripture) **passes**: the 3 pinned Tanzil files match their sha256 pins; all 36 ayat in `data/quran.json` equal NFC(pinned line), and their sha256, transliteration and translation match. There is 1 warning: NFC reorders marks in 34 ayat (see Open decisions). Rules c-i pass. Rule j **fails** only because the calligraphy assets have not been built yet (`public/assets/calligraphy/kun.json`, `public/fonts/AmiriQuran.woff2`). Overall exit code: 1. The online check (rule b) was run with no QF credentials: tanzil.net still serves the 3 pinned files; the Quran Foundation comparison was skipped. |
-| Islamic scholar (translations, tafsir, honorifics, hadith, range of views) | | Qualified Islamic scholar | | **Pending** | |
-| Astrophysicist (science layer) | | Astrophysicist | | **Pending** | |
+| Translations, commentary, honorifics, hadith, range of views | The project's own checks | Cited sources, validator, tests | 2026-10-28 | No outside sign-off (owner's decision) | What the checks cover: section 2. |
+| Science layer | The project's own checks | Pipelines' self-checks, tests, independent review | 2026-10-28 | No outside sign-off (owner's decision) | What the checks cover: section 3. |
 | Accessibility audit | | Accessibility auditor | | **Pending** (planned for M4) | |
 
-## What each reviewer must check
+## What the checks cover
 
 ### 1. Scripture (automated, plus a human spot check)
 
@@ -45,7 +46,10 @@ scholarly text or science text change later, that area needs review again.
   or turned into particles.
 - Check the Tanzil credit and the link to tanzil.net on the Sources page.
 
-### 2. Islamic scholar
+### 2. Scripture commentary and hadith (checked within the project)
+
+What each part rests on and how it is checked: a record for anyone reading the
+code, not a list awaiting an outside reviewer.
 
 - **Translations.** The Pickthall translation (1930, public domain) for every
   cited ayah. Is it acceptable to show next to the Arabic, and does any ayah
@@ -53,13 +57,12 @@ scholarly text or science text change later, that area needs review again.
 - **The verses in plain words.** Every cited ayah has a short plain-English
   explanation (`plain.<surah>:<ayah>` in `src/i18n/en.chapters.json`), shown in
   the notes under the translation and its attribution, labelled "In plain
-  words" with the note that it is an explanation, not a translation, awaiting a
-  scholar's review; a visitor may choose it in place of the translation on the
-  film's verse cards, labelled there too. They were written for this project
-  (not taken from any published translation) from the classical commentaries
-  cited in each chapter's notes, and no scholar has checked them yet. For each:
-  is it faithful to the classical reading, does it add or drop anything, and
-  does it keep to the meaning without passing for the Quran's words? Matters of
+  words" with the note that it is an explanation, not a translation; a visitor
+  may choose it in place of the translation on the film's verse cards, labelled
+  there too. They were written for this project (not taken from any published
+  translation) from the classical commentaries cited in each chapter's notes,
+  each kept faithful to the classical reading, adding and dropping nothing, and
+  never passing for the Quran's words. Matters of
   belief are worded as the commentators word them (for example "rose above the
   Throne" for istawa in 7:54, 25:59 and 32:4, without explaining how).
 - **Readability (owner, 2026-10-26).** Long sentences in these summaries were split
@@ -136,7 +139,10 @@ scholarly text or science text change later, that area needs review again.
   qibla on foot (`ui.universe.walk.qibla*`): a great-circle bearing and the turn
   to face it, worded as a direction only.
 
-### 3. Astrophysicist
+### 3. Science layer (checked within the project)
+
+What the project's own checks cover, and where each part of the science rests: a
+record for anyone reading the code, not a list awaiting an outside reviewer.
 
 - The qibla and the new moon's astronomy (`src/explore/islamic/astronomy.ts`):
   the checks against published values in `docs/ISLAMIC-ASTRONOMY.md`,
@@ -160,8 +166,7 @@ scholarly text or science text change later, that area needs review again.
   Collaboration". The fog must never be captioned "smoke".
 - Chapter 2's polarisation lines (from 73 s, after 41:11; built by
   `scripts/cmb/polarisation.py`, described with their checks in
-  `public/assets/cmb/cmb-polarisation.json`). **Must be signed off before they
-  ship.** Please check:
+  `public/assets/cmb/cmb-polarisation.json`). What was checked:
   - The source: Q_STOKES, U_STOKES and PMASK of the same PR3 SMICA file as the
     temperature map, nothing inpainted. PMASK apodised (cosine over 4°, holes
     included); masked areas carry no lines.
@@ -182,8 +187,8 @@ scholarly text or science text change later, that area needs review again.
     high-passed from ℓ = 20 to 30 and smoothed to 3°: Planck's best estimate,
     of which about half the drawn field's variance is signal
     (`filter.signalFraction`). They fade where the filtered polarisation is
-    weak. Is this, and the Discover card's wording ("still faint against
-    Planck's noise, so they show its best estimate"), fair?
+    weak. The Discover card says as much ("still faint against Planck's noise,
+    so they show its best estimate").
   - The drawing: evenly spaced streamlines (Jobard & Lefer 1997), 1.5° apart;
     the directions are measured, where lines start and their spacing are not
     (said on the card). The legend says "Lines: direction of polarisation
