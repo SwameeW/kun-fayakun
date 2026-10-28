@@ -134,7 +134,7 @@ export interface ConstantsFile {
 
 export type SourceKind =
   | 'scripture-text' | 'translation' | 'transliteration' | 'hadith-collection'
-  | 'font' | 'dataset' | 'paper' | 'software' | 'api';
+  | 'font' | 'dataset' | 'paper' | 'software' | 'api' | 'recording';
 
 /** One entry in data/sources.json. The Sources page is generated from this file. */
 export interface SourceEntry {

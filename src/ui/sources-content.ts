@@ -26,6 +26,7 @@ const KIND_ORDER: readonly SourceKind[] = [
   'transliteration',
   'hadith-collection',
   'dataset',
+  'recording',
   'paper',
   'font',
   'software',

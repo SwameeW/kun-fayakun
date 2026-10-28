@@ -305,6 +305,7 @@
   "ui.sources.kind.paper": "Paper",
   "ui.sources.kind.software": "Software",
   "ui.sources.kind.api": "Service",
+  "ui.sources.kind.recording": "Sound recording",
   "ui.fps.readout": "{median} fps median · {low} fps 1% low · {p99} ms p99",
   "timeline.ch00.title": "Before creation",
   "timeline.ch00.stop": "Before time",

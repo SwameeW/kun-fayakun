@@ -1914,6 +1914,176 @@
         "role": null,
         "date": null
       }
+    },
+    {
+      "id": "sound-usgs-lava-lake-2011",
+      "kind": "recording",
+      "title": "Lava lake activity inside Halemaʻumaʻu Crater (Kīlauea summit vent, 14 February 2011)",
+      "author": "USGS Hawaiian Volcano Observatory",
+      "url": "https://www.usgs.gov/media/audio/lava-lake-activity-inside-halemaumau-crater",
+      "version": "MP3, 128 kbps, 44.1 kHz, stereo, 26.7 s (sha256 23c3d75f…b382), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Lava lake sound: USGS Hawaiian Volcano Observatory",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/audio/2011Feb14_Hmm%20vent%20sounds.mp3. The churning is lava releasing gas; the pops are rocks falling into the lake. Chapter 8's lava, slowed a little. Made into public/assets/sound/lava.m4a by scripts/sound/build.py, which records the original's address and sha256: 0.5-18.5 s (the big rockfall at 19.2 s left out), mono, high-passed at 70 Hz, a 16 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-overlook-vent-2012",
+      "kind": "recording",
+      "title": "Videos of lava lake in Halemaʻumaʻu overlook vent (5 October 2012): the vent walls crackling",
+      "author": "USGS Hawaiian Volcano Observatory",
+      "url": "https://www.usgs.gov/media/videos/videos-lava-lake-halemaumau-overlook-vent",
+      "version": "MP4 video, AAC 128 kbps, 44.1 kHz, stereo, 21.4 s (sha256 8b8d04f4…c1d), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Crackling lava vent: USGS Hawaiian Volcano Observatory",
+      "notes": "File: https://usgs-ocapsv2-public-input-media.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/video/multimediaFile-409.mp4. The sound of rock in the vent walls cracking as it heats; only the sound is used. Chapter 8's lava crust and Chapter 10's Big Rip, as short grains. Made into public/assets/sound/crackle.m4a by scripts/sound/build.py, which records the original's address and sha256: the sound taken out with afconvert, 8.1-21.1 s (after the wind on the microphone), mono, high-passed at 200 Hz.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-mudpot-artists-paintpots",
+      "kind": "recording",
+      "title": "Mudpot at Artists' Paintpots: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 9",
+      "author": "Scott Horvath, USGS",
+      "url": "https://www.usgs.gov/media/audio/mudpot-artists-paintpots-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, stereo, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 de8437b8…f823), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Mudpot sound: Scott Horvath, USGS, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Mud%20Pool.mp3. Chapter 8's lava bubbling: the mud's plops slowed an octave, as thick lava's. Made into public/assets/sound/mud.m4a by scripts/sound/build.py, which records the original's address and sha256: 348-380 s of the excerpt (clear of wind bumps on the microphone), mono, high-passed at 80 Hz, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-congress-pool",
+      "kind": "recording",
+      "title": "Congress Pool: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 5",
+      "author": "Scott Horvath, USGS",
+      "url": "https://www.usgs.gov/media/audio/congress-pool-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 83bbeb49…1965), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Congress Pool sound: Scott Horvath, USGS, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Congress%20Pool.mp3. A roiling pool in Norris Geyser Basin; Chapter 6's convection inside a star, slowed more than an octave. Made into public/assets/sound/roil.m4a by scripts/sound/build.py, which records the original's address and sha256: 376-408 s of the excerpt, mono, high-passed at 40 Hz, low-passed at 5 kHz, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-blue-mud-steam-vent",
+      "kind": "recording",
+      "title": "Blue Mud Steam Vent: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 2",
+      "author": "Scott Horvath, USGS",
+      "url": "https://www.usgs.gov/media/audio/blue-mud-steam-vent-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, stereo, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 17696b27…b77), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Steam vent sound: Scott Horvath, USGS, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Blue%20Mud%20Steam%20Vent.mp3. The hiss of gas falling onto a white dwarf (Chapter 6), of dust in the young Sun's disk (Chapter 7) and of the Big Rip (Chapter 10), filtered. Made into public/assets/sound/steam.m4a by scripts/sound/build.py, which records the original's address and sha256: 125-157 s of the excerpt, mono, high-passed at 100 Hz, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-terrace-springs",
+      "kind": "recording",
+      "title": "Terrace Springs: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 11",
+      "author": "Scott Horvath, USGS",
+      "url": "https://www.usgs.gov/media/audio/terrace-springs-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, stereo, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 15de1472…63dc), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Terrace Springs sound: Scott Horvath, USGS, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Terrace%20Springs.mp3. Carbon dioxide bubbling up through a hot spring; Chapter 9's bubbles in the first ocean and its rise to the surface, slowed and heard through water. Made into public/assets/sound/bubbles.m4a by scripts/sound/build.py, which records the original's address and sha256: 70-102 s of the excerpt, mono, its 60 Hz and 120 Hz hum notched, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-commons-light-rain-2016",
+      "kind": "recording",
+      "title": "Light Rain Distant Thunder July 5th 2016",
+      "author": "kvgarlic (Freesound 349454), via Wikimedia Commons",
+      "url": "https://commons.wikimedia.org/wiki/File:Light_Rain_Distant_Thunder_July_5th_2016.wav",
+      "version": "WAV, 32-bit float, 48 kHz, stereo, 110.1 s (sha256 aa85a4aa…51cb), retrieved 2026-10-28",
+      "license": "CC0 1.0 Universal Public Domain Dedication (stated on the Commons page and on the Freesound page, https://freesound.org/people/kvgarlic/sounds/349454/)",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "credit": "Rain: kvgarlic (CC0)",
+      "notes": "File: https://upload.wikimedia.org/wikipedia/commons/b/b6/Light_Rain_Distant_Thunder_July_5th_2016.wav. Chapter 8's rain on the young Earth; the distant thunder and the bird elsewhere in the recording are left out. Made into public/assets/sound/rain.m4a by scripts/sound/build.py, which records the original's address and sha256: 36-68 s, stereo, high-passed at 160 Hz (under the drops on the windscreen), a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-commons-beach-south-carolina",
+      "kind": "recording",
+      "title": "Beach sounds South Carolina (Litchfield Beach, 25 December 2003)",
+      "author": "Anthropic42 (English Wikipedia), via Wikimedia Commons",
+      "url": "https://commons.wikimedia.org/wiki/File:Beach_sounds_South_Carolina.ogg",
+      "version": "Ogg Vorbis, about 137 kbps, 44.1 kHz, stereo, 61.6 s (sha256 d81d1a4e…59d7), retrieved 2026-10-28",
+      "license": "Public domain: 'This work has been released into the public domain by its author, Anthropic42, at the English Wikipedia project. This applies worldwide.' (Commons, PD-user)",
+      "licenseUrl": null,
+      "credit": "Sea: Anthropic42 (public domain)",
+      "notes": "File: https://upload.wikimedia.org/wikipedia/commons/0/04/Beach_sounds_South_Carolina.ogg. Chapter 8's first seas and Chapter 9's sea, near and far. Made into public/assets/sound/surf.m4a by scripts/sound/build.py, which records the original's address and sha256: 15-49 s, stereo, high-passed at 60 Hz, cut at the waves' troughs into a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-nps-thunder",
+      "kind": "recording",
+      "title": "Thunder (NPS Sound Gallery)",
+      "author": "National Park Service, Natural Sounds and Night Skies Division",
+      "url": "https://www.nps.gov/subjects/sound/sounds-thunder.htm",
+      "version": "MP3, 128 kbps, 44.1 kHz, mono, 46.0 s (sha256 54d6a7fc…0a49), retrieved 2026-10-28",
+      "license": "Public domain: 'The files are in the public domain and may be downloaded. Enjoy, and please give the appropriate credit.' (NPS Sound Gallery, https://www.nps.gov/subjects/sound/gallery.htm)",
+      "licenseUrl": "https://www.nps.gov/subjects/sound/gallery.htm",
+      "credit": "Thunder: National Park Service, Natural Sounds and Night Skies Division",
+      "notes": "File: https://www.nps.gov/nps-audiovideo/legacy/mp3/nri/avElement/nri-Thunder.mp3. Never heard as a storm: slowed and darkened into the low swells (a star's collapse and its Type Ia, the Sun's ignition, the giant impact), and played backwards for the Big Crunch's gathering rumble. Made into public/assets/sound/thunder.m4a by scripts/sound/build.py, which records the original's address and sha256: 3.5-33.5 s (after the crack), mono, faded in over 1 s and out over 6 s.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-bolide-2025",
+      "kind": "recording",
+      "title": "May 3, 2025, bolide acoustic signal recorded by infrasound station in Yellowstone National Park",
+      "author": "USGS Yellowstone Volcano Observatory",
+      "url": "https://www.usgs.gov/media/videos/may-3-2025-bolide-acoustic-signal-recorded-infrasound-station-yellowstone-national",
+      "version": "MP4 video, AAC, 44.1 kHz, stereo, 6.0 s (sha256 fcd1c31e…44f7), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Meteor airburst: USGS Yellowstone Volcano Observatory",
+      "notes": "File: https://usgs-ocapsv2-public-input-media.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/video/WY_YNB_01_HDF_10x_2.mp4. The infrasound of a meteor exploding in the atmosphere, sped up ten times into hearing; only the sound is used. Chapter 8's bombardment and giant impact, as distant thuds. Made into public/assets/sound/bolide.m4a by scripts/sound/build.py, which records the original's address and sha256: the sound taken out with afconvert, 3.0-5.5 s, mono, faded in and out.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
     }
   ],
   "reviews": []
