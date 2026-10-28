@@ -15,9 +15,12 @@
  *   illustrative drift: real weather moves every way). Their tops are shaded as relief (thicker cloud
  *   stands higher), thicker toward the limb where the eye looks through more of them, and they cast
  *   their shadows on the ground beside them, offset away from the Sun by their height (cloudShadows).
- * - The night side: lit faintly by the Moon from where it stands, as much as its phase gives, and by
- *   a faint glow of the night sky, both shown far brighter than they are (as the eye adapted to the
- *   dark sees a moonlit landscape) so the dark disc always reads against the stars.
+ * - The night side: black, but for the city lights, whenever sunlit ground is in view, as a camera
+ *   exposed for the day records it (moonlight is about 2 millionths of sunlight). Only when the night
+ *   fills the view (darkAdaptation: the lit share of the visible disc under a few percent) is it lit
+ *   faintly by the Moon from where it stands, as much as its phase gives, and by a faint glow of the
+ *   night sky, both shown far brighter than they are (as the eye adapted to the dark sees a moonlit
+ *   landscape) so the dark disc reads against the stars; the air's airglow shows with them.
  * - Close up, below the maps' texels: illustrative fine detail. Land and cloud edges take octaves
  *   of noise scaled to the bound map's texel, each fading in only once its features span a few
  *   pixels (never seen from afar, never shimmering), and the maps' own texel-scale contrast is
@@ -73,6 +76,11 @@ const CITY = { tint: [1, 0.72, 0.42], strength: 0.9 } as const;
  * night sky's own faint glow on everything, moon or not.
  */
 const NIGHT = { moonlight: 0.03, glow: 0.006, tint: [0.72, 0.82, 1] } as const;
+/**
+ * The eye's adaptation to the dark (darkAdaptation): full while the lit share of the visible disc is
+ * under `from`, none above `to`; it follows a change of view over `seconds` (a cut is followed at once).
+ */
+const DARK = { from: 0.01, to: 0.06, seconds: 1 } as const;
 /**
  * Fine detail: amplitudes of the land's octaves (albedo, as a share), of the relief they add (radii),
  * of the cloud edges' erosion (cover units), the sharpening of the maps' texel-scale contrast, and how
@@ -140,6 +148,36 @@ export function fineDetailShown(detail: ExploreDetail, altitudeRadii: number, px
   return (Math.max(0, altitudeRadii) / Math.max(pxPerRadian, 1)) * 16 * f < 0.55;
 }
 
+/**
+ * How much of the Earth seen from `eye` (its own frame, planet radii) is in sunlight (`sun`, a unit
+ * direction): the share of the visible disc's diameter toward the Sun that lies on the day side, in
+ * the view's own perspective. From afar it is the phase's illuminated fraction, (1 + cos phase) / 2;
+ * from low orbit it counts only the cap in view, so a view of the night side alone gives 0 even when
+ * the phase angle is under 90 degrees.
+ */
+export function litShare(eye: { x: number; y: number; z: number }, sun: { x: number; y: number; z: number }): number {
+  const d = Math.max(Math.hypot(eye.x, eye.y, eye.z), 1 + 1e-6);
+  const cosPhase = Math.min(1, Math.max(-1, (eye.x * sun.x + eye.y * sun.y + eye.z * sun.z) / d));
+  // The visible cap's angular radius about the point below the eye, and where along its diameter
+  // toward the Sun the terminator falls (angles from that point, positive sunward).
+  const cap = Math.acos(1 / d);
+  const terminator = Math.acos(cosPhase) - Math.PI / 2;
+  if (terminator >= cap) return 0;
+  // A point that far from the one below the eye, as the view projects it (the tangent of its angle off the centre).
+  const projected = (angle: number): number => Math.sin(angle) / (d - Math.cos(angle));
+  const edge = projected(cap);
+  return Math.min(1, (edge - projected(Math.max(terminator, -cap))) / (2 * edge));
+}
+
+/**
+ * The eye's adaptation to the dark for a lit share (litShare): 1 while the night fills the view, 0
+ * once a few percent of the disc is in sunlight, as a camera exposed for the day sees the night side.
+ */
+export function darkAdaptation(share: number): number {
+  const t = Math.min(1, Math.max(0, (share - DARK.from) / (DARK.to - DARK.from)));
+  return 1 - t * t * (3 - 2 * t);
+}
+
 export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air: AirModel, table: { texture: Texture } | null, initial: ExploreDetail, tiles: EarthTiles | null = null): ExploreEarth {
   const object = new Group();
   object.name = 'explore-earth';
@@ -152,10 +190,14 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   const uEye = uniform(new Vector3(0, 0, 3));
   const uMoon = uniform(new Vector3(0, 0, 1));
   const uMoonLight = uniform(0);
+  /** The eye's adaptation to the dark (darkAdaptation), eased: the night side's moonlight and glow, and the airglow, show only with it. */
+  const uDark = uniform(0);
   /** The clouds' drift as a turn of the noise's frame about the pole (cos, sin), so their detail moves with them. */
   const uDriftCos = uniform(1);
   const uDriftSin = uniform(0);
-  const airUniforms: AirUniforms = { eye: uEye, sun: uSun, light: uLight };
+  const airUniforms: AirUniforms = { eye: uEye, sun: uSun, light: uLight, airglow: uDark };
+  /** The illustrative clock at the last frame (frame.time, seconds), null before the first. */
+  let lastTime: number | null = null;
   const slot = {
     day: textures.slot('earth', 'day'),
     water: textures.slot('earth', 'water'),
@@ -174,11 +216,14 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   };
   /** The sky's diffuse light on a surface (half the air's scattered sunlight comes down), bluish. */
   const skyFill = (mu: FloatNode): Vec3Node => float(1).sub(exp(tau.negate())).mul(0.5).mul(clamp(mu.add(0.1), 0, 1));
-  /** The night side's light on a surface of normal `normal`: moonlight from the Moon's direction and the sky's glow. */
+  /**
+   * The night side's light on a surface of normal `normal`: moonlight from the Moon's direction and the
+   * sky's glow, both only as far as the eye is adapted to the dark.
+   */
   const nightLight = (normal: Vec3Node, nDotL: FloatNode, wrap: number): Vec3Node => {
     const dark = smoothstep(0.04, -0.14, nDotL);
     const moon = clamp(dot(normal, uMoon).add(wrap).div(1 + wrap), 0, 1).mul(uMoonLight);
-    return vec3(...NIGHT.tint).mul(moon.add(NIGHT.glow).mul(dark));
+    return vec3(...NIGHT.tint).mul(moon.add(NIGHT.glow).mul(dark).mul(uDark));
   };
 
   const cloudCoords = (c: MapCoords): MapCoords => shiftCoords(c, uTime.mul(CLOUD_DRIFT));
@@ -462,6 +507,16 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       uMoonLight.value = NIGHT.moonlight * frame.moonLit;
       uEye.value.copy(cameraWorld).applyMatrix4(inverse);
       object.visible = frame.light > 1e-3;
+      // This frame's step of the illustrative clock (none when it stands still, as with reduced
+      // motion; a step back, the explorer reopened, is no step).
+      const dt = lastTime === null ? 0 : frame.time - lastTime;
+      lastTime = frame.time;
+      // The eye adapts to the dark only while the night fills the view; a cut (or a clock that stood
+      // still, as with reduced motion) takes the new view's adaptation at once.
+      const target = darkAdaptation(litShare(uEye.value, uSun.value));
+      uDark.value = dt > 0 && dt <= 1 ? uDark.value + (target - uDark.value) * (1 - Math.exp(-dt / DARK.seconds)) : target;
+      // With no airglow to show, its shell is not drawn at all.
+      for (const m of currentAir.meshes) if (m.name === 'explore-earth-airglow') m.visible = uDark.value > 1e-3;
     },
     setMarks(list) {
       marks.set(list);

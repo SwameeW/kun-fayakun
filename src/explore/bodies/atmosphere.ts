@@ -24,9 +24,11 @@
  *
  * The night side's airglow: atomic oxygen's green line, from a thin layer at its measured height
  * (data/constants.json earth.airglow.greenLine.height), strongest where the eye looks along the layer:
- * a faint green band above the night limb, so the dark disc always has an edge. Its true radiance is
- * far below anything an exposure set for the day side records; it is shown as long exposures from
- * orbit show it (illustrative strength and width).
+ * a faint green band above the night limb, so the dark disc has an edge. Its true radiance is far
+ * below anything an exposure set for the day side records, so it shows only as the eye adapts to the
+ * dark (the Earth's own measure, AirUniforms.airglow: while the night fills the view) and only where
+ * the layer itself is in darkness, the Sun some degrees below its horizon; it is then shown as long
+ * exposures from orbit show it (illustrative strength and width).
  *
  * Everything is in the Earth's frame in planet radii, so the shell is right at any distance and in
  * scaled space. Sizes and coefficients are the cited reference atmosphere (../render/air).
@@ -59,6 +61,8 @@ export interface AirUniforms {
   readonly sun: UniformNode<'vec3', Vector3>;
   /** Sunlight (1 at 1 au). */
   readonly light: UniformNode<'float', number>;
+  /** How far the eye is adapted to the dark, 0 to 1: the airglow's share (without it, all of it). */
+  readonly airglow?: UniformNode<'float', number>;
 }
 
 /** Where a ray from `eye` along `ray` enters and leaves the air, and whether it meets the ground. */
@@ -120,8 +124,9 @@ const AIRGLOW = { width: 4 / 6371, colour: [0.42, 1, 0.48], strength: 0.9 } as c
 
 /**
  * The airglow the eye sees along `ray`: the layer's column, two crossings for a ray grazing below it,
- * one for a ray that meets the ground, strongest along the layer; only where the layer is in the
- * night (the day's sky swamps it).
+ * one for a ray that meets the ground, strongest along the layer; only where the layer is in real
+ * darkness (sunlit, about 95 km up, until the Sun is some 10 degrees below the horizon there, and the
+ * day's sky swamps it).
  */
 function airglow(air: AirModel, eye: Vec3Node, ray: Vec3Node, sun: Vec3Node, hits: Node<'bool'>): Vec3Node {
   const rL = air.airglow;
@@ -135,7 +140,7 @@ function airglow(air: AirModel, eye: Vec3Node, ray: Vec3Node, sun: Vec3Node, hit
   const crossing = float(Math.sqrt(2 * Math.PI) * s * rL).div(sqrt(max(float(rL * rL).sub(t2), 0).add(2.5 * rL * s)));
   const above = exp(max(t.sub(rL), 0).div(s).pow(2).mul(-0.5));
   const column = crossing.mul(select(hits, float(1), float(2))).mul(above).mul(ahead);
-  const night = smoothstep(0.12, -0.08, dot(closest.div(max(t, 1e-6)), sun));
+  const night = smoothstep(-0.05, -0.2, dot(closest.div(max(t, 1e-6)), sun));
   return vec3(...AIRGLOW.colour).mul(column.mul(night).mul(AIRGLOW.strength));
 }
 
@@ -325,7 +330,8 @@ export function createAir(air: AirModel, model: 'scatter' | 'chord', steps: numb
   night.blendSrc = OneFactor;
   night.blendDst = OneFactor;
   const { ray, hits } = rayThroughShell(air, u.eye);
-  night.colorNode = airglow(air, u.eye, ray, u.sun, hits);
+  const glow = airglow(air, u.eye, ray, u.sun, hits);
+  night.colorNode = u.airglow ? glow.mul(u.airglow) : glow;
   night.opacityNode = float(1);
   const glowMesh = new Mesh(glowGeometry, night);
   glowMesh.name = 'explore-earth-airglow';
