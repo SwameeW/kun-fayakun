@@ -105,7 +105,10 @@ its own and has no real baseline.
   - Follow it with the camera: any body. The camera flies to it and frames it, then keeps it
     framed as it moves, never below any body's surface. It goes on with the survivor when the body
     merges, with the largest of what is left when it breaks up, with the first piece when the tides
-    tear it apart; removed, the camera stays where it is, flying freely.
+    tear it apart, also when that happens while the camera is still flying to it; removed, the
+    camera stays where it is, flying freely. A body the camera is not on changes nothing. Leaving
+    the laboratory, the camera stays by the nearest real body the experiment showed (in a laboratory
+    of its own, the Sun its star stood in for) as the real bodies go back to the explorer's date.
   - Tick several bodies to duplicate or remove them together.
   - Undo and redo any edit (Ctrl or Cmd + Z, with Shift, or Ctrl + Y).
 - **Add.**
@@ -569,7 +572,8 @@ no external integrator's fixture (REBOUND) is pinned yet.
   the camera following the breakup's first piece of debris as a further phase (2026-10-28, the
   frame-rate specs run alone, nothing else on the GPU): 59.88 fps and a 99th percentile of 16.8 ms at
   High and at Low, on WebGPU and on forced WebGL2, in that phase and every other; the heap after a
-  forced collection 23.9 to 25.0 MB over the round trips, level within each run.
+  forced collection 23.9 to 25.0 MB over the round trips, level within each run. Run alone again
+  after the review's fixes (the same day): the same numbers in every phase, the heap 23.9 to 24.9 MB.
 
 ## How experiments are drawn
 
@@ -681,7 +685,7 @@ clock, read back through `window.__kf.universe.labDraw()`:
 | An external reference: REBOUND 5.2.2's IAS15 over a year, within measured bounds, converging as the step squared | `tests/unit/rebound.spec.ts` (fixture `tests/fixtures/rebound/`, script `scripts/rebound/`) |
 | The two-body drift: a quarter turn, Kepler's equation solved independently, a thousand periods, hyperbolas, reversibility | `tests/unit/kepler.spec.ts` |
 | Rings and belts: they pull nothing (bit for bit); a ring about the Earth stays a ring under hour-long steps; a belt particle against a fine reference; replay through save and load; carried over when the primary merges; refused when impossible; a gravitating ring's bodies | `tests/unit/swarms.spec.ts`; in the browser `tests/explore/lab-tools.spec.ts` |
-| The tools in the browser: the inspector's numbers, held edits, rename, hold, undo and redo; a push, elements, rotation, accuracy, encounters, Lagrange points and L4; the palette, placing with the pointer, dragging the arrow; frames, measurements, a chart, the library, a link that reopens it, several bodies at once; the camera following the laboratory's own bodies (by the keyboard; handed on through a breakup and a merger; a breakup's first piece of debris kept within 5 per cent of its framing for ten seconds of its flight and the camera above every body's surface each frame; one removed let go of where the camera is; the two-body laboratory on its star with the Earth's tiles aimed at nothing, its planet followed and measured, the real bodies flown to again after leaving) | `tests/explore/lab-tools.spec.ts` |
+| The tools in the browser: the inspector's numbers, held edits, rename, hold, undo and redo; a push, elements, rotation, accuracy, encounters, Lagrange points and L4; the palette, placing with the pointer, dragging the arrow; frames, measurements, a chart, the library, a link that reopens it, several bodies at once; the camera following the laboratory's own bodies (by the keyboard; handed on through a breakup and a merger; a breakup's first piece of debris kept within 5 per cent of its framing for ten seconds of its flight and the camera above every body's surface each frame; one removed let go of where the camera is; the two-body laboratory on its star with the Earth's tiles aimed at nothing, its planet followed and measured, the real bodies flown to again after leaving; with motion on: handed on through a breakup during the trip to it, the flight keys flying on by the planet, free flight beside a hidden world, leaving with the camera's distance from the Sun kept; one of the ten removed that the camera is not on changing nothing) | `tests/explore/lab-tools.spec.ts` |
 | Predictions: the live state untouched, a closed orbit, stopping at a merger, a moon about its planet | the same |
 | Pause stops the physics, not just the drawing | `tests/explore/lab.spec.ts` |
 | Destroying a selected or followed body leaves no broken camera | the same (a merged planet; the Earth removed under the camera) |
