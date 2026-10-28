@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
 import type { PhysicalFile } from '../../src/astro/physical';
 import { DEFAULT_INTEGRATOR, Engine, ENGINE_VERSION, SCHEMA_VERSION, stateFrom, type BodySpec } from '../../src/sim/engine';
 import { impactOutcome, impactParameter, LS2012, type ImpactBody } from '../../src/sim/impacts';
-import { diagnostics, drift, MAX_BODIES, MAX_DEBRIS, resolveContacts, step, TIDAL, type ContactEvent, type SimState } from '../../src/sim/nbody';
+import { diagnostics, drift, heir, MAX_BODIES, MAX_DEBRIS, resolveContacts, step, TIDAL, type ContactEvent, type SimState } from '../../src/sim/nbody';
 
 const physical = JSON.parse(readFileSync(new URL('../../public/assets/jpl/physical.json', import.meta.url), 'utf8')) as PhysicalFile;
 const mean = (r: readonly number[]): number => r.reduce((a, b) => a + b, 0) / r.length;
@@ -243,4 +243,36 @@ test('tidal disruption: a moon inside its planet’s fluid Roche limit is torn i
   expect(2 * Math.PI - Math.max(...gaps)).toBeGreaterThan(1);
   // Its dust neither feels nor strikes its pieces: most of it is still there, about the Earth.
   expect((s.swarms[0]?.pos.length ?? 0) / 3).toBeGreaterThan(TIDAL.dust / 2);
+});
+
+test('the body that goes on for one a collision or the tides ended (the camera follows it): a merger’s survivor, a breakup’s largest remnant, a torn moon’s first piece', () => {
+  const radiusOf = (s: SimState) => (id: string): number => s.radius[s.ids.indexOf(id)] ?? 0;
+  // Slower than the mutual escape speed: the impactor merges into the Earth.
+  const o = impactOutcome(EARTH, MARS, 1, 0);
+  const slow = strike(0.5 * o.vEscPrime, 0);
+  const merged: ContactEvent[] = [];
+  for (let k = 0; k < 100 && merged.length === 0; k += 1) step(slow, 30, [], merged);
+  expect(merged[0]?.kind).toBe('merge');
+  expect(merged[0] && heir(merged[0], radiusOf(slow))).toBe('earth');
+  // At 40 km/s, erosion: the impactor goes, the Earth's remnant (its id kept) is the largest of what is left.
+  const fast = strike(40, 2000);
+  const broken: ContactEvent[] = [];
+  expect(resolveContacts(fast, 120, null, broken)).toBe(true);
+  const e = broken[0];
+  expect(e?.kind).toBe('fragment');
+  expect(e?.absorbed).toBe('impactor');
+  expect(e && heir(e, radiusOf(fast))).toBe('earth');
+  expect(Math.max(...(e?.created ?? []).map(radiusOf(fast)))).toBeLessThan(radiusOf(fast)('earth'));
+  // A body that breaks up into pieces larger than what kept the id (as a synthetic case): the largest piece goes on.
+  expect(heir({ kind: 'fragment', survivor: 'a', created: ['b', 'c'] }, (id) => ({ a: 10, b: 30, c: 20 })[id] ?? 0)).toBe('b');
+  // The Moon inside the Earth's Roche limit: torn into equal pieces, the first goes on (never the Earth that tore it).
+  const MOON: ImpactBody = { gm: physical.gmKm3S2.Moon, radiusKm: mean(physical.bodies.Moon.radiiKm) };
+  const v = Math.sqrt((EARTH.gm + MOON.gm) / 15_000);
+  const tidal = stateFrom([spec('earth', EARTH, [0, 0, 0], [0, 0, 0]), spec('moon', MOON, [15_000, 0, 0], [0, v, 0])]);
+  const torn: ContactEvent[] = [];
+  step(tidal, 60, [], torn);
+  expect(torn[0]?.kind).toBe('disrupt');
+  expect(torn[0]?.survivor).toBe('earth');
+  expect(torn[0] && heir(torn[0], radiusOf(tidal))).toBe(torn[0]?.created[0]);
+  expect(torn[0]?.created[0]).toBe('moon-piece-1');
 });

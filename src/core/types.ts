@@ -485,8 +485,13 @@ export const BODY_IDS: readonly BodyId[] = ['sun', 'mercury', 'venus', 'earth', 
  * "w:Io", "w:1P/Halley").
  */
 export type WorldId = `w:${string}`;
-/** What the explorer's camera can orbit: one of its ten bodies, or a world. */
-export type FocusId = BodyId | WorldId;
+/**
+ * A body of the laboratory's own (src/explore/lab: a rock, a piece, a planet or star of its own, not one
+ * of the ten), as 'lab:' and its id in the experiment ("lab:debris-12-1", "lab:planet").
+ */
+export type LabFocusId = `lab:${string}`;
+/** What the explorer's camera can orbit: one of its ten bodies, a world, or (in an experiment) a body of the laboratory's own. */
+export type FocusId = BodyId | WorldId | LabFocusId;
 export type WorldKind = 'moon' | 'dwarf' | 'asteroid' | 'comet';
 
 /**
@@ -515,7 +520,7 @@ export interface ExperienceModule {
 
 /** Where the explorer's camera is and what it is doing, for its UI and the tests. */
 export interface UniverseView {
-  /** The body the camera orbits (during a flight: the body it is flying to): one of the ten, or a world (`worlds`). */
+  /** The body the camera orbits (during a flight: the body it is flying to): one of the ten, a world (`worlds`), or a body of the laboratory's own (`lab:` and its id). */
   focus: FocusId;
   /** True while the camera flies from one body to another. */
   travelling: boolean;
@@ -1364,6 +1369,8 @@ export type LabEditResult = { ok: true; created: string[] } | { ok: false; reaso
 export type LabCommand =
   | { kind: 'start'; seed: 'solar' | 'two' | 'three' }
   | { kind: 'select'; id: string | null }
+  /** The camera follows a body (flies to it and frames it, then keeps it framed as it moves); one of the ten as the explorer's own focus. */
+  | { kind: 'follow'; id: string }
   | { kind: 'mass'; id: string; massKg: number; keep?: 'radius' | 'density' }
   | { kind: 'radius'; id: string; radiusKm: number; keep: 'mass' | 'density' }
   | { kind: 'density'; id: string; densityKgM3: number; keep: 'mass' | 'radius' }

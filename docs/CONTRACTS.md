@@ -659,11 +659,30 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   laboratory, its temperatures on request); `Bodies.setMarks(body, marks)` draws the laboratory's craters
   (`src/explore/bodies/marks.ts`) on the Earth, the Moon, Mercury and Mars; `Lab.marks(body)` gives
   them, placed in each world's own frame at the moment of impact (`SolarSystem.basisAt`). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
-  `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
+  `two`, `three`), `select`, `follow`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
   `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`, `copy` (the
   scenario as a share link's data in `UniverseLab.copy`, for the assistant's background comparisons:
-  never shown, the status line unchanged). Following a
-  world is the explorer's own focus. The time machine's commands drive the experiment's clock
+  never shown, the status line unchanged). Following (`follow`, the inspector's `lab-follow`, for
+  every body): one of the ten is the explorer's own focus; any other is a body of the camera's own,
+  `lab:<id>` (`LabFocusId`), flown to and framed, then kept framed as it moves. `Lab.navBodies()`
+  gives them (where drawn, their radius as bound, a floor of 2 per cent of it, as the small worlds'),
+  and `Lab.navRevision` moves when they change. The explorer keeps one `NavWorld` for its life (the
+  input's handlers hold it) and lists it again in place when they change or the ten the experiment
+  hides change: in an experiment it holds the ten it shows (the Sun always, which a laboratory of its
+  own's star stands in for) and its own bodies, never a hidden one (at the experiment's epoch) nor the
+  small worlds (not drawn). The camera keeps out of every one, and the near plane clear of them
+  (`Lab.nearestKm`); a trip whose framing would end inside another body is turned to that body's far
+  side (`Navigator.clearOf`: a piece beside its remnant is seen past it). A followed body
+  that merges hands the camera to its survivor, one that breaks up to the largest of what is left, one
+  torn apart to its first piece (`heir`, `src/sim/nbody.ts`, through `Lab.takeRefocus(focus)`), also
+  when it goes while the camera is still flying to it (the trip stops and the camera flies on from
+  there: `Navigator.release` keeps what was asked for after it); one removed is let go of where the
+  camera is (`Navigator.release`: free flight, at rest). A body the camera is not on changes nothing;
+  one of the ten removed under it sends it to the Sun. Leaving the laboratory, the camera is let go of
+  by the nearest of the ten it showed (in a laboratory of its own, the Sun), the real bodies are put
+  back at the explorer's date at once and the camera goes with that one, so a trip the address asks
+  for starts from where it is. A goto in the experiment moves the camera with the body it follows, in
+  one step, the framing kept. The time machine's commands drive the experiment's clock
   through the same reducer: backwards replays its history and stops at the fork (`UniverseTime.edge`
   'start'); `now` and `date` go to that moment (from the fork to `LAB_DATE_SPAN_S` after it;
   `UniverseLab.seekingS`; a run request stops it where it is: Pause there, a rate or Reverse on from
@@ -1006,9 +1025,12 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   (Ultra) asteroids; the files are fetched as far as the level needs. At Low the sky's glow is not
   drawn and the worlds' maps are the 1024-wide set; a map is fetched only once its world's disc is 24
   px across, and let go after a minute not drawn.
-- **Focus.** `FocusId = BodyId | WorldId` (`WorldId = \`w:${string}\``, the catalogue's name:
-  `w:Ceres`, `w:Io`, `w:1P/Halley`). The navigator, trips, `UniverseView.focus` and `from`, and
-  `UniversePose.body` take either. A world has no place beneath the camera (no saved view, no walk) and
+- **Focus.** `FocusId = BodyId | WorldId | LabFocusId` (`WorldId = \`w:${string}\``, the catalogue's name:
+  `w:Ceres`, `w:Io`, `w:1P/Halley`; `LabFocusId = \`lab:${string}\``, a body of an experiment's own,
+  orbital laboratory above). The navigator, trips, `UniverseView.focus` and `from`, and
+  `UniversePose.body` take any of them; the host of a laboratory's body is the Sun, so the ten bodies'
+  places, sizes and specs are never read with one (two lookups in tables of the ten, the spin hold and
+  the map credits, are given it as a key they lack and give nothing). A world has no place beneath the camera (no saved view, no walk) and
   no notes; the readout keeps its planet's illustrative items while the planet is in view and more than
   40 px in radius; its host (`Worlds.host`: a moon's planet, the Sun for the rest, Pluto's moons too)
   is what the ten bodies' code reads, while `UniverseWorlds.focus.host` is its own (Charon's is

@@ -23,9 +23,13 @@
  * cut instead, and the lens and the bank stay still; Esc before the cut calls it off (the light
  * comes back where the visitor was). Entering, the camera pushes in gently on the first body, which
  * already fills much of the view (none with reduced motion).
+ *
+ * In an experiment the laboratory's own bodies are bodies here too ('lab:' ids, ./lab): followed and
+ * framed as the ten are, the camera kept out of every one. A body that goes with nothing to go on with
+ * (removed) is let go of (release): the camera stays where it is, flying freely.
  */
 
-import type { FocusId } from '../core/types';
+import type { FocusId, LabFocusId } from '../core/types';
 import {
   angles,
   clamp,
@@ -65,6 +69,9 @@ export interface ViewPreference {
   /** The latitude is taken on the side of the equator the Sun lights (Saturn: its rings' lit face). */
   litFace: boolean;
 }
+
+/** A body of the laboratory's own: 'lab:' and its id in the experiment. */
+export const isLabBody = (id: FocusId): id is LabFocusId => id.startsWith('lab:');
 
 export interface NavBody {
   readonly id: FocusId;
@@ -429,6 +436,19 @@ export class Navigator {
     );
   }
 
+  /**
+   * A framing direction whose end lies inside another body (a laboratory's piece beside the body it broke
+   * from) turned to that body's far side: the camera looks past the body at the one it came from.
+   */
+  private clearOf(world: NavWorld, body: NavBody, distanceKm: number, dir: Km): Km {
+    const { a } = this.scratch;
+    for (const other of world.all) {
+      set(a, body.position.x + dir.x * distanceKm - other.position.x, body.position.y + dir.y * distanceKm - other.position.y, body.position.z + dir.z * distanceKm - other.position.z);
+      if (other !== body && len(a) < this.minDistance(other)) return normalize(sub(body.position, other.position, dir));
+    }
+    return dir;
+  }
+
   /** Starts at a body: with `approach`, a glide in from far away (the entry), else straight at its framing distance. */
   begin(world: NavWorld, id: FocusId, approach: boolean): void {
     const body = world.body(id);
@@ -478,7 +498,7 @@ export class Navigator {
     }
     const from = world.body(this.focus);
     const incoming = normalize(sub(this.last.position, to.position, km()));
-    const endDir = this.preferredDirection(world, to, incoming, km());
+    const endDir = this.clearOf(world, to, framing, this.preferredDirection(world, to, incoming, km()));
     if (this.reducedMotion) {
       const startDir = normalize(sub(this.last.position, from.position, km()));
       const startAltitude = Math.max(1e-6, len(sub(this.last.position, from.position, this.scratch.a)) - from.radiusKm);
@@ -559,6 +579,26 @@ export class Navigator {
     this.resetLens();
     this.modeValue = 'flight';
     return true;
+  }
+
+  /**
+   * Lets go of the body in view once it has gone (a laboratory's body removed, or the experiment left):
+   * the camera stays exactly where it is, at rest in free flight by the nearest body. A trip coasts to
+   * rest as Esc leaves it, and a body asked for after it (a merger's survivor) is flown to from there; a
+   * reduced-motion cut first finishes (call again after, so the light never steps). With `now` (the
+   * experiment left: the whole scene changes at once anyway) a cut ends too, and nothing asked for is kept.
+   */
+  release(world: NavWorld, now = false): void {
+    const kind = this.trip?.kind;
+    if (!now && (kind === 'cut' || kind === 'uncut')) return;
+    const next = now ? null : this.queued;
+    if (kind === 'travel') this.cancelTravel(world);
+    else {
+      this.trip = null;
+      this.queued = null;
+      this.beginFlight(world);
+    }
+    if (next) this.flyTo(world, next);
   }
 
   /** Leaves free flight to orbit the body the camera is nearest (O, or the interface's button). */

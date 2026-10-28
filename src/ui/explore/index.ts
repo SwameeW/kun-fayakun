@@ -80,7 +80,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     const line = (event as CustomEvent<unknown>).detail;
     if (typeof line === 'string') toast.show(line);
   });
-  const hud = createFlightHud(app, f, (id) => (id.startsWith('w:') ? 'ui.universe.surface' : SURFACE_KEYS[id as BodyId]), () => element);
+  const hud = createFlightHud(app, f, (id) => (id.includes(':') ? 'ui.universe.surface' : SURFACE_KEYS[id as BodyId]), () => element);
   // The suit's readout comes with its own chunk, the first time a walk is asked for (or refused).
   const walkSlot = h('div', { hidden: true });
   let walkHud: WalkHud | null = null;
@@ -288,6 +288,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
 
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
+    f.lab = view.lab;
     hud.update(view);
     // The readout's notes changed (a line more or less across a phone's top): what covers the view is
     // measured again at once, so no name is laid out a frame under it.

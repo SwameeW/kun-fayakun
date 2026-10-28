@@ -102,7 +102,13 @@ its own and has no real baseline.
     it holds; the checks say so.
   - Duplicate it: a new id, sixty degrees ahead on its orbit, or the next free place.
   - Remove it (the Sun stays: it is the scene's light).
-  - Follow it with the camera (the ten worlds).
+  - Follow it with the camera: any body. The camera flies to it and frames it, then keeps it
+    framed as it moves, never below any body's surface. It goes on with the survivor when the body
+    merges, with the largest of what is left when it breaks up, with the first piece when the tides
+    tear it apart, also when that happens while the camera is still flying to it; removed, the
+    camera stays where it is, flying freely. A body the camera is not on changes nothing. Leaving
+    the laboratory, the camera stays by the nearest real body the experiment showed (in a laboratory
+    of its own, the Sun its star stood in for) as the real bodies go back to the explorer's date.
   - Tick several bodies to duplicate or remove them together.
   - Undo and redo any edit (Ctrl or Cmd + Z, with Shift, or Ctrl + Y).
 - **Add.**
@@ -562,7 +568,12 @@ no external integrator's fixture (REBOUND) is pinned yet.
   the review pass (2026-10-27, other worktrees' browser tests running on the same machine): 59.88 fps and
   a 99th percentile of 16.8 ms at High and at Low in every phase (quiet, the ring and belt with the effects
   switched off and on, the breakup); the GPU's geometry and texture counts level over three round trips
-  (33 and 62 at High), and the heap after a forced collection level (23.2, 23.4 and 22.3 MB).
+  (33 and 62 at High), and the heap after a forced collection level (23.2, 23.4 and 22.3 MB). With
+  the camera following the breakup's first piece of debris as a further phase (2026-10-28, the
+  frame-rate specs run alone, nothing else on the GPU): 59.88 fps and a 99th percentile of 16.8 ms at
+  High and at Low, on WebGPU and on forced WebGL2, in that phase and every other; the heap after a
+  forced collection 23.9 to 25.0 MB over the round trips, level within each run. Run alone again
+  after the review's fixes (the same day): the same numbers in every phase, the heap 23.9 to 24.9 MB.
 
 ## How experiments are drawn
 
@@ -674,7 +685,7 @@ clock, read back through `window.__kf.universe.labDraw()`:
 | An external reference: REBOUND 5.2.2's IAS15 over a year, within measured bounds, converging as the step squared | `tests/unit/rebound.spec.ts` (fixture `tests/fixtures/rebound/`, script `scripts/rebound/`) |
 | The two-body drift: a quarter turn, Kepler's equation solved independently, a thousand periods, hyperbolas, reversibility | `tests/unit/kepler.spec.ts` |
 | Rings and belts: they pull nothing (bit for bit); a ring about the Earth stays a ring under hour-long steps; a belt particle against a fine reference; replay through save and load; carried over when the primary merges; refused when impossible; a gravitating ring's bodies | `tests/unit/swarms.spec.ts`; in the browser `tests/explore/lab-tools.spec.ts` |
-| The tools in the browser: the inspector's numbers, held edits, rename, hold, undo and redo; a push, elements, rotation, accuracy, encounters, Lagrange points and L4; the palette, placing with the pointer, dragging the arrow; frames, measurements, a chart, the library, a link that reopens it, several bodies at once | `tests/explore/lab-tools.spec.ts` |
+| The tools in the browser: the inspector's numbers, held edits, rename, hold, undo and redo; a push, elements, rotation, accuracy, encounters, Lagrange points and L4; the palette, placing with the pointer, dragging the arrow; frames, measurements, a chart, the library, a link that reopens it, several bodies at once; the camera following the laboratory's own bodies (by the keyboard; handed on through a breakup and a merger; a breakup's first piece of debris kept within 5 per cent of its framing for ten seconds of its flight and the camera above every body's surface each frame; one removed let go of where the camera is; the two-body laboratory on its star with the Earth's tiles aimed at nothing, its planet followed and measured, the real bodies flown to again after leaving; with motion on: handed on through a breakup during the trip to it, the flight keys flying on by the planet, free flight beside a hidden world, leaving with the camera's distance from the Sun kept; one of the ten removed that the camera is not on changing nothing) | `tests/explore/lab-tools.spec.ts` |
 | Predictions: the live state untouched, a closed orbit, stopping at a merger, a moon about its planet | the same |
 | Pause stops the physics, not just the drawing | `tests/explore/lab.spec.ts` |
 | Destroying a selected or followed body leaves no broken camera | the same (a merged planet; the Earth removed under the camera) |
@@ -687,7 +698,7 @@ clock, read back through `window.__kf.universe.labDraw()`:
 | Drawn as what it holds: a torn Moon's pieces as lit rocks at their size, dark in the shadow, meshes of the right projected size at three window sizes; grey dust no brighter than its rock, spreading into a band, said to be illustrative; one name for the pieces and none meeting at six window sizes; the two-body star's disc within 2 per cent and its planet lit from its side; a world drawn at the experiment's radius, eased, back on undo; a thrown Mars slowing the clock and back to full speed, the fireball eased under its ceiling, the debris glowing and cooling, the same events with the slowing off; ten stones on the Moon at once never flashing more than three times a second | `tests/explore/lab-effects.spec.ts` |
 | The throw, the slowing (on by default, kept off, Esc and Full speed), every edit answered (the tenth doubling of the Sun refused, said in the visitor's words), a command sent with the opening honoured, a rate held to the fastest, bursts on the new controls and the panel at five window sizes; a throw after an edit at the same step, thrown after the clock ran on, striking as shown; a stale throw refused with what to do; a month-long Mars worked out without holding up the run, Work it out waiting while it works; the chosen body's pointer at the view's edge; the two-body laboratory opening on its star | `tests/explore/lab-throw.spec.ts` |
 | Frame by frame, motion on: every fireball's light changing by at most a thirtieth of its peak a frame, the canvas read back each frame never flashing more than three times a second in any tile, fireballs rising at most three a second (a Mars on the Earth, two Ceres on one face of the Moon, ten stones); the Mars flagged three seconds ahead, the clock no faster than 40 s a second about the contact, the Earth then at the experiment's radius, the slowed rate in the time machine's row and the rates line, the event card's mass and radius; with reduced motion, the camera turning at most half a degree a frame through a torn Moon | `tests/explore/lab-flash.spec.ts` |
-| The frame budget with 4,000 particles and a breakup, at High and Low, against the same with its effects switched off (A/B); GPU resources and the heap after a forced collection level over round trips | `tests/explore/lab-perf.spec.ts` (`@perf`) |
+| The frame budget with 4,000 particles and a breakup, at High and Low, against the same with its effects switched off (A/B) and with a piece of the breakup followed; GPU resources and the heap after a forced collection level over round trips | `tests/explore/lab-perf.spec.ts` (`@perf`) |
 | WebGPU, forced WebGL2, Brave | every browser spec runs on `webgpu` and `webgl2`; `lab.spec.ts` also on `brave` where installed |
 
 ### The M1 exit gate, re-run (2026-10-27, after the review pass)
