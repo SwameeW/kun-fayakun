@@ -3,6 +3,7 @@ import {
   DoubleSide,
   FrontSide,
   Group,
+  MathUtils,
   Matrix4,
   Mesh,
   MeshBasicNodeMaterial,
@@ -173,6 +174,13 @@ const CLOUD = { albedo: 0.86, shadow: 0.6, drift: 0.012 } as const;
 const GLINT = { alpha: 0.2, ceiling: 0.62 } as const;
 /** The young air's scattered light while oxygen is low: a hazier, warmer sky (hypothesised; the tint is illustrative). */
 const EARLY_AIR_TINT = [1, 0.8, 0.6] as const;
+/**
+ * Over a world still mostly molten (its `molten` from MOLTEN_AIR[0] to [1]) the air's scattered light
+ * warms toward the glow below, so the limb darkens into a warm haze and no blue-grey outline rings an
+ * orange world. Once the crust has mostly formed the air is tinted as before.
+ */
+const MOLTEN_AIR = [0.35, 0.7] as const;
+const MOLTEN_AIR_TINT = [1, 0.45, 0.15] as const;
 const DEGREES = 180 / Math.PI;
 
 export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir): Earth {
@@ -411,6 +419,7 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
   object.scale.setScalar(radius);
   const inverse = new Matrix4();
   const [er, eg, eb] = EARLY_AIR_TINT;
+  const [mr, mg, mb] = MOLTEN_AIR_TINT;
 
   return {
     object,
@@ -440,7 +449,12 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
       uSpinSun.value.copy(uSun.value).transformDirection(inverse);
       const dim = 1 - 0.6 * e.molten;
       const young = 1 - e.oxygen;
-      uAirTint.value.set((1 + (er - 1) * young) * dim, (1 + (eg - 1) * young) * dim, (1 + (eb - 1) * young) * dim);
+      const molten = MathUtils.smoothstep(e.molten, MOLTEN_AIR[0], MOLTEN_AIR[1]);
+      uAirTint.value.set(
+        ((1 + (er - 1) * young) * (1 - molten) + mr * molten) * dim,
+        ((1 + (eg - 1) * young) * (1 - molten) + mg * molten) * dim,
+        ((1 + (eb - 1) * young) * (1 - molten) + mb * molten) * dim,
+      );
     },
     setAirSteps,
     dispose() {
