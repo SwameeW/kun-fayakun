@@ -8,7 +8,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NEEDS_GPU, NO_GPU, SLOW } from '../support/env';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 
 const LIVE = { timeout: 60_000 * SLOW };
@@ -85,6 +85,7 @@ test.describe('saved views', () => {
   });
 
   test('a view saved on foot begins the walk again where it stood, facing as it did', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_GPU);
     test.setTimeout(300_000 * SLOW);
     await kf.open('/universe/moon', { query: { jd: JD } });
     await waitForUniverse(page);
