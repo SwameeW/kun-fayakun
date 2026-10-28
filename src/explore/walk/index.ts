@@ -89,7 +89,8 @@ export interface Walk {
    * Places the ground and sky for this frame, the camera at the origin: the world's centre relative to
    * the camera and its frame's axes (render frame), the Sun's direction from it (render frame, and in
    * the world's own frame), the sunlight's strength (1 at 1 au), the longitude beneath the Sun, the
-   * depth range, and the camera (and whether it is the walker's eye now: the eye's meter reads only then).
+   * depth range, and the camera (and whether it is the walker's eye now: the ground and the sky are
+   * drawn, and the eye's meter reads, only then).
    */
   place(frame: { centre: V3; basis: readonly number[]; sun: V3; sunWorld: readonly [number, number, number]; light: number; subSolarLon: number; near: number; far: number; exposure: number; renderer: WebGPURenderer; camera: Camera; eye: boolean }): void;
   view(): UniverseWalk | null;
@@ -245,8 +246,11 @@ export function createWalk(setup: WalkSetup): Walk {
     place(frame) {
       const s = walker;
       const show = s !== null && landed;
-      ground.object.visible = show;
-      sky.mesh.visible = show;
+      // Drawn only once the camera is the walker's eye: through the glide down they are filled and
+      // their horizons marched (so the first frame on foot is whole), but never seen from orbit, where
+      // the sky would paint the ground's noon round the camera and the rings sit over the globe.
+      ground.object.visible = show && frame.eye;
+      sky.mesh.visible = show && frame.eye;
       if (!s || !show) return;
       if (table && !table.baked) table.bake(frame.renderer);
       ground.update(s, heights, { centre: frame.centre, basis: frame.basis, radiusKm: world.radiusKm, sun: frame.sun, light: frame.light, near: frame.near, far: frame.far, exposure: frame.exposure });
