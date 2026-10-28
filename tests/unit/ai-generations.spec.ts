@@ -13,7 +13,8 @@
  * while it waits for the one before it, two at once without a stop, an interrupt that lands while the
  * prompt's wrapper waits for the device, twenty asked and stopped, an unload under way, stopped while
  * the tab is hidden, and the watch on a worker that stops answering, on a long step it must not cut,
- * and on a step that never ends; a lost device.
+ * and on a step that never ends; a lost device, named as such, and a GPU device lost as WebLLM 0.2.86
+ * meets it (the worker watches the device, since WebLLM's errors after a loss name other things).
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
@@ -138,11 +139,25 @@ class Pipeline {
   begun = 0;
   /** Set to make the next token fail as WebLLM does when the GPU device is lost. */
   loseDevice = false;
+  /** Set to make the next token fail with this, as WebLLM 0.2.86 does once its device is lost (a mapAsync aborted, say). */
+  failWith: Error | null = null;
+  /** The GPUDevice where WebLLM 0.2.86 keeps it (the TVM runtime's WebGPU context): only its `lost` promise. */
+  readonly tvm: { lib: { webGPUContext: { device: { lost: Promise<{ reason: string; message: string }> } } } };
+  /** Resolves the device's `lost`, as a GPUDevice does when it is lost. */
+  readonly loseGpu: (info: { reason: string; message: string }) => void;
   constructor(
     private readonly gpu: Gpu,
     private readonly timing: Timing,
   ) {
     this.device = { sync: () => gpu.sync() };
+    let lose: (info: { reason: string; message: string }) => void = () => undefined;
+    const lost = new Promise<{ reason: string; message: string }>((resolve) => {
+      lose = resolve;
+    });
+    this.tvm = { lib: { webGPUContext: { device: { lost } } } };
+    this.loseGpu = (info) => {
+      lose(info);
+    };
   }
   embedAndForward(_data: unknown, length: number): Promise<object> {
     this.gpu.queue((this.timing.chunkMs * length) / 128);
@@ -266,6 +281,7 @@ function standIn(gpu: Gpu, timing: Timing): { runtime: WebLlmRuntime; pipelines:
         gpu.queue(timing.tokenMs);
         await gpu.sync();
         if (pipeline.loseDevice) throw new Error('DeviceLostError: the GPUDevice was lost');
+        if (pipeline.failWith) throw pipeline.failWith;
         pipeline.token();
       };
       return engine;
@@ -820,4 +836,106 @@ test('lastError is that of the last generation to end: one stopped while it wait
   // The device stays lost.
   expect(s.engine.lost?.code).toBe('device-lost');
   await s.engine.unload();
+});
+
+test('the model’s GPUDevice is where the worker reads it in WebLLM 0.2.86 (the pipeline’s TVM runtime’s WebGPU context), and WebLLM unloads on a loss', () => {
+  // LLMChatPipeline keeps the runtime it was made with; the runtime keeps its WebGPU context; the context keeps the device.
+  expect(WEBLLM).toContain('this.tvm = tvm;');
+  expect(WEBLLM).toContain('this.lib.webGPUContext = webGPUContext;');
+  const at = WEBLLM.indexOf('class WebGPUContext {');
+  const device = WEBLLM.indexOf('this.device = device;', at);
+  expect(at).toBeGreaterThan(0);
+  expect(device).toBeGreaterThan(at);
+  // In WebGPUContext's own constructor: no other class begins between them.
+  expect(WEBLLM.slice(at + 'class WebGPUContext {'.length, device)).not.toMatch(/\bclass \w+ \{/u);
+  // Its own handler for a lost device logs and unloads (so every generation after fails, naming other things).
+  expect(WEBLLM).toMatch(/gpuDetectOutput\.device\.lost\.then\(\(info\) => \{\s+if \(this\.deviceLostIsError\) \{[\s\S]{0,400}?this\.unload\(\);/u);
+});
+
+/** What WebLLM 0.2.86 threw on this Mac once its GPU device was lost (docs/AI-INTELLIGENCE.md §6): none of it names the device. */
+const AFTER_LOSS = {
+  unmapped: (): Error => Object.assign(new Error("Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved."), { name: 'AbortError' }),
+  instance: (): Error => Object.assign(new Error('A valid external Instance reference no longer exists.'), { name: 'OperationError' }),
+  notLoaded: (): Error => Object.assign(new Error('Model not loaded before trying to complete ChatCompletionRequest.'), { name: 'ModelNotLoadedError' }),
+};
+
+test('a GPU device lost as WebLLM 0.2.86 meets it: the generation under way and every one after end as device-lost, whatever the error names, in either order', async () => {
+  for (const order of ['lost first', 'error first'] as const) {
+    const s = await setUp();
+    const a = ask(s.engine, SHORT, 400);
+    await expect.poll(() => a.streamed().length).toBeGreaterThan(5);
+    const info = { reason: 'unknown', message: 'A valid external Instance reference no longer exists.' };
+    if (order === 'lost first') s.pipeline().loseGpu(info);
+    // As WebLLM: the step under way fails (an aborted mapAsync reads as a stop to the rules alone), and its lost handler unloads the pipeline.
+    s.pipeline().failWith = order === 'lost first' ? AFTER_LOSS.unmapped() : AFTER_LOSS.instance();
+    if (order === 'error first') {
+      setTimeout(() => {
+        s.pipeline().loseGpu(info);
+      }, 100);
+    }
+    const result = await a.result;
+    expect(result.finish, order).toBe('error');
+    expect(s.engine.lastError?.code, order).toBe('device-lost');
+    expect(s.engine.lastError?.detail, order).toContain('GPU device was lost (unknown: A valid external Instance reference no longer exists.)');
+    expect(s.engine.lost?.code, order).toBe('device-lost');
+    expect(s.pacer.holds).toBe(0);
+    // Every generation after it: WebLLM says its model is not loaded, the page hears that the device was lost.
+    s.pipeline().failWith = AFTER_LOSS.notLoaded();
+    const b = ask(s.engine, SHORT);
+    expect((await b.result).finish).toBe('error');
+    expect(s.engine.lastError?.code).toBe('device-lost');
+    expect(s.engine.lastError?.detail).toContain('Model not loaded');
+    await s.engine.unload();
+  }
+});
+
+test('an error with the device still there is told as what it is; the loss of a device whose model was freed or loaded again is not told', async () => {
+  const s = await setUp();
+  const a = ask(s.engine, SHORT, 400);
+  await expect.poll(() => a.streamed().length).toBeGreaterThan(5);
+  s.pipeline().failWith = new Error('Something else went wrong');
+  const t0 = performance.now();
+  expect((await a.result).finish).toBe('error');
+  // Told once the moment the loss is waited for has passed (250 ms), as what it is.
+  expect(performance.now() - t0).toBeGreaterThan(200);
+  expect(s.engine.lastError?.code).toBe('unknown');
+  expect(s.engine.lost).toBeNull();
+  await s.engine.unload();
+
+  // One worker, its model loaded again (a new pipeline, a new device): the first device's loss, told
+  // late (as WebLLM's reload frees it), is not the new model's, and the model freed says nothing of it.
+  const gpu = new Gpu();
+  const { runtime, pipelines } = standIn(gpu, { chunkMs: 30, tokenMs: 5 });
+  const worker = connectModelWorker(inProcess(runtime));
+  const request = toCompletionRequest({ messages: SHORT, format: { kind: 'text' }, maxTokens: 16 });
+  const load = { type: 'load' as const, appConfig: buildAppConfig([MODEL]), model: MODEL.id, prefill: { chunkTokens: 256, yieldBetween: true } };
+  /** Pulls generation `stream` to its end; the code of the failure that ended it, or null. */
+  const failureOf = async (stream: number): Promise<string | null> => {
+    for (;;) {
+      try {
+        const answer = await worker.call({ type: 'pull', stream });
+        if (answer.type !== 'piece' || answer.done) return null;
+      } catch (err) {
+        return (err as { code?: string }).code ?? 'none';
+      }
+    }
+  };
+  try {
+    await worker.call(load);
+    const old = pipelines.at(-1) as Pipeline;
+    await worker.call(load);
+    const now = pipelines.at(-1) as Pipeline;
+    expect(now).not.toBe(old);
+    old.loseGpu({ reason: 'destroyed', message: '' });
+    await sleep(10);
+    now.failWith = new Error('Something else went wrong');
+    const b = await worker.call({ type: 'generate', request });
+    expect(await failureOf(b.id)).toBe('unknown');
+    // Its own device lost: told as device-lost.
+    now.loseGpu({ reason: 'unknown', message: 'gone' });
+    const c = await worker.call({ type: 'generate', request });
+    expect(await failureOf(c.id)).toBe('device-lost');
+  } finally {
+    worker.terminate();
+  }
 });

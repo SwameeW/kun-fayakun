@@ -342,12 +342,25 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   const memory = deps.memory ?? createMemory();
   const context = deps.context ?? ((): AiContext => readContext(app));
   const idleMs = deps.idleUnloadMs ?? IDLE_UNLOAD_MS;
-  const announce = (key: string, values?: Record<string, string | number>): void => {
+  /**
+   * Said ahead of the next announcement, in the same one. The page has one live region, and of
+   * announcements made within 60 ms of each other it writes only the last (src/ui/announcer.ts); a
+   * model let go (letGoIfLost) is followed within milliseconds by the end of the turn that found it.
+   */
+  let sayFirst: string | null = null;
+  /** Announces `text`, after whatever was held for it; with no text, only what was held. */
+  const say = (text: string | null): void => {
+    const said = [sayFirst, text].filter((t): t is string => t !== null && t.length > 0).join(' ');
+    sayFirst = null;
+    if (!said) return;
     try {
-      deps.announce?.(i18n.t(key, values));
+      deps.announce?.(said);
     } catch {
       /* the interface's live region is optional */
     }
+  };
+  const announce = (key: string, values?: Record<string, string | number>): void => {
+    say(i18n.t(key, values));
   };
 
   let records: TurnRecord[] = [];
@@ -403,6 +416,11 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     return { kind: 'local', model: choice.id };
   }
 
+  /** The model as announced: a catalogue model by the name the panel shows ("Qwen3 1.7B"), any other engine by its own. */
+  function spokenName(choice: ModelSpec | 'browser' | LanguageEngine): string {
+    return choice !== 'browser' && !('generate' in choice) ? choice.name : nameOf(choice).model;
+  }
+
   function touch(): void {
     if (idleTimer !== null) clearTimeout(idleTimer);
     idleTimer = null;
@@ -439,7 +457,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     };
     signal?.addEventListener('abort', onAbort, { once: true });
     setEngine({ kind, model, state: 'loading' });
-    announce('ai.mind.announce.engineLoading', { model });
+    announce('ai.mind.announce.engineLoading', { model: spokenName(choice) });
     try {
       const loaded = await host.load(choice, (progress) => {
         if (loading === controller) events.emit('engine', { kind, model, state: 'loading', progress });
@@ -451,7 +469,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       engine = loaded;
       chosen = choice;
       setEngine({ kind: loaded.kind, model: loaded.model, state: 'ready' });
-      announce('ai.mind.announce.engineReady', { model: loaded.model });
+      announce('ai.mind.announce.engineReady', { model: spokenName(choice) });
       touch();
       return true;
     } catch (err) {
@@ -462,7 +480,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       const error: EngineError = isEngineError(err) ? err : { code: 'unknown', messageKey: 'ai.mind.announce.engineError', detail: err instanceof Error ? err.message : String(err) };
       engine = null;
       setEngine({ kind, model, state: 'error', error });
-      announce('ai.mind.announce.engineError', { model });
+      announce('ai.mind.announce.engineError', { model: spokenName(choice) });
       return false;
     } finally {
       signal?.removeEventListener('abort', onAbort);
@@ -483,18 +501,20 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   /**
    * An engine that can no longer generate (the local model's worker ended by its watch, or its device
    * lost) is let go, so the next question is not sent to it: the engine reads 'error', the panel says the
-   * guide answers, and the model loads again only when it is chosen again.
+   * guide answers, and the model loads again only when it is chosen again. That it was let go is said
+   * with the announcement that ends the turn (sayFirst), which would otherwise replace it.
    */
   function letGoIfLost(e: LanguageEngine): void {
     const error = e.lost;
     if (!error || engine !== e) return;
+    const name = spokenName(chosen ?? e);
     engine = null;
     chosen = null;
     if (idleTimer !== null) clearTimeout(idleTimer);
     idleTimer = null;
     void e.unload().catch(() => undefined);
     setEngine({ kind: e.kind, model: e.model, state: 'error', error });
-    announce('ai.mind.announce.engineLost', { model: e.model });
+    sayFirst = i18n.t('ai.mind.announce.engineLost', { model: name });
   }
 
   /** A model chosen but unloaded while idle loads again before it is needed. */
@@ -1196,6 +1216,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       console.error('ai: turn failed', err);
       rec.turn.blocks.push({ type: 'notice', key: 'ai.mind.notice.failed' });
       finish(rec, 'failed');
+    } finally {
+      // A model let go and not yet said (the turn failed, or was stopped before its generation ended):
+      // said now, unless a turn still under way will say it as it ends.
+      if (sayFirst !== null && !(current && current !== rec && ACTIVE.has(current.turn.state))) say(null);
     }
   }
 
@@ -1295,6 +1319,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     },
 
     async use(choice: ModelSpec | 'browser' | 'guide', signal?: AbortSignal): Promise<void> {
+      // A model chosen: that one let go before need not be said any more.
+      sayFirst = null;
       if (current && ACTIVE.has(current.turn.state)) cancelRecord(current);
       if (choice === 'guide') {
         await unloadEngine();
@@ -1307,6 +1333,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     },
 
     attach(e: LanguageEngine): void {
+      sayFirst = null;
       void load(e);
     },
 

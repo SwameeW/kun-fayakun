@@ -11,8 +11,10 @@
  * budgets behave plausibly. A stopped reply can be made to take a while to end, as a model's does
  * (the token or the prompt under way is finished first), and the engine counts the generations
  * under way, and the most it has had at once, so a test can see that the assistant never asks for two.
+ * A reply can also end the engine, as a model whose worker ended: it ends with 'error', the engine's
+ * `lost` is set, and every generation after it ends with 'error' at once.
  */
-import type { GenerateRequest, GenerateResult, LanguageEngine } from '../types';
+import type { EngineError, GenerateRequest, GenerateResult, LanguageEngine } from '../types';
 
 export interface ScriptedReply {
   /** What the last user message must contain (case-insensitive), match, or satisfy. */
@@ -25,6 +27,8 @@ export interface ScriptedReply {
   finish?: 'stop' | 'length' | 'error';
   /** Used once, then skipped. */
   once?: boolean;
+  /** Ends the engine instead of replying: it can no longer generate (`lost` set), as a model whose worker ended. */
+  loses?: boolean;
 }
 
 export interface ScriptedOptions {
@@ -89,6 +93,7 @@ export function createScriptedEngine(script: readonly ScriptedReply[] = [], opti
   const stopMs = Math.max(0, options.stopMs ?? 0);
   let running = 0;
   let mostAtOnce = 0;
+  let lost: EngineError | null = null;
 
   async function generate(request: GenerateRequest): Promise<GenerateResult> {
     running += 1;
@@ -111,10 +116,15 @@ export function createScriptedEngine(script: readonly ScriptedReply[] = [], opti
     requests.push(request);
     const started = Date.now();
     const promptTokens = request.messages.reduce((n, m) => n + estimate(m.content) + 4, 0);
+    if (lost) return { text: '', finish: 'error', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
     const user = lastUser(request);
     const reply = replies.find((r) => !r.used && matches(r, request, user));
     if (!reply) return { text: '', finish: 'error', promptTokens, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
     if (reply.once) reply.used = true;
+    if (reply.loses) {
+      lost = { code: 'unknown', messageKey: 'ai.engine.error.unknown', detail: 'The scripted engine was ended' };
+      return { text: '', finish: 'error', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
+    }
     const full = typeof reply.reply === 'function' ? reply.reply(request) : reply.reply;
     const local = new AbortController();
     interrupter = local;
@@ -156,6 +166,9 @@ export function createScriptedEngine(script: readonly ScriptedReply[] = [], opti
     },
     get mostAtOnce() {
       return mostAtOnce;
+    },
+    get lost() {
+      return lost;
     },
     generate,
     interrupt(): void {

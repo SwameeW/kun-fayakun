@@ -8,6 +8,12 @@
  * load, and decodes a streamed reply one piece at a time, only when the page pulls the next piece. One
  * generation at a time (./generations.ts): a new one first ends the one under way, so WebLLM's lock on
  * the model is always let go.
+ *
+ * It watches the loaded model's GPUDevice. When it is lost (a GPU process that ends, a driver reset,
+ * memory taken back), WebLLM 0.2.86 logs it and unloads its pipeline, and the generation under way and
+ * every one after fail with errors that name other things (a buffer unmapped, an instance gone, an
+ * object disposed, the model not loaded); each such failure is reported as device-lost, so the page
+ * knows the model can no longer generate.
  */
 import type { AppConfig, ChatCompletionChunk, MLCEngine } from '@mlc-ai/web-llm';
 import { toEngineError } from './errors';
@@ -25,6 +31,33 @@ export interface WebLlmRuntime {
 
 /** How long an unload waits for the generation under way to end before it frees the model anyway, ms (the page ends the worker after 1.5 s). */
 const UNLOAD_WAIT_MS = 1000;
+/** How long a failed generation waits for its device's loss to be told, ms: the failure it causes can come first. */
+const LOST_WAIT_MS = 250;
+
+type Loose = Record<string, unknown>;
+const asObject = (x: unknown): Loose | null => (typeof x === 'object' && x !== null ? (x as Loose) : null);
+
+/** What a GPUDevice says of its loss (GPUDeviceLostInfo). */
+interface LostInfo {
+  reason?: unknown;
+  message?: unknown;
+}
+
+/**
+ * The loaded model's GPUDevice, where WebLLM 0.2.86 keeps it (its pipeline's TVM runtime's WebGPU
+ * context), or null where it is not there; never throws. Only its `lost` promise is read.
+ */
+export function deviceOf(engine: unknown, modelId: string): { lost: Promise<LostInfo> } | null {
+  try {
+    const tvm = asObject(pipelineOf(engine, modelId)?.tvm);
+    const context = asObject(asObject(tvm?.lib)?.webGPUContext);
+    const device = asObject(context?.device);
+    const lost = device?.lost as Promise<LostInfo> | undefined;
+    return lost && typeof lost.then === 'function' ? { lost } : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Our AppConfig is structurally WebLLM's (src/ai/engine/catalogue.ts). */
 const appConfigOf = (config: unknown): AppConfig => config as AppConfig;
@@ -51,6 +84,43 @@ export function createWorkerHandler(runtime: WebLlmRuntime, post: (message: From
   const fail = (id: number, err: unknown): void => {
     const e = toEngineError(err);
     post({ type: 'error', id, code: e.code, detail: e.detail ?? e.message });
+  };
+
+  /** Each load and unload: a device's loss told after its model was let go, or replaced, is not this model's. */
+  let era = 0;
+  /** Why the loaded model's GPUDevice was lost, once it was. */
+  let deviceLost: string | null = null;
+  /** Settles once the loaded model's device is lost; null where its device is not known. */
+  let whenLost: Promise<unknown> | null = null;
+  const watchDevice = (model: string): void => {
+    deviceLost = null;
+    whenLost = null;
+    const device = deviceOf(engine, model);
+    if (!device) return;
+    const mine = era;
+    whenLost = device.lost.then(
+      (info) => {
+        if (era !== mine) return;
+        const reason = typeof info.reason === 'string' ? info.reason : 'unknown';
+        const message = typeof info.message === 'string' && info.message ? `: ${info.message}` : '';
+        deviceLost = `${reason}${message}`;
+      },
+      () => undefined,
+    );
+  };
+
+  /**
+   * A generation's failure. After the model's device was lost it is device-lost, whatever WebLLM's error
+   * names; the loss and the failure it causes come in either order, so the loss is waited for a moment.
+   */
+  const failGeneration = async (id: number, err: unknown): Promise<void> => {
+    if (deviceLost === null && whenLost !== null) await Promise.race([whenLost, delay(LOST_WAIT_MS)]);
+    if (deviceLost === null) {
+      fail(id, err);
+      return;
+    }
+    const e = toEngineError(err);
+    post({ type: 'error', id, code: 'device-lost', detail: `The model's GPU device was lost (${deviceLost}); then: ${e.detail ?? e.message}`.slice(0, 500) });
   };
 
   /** The loaded pipeline's prompt chunk now (./prefill.ts), null where WebLLM holds none; never throws. */
@@ -87,6 +157,9 @@ export function createWorkerHandler(runtime: WebLlmRuntime, post: (message: From
     switch (message.type) {
       case 'load': {
         const { id } = message;
+        era += 1;
+        deviceLost = null;
+        whenLost = null;
         try {
           // A generation of the model before ends first (the page loads each model in a worker of its own).
           await generations.end();
@@ -98,6 +171,7 @@ export function createWorkerHandler(runtime: WebLlmRuntime, post: (message: From
           loaded = null;
           await engine.reload(message.model);
           loaded = message.model;
+          watchDevice(message.model);
           // Each load makes a new pipeline: the prompt's chunk is set on it every time. applyPrefill never
           // throws; were it to, the model is still loaded, as compiled, and the report says so.
           let prefill: PrefillReport;
@@ -120,7 +194,7 @@ export function createWorkerHandler(runtime: WebLlmRuntime, post: (message: From
           await generations.start(id, message.request);
           post({ type: 'started', id });
         } catch (err) {
-          fail(id, err);
+          await failGeneration(id, err);
         }
         return;
       }
@@ -131,7 +205,7 @@ export function createWorkerHandler(runtime: WebLlmRuntime, post: (message: From
           const chunk = await generations.pull(message.stream);
           post(chunk === null ? { type: 'piece', id, piece: null, done: true } : { type: 'piece', id, piece: pieceOf(chunk), done: false });
         } catch (err) {
-          fail(id, err);
+          await failGeneration(id, err);
         }
         return;
       }
@@ -147,6 +221,10 @@ export function createWorkerHandler(runtime: WebLlmRuntime, post: (message: From
         return;
       case 'unload': {
         const { id } = message;
+        // Freeing the model destroys its device: that loss is not one to tell.
+        era += 1;
+        deviceLost = null;
+        whenLost = null;
         try {
           // The generation under way ends first, so its step does not run on a freed model; not for long.
           await Promise.race([generations.end(), delay(UNLOAD_WAIT_MS)]);

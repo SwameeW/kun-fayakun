@@ -201,7 +201,7 @@ interface Harness {
   remembered: MemoryEntry[];
 }
 
-function harness(script: ScriptedReply[] = [], options: { delayMs?: number; stopMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[]; evaluation?: { options: () => EvaluationOptions | null; record: (entry: GenerationRecord) => void } } & ToolOptions = {}): Harness {
+function harness(script: ScriptedReply[] = [], options: { delayMs?: number; stopMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[]; evaluation?: { options: () => EvaluationOptions | null; record: (entry: GenerationRecord) => void }; loaded?: LanguageEngine } & ToolOptions = {}): Harness {
   const log: Log = { runs: [], undone: [] };
   const where = { ctx: options.where ?? CTX.home };
   const engine = createScriptedEngine(script, { delayMs: options.delayMs ?? 0, stopMs: options.stopMs ?? 0 });
@@ -228,7 +228,7 @@ function harness(script: ScriptedReply[] = [], options: { delayMs?: number; stop
       h.loads += 1;
       onProgress({ phase: 'download', loadedBytes: 1, totalBytes: 2, fraction: 0.5 });
       onProgress({ phase: 'ready', loadedBytes: 2, totalBytes: 2, fraction: 1 });
-      return Promise.resolve(engine);
+      return Promise.resolve(options.loaded ?? engine);
     },
     stored: () => Promise.resolve([]),
     remove: () => Promise.resolve(),
@@ -646,7 +646,6 @@ test.describe('with a model', () => {
   });
 
   test('an engine that can no longer generate (its worker ended by the watch) is let go: the turn says the model stopped, the engine reads error, the next question is the guide’s', async () => {
-    const h = harness();
     let lost: EngineError | null = null;
     let calls = 0;
     let unloads = 0;
@@ -667,8 +666,12 @@ test.describe('with a model', () => {
         return Promise.resolve();
       },
     };
-    h.ai.attach(ended);
-    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    // Loaded as the panel loads a model (use()), so the announcements name it as the panel does.
+    const h = harness([], { loaded: ended });
+    await h.ai.use(SPEC);
+    expect(h.ai.engine().state).toBe('ready');
+    expect(h.announced.at(-1)).toBe('Test 1B is ready.');
+    const before = h.announced.length;
     const turn = await h.ai.ask('Why do stars shine?');
     expect(calls).toBe(1);
     expect(turn.state).toBe('done');
@@ -679,14 +682,86 @@ test.describe('with a model', () => {
     expect(ofType(turn, 'text')[0]?.by).toBeUndefined();
     expect(h.ai.engine()).toEqual({ kind: 'local', model: SPEC.id, state: 'error' });
     expect(h.engineEvents.at(-1)).toMatchObject({ state: 'error', error: { detail: 'The model’s worker did not answer for 30 s; it was ended' } });
-    expect(h.announced.some((a) => a.includes('stopped working'))).toBe(true);
+    // The page's live region writes only the last of announcements made within 60 ms of each other,
+    // and the turn's end follows at once: that the model was let go is said in that same announcement.
+    expect(h.announced.slice(before)).toEqual(['Test 1B stopped working and was unloaded. The guide answers meanwhile; choose the model again to load it. Answer ready.']);
     expect(unloads).toBe(1);
-    // The next question is not sent to it, and the engine still reads error.
+    // The next question is not sent to it, the engine still reads error, and nothing is said of it again.
     const next = await h.ai.ask('Why is Mars red?');
     expect(calls).toBe(1);
     expect(next.state).toBe('done');
     expect(next.engine).toBe('guide');
     expect(h.ai.engine().state).toBe('error');
+    expect(h.announced.at(-1)).toBe('Answer ready.');
+  });
+
+  test('a model let go after the turn that found it was stopped is said once it is let go, or with the end of the question asked over it', async () => {
+    const LOST = 'Test 1B stopped working and was unloaded. The guide answers meanwhile; choose the model again to load it.';
+    /** An engine whose first generation ends in error, lost, once `release` is called; every one after at once. */
+    const slowLoss = (): { engine: LanguageEngine; release: () => void; calls: () => number } => {
+      let lost: EngineError | null = null;
+      let calls = 0;
+      let release = (): void => undefined;
+      const engine: LanguageEngine = {
+        kind: 'local',
+        model: SPEC.id,
+        get lost() {
+          return lost;
+        },
+        async generate() {
+          calls += 1;
+          if (calls === 1) {
+            await new Promise<void>((r) => {
+              release = r;
+            });
+          }
+          lost = { code: 'device-lost', messageKey: 'ai.engine.error.device-lost', detail: 'GPUDevice lost' };
+          return { text: '', finish: 'error', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
+        },
+        interrupt: () => undefined,
+        unload: () => Promise.resolve(),
+      };
+      return {
+        engine,
+        release: () => {
+          release();
+        },
+        calls: () => calls,
+      };
+    };
+
+    // Stopped while its generation is under way: the stop is said, then, once it is let go, that.
+    const stopped = slowLoss();
+    const h = harness([], { loaded: stopped.engine });
+    await h.ai.use(SPEC);
+    const before = h.announced.length;
+    const asking = h.ai.ask('Why do stars shine?');
+    await expect.poll(() => stopped.calls()).toBe(1);
+    h.ai.cancel();
+    expect(h.announced.slice(before)).toEqual(['Stopped.']);
+    stopped.release();
+    expect((await asking).state).toBe('cancelled');
+    expect(h.ai.engine().state).toBe('error');
+    expect(h.announced.slice(before)).toEqual(['Stopped.', LOST]);
+
+    // A question asked over it: the one stopped says nothing more, and the new one says it as it ends.
+    const over = slowLoss();
+    const g = harness([], { loaded: over.engine });
+    await g.ai.use(SPEC);
+    const from = g.announced.length;
+    const first = g.ai.ask('Why do stars shine?');
+    await expect.poll(() => over.calls()).toBe(1);
+    const second = g.ai.ask('Why is Mars red?');
+    over.release();
+    expect((await first).state).toBe('cancelled');
+    const answered = await second;
+    expect(answered.state).toBe('done');
+    expect(answered.blocks).toContainEqual({ type: 'notice', key: 'ai.mind.notice.engineError' });
+    expect(g.announced.slice(from)).toEqual(['Stopped.', `${LOST} Answer ready.`]);
+
+    // Chosen again: it loads as before, and nothing more is said of the one let go.
+    await g.ai.use(SPEC);
+    expect(g.announced.slice(-2)).toEqual(['Loading Test 1B.', 'Test 1B is ready.']);
   });
 
   test('an engine error from an engine that can still generate keeps it: the next question goes to it again', async () => {
