@@ -11,11 +11,13 @@
  * back. There is one assistant per page: later calls return the same one.
  *
  * It also gives the test hook its assistant part (window.__kf.ai): start(); useScripted(), which
- * switches the running assistant to the scripted test engine (labelled as such on screen);
+ * switches the running assistant to the scripted test engine (labelled as such on screen) and
+ * resolves to its counts of generations under way;
  * useReport(), which makes detection answer with a canned device (CI has no GPU to find); and, for
  * the real-model evaluation alone (tests/ai-eval), evaluate(), which records every generation
- * (taken with generations()) and can skip the router so a model plans every question. Nothing a
- * visitor does reaches these.
+ * (taken with generations()), can skip the router so a model plans every question, and can set how
+ * a model loaded after it reads its prompt (the prefill setting being measured). Nothing a visitor
+ * does reaches these.
  */
 import { extendTestHandle, setHook } from '../core/hooks';
 import type { App } from '../core/types';
@@ -92,7 +94,9 @@ export function startIntelligence(app: App, announce: (text: string) => void): P
     ai: {
       start,
       async useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions) {
-        (await start()).attach(createScriptedEngine(script, options));
+        const engine = createScriptedEngine(script, options);
+        (await start()).attach(engine);
+        return engine;
       },
       async useReport(report: CapabilityReport) {
         await start();
@@ -100,7 +104,10 @@ export function startIntelligence(app: App, announce: (text: string) => void): P
       },
       async evaluate(options: EvaluationOptions | null) {
         await start();
-        evaluation = options ? { router: options.router === 'skip' ? 'skip' : 'first' } : null;
+        const prefill = options?.prefill ? { chunkTokens: options.prefill.chunkTokens, yieldBetween: options.prefill.yieldBetween } : undefined;
+        evaluation = options ? { router: options.router === 'skip' ? 'skip' : 'first', ...(prefill ? { prefill } : {}) } : null;
+        // Only a load after this reads it; without one, each model's own setting.
+        engineHost?.assumePrefill(prefill ?? null);
         recorded = [];
       },
       generations() {

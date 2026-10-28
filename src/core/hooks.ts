@@ -1,4 +1,4 @@
-import type { ScriptedOptions, ScriptedReply } from '../ai/engine/scripted';
+import type { ScriptedEngine, ScriptedOptions, ScriptedReply } from '../ai/engine/scripted';
 import type { CapabilityReport, EvaluationOptions, GenerationRecord, Intelligence } from '../ai/types';
 import type { FrameStats } from './perf';
 import type { App, ChapterContent, ChapterId, LabCommand, LabEditResult, UniversePose, UniverseView } from './types';
@@ -100,7 +100,8 @@ export function exposeTestHandle(handle: KfTestHandle): void {
 /** The assistant's part of the test handle (KfTestHandle.ai). */
 export interface KfAiHandle {
   start(): Promise<Intelligence>;
-  useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<void>;
+  /** Resolves to the scripted engine's counts: its generations under way now, and the most at once. */
+  useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<Pick<ScriptedEngine, 'running' | 'mostAtOnce'>>;
   useReport(report: CapabilityReport): Promise<void>;
   /**
    * The real-model evaluation's alone (tests/ai-eval): from now on every generation is recorded (its

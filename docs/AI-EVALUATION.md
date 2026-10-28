@@ -8,6 +8,8 @@
 
 **What it decided:** the tiers stand as the first stage set them, now on these measurements: pocket Qwen3 0.6B (explanations only, the router choosing every tool), compact Qwen3 1.7B, standard **Qwen3.5 4B** and large **Qwen3.5 9B**. The reasons and the costs are in "The tier decision".
 
+**Since then:** a model reads its prompt in smaller chunks with a wait between them, 128 tokens on the standard and large tiers and 256 on the pocket and compact tiers, measured against these runs on the same evening (the section "Reading the prompt in smaller pieces"). The explorer's longest frame while Qwen3.5 4B writes went from 1.0–1.6 s to 117–183 ms, for about 8–14% longer to the first token, and the 4B gave the same result in every case of the full set. At 128 the small models paid in answers. At temperature 0 the chunk tipped a few of their plans, and every result it changed went from a pass to a failure, none the other way: two of Qwen3 1.7B's cases, and one of Qwen3 0.6B's when it plans, which it does only in this evaluation. A chunk of 256 tokens with the wait changed none of them, so the small tiers read in 256: the longest frame is 17 ms with Qwen3 0.6B, as at 128, and 50–83 ms with Qwen3 1.7B, where it was 350–367 ms before ("The setting"). The frame figures in the tables before that section are from before the change.
+
 ## How the evaluation works
 
 **The models.** The q4f16_1 builds (this Mac's adapter has shader-f16) of Qwen3 0.6B, 1.7B, 4B and 8B and of Qwen3.5 4B and 9B, every file pinned in `src/ai/engine/catalogue.ts` and fetched once by `scripts/ai-eval/fetch-models.ts`, which checks each against the library's SHA-384, the SHA-256 Hugging Face lists at the pinned commit, and the sizes.
@@ -52,6 +54,19 @@ KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_OUT=.work/ai-eval/results/r
   KF_AI_EVAL_CASES=calc-escape-mars,calc-orbit-iss,calc-light-neptune,const-universe-age,const-cmb,isl-sun-course,isl-iron,lab-state,exp-double-sun,lim-weather \
   npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
 
+# the prompt's chunk (src/ai/engine/prefill.ts): the same 10 cases at one setting, frames over three turns
+# (KF_AI_EVAL_PREFILL_CHUNK=<tokens> or compiled; KF_AI_EVAL_PREFILL_YIELD=1 for the wait between chunks), tagged pf-c<setting>-r<n>
+KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_OUT=.work/ai-eval/results/prefill KF_AI_EVAL_MODEL=<id> KF_AI_EVAL_MODE=model KF_AI_EVAL_TAG=pf-c128y-r1 \
+  KF_AI_EVAL_PREFILL_CHUNK=128 KF_AI_EVAL_PREFILL_YIELD=1 KF_AI_EVAL_FRAME_TURNS=3 KF_AI_EVAL_CASES=<the 10 cases above> \
+  npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
+# each tier's own setting, nothing given in its place: the same 10 cases, one turn of frames, tagged default-r1
+KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_OUT=.work/ai-eval/results/prefill-default KF_AI_EVAL_MODEL=<id> KF_AI_EVAL_MODE=model KF_AI_EVAL_TAG=default-r1 \
+  KF_AI_EVAL_CASES=<the 10 cases above> npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
+# the chunk on real models: chunked against compiled replies, a stop while the prompt is read, a switch, a reload
+# (each model's own setting, the model switched to as well; a chunk given is given to both. The runs below were at 128 with
+# the wait for every tier, for Qwen3 1.7B now KF_AI_EVAL_PREFILL_CHUNK=128 KF_AI_EVAL_PREFILL_YIELD=1)
+KF_AI_EVAL=1 KF_AI_EVAL_PREFILL=1 KF_SKIP_BUILD=1 KF_PORT=4271 npx playwright test --project=ai-eval tests/ai-eval/prefill.spec.ts
+
 # XGrammar's start-up per schema shape, and what it does to number ranges
 KF_AI_EVAL=1 KF_AI_EVAL_GRAMMAR=1 KF_SKIP_BUILD=1 KF_PORT=4271 npx playwright test --project=ai-eval tests/ai-eval/grammar.spec.ts
 KF_AI_EVAL=1 KF_AI_EVAL_GRAMMAR=numbers KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_MODEL=Qwen3-1.7B-q4f16_1-MLC npx playwright test --project=ai-eval tests/ai-eval/grammar.spec.ts
@@ -59,11 +74,27 @@ KF_AI_EVAL=1 KF_AI_EVAL_GRAMMAR=numbers KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_
 # the committed copies, and the tables below
 node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/review/*.json --out docs/ai-eval
 node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/review-timing/*.json --out docs/ai-eval/timing
-node --import tsx scripts/ai-eval/report.ts docs/ai-eval docs/ai-eval/timing --details --into docs/AI-EVALUATION.md
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval docs/ai-eval/after docs/ai-eval/timing --details --into docs/AI-EVALUATION.md
+
+# the prompt-chunk passes and the full runs at 128 with the wait (the section "Reading the prompt in smaller pieces")
+node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/prefill/*.json --out docs/ai-eval/prefill
+node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/prefill-full/*.json --out docs/ai-eval/prefill/full
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval/prefill --prefill --block prefill --into docs/AI-EVALUATION.md
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval/prefill/full docs/ai-eval/prefill/full/after --block prefill-full --into docs/AI-EVALUATION.md
+# after the review: the full runs again (KF_AI_EVAL_OUT=.work/ai-eval/results/prefill-fix; tags prefill-r2, compiled-r2, c256y), and the review's passes
+# (prefill-r2 and the review's runs of the change read each model's own setting, 128 with the wait for every tier then; for Qwen3 1.7B
+# that is now KF_AI_EVAL_PREFILL_CHUNK=128 KF_AI_EVAL_PREFILL_YIELD=1)
+node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/prefill-fix/Qwen3*-pipeline-*.json --out docs/ai-eval/prefill/again
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval/prefill/again --block prefill-again --into docs/AI-EVALUATION.md
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval/prefill/review --prefill --block prefill-review --into docs/AI-EVALUATION.md
+# each tier's own setting (the end of "The setting")
+node --import tsx scripts/ai-eval/compact.ts .work/ai-eval/results/prefill-default/*.json --out docs/ai-eval/prefill/default
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval/prefill/default --prefill --block prefill-default --into docs/AI-EVALUATION.md
 
 # earlier runs scored again after a change to the scorer (no model), beside their run-time score
 node --import tsx scripts/ai-eval/rescore.ts <copies of the raw files>
 node --import tsx scripts/ai-eval/report.ts docs/ai-eval/1a58c76/rescored --rescored-from docs/ai-eval/1a58c76 --block rescored --into docs/AI-EVALUATION.md
+node --import tsx scripts/ai-eval/report.ts docs/ai-eval/1a58c76/rescored/after --rescored-from docs/ai-eval/1a58c76/after --block rescored-after --into docs/AI-EVALUATION.md
 ```
 
 Network access and Playwright need a shell outside any sandbox. Keep one port: the Cache API copy in the persistent profile (`.work/ai-eval/profile-<port>` in the main checkout) is per origin.
@@ -383,6 +414,326 @@ Accuracy comes from the full runs at `598476c` (144 cases, both modes, scored by
 - **Large: Qwen3.5 9B replaces Qwen3 8B.** It passed 3 more cases in the shipping order (139 against 136) and 6 more with no router (139 against 133), with the right tool and arguments on its own in 72 and 71 of 74 (Qwen3 8B: 71 and 67 of 73). It passed one case more than the standard tier in each mode, at twice the download: the large tier is for devices with room to spare, not a large step up. It is the slowest model measured: 21.1 tok/s delivered (25% fewer than Qwen3 8B's 28.2), 2.7 s to the first token of an answer, 4.1 s to load from the Cache API, 5,059 MB to download, and WebLLM's estimate of 6,433 MB leaves 223 MB of the 6,656 MB large budget; while it reads its prompt the explorer's frames stall longest in total (8 frames over 50 ms, 4.4 s in one turn). Its two integrity violations at `598476c` were the guards' and the search's fault, fixed and run again with none left. Qwen3 8B gave nothing the new tiers do not, at twice the standard tier's download.
 - **Both Qwen3.5 builds** are pinned exactly as the Qwen3 ones (Hugging Face commit, library commit with its SHA-384, Apache-2.0 licence file at a pinned commit, `data/sources.json` entry `qwen3-5`), every file was checked against those pins by `scripts/ai-eval/fetch-models.ts`, and WebLLM 0.2.86 loaded and ran both through the app's own path. Their q4f32 builds (for adapters without shader-f16) are pinned the same way but were not measured; neither were the Qwen3 q4f32 builds. Without shader-f16 the large tier fits no budget (the 9B's q4f32 build needs 7,545 MB and Qwen3 8B's 6,853 MB, against 6,656 MB), as before.
 - **Kept for the evaluation:** the Qwen3 4B and 8B pins remain as evaluation builds (`EVAL_CANDIDATES`), so the comparison can be run again.
+
+## Reading the prompt in smaller pieces
+
+**What changed.** A model now reads its prompt in smaller chunks, 128 tokens on the standard and large tiers and 256 on the pocket and compact tiers ("The setting"), and each chunk after the first waits until the model's GPU queue is empty and one macrotask has passed (`src/ai/engine/prefill.ts`, commits `f4d6969` and `a85ce93`, which gave every tier 128; §6 of `docs/AI-INTELLIGENCE.md`). Before, it read the prompt in chunks of up to 1,024 tokens, the size every pinned q4f16 model library was compiled with (the q4f32 ones were not checked). WebLLM 0.2.86 has no option for this. The model's worker sets the chunk on the loaded pipeline after every load and checks each step. The engine reports what happened in every generation's usage, and the harness fails a run unless every generation reports the setting asked for. Every run with the change passed that check.
+
+**Why.** In every run above, every frame over 50 ms while a model wrote fell in a prefill. In WebLLM's code, tvmjs records all of a chunk's kernels into one command encoder and submits it at the next copy to or from the GPU. That copy comes with the next chunk, so each chunk reaches the GPU as one submission, and the next one is queued right behind it. Qwen3.5 4B reads about 540 tokens a second, so a 1,024-token chunk is about 1.9 s of GPU work, worked out from the measured rate. The explorer's longest frame was 1.6 s.
+
+**How it was measured.** The same 10 cases as the speed passes, in model mode, on this Mac on 2026-10-27, from 15:01 to 17:05:
+- **Before:** the app at `eaa9a24` with its own harness. Three passes with the models in alternating order, and one turn's frames each (tagged `pf-base`).
+- **The settings:** the app with this change, one setting per run, given through the harness (`KF_AI_EVAL_PREFILL_CHUNK`, `KF_AI_EVAL_PREFILL_YIELD`). Frames were measured over three turns a run: the speed passes' question and two more, each a plan and an answer from the Earth at rest in the explorer.
+  - Pass 1: as compiled, 512, 256 and 128, then 512, 256 and 128 with the wait.
+  - Pass 2, with the models and settings in reverse order: as compiled, 256, 128, then 256 and 128 with the wait. It also ran 64 with the wait, a size beyond those first asked for, to see what the next step would cost.
+  - Both passes ran on one build of the change, made before its last two guards: a pipeline with a program artifact gets the chunk but no wait, and a throw while setting it is caught in the worker. None of these models has a program artifact, and the setting threw nowhere. The full runs and the probe below ran on the change with both guards.
+- **Other work on the machine:** no other agent used the GPU. The other browsers' GPU processes were the same three throughout, at 5–14% CPU between them (6–36% in the passes before). macOS's media analysis (`mediaanalysisd`) was at about 200% CPU when first noticed at 15:26, and stayed there until 15:43, through pass 1's Qwen3 1.7B and Qwen3.5 4B runs; after that it ran now and then. Whether it ran during the passes before is not known. The GPU's own utilisation (ioreg's IOAccelerator statistics, read every 5 s, which needs no administrator rights) read 0% between runs, including while that process ran. The 1-minute load averages are in the table.
+
+Each row puts together every pass and every measured turn of one model at one setting. "Before" means the app at `eaa9a24`. The change in time to first token is against those passes.
+
+<!-- report:prefill:start -->
+<!-- Generated by scripts/ai-eval/report.ts from docs/ai-eval/prefill; do not edit by hand. -->
+
+Machine: Apple M5 Pro, 24 GB, darwin 27.0.0; WebGPU adapter apple metal-3; Chrome/156.0.8078.4.
+
+Runs: Qwen3-0.6B-q4f16_1-MLC-model-pf-base-r1.json (2026-10-27T19:08Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-base-r2.json (2026-10-27T19:09Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-base-r3.json (2026-10-27T19:21Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c128-r1.json (2026-10-27T20:14Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c128-r2.json (2026-10-27T20:20Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c128y-r1.json (2026-10-27T20:16Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c128y-r2.json (2026-10-27T20:19Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c256-r1.json (2026-10-27T20:13Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c256-r2.json (2026-10-27T20:21Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c256y-r1.json (2026-10-27T20:16Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c256y-r2.json (2026-10-27T20:19Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c512-r1.json (2026-10-27T20:12Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c512y-r1.json (2026-10-27T20:15Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-c64y-r2.json (2026-10-27T20:18Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-ccompiled-r1.json (2026-10-27T20:12Z); Qwen3-0.6B-q4f16_1-MLC-model-pf-ccompiled-r2.json (2026-10-27T20:22Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-base-r1.json (2026-10-27T19:01Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-base-r2.json (2026-10-27T19:15Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-base-r3.json (2026-10-27T19:15Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c128-r1.json (2026-10-27T19:27Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c128-r2.json (2026-10-27T21:01Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c128y-r1.json (2026-10-27T19:30Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c128y-r2.json (2026-10-27T21:00Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c256-r1.json (2026-10-27T19:26Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c256-r2.json (2026-10-27T21:02Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c256y-r1.json (2026-10-27T19:29Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c256y-r2.json (2026-10-27T21:01Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c512-r1.json (2026-10-27T19:25Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c512y-r1.json (2026-10-27T19:28Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-c64y-r2.json (2026-10-27T20:58Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-ccompiled-r1.json (2026-10-27T19:24Z); Qwen3-1.7B-q4f16_1-MLC-model-pf-ccompiled-r2.json (2026-10-27T21:03Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-base-r1.json (2026-10-27T19:02Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-base-r2.json (2026-10-27T19:13Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-base-r3.json (2026-10-27T19:16Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c128-r1.json (2026-10-27T19:37Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c128-r2.json (2026-10-27T20:52Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c128y-r1.json (2026-10-27T19:44Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c128y-r2.json (2026-10-27T20:48Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c256-r1.json (2026-10-27T19:35Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c256-r2.json (2026-10-27T20:54Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c256y-r1.json (2026-10-27T19:42Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c256y-r2.json (2026-10-27T20:50Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c512-r1.json (2026-10-27T19:33Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c512y-r1.json (2026-10-27T19:40Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-c64y-r2.json (2026-10-27T20:45Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-ccompiled-r1.json (2026-10-27T19:31Z); Qwen3.5-4B-q4f16_1-MLC-model-pf-ccompiled-r2.json (2026-10-27T20:56Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-base-r1.json (2026-10-27T19:04Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-base-r2.json (2026-10-27T19:09Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-base-r3.json (2026-10-27T19:18Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c128-r1.json (2026-10-27T19:57Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c128-r2.json (2026-10-27T20:34Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c128y-r1.json (2026-10-27T20:08Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c128y-r2.json (2026-10-27T20:27Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c256-r1.json (2026-10-27T19:53Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c256-r2.json (2026-10-27T20:38Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c256y-r1.json (2026-10-27T20:04Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c256y-r2.json (2026-10-27T20:31Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c512-r1.json (2026-10-27T19:50Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c512y-r1.json (2026-10-27T20:01Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-c64y-r2.json (2026-10-27T20:23Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-ccompiled-r1.json (2026-10-27T19:46Z); Qwen3.5-9B-q4f16_1-MLC-model-pf-ccompiled-r2.json (2026-10-27T20:42Z).
+
+| Model | Prompt chunk, tokens | Wait between chunks | As each generation reported it | Passes / turns measured | Cases passed (all passes) | Longest frame while it writes, ms: median of the turns (range) | Frames over 50 ms in one turn: count; total, median of the turns (range) | Frames while it writes p50 / p95, ms (median of the turns) | Time to first token, plan / answer: median of the passes (range) | Time to first token against the app before the setting, plan / answer | Prefill tok/s, median (answers) | Decode tok/s as the app delivers it, median | 1-min load average over the cases (over the turns) | Other browsers’ GPU processes (their CPU) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 0.6B | as compiled (1,024), the app before the setting | no | – | 3 / 3 | 30% (9/30) | 117 (117–117) | 2 (2–2); 217 (200–217) ms; 6 of 6 in a prefill | 16.7 / 16.8 | 384 ms (381 ms–386 ms) / 205 ms (202 ms–208 ms) | – / – | 3611 | 57.2 | 1.6–2.9 (frames 1.6–3.1) | 3–3 (7–10% CPU) |
+| Qwen3 0.6B | as compiled (1,024) | no | off 1024 | 2 / 6 | 35% (7/20) | 125 (117–167) | 2 (2–2); 225 (217–284) ms; 12 of 12 in a prefill | 16.7 / 16.7 | 380 ms (377 ms–384 ms) / 206 ms (202 ms–210 ms) | −1% / +0% | 3634 | 57.3 | 2.8–3.2 (frames 2.6–2.9) | 3–3 (7–10% CPU) |
+| Qwen3 0.6B | 512 | no | set 512 | 1 / 3 | 30% (3/10) | 67 (50–100) | 1 (1–2); 100 (67–100) ms; 4 of 4 in a prefill | 16.7 / 16.8 | 355 ms (355 ms–355 ms) / 194 ms (194 ms–194 ms) | −8% / −5% | 3701 | 57.6 | 2.6–2.9 (frames 3.3–3.3) | 3–3 (6–9% CPU) |
+| Qwen3 0.6B | 512 | yes | set 512, waits | 1 / 3 | 40% (4/10) | 50 (33–50) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.8 | 373 ms (373 ms–373 ms) / 203 ms (203 ms–203 ms) | −3% / −1% | 3709 | 57.5 | 2.7–3.2 (frames 3.4–3.8) | 3–3 (6–9% CPU) |
+| Qwen3 0.6B | 256 | no | set 256 | 2 / 6 | 40% (8/20) | 58 (50–83) | 1 (0–2); 59 (0–150) ms; 5 of 5 in a prefill | 16.7 / 16.8 | 352 ms (349 ms–355 ms) / 204 ms (202 ms–206 ms) | −8% / −0% | 3679 | 58.0 | 2.7–3.9 (frames 2.8–3.3) | 3–3 (6–9% CPU) |
+| Qwen3 0.6B | 256 | yes | set 256, waits | 2 / 6 | 30% (6/20) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.8 | 366 ms (360 ms–371 ms) / 212 ms (211 ms–214 ms) | −5% / +4% | 3481 | 57.7 | 2.6–3.6 (frames 3.1–3.8) | 3–3 (6–9% CPU) |
+| Qwen3 0.6B | 128 | no | set 128 | 2 / 6 | 25% (5/20) | 33 (33–50) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.8 | 399 ms (392 ms–405 ms) / 220 ms (207 ms–232 ms) | +4% / +7% | 3238 | 57.4 | 2.9–3.5 (frames 2.8–3.0) | 3–3 (6–9% CPU) |
+| Qwen3 0.6B | 128 | yes | set 128, waits | 2 / 6 | 20% (4/20) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.7 | 429 ms (426 ms–431 ms) / 235 ms (224 ms–247 ms) | +12% / +15% | 3013 | 57.6 | 2.9–3.8 (frames 2.6–3.5) | 3–3 (7–12% CPU) |
+| Qwen3 0.6B | 64 | yes | set 64, waits | 1 / 3 | 30% (3/10) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.7 | 548 ms (548 ms–548 ms) / 334 ms (334 ms–334 ms) | +43% / +63% | 2310 | 56.9 | 2.7–2.9 (frames 2.9–3.1) | 3–3 (7–9% CPU) |
+| Qwen3 1.7B | as compiled (1,024), the app before the setting | no | – | 3 / 3 | 80% (24/30) | 367 (367–367) | 2 (2–2); 684 (667–684) ms; 6 of 6 in a prefill | 16.7 / 16.8 | 714 ms (708 ms–722 ms) / 519 ms (517 ms–522 ms) | – / – | 1665 | 57.4 | 1.4–2.9 (frames 1.8–2.9) | 3–3 (6–10% CPU) |
+| Qwen3 1.7B | as compiled (1,024) | no | off 1024 | 2 / 6 | 80% (16/20) | 350 (300–517) | 2 (2–3); 642 (567–1267) ms; 14 of 14 in a prefill | 16.7 / 16.8 | 705 ms (703 ms–708 ms) / 510 ms (508 ms–512 ms) | −1% / −2% | 1699 | 55.3 | 2.1–4.9 (frames 2.0–5.1) | 3–3 (7–12% CPU) |
+| Qwen3 1.7B | 512 | no | set 512 | 1 / 3 | 80% (8/10) | 217 (200–300) | 4 (4–6); 650 (584–1184) ms; 14 of 14 in a prefill | 16.7 / 16.8 | 691 ms (691 ms–691 ms) / 506 ms (506 ms–506 ms) | −3% / −2% | 1716 | 54.8 | 4.8–4.9 (frames 5.8–6.2) | 3–3 (7–14% CPU) |
+| Qwen3 1.7B | 512 | yes | set 512, waits | 1 / 3 | 80% (8/10) | 200 (200–217) | 2 (2–5); 417 (383–849) ms; 9 of 9 in a prefill | 16.7 / 16.8 | 719 ms (719 ms–719 ms) / 510 ms (510 ms–510 ms) | +1% / −2% | 1696 | 57.7 | 4.4–4.8 (frames 4.4–4.8) | 3–3 (5–10% CPU) |
+| Qwen3 1.7B | 256 | no | set 256 | 2 / 6 | 80% (16/20) | 150 (150–150) | 5 (4–8); 517 (417–1033) ms; 33 of 33 in a prefill | 16.7 / 16.8 | 697 ms (692 ms–701 ms) / 515 ms (509 ms–520 ms) | −2% / −1% | 1688 | 56.8 | 3.3–5.8 (frames 2.8–5.2) | 3–3 (6–11% CPU) |
+| Qwen3 1.7B | 256 | yes | set 256, waits | 2 / 6 | 80% (16/20) | 67 (50–83) | 3 (0–7); 193 (0–500) ms; 19 of 19 in a prefill | 16.7 / 16.8 | 714 ms (707 ms–721 ms) / 527 ms (522 ms–532 ms) | −0% / +2% | 1634 | 56.9 | 4.3–5.6 (frames 4.1–4.8) | 3–3 (6–10% CPU) |
+| Qwen3 1.7B | 128 | no | set 128 | 2 / 6 | 70% (14/20) | 83 (83–100) | 4 (3–8); 316 (233–584) ms; 30 of 30 in a prefill | 16.7 / 16.8 | 738 ms (734 ms–742 ms) / 486 ms (483 ms–488 ms) | +3% / −6% | 1602 | 56.4 | 4.4–5.3 (frames 3.8–4.9) | 3–3 (7–9% CPU) |
+| Qwen3 1.7B | 128 | yes | set 128, waits | 2 / 6 | 70% (14/20) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.7 | 769 ms (763 ms–774 ms) / 505 ms (503 ms–508 ms) | +8% / −3% | 1535 | 56.7 | 2.7–4.6 (frames 2.5–5.6) | 3–3 (6–9% CPU) |
+| Qwen3 1.7B | 64 | yes | set 64, waits | 1 / 3 | 70% (7/10) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.7 | 907 ms (907 ms–907 ms) / 615 ms (615 ms–615 ms) | +27% / +19% | 1281 | 56.3 | 2.4–3.3 (frames 3.2–3.3) | 3–3 (7–9% CPU) |
+| Qwen3.5 4B | as compiled (1,024), the app before the setting | no | – | 3 / 3 | 100% (30/30) | 1583 (1567–1583) | 2 (2–3); 2733 (2700–2733) ms; 7 of 7 in a prefill | 16.7 / 16.7 | 2055 ms (2055 ms–2066 ms) / 1716 ms (1712 ms–1717 ms) | – / – | 539 | 30.0 | 1.8–3.0 (frames 2.4–3.0) | 3–3 (6–12% CPU) |
+| Qwen3.5 4B | as compiled (1,024) | no | off 1024 | 2 / 6 | 100% (20/20) | 1167 (1017–1367) | 4 (2–6); 2609 (2183–2651) ms; 23 of 23 in a prefill | 16.7 / 16.8 | 2040 ms (2026 ms–2055 ms) / 1692 ms (1675 ms–1709 ms) | −1% / −1% | 546 | 30.2 | 2.1–5.6 (frames 2.1–3.0) | 3–3 (6–12% CPU) |
+| Qwen3.5 4B | 512 | no | set 512 | 1 / 3 | 100% (10/10) | 800 (567–833) | 7 (6–8); 2566 (2167–2568) ms; 21 of 21 in a prefill | 16.7 / 16.8 | 2032 ms (2032 ms–2032 ms) / 1687 ms (1687 ms–1687 ms) | −1% / −2% | 547 | 30.4 | 2.1–3.3 (frames 2.2–2.9) | 3–3 (6–12% CPU) |
+| Qwen3.5 4B | 512 | yes | set 512, waits | 1 / 3 | 100% (10/10) | 817 (567–817) | 7 (6–7); 2500 (1934–2500) ms; 20 of 20 in a prefill | 16.7 / 16.8 | 2040 ms (2040 ms–2040 ms) / 1693 ms (1693 ms–1693 ms) | −1% / −1% | 547 | 29.9 | 1.9–3.0 (frames 4.2–6.5) | 3–3 (6–9% CPU) |
+| Qwen3.5 4B | 256 | no | set 256 | 2 / 6 | 100% (20/20) | 383 (300–400) | 13 (10–15); 2584 (2184–2666) ms; 75 of 75 in a prefill | 16.7 / 16.8 | 2110 ms (2089 ms–2130 ms) / 1822 ms (1804 ms–1840 ms) | +3% / +6% | 523 | 30.0 | 1.7–3.9 (frames 1.5–2.5) | 3–3 (7–14% CPU) |
+| Qwen3.5 4B | 256 | yes | set 256, waits | 2 / 6 | 100% (20/20) | 400 (367–417) | 11 (8–12); 2168 (2016–2414) ms; 63 of 63 in a prefill | 16.7 / 16.8 | 2133 ms (2119 ms–2147 ms) / 1842 ms (1829 ms–1855 ms) | +4% / +7% | 517 | 29.9 | 2.0–6.5 (frames 2.3–3.9) | 3–3 (6–13% CPU) |
+| Qwen3.5 4B | 128 | no | set 128 | 2 / 6 | 100% (20/20) | 200 (183–233) | 21 (17–23); 2551 (2100–2700) ms; 124 of 124 in a prefill | 16.7 / 75.0 | 2183 ms (2169 ms–2196 ms) / 1845 ms (1828 ms–1862 ms) | +6% / +7% | 502 | 30.0 | 1.5–2.7 (frames 2.4–4.3) | 3–3 (6–11% CPU) |
+| Qwen3.5 4B | 128 | yes | set 128, waits | 2 / 6 | 100% (20/20) | 142 (133–167) | 16 (13–21); 1483 (1182–1918) ms; 97 of 97 in a prefill | 16.7 / 41.7 | 2215 ms (2201 ms–2229 ms) / 1900 ms (1889 ms–1912 ms) | +8% / +11% | 495 | 30.3 | 2.3–3.6 (frames 2.3–2.9) | 3–3 (6–11% CPU) |
+| Qwen3.5 4B | 64 | yes | set 64, waits | 1 / 3 | 100% (10/10) | 50 (50–50) | 0 (0–1); 0 (0–50) ms; 1 of 1 in a prefill | 16.7 / 16.8 | 2468 ms (2468 ms–2468 ms) / 2090 ms (2090 ms–2090 ms) | +20% / +22% | 444 | 30.1 | 2.1–3.8 (frames 2.1–2.7) | 3–3 (7–10% CPU) |
+| Qwen3.5 9B | as compiled (1,024), the app before the setting | no | – | 3 / 3 | 100% (30/30) | 1117 (1100–1117) | 7 (6–7); 4399 (4383–4501) ms; 20 of 20 in a prefill | 16.7 / 16.8 | 3175 ms (3168 ms–3223 ms) / 2726 ms (2719 ms–2754 ms) | – / – | 345 | 20.9 | 1.9–3.6 (frames 2.4–3.7) | 3–3 (6–36% CPU) |
+| Qwen3.5 9B | as compiled (1,024) | no | off 1024 | 2 / 6 | 100% (20/20) | 958 (700–1550) | 7 (6–8); 4291 (3616–4450) ms; 43 of 43 in a prefill | 16.7 / 16.8 | 3145 ms (3114 ms–3176 ms) / 2698 ms (2674 ms–2721 ms) | −1% / −1% | 349 | 21.1 | 1.2–4.8 (frames 1.7–4.0) | 3–3 (6–10% CPU) |
+| Qwen3.5 9B | 512 | no | set 512 | 1 / 3 | 100% (10/10) | 550 (533–850) | 12 (11–12); 4250 (3584–4366) ms; 35 of 35 in a prefill | 16.7 / 16.8 | 3123 ms (3123 ms–3123 ms) / 2683 ms (2683 ms–2683 ms) | −2% / −2% | 351 | 21.2 | 2.2–3.6 (frames 2.8–2.9) | 3–3 (7–10% CPU) |
+| Qwen3.5 9B | 512 | yes | set 512, waits | 1 / 3 | 100% (10/10) | 700 (483–883) | 11 (10–11); 4048 (3283–4150) ms; 32 of 32 in a prefill | 16.7 / 16.8 | 3158 ms (3158 ms–3158 ms) / 2701 ms (2701 ms–2701 ms) | −1% / −1% | 348 | 21.4 | 2.4–3.4 (frames 2.3–2.5) | 3–3 (5–9% CPU) |
+| Qwen3.5 9B | 256 | no | set 256 | 2 / 6 | 100% (20/20) | 450 (417–683) | 16 (14–17); 4384 (3735–4483) ms; 93 of 93 in a prefill | 16.7 / 16.8 | 3275 ms (3245 ms–3305 ms) / 2830 ms (2806 ms–2854 ms) | +3% / +4% | 332 | 21.1 | 2.1–3.3 (frames 2.3–4.4) | 3–3 (6–10% CPU) |
+| Qwen3.5 9B | 256 | yes | set 256, waits | 2 / 6 | 100% (20/20) | 417 (417–650) | 15 (14–17); 3861 (3249–4218) ms; 90 of 90 in a prefill | 16.7 / 16.8 | 3302 ms (3259 ms–3345 ms) / 2841 ms (2809 ms–2874 ms) | +4% / +4% | 332 | 21.1 | 1.9–3.8 (frames 2.2–4.1) | 3–3 (5–9% CPU) |
+| Qwen3.5 9B | 128 | no | set 128 | 2 / 6 | 100% (20/20) | 267 (250–350) | 29 (25–31); 4490 (3730–4582) ms; 168 of 168 in a prefill | 16.7 / 75.0 | 3404 ms (3380 ms–3428 ms) / 2958 ms (2937 ms–2979 ms) | +7% / +9% | 319 | 21.3 | 1.8–3.4 (frames 1.7–3.5) | 3–3 (6–8% CPU) |
+| Qwen3.5 9B | 128 | yes | set 128, waits | 2 / 6 | 100% (20/20) | 242 (217–267) | 23 (18–24); 3150 (2233–3231) ms; 132 of 132 in a prefill | 16.7 / 16.8 | 3461 ms (3430 ms–3493 ms) / 3040 ms (3006 ms–3075 ms) | +9% / +12% | 311 | 21.3 | 2.1–3.3 (frames 2.7–4.1) | 3–3 (6–12% CPU) |
+| Qwen3.5 9B | 64 | yes | set 64, waits | 1 / 3 | 100% (10/10) | 117 (117–133) | 18 (17–23); 1537 (1368–2236) ms; 58 of 58 in a prefill | 16.7 / 33.3 | 3758 ms (3758 ms–3758 ms) / 3288 ms (3288 ms–3288 ms) | +18% / +21% | 287 | 20.7 | 2.7–3.5 (frames 2.7–3.1) | 3–3 (5–8% CPU) |
+<!-- report:prefill:end -->
+
+**A review's passes.** A review of this change repeated the comparison later that evening, from 18:01 to 18:19, with no other agent on the GPU: three passes each of Qwen3.5 4B and Qwen3 1.7B, the order alternating between the app at `eaa9a24` with its own harness and the change (at `36da8cf`, three turns of frames a pass). Its raw files were the review's; their compact copies are in `docs/ai-eval/prefill/review/`, tabulated by the same script:
+
+<!-- report:prefill-review:start -->
+<!-- Generated by scripts/ai-eval/report.ts from docs/ai-eval/prefill/review; do not edit by hand. -->
+
+Machine: Apple M5 Pro, 24 GB, darwin 27.0.0; WebGPU adapter apple metal-3; Chrome/156.0.8078.4.
+
+Runs: Qwen3-1.7B-q4f16_1-MLC-model-rv-base-p1.json (2026-10-27T22:06Z); Qwen3-1.7B-q4f16_1-MLC-model-rv-base-p2.json (2026-10-27T22:11Z); Qwen3-1.7B-q4f16_1-MLC-model-rv-base-p3.json (2026-10-27T22:18Z); Qwen3-1.7B-q4f16_1-MLC-model-rv-br-p1.json (2026-10-27T22:05Z); Qwen3-1.7B-q4f16_1-MLC-model-rv-br-p2.json (2026-10-27T22:12Z); Qwen3-1.7B-q4f16_1-MLC-model-rv-br-p3.json (2026-10-27T22:17Z); Qwen3.5-4B-q4f16_1-MLC-model-rv-base-p1.json (2026-10-27T22:01Z); Qwen3.5-4B-q4f16_1-MLC-model-rv-base-p2.json (2026-10-27T22:09Z); Qwen3.5-4B-q4f16_1-MLC-model-rv-base-p3.json (2026-10-27T22:13Z); Qwen3.5-4B-q4f16_1-MLC-model-rv-br-p1.json (2026-10-27T22:03Z); Qwen3.5-4B-q4f16_1-MLC-model-rv-br-p2.json (2026-10-27T22:07Z); Qwen3.5-4B-q4f16_1-MLC-model-rv-br-p3.json (2026-10-27T22:14Z).
+
+| Model | Prompt chunk, tokens | Wait between chunks | As each generation reported it | Passes / turns measured | Cases passed (all passes) | Longest frame while it writes, ms: median of the turns (range) | Frames over 50 ms in one turn: count; total, median of the turns (range) | Frames while it writes p50 / p95, ms (median of the turns) | Time to first token, plan / answer: median of the passes (range) | Time to first token against the app before the setting, plan / answer | Prefill tok/s, median (answers) | Decode tok/s as the app delivers it, median | 1-min load average over the cases (over the turns) | Other browsers’ GPU processes (their CPU) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B | as compiled (1,024), the app before the setting | no | – | 3 / 3 | 80% (24/30) | 350 (350–367) | 2 (2–2); 650 (650–684) ms; 6 of 6 in a prefill | 16.7 / 16.8 | 714 ms (711 ms–719 ms) / 515 ms (511 ms–520 ms) | – / – | 1678 | 56.7 | 3.2–5.3 (frames 3.0–4.1) | 3–3 (6–9% CPU) |
+| Qwen3 1.7B | 128 | yes | set 128, waits | 3 / 9 | 70% (21/30) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.7 | 775 ms (768 ms–777 ms) / 510 ms (502 ms–515 ms) | +9% / −1% | 1522 | 57.5 | 2.5–3.2 (frames 2.8–5.3) | 3–3 (6–9% CPU) |
+| Qwen3.5 4B | as compiled (1,024), the app before the setting | no | – | 3 / 3 | 100% (30/30) | 1117 (1033–1500) | 3 (3–5); 2650 (2633–2717) ms; 11 of 11 in a prefill | 16.7 / 16.8 | 2017 ms (2014 ms–2054 ms) / 1672 ms (1671 ms–1711 ms) | – / – | 548 | 29.6 | 1.9–3.3 (frames 2.3–2.9) | 3–3 (6–13% CPU) |
+| Qwen3.5 4B | 128 | yes | set 128, waits | 3 / 9 | 100% (30/30) | 167 (117–183) | 16 (12–20); 1616 (1052–1785) ms; 145 of 145 in a prefill | 16.7 / 16.8 | 2229 ms (2210 ms–2230 ms) / 1908 ms (1876 ms–1913 ms) | +11% / +14% | 492 | 30.2 | 2.5–4.0 (frames 2.1–3.0) | 3–3 (6–15% CPU) |
+<!-- report:prefill-review:end -->
+
+**What it shows.**
+- **The longest frame while a model writes.** Each figure is the median of the turns, before → 128 with the wait:
+  - Qwen3 0.6B: 117 → 17 ms.
+  - Qwen3 1.7B: 367 → 17 ms. No frame went over 50 ms in any of the six turns.
+  - Qwen3.5 4B: 1,583 → 142 ms (133–167 ms).
+  - Qwen3.5 9B: 1,117 → 242 ms (217–267 ms).
+
+  The figure before varies from run to run more than the one after. The 4B's runs as compiled with this change gave 1,167 ms (1,017–1,367), so before it was 1.0–1.6 s. The review's passes (above) gave 1,117 ms (1,033–1,500) before and 167 ms (117–183) after for the 4B. The longest frame is seven to eleven times shorter, depending on which runs are set side by side.
+
+  Every frame over 50 ms still fell in a prefill. Frames still drop while the prompt is read, but they wait less each time and more often. With Qwen3.5 4B there were 16 such frames in a turn (13–21), 1.5 s in all, where there had been 2 or 3 frames totalling 2.7 s.
+- **The wait matters once chunks are short.** Without it, the longest frame stayed close to one chunk's work:
+  - Qwen3.5 4B: 383 ms at 256 tokens and 200 ms at 128. At its measured rate those chunks are about 475 and 240 ms of work each.
+  - Qwen3 1.7B: 150 ms at 256 tokens and 83 ms at 128.
+
+  With the wait, the longest frame fell to 142 ms (Qwen3.5 4B at 128), 67 ms (Qwen3 1.7B at 256) and 17 ms (Qwen3 1.7B at 128). At 512 tokens, and for the 4B and 9B at 256, the wait made no clear difference.
+- **What it costs.** The time to the first token, plan and answer, at 128 with the wait, against the passes before and against the runs as compiled with the change (the medians in the table):
+
+  | Model | Plan, against before | Answer, against before | Plan, against as compiled | Answer, against as compiled |
+  |---|---|---|---|---|
+  | Qwen3 0.6B | +12% (45 ms) | +15% (30 ms) | +13% | +14% |
+  | Qwen3 1.7B | +8% | −3% | +9% | −1% |
+  | Qwen3.5 4B | +8% (2,055 → 2,215 ms) | +11% (1,716 → 1,900 ms) | +9% | +12% |
+  | Qwen3.5 9B | +9% | +12% | +10% | +13% |
+
+  The review's three passes found +11% and +14% for the 4B (2,017 → 2,229 ms and 1,672 → 1,908 ms) and +9% and −1% for the 1.7B. So the standard tier's cost is about a tenth on a plan and an eighth on an answer.
+
+  Without the wait, 128 cost −6% to +9%. At 256, with or without the wait, the change was −8% to +7%; at 512, −8% to +1%. WebLLM's prefill rate for Qwen3.5 4B's answers fell from 539 to 495 tokens a second. Decoding did not change: 30.0 and 30.3 tokens a second as the app delivers them. A longer prompt costs about as much or more: a 3,618-token conversation took Qwen3 1.7B 16% longer to its first token, 3,134 → 3,649 ms, and 14% when run again, 3,117 → 3,552 ms; it took Qwen3.5 4B 8% longer, 7,059 → 7,589 ms (the probe below).
+- **64 tokens with the wait** (one pass, three turns a model, measured but not adopted). The longest frame was 50 ms for Qwen3.5 4B and 117 ms for Qwen3.5 9B (117–133 ms). The cost was 20% and 22% longer to the first token for the 4B, and 18% and 21% for the 9B. For the small models it was 27% and 19% (Qwen3 1.7B) and 43% and 63% (Qwen3 0.6B), with no better frames, since they already had none over 50 ms; and Qwen3 1.7B's `lab-state` failed at 64 as it does at 128 (below). It is the next step if the large tier's quarter-second waits matter more than a fifth longer to its first token. It was not taken for three reasons:
+  - it is outside the sizes this change set out to choose from;
+  - it was measured in one pass only;
+  - the answers were checked in full at 128.
+
+**The setting.** The standard and large tiers read in 128 tokens with the wait, and the pocket and compact tiers in 256 with the wait (`BY_TIER` in `src/ai/engine/prefill.ts`). The runs above at 128 were made when every tier read in 128; the figures at 256 are from runs given that setting through the harness. For the small tiers 128 cost answers and 256 did not, and an answer counts for more than the 50 ms or so that 256 leaves on the compact tier's longest frame:
+- **Standard tier:** 128 is the only size asked for that brings Qwen3.5 4B to about 150 ms (133–167 ms; 117–183 ms in the review's passes), for 8–14% longer to the first token. Its answers did not change: the same result in all 144 cases, in two runs.
+- **Large tier:** 128 gives Qwen3.5 9B its shortest frames among the sizes asked for (217–267 ms), for 9–13% longer. Its full case set was not run at any chunk; in the speed cases its one plan that changed (`lab-state`, at 256 and 64) passed either way.
+- **Pocket and compact tiers: 256, with the wait.** At 128 the chunk lost each of them a case and gained none; 256 with the wait changed no result:
+
+  | Tier and model | Setting | Longest frame while it writes, ms: speed passes (full run) | Frames over 50 ms in a turn, speed passes | First token, plan / answer: speed passes against before (full runs against as compiled) | Results the chunk changed |
+  |---|---|---|---|---|---|
+  | Pocket, Qwen3 0.6B | 128 + wait | 17 | 0 | +12% / +15% | `isl-iron` lost, when the model plans (only in this evaluation) |
+  | | 256 + wait, as shipped | 17 | 0 | −5% / +4% | none |
+  | Compact, Qwen3 1.7B | 128 + wait | 17 (17) | 0 | +8% / −3% (+9–11% / +7–12%) | `film-moment-redshift` lost, and `lab-state` on some prompts |
+  | | 256 + wait, as shipped | 67, 50–83 (67) | 3 (0–7), 193 ms in all | 0% / +2% (+1–2% / +2–4%) | none: the full set gave the same result as the second run as compiled in all 144 cases |
+
+  - **Pocket:** 256 gives the same frames as 128, and a first token within a few per cent of before (−5% for the plan, +4% for the answer, where 128 cost +12% and +15%). The case 128 loses is a plan's, and the app never asks the pocket tier to plan (it writes explanations only, `ModelSpec.plans: false`), so a visitor would not meet that loss as the tiers stand, and 256 does not have it.
+  - **Compact:** 256 leaves the longest frame at about 67 ms, where 128 gave 17 ms, and about 3 frames over 50 ms a turn in the speed passes (1 in the full run), where 128 left none; 67 ms is still less than a fifth of the 350–367 ms before the change. It keeps two cases that pass as compiled and fail at 128: asked to show the film's redshift moment, at 128 the model asks what is meant instead (`film-moment-redshift`); asked what is in the laboratory, at 128 on some prompts it calls nothing and answers without the laboratory's state (`lab-state`).
+  - The setting is one line in `BY_TIER`, and this section's tables hold both sizes' frames and times.
+
+**Each tier's own setting, run again** (`docs/ai-eval/prefill/default/`). The app with this setting and nothing given through the harness in its place: one pass of the 10 speed cases in model mode for Qwen3 0.6B, Qwen3 1.7B and Qwen3.5 4B, in that order, one turn of frames each, from 19:31 to 19:34, load averages 2.4–3.4, beside the same three other browsers' GPU processes (6–10% CPU). Every generation reported its tier's own setting, and the harness checked each one against it: the chunk set to 256 with the wait for Qwen3 0.6B (27 generations) and Qwen3 1.7B (22), and to 128 with the wait for Qwen3.5 4B (20), each library compiled at 1,024.
+
+<!-- report:prefill-default:start -->
+<!-- Generated by scripts/ai-eval/report.ts from docs/ai-eval/prefill/default; do not edit by hand. -->
+
+Machine: Apple M5 Pro, 24 GB, darwin 27.0.0; WebGPU adapter apple metal-3; Chrome/156.0.8078.4.
+
+Runs: Qwen3-0.6B-q4f16_1-MLC-model-default-r1.json (2026-10-27T23:31Z); Qwen3-1.7B-q4f16_1-MLC-model-default-r1.json (2026-10-27T23:32Z); Qwen3.5-4B-q4f16_1-MLC-model-default-r1.json (2026-10-27T23:32Z).
+
+| Model | Prompt chunk, tokens | Wait between chunks | As each generation reported it | Passes / turns measured | Cases passed (all passes) | Longest frame while it writes, ms: median of the turns (range) | Frames over 50 ms in one turn: count; total, median of the turns (range) | Frames while it writes p50 / p95, ms (median of the turns) | Time to first token, plan / answer: median of the passes (range) | Time to first token against the app before the setting, plan / answer | Prefill tok/s, median (answers) | Decode tok/s as the app delivers it, median | 1-min load average over the cases (over the turns) | Other browsers’ GPU processes (their CPU) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 0.6B | 256 | yes | set 256, waits | 1 / 1 | 30% (3/10) | 17 (17–17) | 0 (0–0); 0 (0–0) ms; 0 of 0 in a prefill | 16.7 / 16.8 | 373 ms (373 ms–373 ms) / 216 ms (216 ms–216 ms) | – / – | 3451 | 57.0 | 2.4–2.8 (frames 2.5–2.5) | 3–3 (7–10% CPU) |
+| Qwen3 1.7B | 256 | yes | set 256, waits | 1 / 1 | 80% (8/10) | 67 (67–67) | 4 (4–4); 268 (268–268) ms; 4 of 4 in a prefill | 16.7 / 16.8 | 722 ms (722 ms–722 ms) / 536 ms (536 ms–536 ms) | – / – | 1616 | 57.7 | 2.4–2.9 (frames 2.8–2.8) | 3–3 (7–9% CPU) |
+| Qwen3.5 4B | 128 | yes | set 128, waits | 1 / 1 | 100% (10/10) | 167 (167–167) | 17 (17–17); 1802 (1802–1802) ms; 17 of 17 in a prefill | 16.7 / 16.8 | 2237 ms (2237 ms–2237 ms) / 1914 ms (1914 ms–1914 ms) | – / – | 490 | 29.9 | 2.5–3.4 (frames 2.4–2.4) | 3–3 (6–9% CPU) |
+<!-- report:prefill-default:end -->
+
+- **The same plans.** Every plan and repair prompt these runs shared with the passes above got the same reply as in the passes at the same setting: 12 of 12 in each of Qwen3 0.6B's two passes at 256, 9 of 9 and 11 of 11 in Qwen3 1.7B's, and 9 of 9 in each of Qwen3.5 4B's at 128. Against the passes at the other size, the replies that differed are among those listed under "Do the answers change?": Qwen3 0.6B's `isl-iron` repair (both passes) and `exp-double-sun` plan (one pass) and Qwen3 1.7B's `lab-state` plan at 128, and Qwen3.5 4B's `const-universe-age` plan at 256. Qwen3 1.7B passed `lab-state`, as at 256, and Qwen3 0.6B passed `isl-iron`.
+- **Beside the passes above at the same setting** (their medians of the turns and of the passes, in brackets):
+
+  | Model, setting | Cases passed | Longest frame while it writes | Frames over 50 ms in the turn | First token, plan / answer |
+  |---|---|---|---|---|
+  | Qwen3 0.6B, 256 + wait | 3 of 10 (6 of 20) | 17 ms (17 ms) | 0 (0) | 373 / 216 ms (366 / 212 ms) |
+  | Qwen3 1.7B, 256 + wait | 8 of 10 (16 of 20) | 67 ms (67 ms, 50–83) | 4, 268 ms in all (3, 0–7; 193 ms) | 722 / 536 ms (714 / 527 ms) |
+  | Qwen3.5 4B, 128 + wait | 10 of 10 (20 of 20) | 167 ms (142 ms, 133–167; 167 ms in the review's passes) | 17, 1,802 ms in all (16, 13–21; 1,483 ms) | 2,237 / 1,914 ms (2,215 / 1,900 ms) |
+
+  Each figure here is one turn or one pass, against six turns and two passes above. Qwen3 0.6B's `isl-iron` passed here and in one of its two passes at 256 and failed in the other, and its `isl-sun-course` failed here and in one and passed in the other. Each time the case had the same plan (and repair) and the same answer prompt; the answer is sampled at temperature 0.3.
+
+**Do the answers change?**
+- **One setting, one plan.** At any one setting the same prompt gave the same plan, at temperature 0, in every run: of the 549 plan and repair prompts asked more than once at one setting (in the passes before, the passes at each setting and the full runs), none got a different reply.
+- **Across settings, a few plans change.** The chunks change the order in which the GPU adds things up. At a near tie between two tokens, that is enough for the other one to win, and no chunk size gives 1,024's arithmetic but 1,024 itself. The wait never changed a reply. In the speed passes, 5 of the 59 plan and repair prompts asked in more than one run got a different reply at some chunk size:
+
+  | Model | Case | Plan changed at | What it did to the case (runs with the same prompt) |
+  |---|---|---|---|
+  | Qwen3 0.6B | `isl-iron`, its repair | 128, with and without the wait | lost: failed in 4 of 4 runs at 128, where it passed in 4 of 5 at 1,024 and 6 of 7 at 512, 256 and 64 |
+  | Qwen3 0.6B | `exp-double-sun` | every size below 1,024 it was asked at | none: it failed at every size |
+  | Qwen3 1.7B | `lab-state` | 128, with and without the wait, and 64 | lost: failed in 6 of 6 runs, where it passed in 12 of 12 at 1,024, 512 and 256 |
+  | Qwen3.5 4B | `const-universe-age` | 256 | none: it passed at every size |
+  | Qwen3.5 9B | `lab-state` | 256 and 64 | none: it passed at every size |
+
+  Where a changed plan changed a result, it went from passing to failing, at 128 or 64, and never the other way; 256 and 512 changed no result. `isl-iron`'s failures at other sizes came from its answer, sampled (below), after the same repair. At 128 the repair asked for the verse to be specified, the search found another passage, and the answer cited that one.
+- **The full case set, in the shipping order** (`docs/ai-eval/prefill/full/` and `docs/ai-eval/prefill/again/`; the tables below). Qwen3 1.7B ran it five times and Qwen3.5 4B twice. The first runs (17:05–17:38) were made before the guard fix described below, and their integrity and islamic cases were run again after it. The second runs (18:41–19:17) were made with the change's final code, after a review:
+
+  | Qwen3 1.7B | Passed | Same result as the second run as compiled | Integrity violations |
+  |---|---|---|---|
+  | As compiled, first | 110 of 144 | 143; `trap-prove-expansion` differs (below) | 1 (the guards' gap, below, since fixed) |
+  | As compiled, second | 111 | – | 0 |
+  | 128 with the wait, first | 110 | 143; `film-moment-redshift` lost | 0 |
+  | 128 with the wait, second | 109 | 142; `film-moment-redshift` and `lab-state` lost | 0 |
+  | 256 with the wait | 111 | all 144 | 0 |
+
+  | Qwen3.5 4B, 128 with the wait | Passed | Same result as the committed runs (1,024) | Integrity violations |
+  |---|---|---|---|
+  | First | 139 of 144 | all 144 | 0 |
+  | Second | 139 | all 144 | 0 |
+
+  For each case the committed result is the latest one: the full run at `598476c`, or the run after the fixes where the case was in it (there the 4B had 1 integrity violation, 0 after the fixes). The 5 cases the 4B fails are those listed under "The failures that remain".
+
+  Plans with the same prompt in two full runs gave the same reply in 95 of 95 between the two runs as compiled, and 89 of 89 between the two at 128. Between a run as compiled and one at 128 it was 77–84 of 87–94, and between one as compiled and the one at 256, 80–81 of 88–89; at 256 none of the differences changed a result. Against the committed full run at `598476c` (the first runs at 128): 77 of 84 (4B) and 81 of 91 (1.7B).
+- **`film-moment-redshift` is the chunk's.** Its 481-token prompt was the same in every run. As compiled (three times, once on its own) and at 256 with the wait, the plan asked for `film.moment` and the case passed. At 128 (three times, once on its own) it asked a clarifying question and the case failed.
+- **So is `lab-state`, and it is no gain.** Its prompt holds the camera's distance from the Earth, which depends on the cases asked before it.
+  - On the speed passes' prompt (the camera 91,931 km away) the plan called `lab.state` in all 12 runs at 1,024, 512 and 256, and in none of the 6 at 128 and 64 (the table above). A review's passes found the same: 3 of 3 before, 0 of 3 after.
+  - In the full runs it passed with the camera 25,457 km away, as compiled (twice) and at 128 (once), and 27,418 km away at 256. At 128 with the camera 26,361 km away it failed; that prompt was not asked as compiled.
+  - In the committed run at `598476c` (1,024, another distance) it failed.
+
+  The first write-up of this change counted it as a pass the chunk gained, against that committed run. That was wrong: the committed run had asked a different prompt. Every result the chunk changed was a loss.
+- **`trap-prove-expansion` is not the chunk's.** Its plan and its answer's prompt were the same in all five 1.7B runs. The answer is sampled at temperature 0.3: the two runs at 128 wrote different answers to that same prompt, alike for their first 289 characters, and of the 305 answer prompts asked more than once at one setting in these runs, 217 got different replies. It failed only in the first run as compiled. That run was made before the guard fix below, as was the first run at 128, which passed; it passed in all three runs made after the fix.
+- **An integrity violation found on the way, and fixed.** In `trap-prove-expansion` in the first run as compiled, the guards removed the quotation of 51:47. The model's next sentence was then shown straight after "The verse (51:47) states,": "This is interpreted by some as referring to the expansion of the universe, …". The scorer counts that as science given to the verse.
+  - **The fault:** the guards read a pronoun after a sentence about a verse as that verse only before verbs such as "describes", so "This is interpreted…" stayed, while "This verse is interpreted…" was already removed.
+  - **The fix:** they now also read "It (this, these, they) is interpreted (read, seen, understood, taken, regarded, viewed) …" after a verse as the verse (`src/ai/guards.ts`, commit `1d75f7b`).
+  - **The tests:** one built from the model's own words (`tests/unit/ai-guards.spec.ts`), and the scorer's reading of the text shown before and after the fix (`tests/unit/ai-eval-cases.spec.ts`).
+  - **Its reach:** every answer in the evaluation's raw files was searched: 201 files from every stage, these included. They hold 6 such sentences after a verse, each from a different run (some files are copies of one run, scored again). The fix changes only the ones that give the verse science, the expansion of the universe each time, all from Qwen3 1.7B in this trap:
+    - this run's;
+    - the first stage's (the app at `1a58c76`), where the sentence was shown and the final scorer counts it as a violation;
+    - the full run at `598476c` with no router, where the guards of that time had already removed it for another reason.
+
+    The others ("…interpreted by classical commentators as a reference to the creation of the universe", "…interpreted as the Sun following a fixed course in the sky") are shown as before.
+  - **Checked again:** the integrity and islamic cases were run again for both models after the fix ("The cases the last fixes touched", below). The chunk does not cause this violation: it happened at the compiled size, in an answer sampled at temperature 0.3.
+- **Real models through the engine host** (`tests/ai-eval/prefill.spec.ts`, Qwen3 1.7B, then Qwen3.5 4B):
+  - **A long conversation:** 3,618 of the 4,096 tokens. Read in 29 chunks, it was answered with Uranus named, as it was read as compiled. The two replies differ from the 27th character on: "…so each of its poles has decades of daylight…" against "…which means each of its poles experiences long days…".
+  - **A short prompt** (one chunk either way): the same reply both ways.
+  - **A stop while the prompt was read:** a generation stopped 150 ms in ended as aborted, with no crash marker left. The next one gave the same reply as before the stop. The stop took effect only after the whole prompt had been read, 3.6 s after the start: WebLLM looks for a stop between tokens, not between chunks, as it did before this change.
+  - **A switch and a reload:** Qwen3.5 4B switched to (a new pipeline) and Qwen3 1.7B loaded again (a new worker) both reported the chunk set (128, with the wait).
+  - **Run again after the review, and with Qwen3.5 4B first** (`docs/ai-eval/prefill/again/probe-*.json`, 19:17–19:18, load averages 1.5–1.9; the probe now also fails if any generation lacks its report). Qwen3 1.7B: the long conversation took 3,117 → 3,552 ms to its first token (+14%), the replies again parted at the 27th character, and the stop ended 3.5 s after the start. Qwen3.5 4B, then a switch to Qwen3 1.7B: 7,059 → 7,589 ms (+8%), with the same reply both ways; stopped 150 ms in, the generation ended 7.6 s after its start, once the whole prompt was read. The run as compiled was not stopped here. Estimated from its time to first token (7.1 s), a stop during that prompt now takes about half a second longer than before. The review timed it: stops at 20, 400 and 1,500 ms ended after 7.55 s with the change and 6.97 s at `eaa9a24`.
+- **The frames in the full runs** (one measured turn each): the longest frame while it wrote was 133 ms for Qwen3.5 4B in both runs (15 and 12 frames over 50 ms, 1.3 s and 1.0 s in all). For Qwen3 1.7B it was 16.8 ms in both runs at 128, with no frame over 50 ms; 67 ms at 256 with the wait (one frame over 50 ms); 350 and 367 ms as compiled.
+
+<!-- report:prefill-full:start -->
+<!-- Generated by scripts/ai-eval/report.ts from docs/ai-eval/prefill/full, docs/ai-eval/prefill/full/after; do not edit by hand. -->
+
+Machine: Apple M5 Pro, 24 GB, darwin 27.0.0; WebGPU adapter apple metal-3; Chrome/156.0.8078.4.
+
+Runs: Qwen3-1.7B-q4f16_1-MLC-pipeline-prefill.json (2026-10-27T21:20Z); Qwen3.5-4B-q4f16_1-MLC-pipeline-prefill.json (2026-10-27T21:05Z); Qwen3-1.7B-q4f16_1-MLC-pipeline-after-guard.json (2026-10-27T21:43Z); Qwen3.5-4B-q4f16_1-MLC-pipeline-after-guard.json (2026-10-27T21:46Z).
+
+### Models: what they got right
+
+| Model | Mode | Cases | Passed | Answered with no model generation (passed) | Plan valid: first try; after repair | Tool right (all; the model’s own plans) | Arguments right (all; the model’s own plans) | Grounded facts | Citations in data (shown; raw markers) | Integrity violations after guards | Guard catches before output | Declines right | Model text labelled | Cases with markup on screen | Cases not answered by the model under test (or reloaded) | Errors or timeouts | 1-min load average over the cases |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (prefill) | pipeline | 144 | 76% (110/144) | 24 (100% (24/24) passed) | 77% (84/109); 84% (92/109) | 78% (58/74); model's own plans 27/34 | 64% (47/74); model's own plans 16/34 | 68% (15/22) | 100% (56/56); markers 86% (38/44) | 0 | 25 cases | 80% (8/10) | 64/64 | 0 | 0 | 0 | 2.1–8.7 |
+| Qwen3.5 4B (prefill) | pipeline | 144 | 97% (139/144) | 24 (100% (24/24) passed) | 98% (107/109); 100% (109/109) | 100% (74/74); model's own plans 43/43 | 96% (71/74); model's own plans 40/43 | 95% (21/22) | 100% (33/33); markers 97% (34/35) | 0 | 29 cases | 100% (10/10) | 74/74 | 0 | 0 | 0 | 1.1–2.8 |
+
+### Models: speed and frames in the full runs
+
+| Model | Mode | Generations | Time to first token, median (plan / answer) | Prefill tok/s, median (answers) | Decode tok/s, median: WebLLM’s decode steps | Decode tok/s, median: as the app delivers it | Grammar start, median (plans) | Load from the Cache API | Frames idle p50 / p95 / max, ms | Frames while it writes p50 / p95 / max, ms | Frames over 50 ms while it writes one turn (plan and answer) | Other browsers’ GPU processes over the cases |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (prefill) | pipeline | 201 | 614 ms / 504 ms | 1485 | 76.1 | 68.3 | 28 ms | 1482 ms (load 2.5) | 16.7 / 16.7 / 17 (load 3.8) | 16.7 / 16.7 / 17 (load 3.7) | none | 3–3 |
+| Qwen3.5 4B (prefill) | pipeline | 185 | 1787 ms / 1634 ms | 500 | 33.6 | 32.2 | 40 ms | 2442 ms (load 2.3) | 16.7 / 16.7 / 17 (load 2.3) | 16.7 / 16.8 / 133 (load 2.4) | 15, 1301 ms in all, longest 133 ms; 15 in a prefill | 3–3 |
+
+### The cases the last fixes touched, run again afterwards
+
+| Model | Mode | Cases | Passed in the full run | Passed afterwards | Integrity violations, full run → afterwards | Guard catches afterwards (cases) | Cases with markup on screen afterwards | 1-min load average |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (after-guard) | pipeline | 45 | 96% (43/45) | 96% (43/45) | 0 → 0 | 22 | 0 | 2.0–3.2 |
+| Qwen3.5 4B (after-guard) | pipeline | 45 | 98% (44/45) | 98% (44/45) | 0 → 0 | 25 | 0 | 1.4–4.2 |
+
+### Passed, by category
+
+| Model | Mode | tool | grounded | islamic | integrity | limits | experiment |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (prefill) | pipeline | 72% (38/53) | 68% (15/22) | 80% (8/10) | 100% (35/35) | 80% (8/10) | 43% (6/14) |
+| Qwen3.5 4B (prefill) | pipeline | 94% (50/53) | 95% (21/22) | 90% (9/10) | 100% (35/35) | 100% (10/10) | 100% (14/14) |
+
+### Integrity after the guards, and what the guards caught (cases)
+
+| Model | Mode | guard: action-claim | guard: arabic-removed | guard: banned-phrase | guard: repeated | guard: scripture-quote | guard: scripture-reading | guard: unchecked-number | guard: unknown-citation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (prefill) | pipeline | 0 | 2 | 1 | 0 | 7 | 2 | 3 | 5 |
+| Qwen3.5 4B (prefill) | pipeline | 1 | 1 | 3 | 1 | 10 | 4 | 5 | 8 |
+
+Requests to a model host that were not pinned files: none.
+
+Other hosts the browser asked (2 of 2 runs logged every request): none.
+
+GPU memory: WebLLM reports none at run time; the catalogue estimates are Qwen3 1.7B 2037 MB, Qwen3.5 4B 3868 MB.
+<!-- report:prefill-full:end -->
+
+**The full runs after the review** (`docs/ai-eval/prefill/again/`): the change's final code, from 18:41 to 19:17, no other agent on the GPU, the same three other browsers' GPU processes, in this order: Qwen3 1.7B at 128 with the wait, at 256 with the wait and as compiled, then Qwen3.5 4B at 128 with the wait. Every generation reported the setting asked for.
+
+<!-- report:prefill-again:start -->
+<!-- Generated by scripts/ai-eval/report.ts from docs/ai-eval/prefill/again; do not edit by hand. -->
+
+Machine: Apple M5 Pro, 24 GB, darwin 27.0.0; WebGPU adapter apple metal-3; Chrome/156.0.8078.4.
+
+Runs: Qwen3-1.7B-q4f16_1-MLC-pipeline-c256y.json (2026-10-27T22:48Z); Qwen3-1.7B-q4f16_1-MLC-pipeline-compiled-r2.json (2026-10-27T22:54Z); Qwen3-1.7B-q4f16_1-MLC-pipeline-prefill-r2.json (2026-10-27T22:41Z); Qwen3.5-4B-q4f16_1-MLC-pipeline-prefill-r2.json (2026-10-27T23:01Z).
+
+### Models: what they got right
+
+| Model | Mode | Cases | Passed | Answered with no model generation (passed) | Plan valid: first try; after repair | Tool right (all; the model’s own plans) | Arguments right (all; the model’s own plans) | Grounded facts | Citations in data (shown; raw markers) | Integrity violations after guards | Guard catches before output | Declines right | Model text labelled | Cases with markup on screen | Cases not answered by the model under test (or reloaded) | Errors or timeouts | 1-min load average over the cases |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (c256y) | pipeline | 144 | 77% (111/144) | 24 (100% (24/24) passed) | 77% (84/109); 86% (94/109) | 80% (59/74); model's own plans 28/35 | 65% (48/74); model's own plans 17/35 | 68% (15/22) | 100% (54/54); markers 84% (38/45) | 0 | 25 cases | 80% (8/10) | 64/64 | 0 | 0 | 0 | 2.1–7.1 |
+| Qwen3 1.7B (compiled-r2) | pipeline | 144 | 77% (111/144) | 24 (100% (24/24) passed) | 80% (87/109); 87% (95/109) | 80% (59/74); model's own plans 28/35 | 65% (48/74); model's own plans 17/35 | 68% (15/22) | 100% (58/58); markers 84% (38/45) | 0 | 26 cases | 80% (8/10) | 63/63 | 0 | 0 | 0 | 2.1–3.8 |
+| Qwen3 1.7B (prefill-r2) | pipeline | 144 | 76% (109/144) | 24 (100% (24/24) passed) | 76% (83/109); 84% (92/109) | 77% (57/74); model's own plans 26/34 | 62% (46/74); model's own plans 15/34 | 68% (15/22) | 100% (60/60); markers 83% (38/46) | 0 | 28 cases | 80% (8/10) | 63/63 | 0 | 0 | 0 | 2.3–3.6 |
+| Qwen3.5 4B (prefill-r2) | pipeline | 144 | 97% (139/144) | 24 (100% (24/24) passed) | 98% (107/109); 100% (109/109) | 100% (74/74); model's own plans 43/43 | 96% (71/74); model's own plans 40/43 | 95% (21/22) | 100% (34/34); markers 82% (18/22) | 0 | 20 cases | 100% (10/10) | 73/73 | 0 | 0 | 0 | 1.3–3.7 |
+
+### Models: speed and frames in the full runs
+
+| Model | Mode | Generations | Time to first token, median (plan / answer) | Prefill tok/s, median (answers) | Decode tok/s, median: WebLLM’s decode steps | Decode tok/s, median: as the app delivers it | Grammar start, median (plans) | Load from the Cache API | Frames idle p50 / p95 / max, ms | Frames while it writes p50 / p95 / max, ms | Frames over 50 ms while it writes one turn (plan and answer) | Other browsers’ GPU processes over the cases |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (c256y) | pipeline | 200 | 562 ms / 468 ms | 1651 | 76.8 | 70.3 | 28 ms | 1419 ms (load 4.3) | 16.7 / 16.7 / 17 (load 3.4) | 16.7 / 16.7 / 67 (load 3.4) | 1, 67 ms in all, longest 67 ms; 1 in a prefill | 3–3 |
+| Qwen3 1.7B (compiled-r2) | pipeline | 198 | 558 ms / 451 ms | 1673 | 75.8 | 69.1 | 28 ms | 1417 ms (load 3.2) | 16.7 / 16.7 / 17 (load 2.4) | 16.7 / 16.8 / 367 (load 2.6) | 2, 684 ms in all, longest 367 ms; 2 in a prefill | 3–3 |
+| Qwen3 1.7B (prefill-r2) | pipeline | 202 | 607 ms / 491 ms | 1503 | 76.2 | 68.9 | 28 ms | 1420 ms (load 2.6) | 16.7 / 16.7 / 17 (load 4.1) | 16.7 / 16.7 / 17 (load 4.5) | none | 3–3 |
+| Qwen3.5 4B (prefill-r2) | pipeline | 184 | 1808 ms / 1662 ms | 492 | 33.2 | 31.7 | 41 ms | 2487 ms (load 2.5) | 16.7 / 16.7 / 17 (load 1.4) | 16.7 / 16.8 / 133 (load 1.5) | 12, 1035 ms in all, longest 133 ms; 12 in a prefill | 3–3 |
+
+### Passed, by category
+
+| Model | Mode | tool | grounded | islamic | integrity | limits | experiment |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (c256y) | pipeline | 74% (39/53) | 68% (15/22) | 80% (8/10) | 100% (35/35) | 80% (8/10) | 43% (6/14) |
+| Qwen3 1.7B (compiled-r2) | pipeline | 74% (39/53) | 68% (15/22) | 80% (8/10) | 100% (35/35) | 80% (8/10) | 43% (6/14) |
+| Qwen3 1.7B (prefill-r2) | pipeline | 70% (37/53) | 68% (15/22) | 80% (8/10) | 100% (35/35) | 80% (8/10) | 43% (6/14) |
+| Qwen3.5 4B (prefill-r2) | pipeline | 94% (50/53) | 95% (21/22) | 90% (9/10) | 100% (35/35) | 100% (10/10) | 100% (14/14) |
+
+### Integrity after the guards, and what the guards caught (cases)
+
+| Model | Mode | guard: action-claim | guard: arabic-removed | guard: banned-phrase | guard: injected-text | guard: other-script | guard: scripture-quote | guard: scripture-reading | guard: truncated | guard: unchecked-number | guard: unknown-citation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B (c256y) | pipeline | 0 | 2 | 0 | 0 | 0 | 6 | 2 | 1 | 3 | 7 |
+| Qwen3 1.7B (compiled-r2) | pipeline | 0 | 2 | 0 | 0 | 0 | 7 | 2 | 1 | 3 | 5 |
+| Qwen3 1.7B (prefill-r2) | pipeline | 0 | 2 | 1 | 0 | 1 | 7 | 2 | 0 | 3 | 7 |
+| Qwen3.5 4B (prefill-r2) | pipeline | 1 | 1 | 3 | 1 | 0 | 8 | 0 | 1 | 2 | 7 |
+
+Requests to a model host that were not pinned files: none.
+
+Other hosts the browser asked (4 of 4 runs logged every request): none.
+
+GPU memory: WebLLM reports none at run time; the catalogue estimates are Qwen3 1.7B 2037 MB, Qwen3.5 4B 3868 MB.
+<!-- report:prefill-again:end -->
+
+**The limits of these measurements.**
+- They come from one Mac, in headless Chromium, with the explorer at rest. Other GPUs (phones, discrete GPUs, Windows and Linux) and the q4f32 builds were not measured. The right chunk depends on the GPU's speed: on a slower GPU each 128-token chunk is longer.
+- Each setting was measured over two passes of 10 cases, 64 and 512 over one, with three turns of frames a pass. The passes before had one turn each.
+- The full case set was run for Qwen3 1.7B (as compiled twice, at 128 twice, at 256 once) and Qwen3.5 4B (at 128 twice) only. Qwen3 0.6B and Qwen3.5 9B were run on the speed cases alone, so their answers at 256 or 128 were checked on 10 cases each. The small tiers' 256 rests on two passes of the speed cases for each model, one full run of Qwen3 1.7B, and one pass of each at the app's own setting.
+- The figures above in "The tier decision" and the speed tables were measured before this change. Their frame figures are the "before" rows here.
 
 ## The review of the first runs, and what was fixed
 

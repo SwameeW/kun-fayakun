@@ -14,7 +14,7 @@ import type { Pacer } from '../../src/ai/engine/pacing';
 import { grammarSchema, loadWebLLM, thinkFilter, toCompletionRequest, toLoadProgress, type ModelWorker } from '../../src/ai/engine/webllm';
 import { planSchema } from '../../src/ai/prompts';
 import { allTools } from '../../src/ai/tools/index';
-import type { GenerateRequest, JsonSchema } from '../../src/ai/types';
+import type { GenerateRequest, JsonSchema, PrefillReport } from '../../src/ai/types';
 
 const ROOT = new URL('../../', import.meta.url);
 const MESSAGES = JSON.parse(readFileSync(new URL('src/i18n/en.ai.engine.json', ROOT), 'utf8')) as Record<string, string>;
@@ -69,6 +69,9 @@ function device(nav: NavigatorLike, probe: AdapterProbe | null, extra: Partial<T
 }
 
 const reason = (name: string): string => `ai.engine.reason.${name}`;
+
+/** A worker's report of a load that set no prompt chunk (src/ai/engine/prefill.ts). */
+const OFF: PrefillReport = { outcome: 'off', compiled: null, chunkTokens: null, yieldBetween: false };
 
 test('an iPhone gets the guide only, with the reason', () => {
   const s = device({ userAgent: UA.iphone, maxTouchPoints: 5 }, adapter(APPLE));
@@ -357,7 +360,7 @@ test('a generation’s text and its streamed pieces never carry the thinking blo
   let next = 0;
   const worker: ModelWorker = {
     call(request) {
-      if (request.type === 'load') return Promise.resolve({ type: 'loaded', id: 1 });
+      if (request.type === 'load') return Promise.resolve({ type: 'loaded', id: 1, prefill: OFF });
       if (request.type === 'generate') return Promise.resolve({ type: 'started', id: 7 });
       if (request.type === 'pull') {
         const delta = deltas[next];
@@ -449,14 +452,14 @@ test('a model’s load holds the render budget from its weights’ upload to its
     const reports = ['Start to fetch params', 'Fetching param cache[1/10]: 100MB fetched.', 'Loading model from cache[1/10]: 0MB loaded.', 'Loading model from cache[10/10]: 900MB loaded.', 'Loading GPU shader modules[5/40]', 'Finish loading on WebGPU'];
     const worker: ModelWorker = {
       async call(request, onProgress) {
-        if (request.type === 'unload') return { type: 'loaded', id: 0 };
+        if (request.type === 'unload') return { type: 'result', id: 0, value: true };
         for (const text of reports) {
           onProgress?.({ progress: 0.5, text });
           seen.push({ text, held: holds });
           await Promise.resolve();
         }
         if (outcome === 'fails') throw new Error('device lost');
-        return { type: 'loaded', id: 0 };
+        return { type: 'loaded', id: 0, prefill: OFF };
       },
       interrupt: () => undefined,
       terminate: () => undefined,

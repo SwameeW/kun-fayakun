@@ -150,7 +150,35 @@ export interface GenerateResult {
    * prefill and decode rates, time to first token, end to end, and its grammar matcher's start for a
    * schema). Read by the evaluation (tests/ai-eval), never shown to visitors.
    */
-  engineUsage?: { prefillTokensPerS: number; decodeTokensPerS: number; ttftMs: number; e2eMs: number; grammarInitMs: number | null };
+  engineUsage?: { prefillTokensPerS: number; decodeTokensPerS: number; ttftMs: number; e2eMs: number; grammarInitMs: number | null; prefill?: PrefillUsage };
+}
+
+/**
+ * How a loaded model reads its prompt (src/ai/engine/prefill.ts): the chunk set on WebLLM's
+ * pipeline after its load, or why none was.
+ * - set: the pipeline reads prompts in chunks of chunkTokens now (compiled before);
+ * - off: none was asked for;
+ * - kept: the build's own chunk is already that size or smaller, so it stays (the wait, if asked,
+ *   still goes between its chunks);
+ * - no-pipeline, no-field: WebLLM's engine holds no pipeline for the model, or the pipeline no
+ *   whole-number prefillChunkSize, where 0.2.86 keeps them (a WebLLM that moved them);
+ * - failed: reading or writing it threw, or the value did not hold (nothing changed).
+ */
+export type PrefillOutcome = 'set' | 'off' | 'kept' | 'no-pipeline' | 'no-field' | 'failed';
+
+export interface PrefillReport {
+  outcome: PrefillOutcome;
+  /** The chunk the library was compiled with (WebLLM's metadata), tokens, where it was read. */
+  compiled: number | null;
+  /** The chunk the pipeline reads prompts in after the setting, tokens, where it was read. */
+  chunkTokens: number | null;
+  /** Whether each chunk after the first waits for the model's GPU queue (and one macrotask). */
+  yieldBetween: boolean;
+}
+
+/** A generation's view of it: the report made at load, and the chunk the pipeline held when the generation ended (null where unread). */
+export interface PrefillUsage extends PrefillReport {
+  chunkAtGeneration: number | null;
 }
 
 /** A language model the assistant can use (local, browser or scripted). */
@@ -159,9 +187,11 @@ export interface LanguageEngine {
   /** Model id, "browser", or "scripted". */
   readonly model: string;
   generate(request: GenerateRequest): Promise<GenerateResult>;
-  /** Stops a generation at its next token. */
+  /** Stops the generation under way at its next token (and, for the local model, any waiting for it to end). */
   interrupt(): void;
   unload(): Promise<void>;
+  /** Set once it can no longer generate (the local model's worker ended by its watch, or its GPU device lost): why. */
+  readonly lost?: EngineError | null;
 }
 
 /** Loads engines and manages what is stored (src/ai/engine/index.ts). */
@@ -519,6 +549,12 @@ export interface IntelligenceEvents {
  */
 export interface EvaluationOptions {
   router: 'first' | 'skip';
+  /**
+   * How a model loaded from then on reads its prompt, in place of its own setting
+   * (src/ai/engine/prefill.ts): the chunk in tokens (null: as compiled) and whether to wait between
+   * chunks. Left out: each model's own. For measuring the setting, never for visitors.
+   */
+  prefill?: { chunkTokens: number | null; yieldBetween: boolean };
 }
 
 /** One generation of a turn, as the evaluation records it: what it was for, the raw reply and the engine's figures. */

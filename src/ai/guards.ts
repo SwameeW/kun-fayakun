@@ -993,8 +993,10 @@ function scriptureScience(text: string, data: OutputGuardData, say: () => string
     const before = previous;
     previous = s;
     if (data.sideBySide && s.includes(data.sideBySide)) return s;
-    // "It describes…" just after a sentence about a verse (or after a verse's marker left where words were removed) speaks of that verse.
-    const pronoun = /^\s*(?:it|this|these|they)\b(?=\s+(?:also\s+|then\s+)?(?:describes?|explains?|says?|states?|mentions?|speaks?|shows?|refers?|tells?|depicts?|portrays?|matches|suggests?|indicates?|reflects?|points?|is\s+about)\b)/iu.exec(s);
+    // "It describes…" just after a sentence about a verse (or after a verse's marker left where words were removed) speaks of that verse;
+    // so does "This is interpreted by some as referring to the expansion of the universe" (Qwen3 1.7B, its quotation removed before it),
+    // as "This verse is interpreted…" already did.
+    const pronoun = /^\s*(?:it|this|these|they)\b(?=\s+(?:also\s+|then\s+)?(?:describes?|explains?|says?|states?|mentions?|speaks?|shows?|refers?|tells?|depicts?|portrays?|matches|suggests?|indicates?|reflects?|points?|is\s+about|(?:is|are|was|were|has\s+been|have\s+been)\s+(?:\w+\s+){0,3}?(?:interpreted|read|seen|understood|taken|regarded|viewed)\b))/iu.exec(s);
     const afterSide = data.sideBySide !== undefined && before.includes(data.sideBySide);
     const subject = pronoun && !afterSide && (speaksOfScripture(before, data) || /^\s*(?:\[\[(?:verse|hadith):[^\]\s]+\]\]\s*)+$/u.test(before)) ? `[[verse:it]]${s.slice(pronoun[0].length)}` : s;
     for (const m of subject.matchAll(SCRIPTURE_DESCRIBES)) {

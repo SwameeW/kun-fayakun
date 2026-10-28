@@ -21,8 +21,8 @@ export const BUDGET_SCALE = 0.75;
 export interface Pacer {
   /** Resolves when the next piece may be pulled. */
   gate(): Promise<void>;
-  /** Resolves once the tab is visible (at once if it is). */
-  visible(): Promise<void>;
+  /** Resolves once the tab is visible (at once if it is), or once `until` settles; its listener goes either way. */
+  visible(until?: Promise<unknown>): Promise<void>;
   /** Takes the render budget for a generation (prefill included) or a model's upload and compilation; returns its release (idempotent). */
   hold(): () => void;
   /** Removes the listeners (the pacer is not used after). */
@@ -67,15 +67,18 @@ export function createPacer(app: App): Pacer {
 
   const moving = (): boolean => app.universe()?.moving === true || performance.now() - lastPointer < POINTER_RECENT_MS;
 
-  const visible = (): Promise<void> =>
+  const visible = (until?: Promise<unknown>): Promise<void> =>
     document.hidden
       ? new Promise((resolve) => {
-          const onChange = (): void => {
-            if (document.hidden) return;
+          const done = (): void => {
             document.removeEventListener('visibilitychange', onChange);
             resolve();
           };
+          const onChange = (): void => {
+            if (!document.hidden) done();
+          };
           document.addEventListener('visibilitychange', onChange);
+          until?.then(done, done);
         })
       : Promise.resolve();
 

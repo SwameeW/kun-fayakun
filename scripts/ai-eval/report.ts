@@ -13,6 +13,9 @@
  *       --block rescored --into docs/AI-EVALUATION.md
  *       (runs scored again by a later scorer, beside their run-time score; between "<!-- report:rescored:start -->" and
  *       "<!-- report:rescored:end -->")
+ *   node --import tsx scripts/ai-eval/report.ts docs/ai-eval/prefill --prefill --block prefill --into docs/AI-EVALUATION.md
+ *       (the speed passes run at each prompt chunk, src/ai/engine/prefill.ts: one row per model and setting,
+ *       every turn whose frames were measured, beside the setting as the engine reported it)
  *
  * It reads the raw files or their compact copies (scripts/ai-eval/compact.ts, committed in
  * docs/ai-eval). Runs tagged "timing…" (the speed passes, several of them, the models in alternating
@@ -95,10 +98,21 @@ interface RunFile {
   catalogue: { vramMBEstimate: number };
   loadavgStart: number[];
   cases: CaseRecord[];
-  frames: { idle: FrameWindow; generating: FrameWindow } | null;
+  frames: { idle: FrameWindow; generating: FrameWindow; turns?: FrameWindow[] } | null;
+  /** How the model read its prompt (src/ai/engine/prefill.ts); absent in runs made before the setting existed. */
+  prefill?: {
+    asked: PrefillSetting | null;
+    setting: PrefillSetting;
+    seen: readonly { outcome: string; compiled: number | null; chunkTokens: number | null; yieldBetween: boolean; chunkAtGeneration: number | null; generations?: number }[];
+  };
   unexpectedRequests: string[];
   unservedModelHosts?: string[];
   externalHosts?: Record<string, number>;
+}
+
+interface PrefillSetting {
+  chunkTokens: number | null;
+  yieldBetween: boolean;
 }
 
 interface NetworkFile {
@@ -123,6 +137,7 @@ const blockAt = args.indexOf('--block');
 const block = blockAt >= 0 ? args[blockAt + 1] : undefined;
 const fromAt = args.indexOf('--rescored-from');
 const rescoredFrom = fromAt >= 0 ? args[fromAt + 1] : undefined;
+const prefillTables = args.includes('--prefill');
 const valued = new Set([outAt, intoAt, blockAt, fromAt].filter((i) => i >= 0).map((i) => i + 1));
 const inputs = args.filter((a, i) => !a.startsWith('--') && !valued.has(i));
 /** The tables' headings: a section of their own, or under the document's own heading (--into). */
@@ -298,6 +313,91 @@ function rescoredTable(runs: readonly { file: string; run: RunFile }[], from: st
   return table(['Model', 'Mode', 'Passed, as scored when it ran', 'Passed, scored again', 'Integrity violations, as scored when it ran', 'Integrity violations, scored again', 'Cases with markup on screen, scored again'], rows);
 }
 
+/** The setting a run read its prompt with, as a row's label: runs made before the setting existed read it as compiled. */
+function prefillLabel(r: RunFile): { chunk: string; wait: string; key: string } {
+  const p = r.prefill;
+  if (!p) return { chunk: 'as compiled (1,024), the app before the setting', wait: 'no', key: 'before' };
+  const reported = [...new Set(p.seen.map((x) => x.chunkAtGeneration))].filter((x): x is number => x !== null);
+  const chunk = p.setting.chunkTokens === null ? `as compiled${reported.length ? ` (${reported.map((n) => n.toLocaleString('en-GB')).join(', ')})` : ''}` : String(p.setting.chunkTokens);
+  return { chunk, wait: p.setting.yieldBetween ? 'yes' : 'no', key: `${p.setting.chunkTokens ?? 'compiled'}${p.setting.yieldBetween ? '+wait' : ''}${p.asked ? '' : ' (own)'}` };
+}
+
+/** Every turn whose frames a run measured (the first alone in runs made before several were). */
+const frameTurns = (r: RunFile): FrameWindow[] => (r.frames ? (r.frames.turns ?? [r.frames.generating]) : []);
+
+/**
+ * The prompt-chunk passes (src/ai/engine/prefill.ts): for each model and setting, every pass and every
+ * measured turn together. Frames are per turn (a plan and an answer); times to first token are the
+ * passes' medians over their cases; the change in time to first token is against the same model's
+ * passes before the setting (or, without them, at the compiled size).
+ */
+function prefillTable(runs: readonly RunFile[]): string {
+  const groups = new Map<string, RunFile[]>();
+  for (const r of runs) {
+    const key = `${r.name}\u0000${prefillLabel(r).key}`;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  const order = (key: string): number => {
+    const k = key.split('\u0000')[1] ?? '';
+    if (k === 'before') return -2;
+    if (k.startsWith('compiled')) return -1;
+    return -Number.parseInt(k, 10) / 10_000 + (k.includes('+wait') ? 0.00001 : 0) + (k.includes('(own)') ? 0.000001 : 0);
+  };
+  const keys = [...groups.keys()].sort((a, b) => (a.split('\u0000')[0] ?? '').localeCompare(b.split('\u0000')[0] ?? '') || order(a) - order(b));
+  const ttfts = (rs: readonly RunFile[]): { plan: number[]; answer: number[] } => {
+    const per = rs.map((r) => timingsOf(r.cases));
+    return { plan: num(per.map((t) => median(num(t.plans.map((x) => x.ttftMs))))), answer: num(per.map((t) => median(num(t.answers.map((x) => x.ttftMs))))) };
+  };
+  const both = (xs: readonly number[], f: (x: number | null) => string): string => (xs.length ? `${f(median(xs))} (${f(Math.min(...xs))}–${f(Math.max(...xs))})` : '–');
+  const rows = keys.map((key) => {
+    const rs = groups.get(key) ?? [];
+    const first = rs[0] as RunFile;
+    const label = prefillLabel(first);
+    const turns = rs.flatMap(frameTurns);
+    const longest = num(turns.map((t) => t.max));
+    const counts = turns.map((t) => t.long?.length ?? 0);
+    const totals = turns.map((t) => (t.long ?? []).reduce((a, x) => a + x.ms, 0));
+    const inPrefill = turns.reduce((a, t) => a + (t.long ?? []).filter((x) => x.phase.endsWith('prefill')).length, 0);
+    const longAll = turns.reduce((a, t) => a + (t.long?.length ?? 0), 0);
+    const t = ttfts(rs);
+    const name = key.split('\u0000')[0] ?? '';
+    const baseKey = [...groups.keys()].find((k) => k === `${name}\u0000before`) ?? [...groups.keys()].find((k) => k === `${name}\u0000compiled`);
+    const base = baseKey && baseKey !== key ? ttfts(groups.get(baseKey) ?? []) : null;
+    const change = (now: number[], was: number[] | undefined): string => {
+      const a = median(now);
+      const b = was ? median(was) : null;
+      return a !== null && b !== null && b > 0 ? `${a >= b ? '+' : '−'}${Math.abs((100 * (a - b)) / b).toFixed(0)}%` : '–';
+    };
+    const { gens, answers } = timingsOf(rs.flatMap((r) => r.cases));
+    const loads = rs.flatMap((r) => r.cases.flatMap((c) => (c.loadavg ? [c.loadavg.before[0] ?? NaN] : [])));
+    const gpus = rs.flatMap((r) => r.cases.flatMap((c) => (c.loadavg?.gpuClients && c.loadavg.gpuClients.others >= 0 ? [c.loadavg.gpuClients.others] : [])));
+    const gpuCpu = rs.flatMap((r) => r.cases.flatMap((c) => (c.loadavg?.gpuClients && c.loadavg.gpuClients.othersCpu >= 0 ? [c.loadavg.gpuClients.othersCpu] : [])));
+    const frameLoads = num(turns.map((x) => x.loadavg[0]));
+    const seen = [...new Set(rs.flatMap((r) => (r.prefill?.seen ?? []).map((x) => `${x.outcome}${x.chunkAtGeneration !== null ? ` ${x.chunkAtGeneration}` : ''}${x.yieldBetween ? ', waits' : ''}`)))];
+    return [
+      name,
+      label.chunk,
+      label.wait,
+      seen.length ? seen.join('; ') : '–',
+      `${rs.length} / ${turns.length}`,
+      pct(rs.reduce((a, r) => a + r.cases.filter((c) => c.pass).length, 0), rs.reduce((a, r) => a + r.cases.length, 0)),
+      both(longest, (x) => fmt(x, 0)),
+      `${both(counts, (x) => fmt(x, 0))}; ${both(totals, (x) => fmt(x, 0))} ms; ${inPrefill} of ${longAll} in a prefill`,
+      `${fmt(median(num(turns.map((x) => x.p50))), 1)} / ${fmt(median(num(turns.map((x) => x.p95))), 1)}`,
+      `${both(t.plan, ms)} / ${both(t.answer, ms)}`,
+      `${change(t.plan, base?.plan)} / ${change(t.answer, base?.answer)}`,
+      fmt(median(num(answers.map((x) => x.prefillTokensPerS)))),
+      fmt(median(num(gens.map(delivered))), 1),
+      `${range(loads)} (frames ${range(frameLoads)})`,
+      `${range(gpus, 0)} (${range(gpuCpu, 0)}% CPU)`,
+    ];
+  });
+  return table(
+    ['Model', 'Prompt chunk, tokens', 'Wait between chunks', 'As each generation reported it', 'Passes / turns measured', 'Cases passed (all passes)', 'Longest frame while it writes, ms: median of the turns (range)', 'Frames over 50 ms in one turn: count; total, median of the turns (range)', 'Frames while it writes p50 / p95, ms (median of the turns)', 'Time to first token, plan / answer: median of the passes (range)', 'Time to first token against the app before the setting, plan / answer', 'Prefill tok/s, median (answers)', 'Decode tok/s as the app delivers it, median', '1-min load average over the cases (over the turns)', 'Other browsers’ GPU processes (their CPU)'],
+    rows,
+  );
+}
+
 function main(): void {
   const runs: { file: string; run: RunFile }[] = [];
   const network: { file: string; run: NetworkFile }[] = [];
@@ -310,6 +410,14 @@ function main(): void {
   lines.push(`<!-- Generated by scripts/ai-eval/report.ts from ${inputs.length > 0 ? inputs.join(', ') : '.work/ai-eval/results'}${rescoredFrom ? ` beside ${rescoredFrom}` : ''}; do not edit by hand. -->`);
   if (rescoredFrom) {
     lines.push('', rescoredTable(runs, rescoredFrom));
+    runs.splice(0, runs.length);
+    network.splice(0, network.length);
+  }
+  if (prefillTables) {
+    const m = runs[0]?.run.machine;
+    lines.push('', `Machine: ${m?.cpu ?? '?'}, ${((m?.memoryBytes ?? 0) / 2 ** 30).toFixed(0)} GB, ${m?.os ?? '?'}; WebGPU adapter ${m?.adapter?.vendor ?? '?'} ${m?.adapter?.architecture ?? ''}; ${m?.adapter?.userAgent.match(/Chrome\/[\d.]+/u)?.[0] ?? ''}.`);
+    lines.push('', `Runs: ${runs.map((r) => `${basename(r.file)} (${r.run.startedAt.slice(0, 16)}Z${r.run.finishedAt ? '' : ', unfinished'})`).join('; ')}.`);
+    lines.push('', prefillTable(runs.filter((r) => !r.run.loadError).map((r) => r.run)));
     runs.splice(0, runs.length);
     network.splice(0, network.length);
   }
@@ -415,7 +523,7 @@ function main(): void {
       ]),
     ));
   }
-  if (runs.length === 0 && network.length === 0 && !rescoredFrom) lines.push('', `No results found in ${inputs.join(', ') || defaultDir}.`);
+  if (runs.length === 0 && network.length === 0 && !rescoredFrom && !prefillTables) lines.push('', `No results found in ${inputs.join(', ') || defaultDir}.`);
   const text = `${lines.join('\n')}\n`;
   if (into) {
     const doc = readFileSync(into, 'utf8');

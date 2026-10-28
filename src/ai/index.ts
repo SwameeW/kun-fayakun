@@ -318,6 +318,21 @@ function jsonObject(text: string): unknown {
   return JSON.parse(text.slice(start, end + 1)) as unknown;
 }
 
+/** Resolves once `work` has settled, or at once when `signal` aborts (a stopped turn does not wait). */
+function endedOrStopped(work: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = (): void => {
+      resolve();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    void work.then(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    });
+  });
+}
+
 export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestrator {
   const { i18n } = app;
   i18n.extend('en.ai.mind.json', messages);
@@ -327,12 +342,25 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   const memory = deps.memory ?? createMemory();
   const context = deps.context ?? ((): AiContext => readContext(app));
   const idleMs = deps.idleUnloadMs ?? IDLE_UNLOAD_MS;
-  const announce = (key: string, values?: Record<string, string | number>): void => {
+  /**
+   * Said ahead of the next announcement, in the same one. The page has one live region, and of
+   * announcements made within 60 ms of each other it writes only the last (src/ui/announcer.ts); a
+   * model let go (letGoIfLost) is followed within milliseconds by the end of the turn that found it.
+   */
+  let sayFirst: string | null = null;
+  /** Announces `text`, after whatever was held for it; with no text, only what was held. */
+  const say = (text: string | null): void => {
+    const said = [sayFirst, text].filter((t): t is string => t !== null && t.length > 0).join(' ');
+    sayFirst = null;
+    if (!said) return;
     try {
-      deps.announce?.(i18n.t(key, values));
+      deps.announce?.(said);
     } catch {
       /* the interface's live region is optional */
     }
+  };
+  const announce = (key: string, values?: Record<string, string | number>): void => {
+    say(i18n.t(key, values));
   };
 
   let records: TurnRecord[] = [];
@@ -345,6 +373,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   let loading: AbortController | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let retrieverPromise: Promise<Retriever> | null = null;
+  /** Generations under way, or waiting for the one before them (generate, below). */
+  let generating = 0;
+  /** Settles once the last generation asked for has ended. */
+  let lastGeneration: Promise<void> = Promise.resolve();
   let explanationLevel: ExplanationLevel = 'standard';
   /** Memory has been read back (restore() runs once). */
   let restored = false;
@@ -384,6 +416,11 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     return { kind: 'local', model: choice.id };
   }
 
+  /** The model as announced: a catalogue model by the name the panel shows ("Qwen3 1.7B"), any other engine by its own. */
+  function spokenName(choice: ModelSpec | 'browser' | LanguageEngine): string {
+    return choice !== 'browser' && !('generate' in choice) ? choice.name : nameOf(choice).model;
+  }
+
   function touch(): void {
     if (idleTimer !== null) clearTimeout(idleTimer);
     idleTimer = null;
@@ -420,7 +457,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     };
     signal?.addEventListener('abort', onAbort, { once: true });
     setEngine({ kind, model, state: 'loading' });
-    announce('ai.mind.announce.engineLoading', { model });
+    announce('ai.mind.announce.engineLoading', { model: spokenName(choice) });
     try {
       const loaded = await host.load(choice, (progress) => {
         if (loading === controller) events.emit('engine', { kind, model, state: 'loading', progress });
@@ -432,7 +469,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       engine = loaded;
       chosen = choice;
       setEngine({ kind: loaded.kind, model: loaded.model, state: 'ready' });
-      announce('ai.mind.announce.engineReady', { model: loaded.model });
+      announce('ai.mind.announce.engineReady', { model: spokenName(choice) });
       touch();
       return true;
     } catch (err) {
@@ -443,7 +480,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       const error: EngineError = isEngineError(err) ? err : { code: 'unknown', messageKey: 'ai.mind.announce.engineError', detail: err instanceof Error ? err.message : String(err) };
       engine = null;
       setEngine({ kind, model, state: 'error', error });
-      announce('ai.mind.announce.engineError', { model });
+      announce('ai.mind.announce.engineError', { model: spokenName(choice) });
       return false;
     } finally {
       signal?.removeEventListener('abort', onAbort);
@@ -459,6 +496,25 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     if (idleTimer !== null) clearTimeout(idleTimer);
     idleTimer = null;
     if (e) await e.unload().catch(() => undefined);
+  }
+
+  /**
+   * An engine that can no longer generate (the local model's worker ended by its watch, or its device
+   * lost) is let go, so the next question is not sent to it: the engine reads 'error', the panel says the
+   * guide answers, and the model loads again only when it is chosen again. That it was let go is said
+   * with the announcement that ends the turn (sayFirst), which would otherwise replace it.
+   */
+  function letGoIfLost(e: LanguageEngine): void {
+    const error = e.lost;
+    if (!error || engine !== e) return;
+    const name = spokenName(chosen ?? e);
+    engine = null;
+    chosen = null;
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = null;
+    void e.unload().catch(() => undefined);
+    setEngine({ kind: e.kind, model: e.model, state: 'error', error });
+    sayFirst = i18n.t('ai.mind.announce.engineLost', { model: name });
   }
 
   /** A model chosen but unloaded while idle loads again before it is needed. */
@@ -676,6 +732,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     const tools = registry.shortlist(question, rec.ctx, SHORTLIST);
     const schema = planSchema(tools, rec.ctx);
     let messagesNow: ChatMessage[] = buildPlanMessages(question, rec.ctx, tools, history(rec));
+    let failed = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const request = { messages: messagesNow, format: { kind: 'json' as const, schema }, maxTokens: PLAN_MAX_TOKENS, temperature: 0, signal: rec.controller.signal };
       const began = now();
@@ -687,10 +744,14 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
         rec.planner = { kind: e.kind, model: e.model };
         return parsed.plan;
       }
-      if (result.finish === 'error') break;
+      if (result.finish === 'error') {
+        failed = true;
+        break;
+      }
       messagesNow = buildRepairMessages(messagesNow, result.text, parsed.problems);
     }
-    addBlock(rec, { type: 'notice', key: 'ai.mind.notice.planFallback' });
+    // An engine that stopped with an error says so, as it does while answering; a plan it wrote that could not be used says that.
+    addBlock(rec, { type: 'notice', key: failed ? 'ai.mind.notice.engineError' : 'ai.mind.notice.planFallback' });
     rec.guideOnly = true;
     return null;
   }
@@ -788,15 +849,33 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     return out;
   }
 
+  /**
+   * One generation at a time, whichever turn asks: a turn's generation begins once the one before it
+   * has ended. The turn that asked before was stopped first (ask, confirm and use stop it), so its
+   * generation ends at its next token (a prompt being read is finished first); the engine never has
+   * two, and the engine reads as busy until the last has ended.
+   */
   async function generate(rec: TurnRecord, e: LanguageEngine, request: Parameters<LanguageEngine['generate']>[0]): Promise<GenerateResult> {
-    setEngine({ ...engineState, state: 'busy' });
+    const before = lastGeneration;
+    let ended = (): void => undefined;
+    const mine = new Promise<void>((resolve) => {
+      ended = resolve;
+    });
+    lastGeneration = before.then(() => mine);
+    generating += 1;
+    if (engine === e) setEngine({ ...engineState, state: 'busy' });
     try {
+      await endedOrStopped(before, rec.controller.signal);
+      checkpoint(rec);
       const result = await e.generate(request);
       rec.turn.timings.tokens += result.promptTokens + result.outputTokens;
+      if (result.finish === 'error') letGoIfLost(e);
       if (result.finish === 'abort' || rec.controller.signal.aborted) throw new Cancelled();
       return result;
     } finally {
-      if (engine === e) setEngine({ ...engineState, state: 'ready' });
+      ended();
+      generating -= 1;
+      if (generating === 0 && engine === e) setEngine({ ...engineState, state: 'ready' });
       touch();
     }
   }
@@ -1137,6 +1216,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
       console.error('ai: turn failed', err);
       rec.turn.blocks.push({ type: 'notice', key: 'ai.mind.notice.failed' });
       finish(rec, 'failed');
+    } finally {
+      // A model let go and not yet said (the turn failed, or was stopped before its generation ended):
+      // said now, unless a turn still under way will say it as it ends.
+      if (sayFirst !== null && !(current && current !== rec && ACTIVE.has(current.turn.state))) say(null);
     }
   }
 
@@ -1236,6 +1319,8 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     },
 
     async use(choice: ModelSpec | 'browser' | 'guide', signal?: AbortSignal): Promise<void> {
+      // A model chosen: that one let go before need not be said any more.
+      sayFirst = null;
       if (current && ACTIVE.has(current.turn.state)) cancelRecord(current);
       if (choice === 'guide') {
         await unloadEngine();
@@ -1248,6 +1333,7 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     },
 
     attach(e: LanguageEngine): void {
+      sayFirst = null;
       void load(e);
     },
 

@@ -3,8 +3,10 @@
  * docs/AI-EVALUATION.md can be generated again from the repository by scripts/ai-eval/report.ts. The raw
  * files (.work/ai-eval/results, gitignored) keep every prompt and every reply as the model wrote it;
  * the compact copy keeps what the report reads and what a reader needs to check a case:
- * - the run: model, mode, machine, loads, frame statistics and every frame over 50 ms (not the raw
- *   intervals), load averages and the other browsers' GPU processes, the hosts the browser reached;
+ * - the run: model, mode, machine, loads, how the model read its prompt (the chunk asked for and what
+ *   each generation reported), frame statistics and every frame over 50 ms of each turn measured
+ *   (not the raw intervals), load averages and the other browsers' GPU processes, the hosts the
+ *   browser reached;
  * - each case: its result, its checks, the plan's tools and arguments, the guards' flags, the types of
  *   any violation, citations, labels, timings and load averages; and the answer as it was shown, after
  *   the guards, only when the scorer found nothing wrong in it.
@@ -61,7 +63,8 @@ interface RawRun {
   gpuMemory: unknown;
   loadavgStart: unknown;
   cases: RawCase[];
-  frames: { where: string; idle: Record<string, unknown>; generating: Record<string, unknown> } | null;
+  frames: { where: string; idle: Record<string, unknown>; generating: Record<string, unknown>; turns?: Record<string, unknown>[] } | null;
+  prefill?: { asked: unknown; setting: unknown; seen: readonly Record<string, unknown>[] };
   unexpectedRequests: string[];
   unservedModelHosts?: string[];
   externalHosts?: Record<string, number>;
@@ -110,6 +113,17 @@ function compactCase(c: RawCase): Record<string, unknown> {
   };
 }
 
+/** What the generations reported about their prompt's chunk, each distinct report once with how many gave it. */
+function reported(seen: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  const counts = new Map<string, number>();
+  for (const entry of seen) {
+    const { outcome, compiled, chunkTokens, yieldBetween, chunkAtGeneration } = entry;
+    const key = JSON.stringify({ outcome, compiled, chunkTokens, yieldBetween, chunkAtGeneration });
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts].map(([key, generations]) => ({ ...(JSON.parse(key) as Record<string, unknown>), generations }));
+}
+
 function compact(run: RawRun, file: string): Record<string, unknown> {
   return {
     compactOf: relative(process.cwd(), file),
@@ -125,7 +139,8 @@ function compact(run: RawRun, file: string): Record<string, unknown> {
     gpuMemory: run.gpuMemory,
     loadavgStart: run.loadavgStart,
     ...(run.loadError !== undefined ? { loadError: run.loadError } : {}),
-    frames: run.frames ? { where: run.frames.where, idle: run.frames.idle, generating: run.frames.generating } : null,
+    ...(run.prefill !== undefined ? { prefill: { asked: run.prefill.asked, setting: run.prefill.setting, seen: reported(run.prefill.seen) } } : {}),
+    frames: run.frames ? { where: run.frames.where, idle: run.frames.idle, generating: run.frames.generating, ...(run.frames.turns ? { turns: run.frames.turns } : {}) } : null,
     unexpectedRequests: run.unexpectedRequests,
     ...(run.unservedModelHosts !== undefined ? { unservedModelHosts: run.unservedModelHosts } : {}),
     ...(run.externalHosts !== undefined ? { externalHosts: run.externalHosts } : {}),

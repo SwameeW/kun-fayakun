@@ -13,6 +13,7 @@ import { findModel, VISITOR_MODELS } from './catalogue';
 import { detectCapabilities } from './detect';
 import { engineError } from './errors';
 import { createPacer, type Pacer } from './pacing';
+import { prefillFor, type PrefillSetting } from './prefill';
 import { persistStorage, removeModel, storedModels, type StoredModel } from './storage';
 import { deleteModelInWorker, loadWebLLM } from './webllm';
 
@@ -33,6 +34,11 @@ export interface KfEngineHost extends EngineHost {
    * dialog is tested with a canned device; nothing a visitor does reaches this.
    */
   assume(report: CapabilityReport): void;
+  /**
+   * The real-model evaluation's alone (src/ai/boot.ts evaluate): models loaded from now on read
+   * their prompt with this setting in place of their own (null: their own again).
+   */
+  assumePrefill(setting: PrefillSetting | null): void;
 }
 
 export function createEngineHost(app: App): KfEngineHost {
@@ -40,6 +46,7 @@ export function createEngineHost(app: App): KfEngineHost {
   const pacer = createPacer(app);
   let report: CapabilityReport | null = null;
   let assumed: CapabilityReport | null = null;
+  let prefillAssumed: PrefillSetting | null = null;
 
   /** The builds this adapter can run: q4f16 with shader-f16, else q4f32; all of them before detection; none without WebGPU. */
   const runnable = (): readonly ModelSpec[] => {
@@ -62,13 +69,16 @@ export function createEngineHost(app: App): KfEngineHost {
       assumed = canned;
       report = canned;
     },
+    assumePrefill(setting: PrefillSetting | null) {
+      prefillAssumed = setting;
+    },
     catalogue: runnable,
     async load(model: ModelSpec | 'browser', onProgress: (p: LoadProgress) => void, signal: AbortSignal): Promise<LanguageEngine> {
       if (model === 'browser') return loadBrowserModel(onProgress, signal, pacer);
       if (!findModel(model.id)) throw engineError('unsupported', `Not in the catalogue: ${model.id}`);
       if (report && (!report.webgpu || report.fallbackAdapter)) throw engineError('no-webgpu');
       if (report && model.needsF16 && !report.f16) throw engineError('unsupported', 'This adapter has no shader-f16: use the q4f32 build');
-      return loadWebLLM(model, onProgress, signal, pacer);
+      return loadWebLLM(model, onProgress, signal, pacer, undefined, prefillAssumed ?? prefillFor(model));
     },
     stored() {
       return storedModels(VISITOR_MODELS);

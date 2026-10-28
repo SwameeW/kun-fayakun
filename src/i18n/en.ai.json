@@ -27,7 +27,7 @@
   "ai.ui.engine.browser": "This browser’s built-in model",
   "ai.ui.engine.scripted": "Test engine (scripted replies)",
   "ai.ui.engine.loading": "The guide, while {model} loads",
-  "ai.ui.engine.error": "The guide ({model} could not start)",
+  "ai.ui.engine.error": "The guide ({model} is not running)",
   "ai.ui.engine.off": "{model}, resting to free memory",
   "ai.ui.by.model": "Explanation by {model}, on this device",
   "ai.ui.by.browser": "Explanation by this browser’s built-in model, on this device",
