@@ -345,6 +345,8 @@
   "timeline.ch10.stop": "The end",
   "timeline.ch10.epoch": "The end",
   "ui.hud.scale": "Scale: {length}",
+  "ui.hud.unit.um": "{value} µm",
+  "ui.hud.unit.mm": "{value} mm",
   "ui.hud.unit.m": "{value} m",
   "ui.hud.unit.km": "{value} km",
   "ui.hud.unit.au": "{value} AU",

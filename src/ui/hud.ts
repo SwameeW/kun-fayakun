@@ -18,9 +18,11 @@ interface Unit {
   key: string;
 }
 
-/** Length units from metres to billions of light-years (IAU light-year and astronomical unit). */
+/** Length units from micrometres (single cells) to billions of light-years (IAU light-year and astronomical unit). */
 const LIGHT_YEAR = 9.4607304725808e15;
 const UNITS: readonly Unit[] = [
+  { metres: 1e-6, key: 'ui.hud.unit.um' },
+  { metres: 1e-3, key: 'ui.hud.unit.mm' },
   { metres: 1, key: 'ui.hud.unit.m' },
   { metres: 1e3, key: 'ui.hud.unit.km' },
   { metres: 1.495978707e11, key: 'ui.hud.unit.au' },

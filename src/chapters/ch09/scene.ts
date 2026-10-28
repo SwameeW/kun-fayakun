@@ -333,6 +333,9 @@ export default function create(): ChapterModule {
 
     scale(): SceneScale | null {
       if (!ctx) return null;
+      // Among the cells the bar is true for them (micrometres). Rising to the surface it goes: the
+      // surface and the shafts of light are drawn for the picture, not at that scale.
+      if (now >= times.rise && now < swap) return null;
       const underwater = now < swap;
       return { metresPerUnit: underwater ? METRES_PER_UNIT.micro : METRES_PER_UNIT.planet, distance: ctx.camera.position.length() };
     },
