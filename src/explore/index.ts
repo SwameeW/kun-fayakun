@@ -414,6 +414,11 @@ export default function create(): UniverseModule {
    */
   let frameTarget: RenderTarget | null = null;
   let compileTarget: RenderTarget | null = null;
+  /**
+   * How deep in the renderer's nested renders the frames draw the explorer (the post pipeline renders
+   * the scene pass inside its own render: 1), seen while the stars draw (compileForFrames).
+   */
+  let frameDepth = 1;
   /** compileForFrames calls still waiting on their pipelines. */
   let compilesPending = 0;
   /** The worker that inflates the raw planet files. */
@@ -827,7 +832,7 @@ export default function create(): UniverseModule {
           o.visible = true;
           o.frustumCulled = false;
         });
-        const compiled = compileForFrames([w.object]);
+        const compiled = compileForFrames([w.object], true);
         for (const [o, [visible, culled]] of was) {
           o.visible = visible;
           o.frustumCulled = culled;
@@ -2533,13 +2538,24 @@ export default function create(): UniverseModule {
    * called, so it is bound only for the call, never across a frame. Before the first frame a stand-in
    * of the same formats is used, and released (two GPU textures) once the frames' own target is
    * known and no compile still uses it.
+   *
+   * three (r186) also keys what it builds by the render context, and a render context by how deep in
+   * nested renders it is drawn: compileAsync takes the top level's, the frames are drawn one level
+   * down (the post pipeline's scene pass), so what it built was never used and each part built again
+   * as it was first drawn (a night side's airglow, the sky's glow, a ring, the Sun's limb: 1 to 4 ms of
+   * the main thread each on an M5, several times that on a phone). With `framesContext` the frames'
+   * depth is asked for during the call (frameDepth; without that internal hook, compileAsync as it is):
+   * on opening (warmHidden) and for the worlds' parts. A detail level's new materials keep the top
+   * level's: compiled in the frames' context while that level's maps stream in, three wrote maps the
+   * streaming had already written and let go (WebGPU: zero-byte texture writes), so they still build
+   * as they are first drawn, as before.
    */
   const releaseStandIn = (): void => {
     if (!frameTarget || !compileTarget || compilesPending > 0) return;
     compileTarget.dispose();
     compileTarget = null;
   };
-  const compileForFrames = async (objects: Object3D[]): Promise<void> => {
+  const compileForFrames = async (objects: Object3D[], framesContext = false): Promise<void> => {
     const c = ctx;
     if (!c) return;
     const renderer = c.renderer;
@@ -2551,10 +2567,14 @@ export default function create(): UniverseModule {
     }
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(frameTarget ?? compileTarget);
+    const contexts = (renderer as unknown as { _renderContexts?: { get?: (target: unknown, mrt?: unknown, depth?: number) => unknown } })._renderContexts;
+    const context = contexts?.get;
     const compiling = (): Array<Promise<void>> => {
       try {
+        if (framesContext && contexts && context) contexts.get = (target, mrt, depth) => context.call(contexts, target, mrt, depth ?? frameDepth);
         return objects.map((o) => renderer.compileAsync(o, c.camera, c.scene));
       } finally {
+        if (framesContext && contexts && context) contexts.get = context;
         renderer.setRenderTarget(previous);
       }
     };
@@ -2590,6 +2610,28 @@ export default function create(): UniverseModule {
     const length = Math.max(1e-9, Math.hypot(sunward.x, sunward.y, sunward.z));
     const eye = { x: -p.rel.x / radius, y: -p.rel.y / radius, z: -p.rel.z / radius };
     return 1 - presence * (1 - darkAdaptation(litShare(eye, { x: sunward.x / length, y: sunward.y / length, z: sunward.z / length })));
+  };
+
+  /**
+   * Compiles what the warm-up frame does not draw because it is hidden now and shown later (the night
+   * side's airglow, Venus's haze, the Sun's limb close up, the parts of a detail level or a view not
+   * yet seen), as the worlds' parts are when they come: shown, and in view, only for the call, which
+   * reads what to build as it is called; the pipelines then build over the next frames, one part a
+   * frame, while the picture is still coming up.
+   */
+  const warmHidden = (): void => {
+    const was = new Map<Object3D, readonly [boolean, boolean]>();
+    root.traverse((o) => {
+      was.set(o, [o.visible, o.frustumCulled]);
+      o.visible = true;
+      o.frustumCulled = false;
+    });
+    const compiled = compileForFrames([root], true);
+    for (const [o, [visible, culled]] of was) {
+      o.visible = visible;
+      o.frustumCulled = culled;
+    }
+    void compiled;
   };
 
   /** What the view draws now that is illustrative, for the readout to say. */
@@ -3204,6 +3246,8 @@ export default function create(): UniverseModule {
           frameTarget = target;
           releaseStandIn();
         }
+        const depth = (r as { _callDepth?: unknown })._callDepth;
+        if (typeof depth === 'number' && depth >= 0) frameDepth = depth;
       };
       const body = (name: string): PlanetsFile['bodies'][number] => {
         const found = planets.bodies.find((b) => b.name === name);
@@ -3548,6 +3592,7 @@ export default function create(): UniverseModule {
       if (glare) glare.object.visible = true;
       if (dots) dots.object.visible = true;
       warming = 2;
+      warmHidden();
     },
 
     update(dt) {
