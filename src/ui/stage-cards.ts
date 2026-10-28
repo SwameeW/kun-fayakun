@@ -141,18 +141,29 @@ export function createStageCards(app: App): StageCards {
   cmbOverlay.classList.add('kf-overlay-figure');
   const showCmb = fader(cmbOverlay, 800);
 
-  /* Other overlay figures, also driven by 'overlay' cues (built once, shown and hidden by fading). */
+  /*
+   * Other overlay figures, also driven by 'overlay' cues (shown and hidden by fading). They read the
+   * constants, which on a first visit arrive after the interface is built: each is built again with
+   * them once they have loaded, so none is left saying its values are not available.
+   */
   const overlayFigures = new Map<FigureId, { el: HTMLElement; show: (visible: boolean) => void }>();
-  for (const [id, build] of [
+  const figureBuilds = [
     ['hubble-tension', () => hubbleTension(app)],
     ['decay-chain', () => decayChain(app)],
     ['cosmic-futures', () => cosmicFutures(app)],
-  ] as const) {
+  ] as const;
+  for (const [id, build] of figureBuilds) {
     const el = build();
     el.classList.add('kf-overlay-figure');
     el.dataset.testid = `overlay-${id}`;
     overlayFigures.set(id, { el, show: fader(el, 800) });
   }
+  void app.data.ready.then(
+    () => {
+      for (const [id, build] of figureBuilds) overlayFigures.get(id)?.el.replaceChildren(...build().childNodes);
+    },
+    () => undefined,
+  );
 
   function sync(): void {
     const active = onChapterRoute && chapter !== null && state !== 'loading' && state !== 'idle';
