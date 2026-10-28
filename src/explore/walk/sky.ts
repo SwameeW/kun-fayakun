@@ -11,8 +11,8 @@ import { scatter } from './scatter';
  * hides the stars behind it; through twilight it thins, and at night the explorer's real stars (../sky)
  * show through. The Sun itself is the explorer's own (its disc, at its true size, and its glare).
  *
- * - **The Earth**: the explorer's own air (../render/air, the reference atmosphere the globe is drawn
- *   with, with a clear day's aerosols: ./light clearDayAir), scattered along each pixel's ray from the
+ * - **The Earth**: the explorer's own air (../render/air, the reference atmosphere with a clear day's
+ *   aerosols, clearDayAir, as the globe is drawn with), scattered along each pixel's ray from the
  *   walker's eye (./scatter): blue overhead, paler to the horizon, a glow round the Sun from the
  *   aerosols, and at sunset the long path's reds under the Sun and the Earth's shadow rising opposite,
  *   then twilight as only the upper air is still lit. In the explorer's light units, so the sky and the

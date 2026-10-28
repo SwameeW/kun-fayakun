@@ -6,7 +6,7 @@ import { createTransmittanceTable, type AirModel } from '../render/air';
 import { createGround, MARS_HAZE, VENUS_HAZE } from './ground';
 import { EARTH_SURFACE, MARS_SURFACE, MERCURY_SURFACE, MOON_SURFACE, VENUS_SURFACE, type SurfaceStyle } from './surface';
 import { footStarLight, pointsSeen, type FootStars } from './daylight';
-import { clearDayAir, dayAdaptation, groundIlluminance, marsSunlight, sunDiscTint, sunThroughAir, walkExposure, type LightKind } from './light';
+import { dayAdaptation, groundIlluminance, marsSunlight, sunDiscTint, sunThroughAir, walkExposure, type LightKind } from './light';
 import { createMeter } from './meter';
 import { createWalkSky, type SkyKind } from './sky';
 import { createHeights, TERRAIN, zoomFor, type TileLoader } from './terrain';
@@ -42,7 +42,7 @@ export interface WalkWorldFigures {
 export interface WalkSetup {
   /** The ground's colour at a direction from the world's centre (its globe's own); none: the world's illustrative colour (Venus's, whose surface no camera has mapped in colour). */
   groundColour?(direction: Vec3Node): Vec3Node;
-  /** The Earth's air (../render/air, the globe's model): the walk's sky, sunlight and aerial perspective come from it, on a clear day (./light clearDayAir). */
+  /** The Earth's air (../render/air, the globe's model, a clear day's: clearDayAir): the walk's sky, sunlight and aerial perspective come from it. */
   air?: AirModel;
   /**
    * The world's colour map's mean luminance and its measured Bond albedo (NASA's fact sheets): the map,
@@ -143,8 +143,8 @@ export function createWalk(setup: WalkSetup): Walk {
   const heights = createHeights(setup.terrain, maxZoom);
   const looks = LOOKS[setup.world.name];
   const seaLevel = looks.seaLevel;
-  // The Earth's air on a clear day, with its own transmittance table (baked on the first frame placed).
-  const air = setup.air ? clearDayAir(setup.air) : null;
+  // The Earth's air (the globe's, a clear day's), with its own transmittance table (baked on the first frame placed).
+  const air = setup.air ?? null;
   const table = air ? createTransmittanceTable(air) : null;
   const airTable = air && table ? { model: air, table: table.texture } : null;
   const calibrate = setup.albedo && setup.albedo.map > 0 ? setup.albedo.bond / setup.albedo.map : 1;

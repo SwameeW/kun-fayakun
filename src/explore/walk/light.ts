@@ -288,18 +288,8 @@ export const GROUND_ALBEDO = 0.15;
  */
 export const MULTIPLE = 2;
 
-/**
- * A clear day's air on foot: the explorer's (Bruneton's reference, whose aerosols are those of an
- * exceptionally clean day: optical depth 0.005) with eight times its aerosols, about 0.04 at 550 nm,
- * a clear day's (illustrative; the view from orbit keeps the reference's). The aerosols are what light
- * the sky round the Sun and pale the horizon.
- */
-export const CLEAR_DAY_AEROSOLS = 8;
-export function clearDayAir(air: AirModel): AirModel {
-  const k = CLEAR_DAY_AEROSOLS;
-  const extra = air.mieExtinction * air.mieScale * (k - 1);
-  return { ...air, mieExtinction: air.mieExtinction * k, mieScattering: air.mieScattering * k, verticalDepth: air.verticalDepth.map((t) => t + extra) as [number, number, number] };
-}
+/** A clear day's air (../render/air): the globe's and the walk's, kept here too for the walk's own callers. */
+export { CLEAR_DAY_AEROSOLS, clearDayAir } from '../render/air';
 
 /**
  * The Sun's disc on foot: its light's colour through the air, dimmed with its luminance to `power`

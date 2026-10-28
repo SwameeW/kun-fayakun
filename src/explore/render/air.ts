@@ -16,7 +16,8 @@
  *   edge spread over the Sun's angular radius: the penumbra).
  *
  * Every number comes from data/constants.json (and the Sun's angular size from physical.json);
- * nothing here is tuned by eye.
+ * nothing here is tuned by eye. The explorer draws it on a clear day (clearDayAir: more aerosols than
+ * the reference's).
  */
 
 import {
@@ -101,6 +102,21 @@ export function earthAir(data: DataStore, radiusKm: number, sunAngularRadius: nu
     verticalDepth,
     airglow: 1 + c('earth.airglow.greenLine.height') * km,
   };
+}
+
+/**
+ * A clear day's air: the reference's (whose aerosols are those of an exceptionally clean day, optical
+ * depth 0.005 at 550 nm) with eight times its aerosols, about 0.04 (the factor is a choice: still a
+ * clean day, the global mean being about 0.12). The globe from orbit and the ground on foot are both
+ * drawn with it, so the way down from one to the other meets no change of air. The aerosols are what
+ * pale the horizon and the limb, light the haze round the Sun and the glint, and whiten the far land
+ * rather than redden it.
+ */
+export const CLEAR_DAY_AEROSOLS = 8;
+export function clearDayAir(air: AirModel): AirModel {
+  const k = CLEAR_DAY_AEROSOLS;
+  const extra = air.mieExtinction * air.mieScale * (k - 1);
+  return { ...air, mieExtinction: air.mieExtinction * k, mieScattering: air.mieScattering * k, verticalDepth: air.verticalDepth.map((t) => t + extra) as [number, number, number] };
 }
 
 /**

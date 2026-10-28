@@ -86,7 +86,7 @@ import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impo
 import type { SurfaceMark } from './bodies/marks';
 import { DETAIL, EXPLORE_TIERS, type ExploreDetail, type ExploreTier } from './detail';
 import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
-import { createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
+import { clearDayAir, createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
 import { createInput, type ExploreInput } from './input';
 import { isLabBody, LENS as ZOOM_LENS, Navigator, navOutput, type NavBody, type NavWorld } from './navigation';
 import { createOrbits, moonOrbit, planetOrbit, type Orbits, type OrbitPath } from './orbits';
@@ -602,7 +602,7 @@ export default function create(): UniverseModule {
   let shownFor = 0;
   /** The camera's height above the nearest surface (rings included), km: the depth range and the turn rate follow it. */
   let nearestKm = Infinity;
-  /** The Earth's air model (its limb reddens the Sun seen through it). */
+  /** The Earth's air model, a clear day's (its limb reddens the Sun seen through it; the walk is drawn with it too). */
   let earthAirModel: AirModel | null = null;
 
   const placed = Object.fromEntries(
@@ -3065,7 +3065,9 @@ export default function create(): UniverseModule {
       });
       textures.setRingPlaceholder(ringTransmission(physical.saturnRings), physical.saturnRings.innerKm, physical.saturnRings.outerKm);
       const sunKm = system.specs.sun.radiusKm;
-      const air = earthAir(c.data, system.specs.earth.radiusKm, Math.asin(sunKm / physical.auKm));
+      // On a clear day, from orbit as on foot (./render/air clearDayAir): one air for the globe, its
+      // limb's reddening of the Sun and the walk, so the way down meets no change of air.
+      const air = clearDayAir(earthAir(c.data, system.specs.earth.radiusKm, Math.asin(sunKm / physical.auKm)));
       earthAirModel = air;
       airTable = createTransmittanceTable(air);
       const strip = findPlanetTexture(manifest, 'saturn', 'rings', 'low')?.radiusKm ?? [physical.saturnRings.innerKm, physical.saturnRings.outerKm];
