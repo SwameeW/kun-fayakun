@@ -1,6 +1,6 @@
 import type { PlanetBody, PlanetsFile } from '../astro/ephemeris';
 import type { PhysicalFile } from '../astro/physical';
-import { orientationAt, type RotationModel } from '../astro/rotation';
+import type { RotationModel } from '../astro/rotation';
 import type { BodyId } from '../core/types';
 
 /**
@@ -61,14 +61,29 @@ const sidereal = (degPerDay: number): number => 360 / degPerDay;
 /** Sunrise to sunrise from the sidereal rotation and the year (both days; a negative rotation is retrograde). */
 export const solarDay = (rotationDays: number, yearDays: number): number => Math.abs(1 / (1 / rotationDays - 1 / yearDays));
 
-const J2000_JD = 2_451_545.0;
+/**
+ * A world's pole at J2000 (right ascension and declination, radians, ICRF): the IAU model at its epoch,
+ * its polynomials' constant terms and its periodic terms at their angles then. It is src/astro/rotation's
+ * orientationAt at J2000, worked out here so that this module (About's chunk carries it) takes none of
+ * that module's code, which the explorer's own chunk holds (tests/unit/about.spec: the two agree).
+ */
+export function poleAtJ2000(model: RotationModel): { ra: number; dec: number } {
+  let ra = model.poleRa[0];
+  let dec = model.poleDec[0];
+  const np = model.nutPrec;
+  np?.angles.forEach(([a0], i) => {
+    ra += (np.ra[i] ?? 0) * Math.sin(a0 * DEG);
+    dec += (np.dec[i] ?? 0) * Math.cos(a0 * DEG);
+  });
+  return { ra: ra * DEG, dec: dec * DEG };
+}
 
 /**
  * The angle (degrees) between a world's spin axis and an orbit's pole (ecliptic inclination and
  * node, degrees): NAIF's pole at J2000, turned over for a world whose rotation is retrograde.
  */
 export function axialTilt(model: RotationModel, inclination: number, node: number, obliquityRad: number): number {
-  const o0 = orientationAt(model, J2000_JD);
+  const o0 = poleAtJ2000(model);
   const angle = tiltBetween(o0.ra, o0.dec, inclination, node, obliquityRad);
   return model.pm[1] < 0 ? 180 - angle : angle;
 }

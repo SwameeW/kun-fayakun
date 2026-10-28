@@ -1,0 +1,228 @@
+{
+ "units": "masses in Suns, distances in parsecs, the Schwarzschild radius 2GM/c^2 (km and au) for the mass drawn (IAU 2015 B3's GM of the Sun)",
+ "blackHoles": [
+  {
+   "id": "sgr-a",
+   "name": "Sagittarius A*",
+   "kind": "supermassive",
+   "model": "hot-ring",
+   "mass": {
+    "value": 4297000.0,
+    "minus": 42000.0,
+    "plus": 42000.0,
+    "source": "gravity-2022-sgr-a"
+   },
+   "distance": {
+    "pc": 8277,
+    "minus": 31,
+    "plus": 31,
+    "source": "gravity-2022-sgr-a"
+   },
+   "observation": {
+    "ringMicroArcsec": 51.8,
+    "error": 2.3,
+    "source": "eht-2022-sgr-a"
+   },
+   "inclinationDeg": 30,
+   "simbad": {
+    "id": "NAME Sgr A*",
+    "mainId": "NAME Sgr A*"
+   },
+   "raDeg": 266.4168166,
+   "decDeg": -29.007825,
+   "schwarzschildKm": 12690000.0,
+   "schwarzschildAu": 0.08482818317763634
+  },
+  {
+   "id": "m87",
+   "name": "M87*",
+   "kind": "supermassive",
+   "model": "hot-ring",
+   "mass": {
+    "value": 6500000000.0,
+    "minus": 730000000.0,
+    "plus": 730000000.0,
+    "source": "eht-2019-m87"
+   },
+   "distance": {
+    "pc": 16800000.0,
+    "minus": 700000.0,
+    "plus": 800000.0,
+    "source": "eht-2019-m87"
+   },
+   "observation": {
+    "ringMicroArcsec": 42,
+    "error": 3,
+    "source": "eht-2019-m87"
+   },
+   "inclinationDeg": 17,
+   "simbad": {
+    "id": "M 87",
+    "mainId": "M 87"
+   },
+   "raDeg": 187.7059308,
+   "decDeg": 12.3911232,
+   "schwarzschildKm": 19196125000.0,
+   "schwarzschildAu": 128.31817329640126
+  },
+  {
+   "id": "ton-618",
+   "name": "TON 618",
+   "kind": "supermassive",
+   "model": "thin-disc",
+   "mass": {
+    "value": 66000000000.0,
+    "minus": 25000000000.0,
+    "plus": 0.0,
+    "source": "shemmer-2004-ton618",
+    "alsoSource": "ge-2019-ton618",
+    "low": 40700000000.0
+   },
+   "redshift": 2.219,
+   "redshiftSource": "shemmer-2004-ton618",
+   "inclinationDeg": 20,
+   "simbad": {
+    "id": "Ton 618",
+    "mainId": "Ton 618"
+   },
+   "raDeg": 187.1040249,
+   "decDeg": 31.4771192,
+   "distance": {
+    "pc": 5621267347,
+    "minus": null,
+    "plus": null,
+    "source": "planck-2018-cosmology"
+   },
+   "lookbackGyr": 10.84,
+   "schwarzschildKm": 194914505000.0,
+   "schwarzschildAu": 1302.9229903942282
+  },
+  {
+   "id": "gaia-bh1",
+   "name": "Gaia BH1",
+   "kind": "stellar",
+   "model": "dormant",
+   "mass": {
+    "value": 9.62,
+    "minus": 0.18,
+    "plus": 0.18,
+    "source": "el-badry-2023-gaia-bh1"
+   },
+   "distance": {
+    "pc": 480,
+    "minus": 8,
+    "plus": 8,
+    "source": "el-badry-2023-gaia-bh1"
+   },
+   "companion": {
+    "periodDays": 185.6
+   },
+   "simbad": {
+    "id": "Gaia DR3 4373465352415301632",
+    "mainId": "GALEX J172841.0-003451"
+   },
+   "raDeg": 262.1712359,
+   "decDeg": -0.5809787,
+   "schwarzschildKm": 28.41,
+   "schwarzschildAu": 1.8991089647867384e-07
+  },
+  {
+   "id": "gaia-bh2",
+   "name": "Gaia BH2",
+   "kind": "stellar",
+   "model": "dormant",
+   "mass": {
+    "value": 8.9,
+    "minus": 0.3,
+    "plus": 0.3,
+    "source": "el-badry-2023-gaia-bh2"
+   },
+   "distance": {
+    "pc": 1160,
+    "minus": 20,
+    "plus": 20,
+    "source": "el-badry-2023-gaia-bh2"
+   },
+   "companion": {
+    "periodDays": 1277
+   },
+   "simbad": {
+    "id": "Gaia DR3 5870569352746779008",
+    "mainId": "UCAC4 154-126202"
+   },
+   "raDeg": 207.5697823,
+   "decDeg": -59.2389808,
+   "schwarzschildKm": 26.284,
+   "schwarzschildAu": 1.7569719112891865e-07
+  },
+  {
+   "id": "gaia-bh3",
+   "name": "Gaia BH3",
+   "kind": "stellar",
+   "model": "dormant",
+   "mass": {
+    "value": 32.7,
+    "minus": 0.82,
+    "plus": 0.82,
+    "source": "gaia-2024-bh3"
+   },
+   "distance": {
+    "pc": 590,
+    "minus": 10,
+    "plus": 10,
+    "source": "gaia-2024-bh3"
+   },
+   "companion": {
+    "periodDays": 4237
+   },
+   "simbad": {
+    "id": "Gaia DR3 4318465066420528000",
+    "mainId": "LS II +14 13"
+   },
+   "raDeg": 294.8279648,
+   "decDeg": 14.9316697,
+   "schwarzschildKm": 96.571,
+   "schwarzschildAu": 6.455391179680495e-07
+  },
+  {
+   "id": "cyg-x-1",
+   "name": "Cygnus X-1",
+   "kind": "stellar",
+   "model": "thin-disc",
+   "mass": {
+    "value": 21.2,
+    "minus": 2.2,
+    "plus": 2.2,
+    "source": "miller-jones-2021-cyg-x1"
+   },
+   "distance": {
+    "pc": 2220,
+    "minus": 170,
+    "plus": 180,
+    "source": "miller-jones-2021-cyg-x1"
+   },
+   "companion": {
+    "periodDays": 5.6
+   },
+   "inclinationDeg": 27.5,
+   "simbad": {
+    "id": "HD 226868",
+    "mainId": "HD 226868"
+   },
+   "raDeg": 299.5903156,
+   "decDeg": 35.2016068,
+   "schwarzschildKm": 62.609,
+   "schwarzschildAu": 4.1851465752057026e-07
+  }
+ ],
+ "sources": {
+  "simbad": {
+   "ids": [
+    "simbad-black-holes"
+   ],
+   "service": "https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
+   "adql": "SELECT i.id, b.main_id, b.ra, b.dec FROM ident AS i JOIN basic AS b ON i.oidref = b.oid WHERE i.id IN ('NAME Sgr A*', 'M 87', 'Ton 618', 'Gaia DR3 4373465352415301632', 'Gaia DR3 5870569352746779008', 'Gaia DR3 4318465066420528000', 'HD 226868') ORDER BY 1",
+   "sha256": "81143cd43bbc40e681bcaa5c0069d106f72e22e59130fe53a5405137bd104b11"
+  }
+ }
+}

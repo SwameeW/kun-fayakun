@@ -1,11 +1,16 @@
 import { julianDateUtc } from '../../astro/time';
 import labMessages from '../../i18n/en.lab.json';
-import type { App, LabCommand, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
+import type { App, LabCommand, LabImpactor, LabQuantity, UniverseLab, UniverseLabBody, UniverseView } from '../../core/types';
 import { BURN_DIRECTIONS, hohmann, ROUND_E } from '../../sim/ships';
 import { h, svg, uniqueId } from '../dom';
 import type { Formatters } from './format';
 import { createLabLessons } from './lab-lessons';
 import { helpButton, withHelp } from './help';
+import { styles } from './lazy';
+import css from '../styles/lab.css?inline';
+
+// Its styles come with its code (./lazy).
+styles(css);
 
 /**
  * The orbital laboratory's panel (heading the navigator while an experiment runs): what it is (an
@@ -17,13 +22,17 @@ import { helpButton, withHelp } from './help';
  * adding a body (from a palette of real ones, on a circular orbit, at a position and velocity, or placed
  * with the pointer), how paths are drawn, measurements, a quantity followed over time, the conservation
  * checks since the last edit, the edits and collisions so far, and the scenario's tools (save in this
- * browser and in a library by name, a link, load, export, import, checkpoints, replay, reset). Names
+ * browser and in a library by name, a link, load, export, import, checkpoints, replay, reset). Also:
+ * "Slow down for events" (on by default) with what it is slowing for and a way back to full speed; the
+ * latest event's card; an edit refused, with why; throwing a rock, worked out before it is thrown. Names
  * from the scenario are text, never markup. Numbers are rewritten only when they change; nothing here
- * is a live region (the clock runs every frame).
+ * is a live region (the clock runs every frame) but the event card, which changes once an event.
  */
 
 export interface LabPanel {
   readonly element: HTMLElement;
+  /** The time machine's Reset (back to the fork, paused), for its row (./time-control): shown while an experiment runs. */
+  readonly reset: HTMLButtonElement;
   update(view: UniverseView, slow: boolean): void;
 }
 
@@ -62,6 +71,42 @@ const BELTS = { asteroid: [2.06, 3.27, 0.2, 15], kuiper: [39.4, 48, 0.1, 10] } a
 const RING = { inner: 1.5, outer: 2.5 } as const;
 /** A gravitating ring: its bodies, where (the chosen body's radii: outside a rocky body's Roche limit, about 2.5) and its mass (a share of the chosen body's). */
 const MOONLETS = { count: 12, inner: 2.8, outer: 3.2, massShare: 1e-4 } as const;
+/** The most GM an experiment may hold for a body (src/sim/engine IMPORT_LIMITS: a save past it could not be restored), km^3 s^-2. */
+const GM_LIMIT = 1e14;
+/** What can be thrown, and how soon it strikes (s). */
+const IMPACTOR_CHOICES: readonly LabImpactor[] = ['stone', 'asteroid', 'ceres', 'mars'];
+/** The engine's reasons for refusing an edit (src/sim/engine checkCommand and Engine.refusal), each said in the visitor's words (ui.universe.lab.why.*). */
+const REASON_KEYS: Readonly<Record<string, string>> = {
+  'names a body that does not exist': 'noBody',
+  'names a ship that does not exist': 'noShip',
+  'names a swarm that does not exist': 'noSwarm',
+  'names a world with no climate': 'noClimate',
+  'mass out of range': 'mass',
+  'radius out of range': 'radius',
+  'rotation out of range': 'rotation',
+  'velocity out of range': 'velocity',
+  'position or velocity out of range': 'state',
+  'atmosphere out of range': 'atmosphere',
+  'not a name': 'name',
+  'not a hold': 'hold',
+  'not a burn': 'burn',
+  'not an edit': 'edit',
+  'unknown edit': 'edit',
+  'adds an id this experiment has used before': 'id',
+  'adds a swarm id this experiment has used before': 'id',
+  'held in place: its velocity stays 0': 'held',
+  'kept: it is the scene’s light': 'light',
+  'the experiment has changed since it was aimed': 'stale',
+};
+/** A throw's refusals (src/sim/aim REFUSED, and 'stale': the experiment changed since it was worked out), each with what to change (ui.universe.lab.throw.why.*). */
+const THROW_REASONS = new Set(['target', 'taken', 'invalid', 'gone', 'unsolved', 'touching', 'misses', 'tolerance', 'stale']);
+const LEADS: ReadonlyArray<readonly [number, string]> = [
+  [3600, 'hour1'],
+  [6 * 3600, 'hours6'],
+  [86_400, 'day1'],
+  [10 * 86_400, 'days10'],
+  [30 * 86_400, 'days30'],
+];
 
 export function createLabPanel(app: App, f: Formatters): LabPanel {
   const { i18n } = app;
@@ -117,13 +162,34 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   };
   /** A crater's depth: metres below a kilometre (the distance format starts at whole kilometres). */
   const depthText = (kmValue: number): string => (kmValue < 1 ? f.keep(i18n.t('ui.universe.lab.metres', { value: f.number(kmValue * 1000, 0) })) : f.keep(i18n.t('ui.universe.lab.km', { value: f.number(kmValue, kmValue < 10 ? 1 : 0) })));
-  const days = (s: number): string => f.keep(i18n.t('ui.universe.lab.days', { value: f.number(s / 86_400, s < 864_000 ? 2 : 1) }));
+  const days = (s: number): string => (s === 86_400 ? f.keep(i18n.t('ui.universe.lab.oneDay')) : f.keep(i18n.t('ui.universe.lab.days', { value: f.number(s / 86_400, s < 864_000 ? 2 : 1) })));
+  /** Simulated time each real second, in the unit it reads best in (seconds, minutes, hours or days). */
+  const perSecond = (rate: number): string => {
+    const r = Math.abs(rate);
+    if (r >= 86_400) return days(r);
+    if (r >= 3600) return f.keep(i18n.t('ui.universe.lab.hours', { value: f.number(r / 3600, r < 36_000 ? 2 : 1) }));
+    if (r >= 60) return f.keep(i18n.t('ui.universe.lab.minutes', { value: f.number(r / 60, r < 600 ? 2 : 1) }));
+    return f.keep(i18n.t('ui.universe.lab.seconds', { value: f.number(r, r < 10 ? 2 : 1) }));
+  };
   const speed = (v: number): string => f.keep(i18n.t('ui.universe.lab.kms', { value: f.number(v, v < 10 ? 3 : 2) }));
   const duration = (sec: number): string => (sec < 2 * 86_400 ? f.keep(i18n.t('ui.universe.lab.hours', { value: f.number(sec / 3600, sec < 36_000 ? 2 : 1) })) : sec < 2 * 365.25 * 86_400 ? days(sec) : f.keep(i18n.t('ui.universe.lab.years', { value: f.number(sec / (365.25 * 86_400), 2) })));
   const degrees = (d: number): string => f.number(d, Math.abs(d) < 10 ? 2 : 1);
   /** Light's travel time: seconds, minutes or hours. */
   const lightTime = (sec: number): string => (sec < 120 ? f.keep(i18n.t('ui.universe.lab.seconds', { value: f.number(sec, sec < 10 ? 2 : 0) })) : sec < 7200 ? f.keep(i18n.t('ui.universe.lab.minutes', { value: f.number(sec / 60, 1) })) : f.keep(i18n.t('ui.universe.lab.hours', { value: f.number(sec / 3600, 2) })));
   const nameOf = (b: UniverseLabBody): string => (b.builtIn && !b.renamed ? f.name(b.builtIn) : b.name);
+  /** An edit's refusal in the visitor's words (one the engine gives no key for, as given). */
+  const reasonText = (reason: string): string => {
+    const r = reason.replace(/^body: /u, '');
+    const room = /^no room for another body \(at most (\d+)\)$/u.exec(r);
+    if (room) return i18n.t('ui.universe.lab.why.room', { count: Number(room[1]) });
+    const key = REASON_KEYS[r] ?? (/^no room for a ring/u.test(r) ? 'roomRing' : /^adds (an|a swarm) id that already exists/u.test(r) ? 'id' : /values missing or out of range$|^a value is missing/u.test(r) ? 'values' : r === 'not a body' ? 'edit' : null);
+    return key ? i18n.t(`ui.universe.lab.why.${key}`) : reason;
+  };
+  /** Why a throw cannot be made, with what to change; a miss with how near it came. */
+  const throwReason = (reason: string | null, missKm: number | null): string => {
+    if (reason === 'misses' && missKm !== null && Number.isFinite(missKm)) return i18n.t('ui.universe.lab.throw.why.missesBy', { km: f.keep(i18n.t('ui.universe.lab.km', { value: f.number(Math.max(0, missKm), 0) })) });
+    return reason && THROW_REASONS.has(reason) ? i18n.t(`ui.universe.lab.throw.why.${reason}`) : reasonText(reason ?? '');
+  };
   const presetName = (id: string): string => i18n.t(`ui.universe.lab.presetName.${id}`);
   const num = (input: HTMLInputElement): number => Number(input.value.replace(/[\s,]/gu, ''));
   const field = (key: string, testId: string, value = '', mode: 'decimal' | 'text' = 'decimal'): { label: HTMLLabelElement; input: HTMLInputElement } => {
@@ -163,6 +229,48 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     app.closeLab();
   }, 'kf-btn kf-living-tour-start');
   const failure = h('p', { class: 'kf-lab-warning', 'data-testid': 'lab-failure', role: 'alert', hidden: true });
+  // Slowing down for events (on unless turned off): its setting, and what it is doing while it acts, with a way back to full speed.
+  const slowId = uniqueId('lab-slow');
+  const slowBox = h('input', { id: slowId, type: 'checkbox', class: 'kf-lab-check', 'data-testid': 'lab-slow-toggle', checked: true });
+  slowBox.addEventListener('change', () => {
+    send({ kind: 'slow', on: slowBox.checked });
+  });
+  const slowText = h('p', { class: 'kf-living-hint kf-lab-slow', 'data-testid': 'lab-slow', hidden: true });
+  const slowCancel = button(i18n.t('ui.universe.lab.slow.cancel'), 'lab-slow-cancel', () => {
+    send({ kind: 'slow', cancel: true });
+  });
+  slowCancel.hidden = true;
+  // While it slows, the time machine's row says so (its own rate is the one set): the rate shown and a way back to full speed, in reach on a phone's sheet folded or not (placed there once the row has the experiment's Reset).
+  const slowed = h('span', { class: 'kf-lab-slowed', 'data-testid': 'lab-slowed', hidden: true });
+  const slowedText = h('span', { class: 'kf-lab-slowed-text', 'data-testid': 'lab-slowed-text' });
+  const slowedCancel = h('button', { type: 'button', class: 'kf-universe-time-now', 'data-testid': 'lab-slowed-cancel' }, i18n.t('ui.universe.lab.slow.cancel'));
+  slowedCancel.addEventListener('click', () => {
+    send({ kind: 'slow', cancel: true });
+  });
+  slowed.append(slowedText, slowedCancel);
+  /** Said once to a screen reader (the slowing beginning, a throw worked out, an event's new fact): polite, the rest of the panel left alone. */
+  const spoken = h('p', { class: 'kf-sr-only', 'aria-live': 'polite', 'data-testid': 'lab-announce' });
+  const say = (text: string): void => {
+    if (spoken.textContent !== text) spoken.textContent = text;
+  };
+  let slowSaid = false;
+  const slowRow = h('div', { class: 'kf-lab-row' }, slowBox, h('label', { class: 'kf-living-label kf-lab-check-label', for: slowId }, i18n.t('ui.universe.lab.slow.toggle')), helpButton(app, 'labSlow', i18n.t('ui.universe.lab.slow.toggle')));
+  // Esc calls the slowing off (the explorer hands it on: ./lab escape()), as any time button does.
+  // An edit the run refused, and why (a press past a limit, a body gone).
+  const refused = h('p', { class: 'kf-lab-warning', 'data-testid': 'lab-refused', hidden: true });
+  // The latest event: what happened, with its numbers; closed until the next.
+  const cardTitle = h('h4', { class: 'kf-living-subtitle', 'data-testid': 'lab-event-title' });
+  const cardFacts = h('ul', { class: 'kf-living-list kf-lab-card-facts', 'data-testid': 'lab-event-facts' });
+  const cardClose = button(i18n.t('ui.universe.lab.card.close'), 'lab-event-close', () => {
+    cardClosed = cardKey.split(':').slice(0, 3).join(':');
+    card.hidden = true;
+  });
+  // How it is drawn: the fireball's and hot rock's note; for a torn body, its dust's and band's too (illustrative).
+  const cardDust = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-event-dust', hidden: true }, i18n.t('ui.universe.lab.card.dustNote'));
+  // Not a live region itself: what is new is said (say), so a piece falling back is not the whole card read again.
+  const card = h('section', { class: 'kf-living-notes-part kf-lab-card', 'data-testid': 'lab-event-card', hidden: true }, cardTitle, cardFacts, h('p', { class: 'kf-living-hint', 'data-testid': 'lab-event-note' }, i18n.t('ui.universe.lab.card.note')), cardDust, cardClose);
+  let cardKey = '';
+  let cardClosed = '';
 
   // Undo and redo (also Ctrl or Cmd + Z, and with Shift, or Ctrl + Y).
   const undo = button(i18n.t('ui.universe.lab.undo'), 'lab-undo', () => {
@@ -222,8 +330,9 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   });
   const double = button(i18n.t('ui.universe.lab.double'), 'lab-mass-double', () => {
     const b = selectedBody();
-    if (b) send({ kind: 'mass', id: b.id, massKg: b.massKg * 2, keep: hold.select.value === 'density' ? 'density' : 'radius' });
+    if (b && 2 * b.gm <= GM_LIMIT) send({ kind: 'mass', id: b.id, massKg: b.massKg * 2, keep: hold.select.value === 'density' ? 'density' : 'radius' });
   });
+  const massLimit = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-mass-limit', hidden: true }, i18n.t('ui.universe.lab.massLimit'));
   const halve = button(i18n.t('ui.universe.lab.halve'), 'lab-mass-halve', () => {
     const b = selectedBody();
     if (b) send({ kind: 'mass', id: b.id, massKg: b.massKg / 2, keep: hold.select.value === 'density' ? 'density' : 'radius' });
@@ -434,6 +543,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('label', { class: 'kf-living-label', for: massId }, i18n.t('ui.universe.lab.massLabel')),
     h('div', { class: 'kf-lab-row' }, massInput, massApply),
     h('div', { class: 'kf-lab-row' }, double, halve),
+    massLimit,
     radius.label,
     h('div', { class: 'kf-lab-row' }, radius.input, radiusApply),
     density.label,
@@ -704,10 +814,53 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     })),
   );
 
+  // Throwing a rock (W1.12): at what, what, how fast, at what angle, how soon; worked out first, then let go.
+  const throwTarget = select('ui.universe.lab.throw.target', 'lab-throw-target', []);
+  let throwTargetsKey = '';
+  const throwWhat = select('ui.universe.lab.throw.impactor', 'lab-throw-impactor', IMPACTOR_CHOICES.map((k) => [k, i18n.t(`ui.universe.lab.throw.impactor.${k}`)] as const));
+  const throwSpeed = field('ui.universe.lab.throw.speed', 'lab-throw-speed', '20');
+  const throwAngle = field('ui.universe.lab.throw.angle', 'lab-throw-angle', '45');
+  const throwLead = select('ui.universe.lab.throw.lead', 'lab-throw-lead', LEADS.map(([seconds, key]) => [String(seconds), i18n.t(`ui.universe.lab.throw.lead.${key}`)] as const));
+  throwLead.select.value = String(86_400);
+  const throwResult = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-aim-result', 'aria-live': 'polite' });
+  const aimButton = button(i18n.t('ui.universe.lab.throw.aim'), 'lab-aim', () => {
+    send({ kind: 'aim', target: throwTarget.select.value, impactor: (IMPACTOR_CHOICES.find((k) => k === throwWhat.select.value) ?? 'stone'), vInfKmS: num(throwSpeed.input), angleDeg: num(throwAngle.input), leadS: Number(throwLead.select.value) });
+  });
+  const throwGo = button(i18n.t('ui.universe.lab.throw.go'), 'lab-throw-go', () => {
+    send({ kind: 'throw' });
+  });
+  throwGo.disabled = true;
+  // A change to what is asked puts the worked-out throw away (it was for the old one).
+  for (const el of [throwTarget.select, throwWhat.select, throwSpeed.input, throwAngle.input, throwLead.select]) {
+    el.addEventListener('change', () => {
+      if (lab?.aim && lab.aim.status !== 'thrown') send({ kind: 'aimClear' });
+    });
+  }
+  const throwBox = helpDetails(
+    'ui.universe.lab.throw.title',
+    'lab-throw',
+    'labThrow',
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.throw.intro')),
+    throwTarget.label,
+    throwTarget.select,
+    throwWhat.label,
+    throwWhat.select,
+    throwSpeed.label,
+    throwSpeed.input,
+    throwAngle.label,
+    throwAngle.input,
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.throw.angleHint')),
+    throwLead.label,
+    throwLead.select,
+    h('div', { class: 'kf-lab-row' }, aimButton, throwGo),
+    throwResult,
+  );
+
   // Rings and belts (ledger IM-6): test particles, or a gravitating ring of a few bodies; Saturn's drawn rings are the third kind, decorative.
   const ringCount = select('ui.universe.lab.rings.count', 'lab-ring-count', RING_COUNTS.map((n) => [String(n), f.number(n, 0)] as const));
   ringCount.select.value = '1000';
   const ringsDecorative = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-rings-decorative', hidden: true }, i18n.t('ui.universe.lab.rings.decorative'));
+  const ringsDrawn = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-rings-drawn', hidden: true }, i18n.t('ui.universe.lab.card.dustNote'));
   const ringsNeed = h('p', { class: 'kf-living-hint', 'data-testid': 'lab-rings-need' }, i18n.t('ui.universe.lab.rings.need'));
   const ringsList = h('ul', { class: 'kf-living-list', 'aria-label': i18n.t('ui.universe.lab.rings.title'), 'data-testid': 'lab-rings-list' });
   const fillRings = keyedList(ringsList);
@@ -745,6 +898,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     h('div', { class: 'kf-lab-row' }, ringOn, moonletsOn),
     ringsNeed,
     ringsDecorative,
+    ringsDrawn,
     ringsList,
   );
 
@@ -752,19 +906,26 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     'section',
     { class: 'kf-nav-lab', 'data-testid': 'lab-panel', 'aria-label': i18n.t('ui.universe.lab.title'), hidden: true },
     withHelp(app, title, 'lab'),
+    spoken,
     h('p', { class: 'kf-living-hint kf-lab-purpose', 'data-testid': 'lab-purpose' }, i18n.t('ui.universe.lab.purpose')),
     note,
     lessons.element,
     withHelp(app, clock, 'labClock', i18n.t('ui.help.label.labClock')),
     rates,
+    slowRow,
+    slowText,
+    slowCancel,
     failure,
+    card,
     back,
     history,
+    refused,
     h('p', { class: 'kf-living-label' }, i18n.t('ui.universe.lab.bodies'), helpButton(app, 'labBodies', i18n.t('ui.universe.lab.bodies'))),
     list,
     many,
     inspector,
     add,
+    throwBox,
     addShip,
     rings,
     viewBox,
@@ -796,6 +957,8 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
   const selectedBody = (): UniverseLabBody | undefined => lab?.bodies.find((b) => b.id === selectedId);
   /** The inspector's fields hold what the visitor types: refilled only when another body is chosen. */
   let filledFor: string | null = null;
+  /** The hold as last reported for the body shown: the box follows the experiment only when that changes (a tick the worker has not yet had is not undone). */
+  let fixedShown = '';
   /**
    * A choice made here and not yet in the experiment's view: until it is, the inspector stays hidden,
    * so nothing typed in that moment (a long one on a slow device) goes to the body chosen before.
@@ -852,18 +1015,112 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
     if (bodies.some((b) => b.id === keep) || (keep === '' && blank !== null)) s.value = keep;
   };
 
+  // The time machine's Reset, joining its row while an experiment runs: back to the fork, paused.
+  const reset = h('button', { type: 'button', class: 'kf-universe-time-now', 'aria-label': i18n.t('ui.universe.time.resetLabel'), title: i18n.t('ui.universe.time.resetLabel'), 'data-testid': 'universe-time-reset', hidden: true }, i18n.t('ui.universe.time.reset'));
+  reset.addEventListener('click', () => {
+    send({ kind: 'reset' });
+  });
+
   return {
     element,
+    reset,
     update(view, slow) {
       lab = view.lab;
       element.hidden = !lab;
-      if (!lab) return;
+      if (!lab) {
+        // Out of the experiment: a lesson on it ends with it.
+        lessons.update(null);
+        return;
+      }
       const l = lab;
       write(note, i18n.t('ui.universe.lab.note', { seed: l.seedNote }));
       lessons.update(l);
       write(clock, i18n.t('ui.universe.lab.clock', { elapsed: days(l.elapsedS), date: new Date((l.epochJdTdb - julianDateUtc(0)) * 86_400_000 + l.elapsedS * 1000).toISOString().slice(0, 10) }));
+      // Slowed for an event, the time machine's row says the rate shown (its own is the one set), with Full speed:
+      // placed beside its buttons once the row has the Reset (the navigator puts that there), folded or not.
+      const sl = l.slow.active;
+      const timeRow = reset.closest('.kf-universe-time');
+      if (timeRow && !slowed.isConnected) reset.parentElement?.after(slowed);
+      timeRow?.classList.toggle('is-slowed', sl !== null && !l.paused);
+      slowed.hidden = !sl || l.paused;
+      if (sl) write(slowedText, i18n.t('ui.universe.lab.slowedRow', { shown: perSecond(sl.rate), set: perSecond(l.requestedRate) }));
+      if (sl && !slowSaid) say(i18n.t('ui.universe.lab.slow.said', { event: i18n.t(`ui.universe.lab.slow.${sl.kind}`) }));
+      slowSaid = sl !== null;
       if (!slow) return;
-      write(rates, i18n.t(l.paused ? 'ui.universe.lab.paused' : l.achievedRate < 0.9 * l.requestedRate ? 'ui.universe.lab.ratesSlow' : 'ui.universe.lab.rates', { requested: days(l.requestedRate), achieved: days(l.achievedRate), step: f.number(l.dtS / 60, 1) }));
+      // The rate drawn is the one asked for; only when the worker's budget is spent is the rate achieved the most possible here.
+      const back = l.requestedRate < 0;
+      // Slowed for an event, the rate it runs at is the one shown (the one set beside it).
+      const ratesKey = l.paused ? 'paused' : sl ? 'ratesSlowed' : l.budgetBound ? (back ? 'ratesBackSlow' : 'ratesSlow') : back ? 'ratesBack' : 'rates';
+      write(rates, i18n.t(`ui.universe.lab.${ratesKey}`, { requested: perSecond(l.requestedRate), achieved: perSecond(l.achievedRate), shown: perSecond(sl?.rate ?? l.requestedRate), event: sl ? i18n.t(`ui.universe.lab.slow.${sl.kind}`) : '', step: f.number(l.dtS / 60, 1) }));
+      // Slowing for an event: what for, the rate it shows, and the contact still to come (simulated, and real at this rate).
+      if (slowBox.checked !== l.slow.on) slowBox.checked = l.slow.on;
+      slowText.hidden = !sl;
+      slowCancel.hidden = !sl;
+      if (sl) {
+        const event = i18n.t(`ui.universe.lab.slow.${sl.kind}`);
+        write(slowText, sl.inS !== null ? i18n.t('ui.universe.lab.slow.coming', { event, rate: perSecond(sl.rate), in: duration(sl.inS), wall: f.keep(i18n.t('ui.universe.lab.seconds', { value: f.number(sl.inS / Math.max(sl.rate, 1e-9), 1) })) }) : i18n.t('ui.universe.lab.slow.after', { event, rate: perSecond(sl.rate) }));
+      }
+      // An edit refused, and why (it stays until the next status), in the visitor's words.
+      refused.hidden = l.status?.kind !== 'refused';
+      if (l.status?.kind === 'refused') write(refused, i18n.t('ui.universe.lab.status.refused', { detail: l.status.detail.map(reasonText).join('; ') }));
+      // The latest event's card, until closed (a new event opens it again).
+      const ev = l.latest;
+      const eventKey = ev ? `${ev.t}:${ev.absorbed}:${ev.kind}:${ev.later}` : '';
+      const cardOf = ev ? `${ev.t}:${ev.absorbed}:${ev.kind}` : '';
+      if (ev && eventKey !== cardKey) {
+        const echo = cardKey.startsWith(`${cardOf}:`);
+        cardKey = eventKey;
+        const nameIn = (id: string): string => {
+          const b = l.bodies.find((x) => x.id === id);
+          return b ? nameOf(b) : (l.names[id] ?? id);
+        };
+        const survivor = nameIn(ev.survivor);
+        write(cardTitle, i18n.t(`ui.universe.lab.card.title.${ev.kind}`, { survivor, absorbed: nameIn(ev.absorbed) }));
+        const facts: string[] = [];
+        if (ev.kind !== 'disrupt') facts.push(i18n.t('ui.universe.lab.card.speed', { speed: speed(ev.speedKmS), angle: degrees(ev.angleDeg), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[ev.regime as keyof typeof REGIME_KEYS]}`) }));
+        if (ev.energyJ > 0) facts.push(i18n.t('ui.universe.lab.card.energy', { energy: scientific(ev.energyJ), mt: megatons(ev.energyJ) }));
+        const km = (v: number): string => f.keep(i18n.t('ui.universe.lab.km', { value: f.number(v, 0) }));
+        // Its mass, and its radius: a remnant is at the two bodies' mixed density, so it may grow as it loses mass (said so).
+        const lost = ev.massBeforeKg !== null && ev.massAfterKg !== null && ev.massAfterKg < ev.massBeforeKg * (1 - 1e-9);
+        if (ev.kind === 'fragment' && ev.massBeforeKg !== null && ev.massAfterKg !== null) facts.push(i18n.t('ui.universe.lab.card.mass', { name: survivor, before: f.keep(i18n.t('ui.universe.lab.kg', { value: scientific(ev.massBeforeKg) })), after: f.keep(i18n.t('ui.universe.lab.kg', { value: scientific(ev.massAfterKg) })) }));
+        if (ev.radiusBeforeKm !== null && ev.radiusAfterKm !== null && Math.abs(ev.radiusAfterKm - ev.radiusBeforeKm) > 1e-6 * ev.radiusBeforeKm) facts.push(i18n.t(lost && ev.radiusAfterKm > ev.radiusBeforeKm ? 'ui.universe.lab.card.radiusMixed' : 'ui.universe.lab.card.radius', { name: survivor, before: km(ev.radiusBeforeKm), after: km(ev.radiusAfterKm) }));
+        if (ev.created > 0) facts.push(i18n.t('ui.universe.lab.card.pieces', { count: ev.created }));
+        if (ev.craterKm !== null) facts.push(i18n.t('ui.universe.lab.card.crater', { km: f.number(ev.craterKm, ev.craterKm < 10 ? 1 : 0) }));
+        // Its pieces falling back, and what they have made of the survivor since (the event's own numbers above stay its own).
+        const grown = ev.radiusNowKm !== null && ev.radiusAfterKm !== null && Math.abs(ev.radiusNowKm - ev.radiusAfterKm) > 1e-6 * ev.radiusAfterKm;
+        const later = ev.later > 0 ? (grown && ev.radiusNowKm !== null ? i18n.t('ui.universe.lab.card.laterRadius', { count: ev.later, name: survivor, now: km(ev.radiusNowKm) }) : i18n.t('ui.universe.lab.card.later', { count: ev.later, name: survivor })) : '';
+        if (later) facts.push(later);
+        // A thrown rock: what was asked beside what it did.
+        const a = l.aim;
+        if (a?.id && (a.id === ev.absorbed || a.id === ev.survivor)) facts.push(i18n.t('ui.universe.lab.throw.asked', { speed: speed(a.vInfKmS), angle: degrees(a.angleDeg) }));
+        cardFacts.replaceChildren(...facts.map((t) => h('li', {}, t)));
+        cardDust.hidden = ev.kind !== 'disrupt';
+        // Said: a new event's title and facts; a piece falling back, only that.
+        say(echo && later ? later : [cardTitle.textContent, ...facts].join(' '));
+      }
+      // Closed, it stays closed while only its own pieces fall back; a new event opens it again.
+      card.hidden = !ev || cardClosed === cardOf;
+      // The throw: its targets (every body), and what the worked-out throw comes to.
+      const targetsKey = l.bodies.map((b) => `${b.id}:${nameOf(b)}`).join('|');
+      if (targetsKey !== throwTargetsKey) {
+        throwTargetsKey = targetsKey;
+        const was = throwTarget.select.value;
+        throwTarget.select.replaceChildren(...l.bodies.filter((b) => b.gm > 0).map((b) => h('option', { value: b.id }, nameOf(b))));
+        throwTarget.select.value = l.bodies.some((b) => b.id === was) ? was : l.bodies.some((b) => b.id === 'earth') ? 'earth' : (l.bodies.find((b) => !b.persistent && b.gm > 0)?.id ?? l.bodies[0]?.id ?? '');
+      }
+      const am = l.aim;
+      throwGo.disabled = am?.status !== 'ready';
+      // One at a time: working one out, another press waits for it (the worker takes the latest anyway).
+      aimButton.disabled = am?.status === 'working';
+      if (!am) write(throwResult, '');
+      else if (am.status === 'working') write(throwResult, i18n.t('ui.universe.lab.throw.working'));
+      else if (am.status === 'refused' || !am.contact) write(throwResult, i18n.t('ui.universe.lab.throw.refused', { reason: throwReason(am.reason, am.missKm) }));
+      else if (am.status === 'thrown') write(throwResult, i18n.t(l.slow.on ? 'ui.universe.lab.throw.thrown' : 'ui.universe.lab.throw.thrownFast'));
+      else {
+        const c = am.contact;
+        const crater = c.craterKm !== null ? i18n.t('ui.universe.lab.throw.crater', { km: f.number(c.craterKm, c.craterKm < 10 ? 1 : 0) }) : '';
+        write(throwResult, i18n.t('ui.universe.lab.throw.ready', { with: l.names[c.with] ?? c.with, in: duration(c.inS), speed: speed(c.speedKmS), angle: degrees(c.angleDeg), regime: i18n.t(`ui.universe.lab.regime.${REGIME_KEYS[c.regime as keyof typeof REGIME_KEYS]}`), crater, energy: scientific(c.energyJ) }));
+      }
       failure.hidden = l.failure === null;
       if (l.failure) write(failure, i18n.t('ui.universe.lab.failure'));
       undo.disabled = l.undoable === 0;
@@ -954,6 +1211,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       inspector.hidden = !b || choosing !== null;
       if (b) {
         write(inspectorTitle, nameOf(b));
+        // Doubling past the most mass an experiment holds would make a save that cannot be restored: refused here, with why.
+        const full = 2 * b.gm > GM_LIMIT;
+        if (double.disabled !== full) double.disabled = full;
+        massLimit.hidden = !full;
         // A ship's rocket: its propellant and change of speed left, and the burns to come.
         const ship = b.ship;
         shipBox.hidden = ship === null;
@@ -1050,7 +1311,10 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
         write(warning, warn);
         remove.hidden = b.persistent;
         follow.hidden = !b.builtIn;
-        fixedBox.checked = b.fixed;
+        if (`${b.id}:${String(b.fixed)}` !== fixedShown) {
+          fixedShown = `${b.id}:${String(b.fixed)}`;
+          fixedBox.checked = b.fixed;
+        }
         if (filledFor !== b.id) {
           filledFor = b.id;
           rename.input.value = nameOf(b);
@@ -1078,11 +1342,16 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           const found = l.bodies.find((x) => x.id === id);
           return found ? nameOf(found) : (l.names[id] ?? id);
         };
-        const ekey = p ? p.encounters.map((e) => `${e.with}:${Math.round(e.distanceKm)}:${Math.round(e.t)}`).join('|') : '';
+        // The list rebuilt when its encounters change; their times (from the moment drawn: they count down) written in place.
+        const ekey = p ? p.encounters.map((e) => `${e.with}:${Math.round(e.distanceKm)}`).join('|') : '';
         if (ekey !== encounterKey) {
           encounterKey = ekey;
-          encounters.replaceChildren(...(p?.encounters ?? []).map((e) => h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.encounter', { other: name(e.with), distance: f.distance(e.distanceKm), when: days(e.t) }))));
+          encounters.replaceChildren(...(p?.encounters ?? []).map(() => h('li', { class: 'kf-living-hint' })));
         }
+        (p?.encounters ?? []).forEach((e, k) => {
+          const li = encounters.children[k];
+          if (li instanceof HTMLElement) write(li, i18n.t('ui.universe.lab.encounter', { other: name(e.with), distance: f.distance(e.distanceKm), when: days(e.t) }));
+        });
         lagrangeGroup.hidden = !b.primary;
         lagrangeBox.checked = l.lagrange !== null;
         write(lagrangeLabel, i18n.t('ui.universe.lab.lagrange', { primary: pName }));
@@ -1178,11 +1447,12 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
           ...(l.discarded > 0 ? [h('li', { class: 'kf-living-hint' }, i18n.t('ui.universe.lab.discarded', { count: l.discarded }))] : []),
         );
       }
+      // The latest six, oldest first (a new one joins the foot): never rebuilt under the pointer or the focus, so a row is not moved as it is chosen.
       const ckey = l.checkpoints.map((c) => c.step).join('|');
-      if (ckey !== checkpointKey) {
+      if (ckey !== checkpointKey && !checkpoints.matches(':hover') && !checkpoints.contains(document.activeElement)) {
         checkpointKey = ckey;
         fillCheckpoints(
-          l.checkpoints.slice(-6).reverse().map((c) => ({
+          l.checkpoints.slice(-6).map((c) => ({
             key: `${c.step}:${c.t}`,
             make: () =>
               h('li', {}, button(i18n.t('ui.universe.lab.goBack', { when: days(c.t) }), `lab-checkpoint-${c.step}`, () => {
@@ -1197,6 +1467,7 @@ export function createLabPanel(app: App, f: Formatters): LabPanel {
       moonletsOn.disabled = ringOn.disabled;
       ringsNeed.hidden = !ringOn.disabled;
       ringsDecorative.hidden = !l.bodies.some((b) => b.builtIn === 'saturn');
+      ringsDrawn.hidden = l.swarms.length === 0;
       const rk = l.swarms.map((w) => `${w.id}:${w.count}:${w.lost}:${w.primary}`).join('|');
       if (rk !== ringsKey) {
         ringsKey = rk;

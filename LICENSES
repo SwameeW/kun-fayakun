@@ -16,6 +16,8 @@ Contents
  10. Basis Universal transcoder (Apache License 2.0)
  11. intl-messageformat (BSD-3-Clause) and @formatjs dependencies (MIT)
  12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
+ 13. WebLLM (Apache License 2.0), with loglevel (MIT)
+ 14. Qwen3 and Qwen3.5 language models (Apache License 2.0)
 
 ==============================================================================
 1. This project's own code and content
@@ -730,6 +732,36 @@ Credit:   ESA Hipparcos; F. van Leeuwen (2007); VizieR, CDS, Strasbourg | IAU
           contract with the National Aeronautics and Space Administration
           under the Exoplanet Exploration Program.
 
+The deep star catalogue (ESA Hipparcos and Tycho-2 via CDS)
+          The whole Hipparcos new reduction (van Leeuwen 2007, CDS I/311) and
+          the Tycho-2 Catalogue (Høg et al. 2000, A&A 355, L27; CDS I/259).
+Terms:    Free use with acknowledgement of ESA and CDS
+          (https://cds.unistra.fr/vizier-org/licences_vizier.html).
+Changes:  Hipparcos's stars not in the neighbourhood's file, and Tycho-2's
+          that are not Hipparcos's (by number and by place), packed as
+          binary files brightest first (directions octahedrally to about ten
+          arcseconds, V and B-V to a sixteenth of a magnitude); Alpha Centauri
+          A and B given Kervella et al. (2016)'s parallax and close pairs of a
+          multiple the better one; the density of Tycho-2's faint stars as a
+          map of the Milky Way's glow (public/assets/stars/, scripts/stars/
+          catalogue.py).
+Credit:   ESA Hipparcos (Hipparcos and Tycho-2); F. van Leeuwen (2007); Høg et
+          al. (2000); CDS, Strasbourg
+
+The black holes (SIMBAD; the papers' values)
+          SIMBAD's ICRS positions of Sgr A*, M 87, Ton 618, Gaia BH1, BH2, BH3
+          and HD 226868; masses and distances typed from GRAVITY Collaboration
+          (2022), the Event Horizon Telescope Collaboration (2019, 2022),
+          Shemmer et al. (2004), Ge et al. (2019), El-Badry et al. (2023, two
+          papers), the Gaia Collaboration (2024) and Miller-Jones et al. (2021).
+Terms:    SIMBAD: free use with acknowledgement ("This research has made use
+          of the SIMBAD database, operated at CDS, Strasbourg, France"); the
+          papers' values are facts, each credited.
+Changes:  one file (public/assets/stars/black-holes.json, scripts/stars/
+          black_holes.py); TON 618's comoving distance worked out in Planck
+          2018's cosmology.
+Credit:   SIMBAD, CDS, Strasbourg | the papers named with each hole
+
 Atmospheres descended through (NASA Planetary Data System)
           Pioneer Venus Special Events Data bundle (doi:10.17189/m5zf-6f12):
           the Large and Day Probes' atmosphere structure and the Large Probe's
@@ -940,3 +972,134 @@ Redistribution and use in source and binary forms, with or without modification,
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+==============================================================================
+15. The explorer's small worlds: asteroids, comets, moons, rings and maps
+==============================================================================
+Files: public/assets/smallbodies/ (built by scripts/smallbodies/build.py and
+scripts/smallbodies/maps.py; every query and download with its sha256 in
+manifest.json and maps.json), tests/support/astro/horizons-smallbodies.json.
+
+JPL Small-Body Database, Planetary Satellite Mean Elements and Physical
+Parameters, and JPL Horizons (NASA Jet Propulsion Laboratory, Solar System
+Dynamics)
+Terms:    Public information from NASA/JPL
+          (https://www.jpl.nasa.gov/jpl-image-use-policy).
+Credit:   Asteroids, comets and moons' orbits and sizes: NASA/JPL-Caltech
+          Solar System Dynamics
+
+NSSDCA Planetary Fact Sheets (David R. Williams, NASA Goddard Space Flight
+Center): the moons' albedos and shapes, the rings of Uranus and Neptune
+Terms:    A U.S. Government work, public domain in the United States.
+
+USGS Astrogeology Science Center global mosaics (Dawn, Galileo, Voyager,
+Cassini and New Horizons images): the maps of Ceres, Vesta, Io, Europa,
+Ganymede, Callisto, Enceladus, Tethys, Rhea, Iapetus, Triton, Pluto, Charon
+Terms:    USGS and NASA works, public domain in the United States
+          (https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits).
+Credit:   USGS Astrogeology Science Center; NASA/JPL; NASA/JPL-Caltech/Space
+          Science Institute; NASA/JPL-Caltech/UCLA/MPS/DLR/IDA;
+          NASA/JHUAPL/SwRI
+
+The Milky Way's and the zodiacal light's glows are computed by the explorer
+from published models (src/explore/worlds/glow.ts: Bland-Hawthorn and Gerhard
+2016; Kelsall et al. 1998; Hong 1985; scaled after Leinert et al. 1998): no
+image is used.
+
+==============================================================================
+16. WebLLM (Apache License 2.0), with loglevel (MIT)
+==============================================================================
+
+@mlc-ai/web-llm 0.2.86 (npm, pinned exactly in package.json), by the WebLLM
+Team (MLC AI). Project: https://github.com/mlc-ai/web-llm
+Used by:  the assistant's model worker alone (src/ai/engine/webllm-worker.ts),
+          built into one file the browser fetches only when a visitor chooses
+          to download and run a model on their device. Nothing is sent to any
+          hosted service: it runs the model in the visitor's browser.
+Licence:  Apache License 2.0. The licence's full text is the same as in
+          section 10 above (verbatim copy of
+          https://www.apache.org/licenses/LICENSE-2.0.txt); the package's own
+          LICENSE file (node_modules/@mlc-ai/web-llm/LICENSE) holds that text
+          followed by the lines below, copied verbatim:
+
+   Copyright 2023-2026 WebLLM Team
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+------------------------------------------------------------------------------------
+This product bundles various third-party components under other open source licenses.
+This section summarizes those components and their licenses. See licenses/
+for text of these licenses.
+
+Apache Software Foundation License 2.0
+--------------------------------------
+
+src/openai_api_protocols
+
+WebLLM's built file also carries loglevel 1.9 (Tim Perry), which WebLLM
+depends on. Verbatim copy of node_modules/loglevel/LICENSE-MIT:
+
+Copyright (c) 2013 Tim Perry
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+The compiled model libraries (.wasm) are fetched by WebLLM at run time from
+github.com/mlc-ai/binary-mlc-llm-libs (Apache License 2.0), pinned to commit
+00fe7a40e57e5e8eb9fef87526a4bf28ad5846c0 and served by jsDelivr; they are not
+part of this repository or its build. Details: data/sources.json (web-llm).
+
+==============================================================================
+17. Qwen3 and Qwen3.5 language models (Apache License 2.0)
+==============================================================================
+
+The assistant's optional on-device models: Qwen3 0.6B, 1.7B, 4B and 8B
+(offered to visitors) and Qwen3.5 4B and 9B (evaluation only, not offered), by
+the Qwen Team (Alibaba Cloud), in the MLC builds by MLC AI. They are not part
+of this repository or its build: a visitor's browser downloads one from
+huggingface.co/mlc-ai (a public file store, no account) only when the visitor
+asks, after seeing its size, licence and source, and keeps it in the browser's
+own storage. Each build is pinned to a Hugging Face commit in
+src/ai/engine/catalogue.ts.
+Licence:  Apache License 2.0 (text as in section 10 above). Each base model's
+          licence file, pinned to the commit read on 2026-10-26:
+          https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/LICENSE
+          https://huggingface.co/Qwen/Qwen3-1.7B/blob/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e/LICENSE
+          https://huggingface.co/Qwen/Qwen3-4B/blob/1cfa9a7208912126459214e8b04321603b3df60c/LICENSE
+          https://huggingface.co/Qwen/Qwen3-8B/blob/b968826d9c46dd6066d109eabc6255188de91218/LICENSE
+          https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/LICENSE
+          https://huggingface.co/Qwen/Qwen3.5-9B/blob/c202236235762e1c871ad0ccb60c8ee5ba337b9a/LICENSE
+Credit:   Qwen3 and Qwen3.5 by the Qwen Team (Alibaba Cloud), Apache License
+          2.0; MLC builds by MLC AI. Details: data/sources.json (qwen3,
+          qwen3-5).
+What they are used for: their words are shown labelled as an explanation by
+the model on this device. Facts, numbers, scripture and actions never come
+from them.

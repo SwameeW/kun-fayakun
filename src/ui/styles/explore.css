@@ -1159,9 +1159,11 @@
     inline-size 350ms var(--kf-ease);
 }
 
+/* Folded, as tall as its portraits but never past the window's foot: a short window scrolls them. */
 .kf-nav.is-panel:not(.is-expanded) {
   inline-size: 4.25rem;
   inset-block-end: auto;
+  max-block-size: calc(100% - var(--kf-header-h) - var(--kf-space-2) - var(--kf-space-4));
 }
 
 .kf-nav.is-panel:not(.is-expanded) .kf-nav-head {
@@ -1210,7 +1212,8 @@
 .kf-nav.is-sheet {
   inset-inline: var(--kf-space-2);
   inset-block-end: var(--kf-space-2);
-  max-block-size: min(72vh, 34rem);
+  /* Room for the time machine's line above the ten worlds, which stay whole when it is pulled up. */
+  max-block-size: min(76vh, 37rem);
   border-radius: calc(var(--kf-radius) * 1.8);
 }
 
@@ -1312,9 +1315,28 @@
   margin: 0;
 }
 
-/* More below: the sheet's scrolling part fades at its foot rather than cutting a row in half. */
-.kf-nav.is-sheet .kf-nav-body-wrap.has-more {
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.25rem), transparent);
+/*
+ * More above or below: the scrolling part fades at that edge rather than cutting a line in half, and
+ * what takes focus scrolls clear of the fade. The head takes a hairline once the body has scrolled.
+ */
+.kf-nav-body-wrap {
+  scroll-padding-block: 2rem;
+}
+
+.kf-nav-body-wrap.has-more {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+}
+
+.kf-nav-body-wrap.has-above {
+  mask-image: linear-gradient(to bottom, transparent, #000 1.5rem);
+}
+
+.kf-nav-body-wrap.has-above.has-more {
+  mask-image: linear-gradient(to bottom, transparent, #000 1.5rem, #000 calc(100% - 2rem), transparent);
+}
+
+.kf-nav:has(.kf-nav-body-wrap.has-above) .kf-nav-head {
+  box-shadow: 0 1px 0 var(--kf-line);
 }
 
 .kf-nav.is-sheet.is-expanded .kf-nav-caption {
@@ -1573,6 +1595,12 @@
     inline-size: min(24rem, 52vw);
   }
 
+  /* Pulled up, the sheet has the right of the screen: the column keeps to the left of it, as the readout
+     does (a trip can be under way with the sheet up: an experiment's own star flown to, the way back from one). */
+  .kf-universe.is-sheet-open :is(.kf-note-slot, .kf-trip) {
+    inline-size: min(24rem, calc(100vw - min(30rem, 64vw) - 3 * var(--kf-space-2)));
+  }
+
   .kf-universe .kf-note {
     inset-block: 0 auto;
     max-block-size: calc(100vh - var(--kf-header-h) - 2.75rem - var(--kf-readout-h, 3rem) - 2.5rem);
@@ -1688,9 +1716,11 @@
 
   .kf-nav.is-panel.is-expanded .kf-nav-distance { font-size: 0.75rem; line-height: 1.25; }
   .kf-nav.is-panel.is-expanded .kf-nav-light { font-size: 0.625rem; line-height: 1.25; }
+  /* Folded, ten portraits fit a window 600 px tall (shorter ones scroll the rail). */
+  .kf-nav.is-panel:not(.is-expanded) .kf-nav-body { min-block-size: 2.1rem; }
 }
 
-/* The time machine (./time-control) heads the navigator; photo mode's button ends its line. On a phone's sheet it follows the list. */
+/* The time machine (./time-control) heads the navigator; photo mode's button ends its line. On a phone's sheet it sits above the scrolling part. */
 .kf-nav-time {
   display: flex;
   align-items: flex-start;
@@ -1706,10 +1736,45 @@
   display: none;
 }
 
+/* Never scrolled away nor folded away on a phone (folded, without the date). */
 .kf-nav.is-sheet .kf-nav-time {
-  order: 2;
+  flex: none;
+  margin-block-end: 0;
+  padding-block: var(--kf-space-1);
+}
+
+/*
+ * Folded, a narrow sheet has no room for the rate's words beside the buttons once they grow ("1 day a
+ * second", an experiment's Reset among the buttons): they have a line of their own under the buttons,
+ * so the folded sheet keeps one height as they change with each press (its top, and the buttons, never
+ * move under the finger), and in an experiment it is as small as outside one. (Pulled up, the sheet is
+ * as tall as it may be: its list gives way instead, and a short rate keeps to the buttons' line.)
+ */
+@media (max-width: 599.98px), (max-height: 500px) {
+  .kf-nav.is-sheet:not(.is-expanded) .kf-universe-time-rate {
+    flex-basis: 100%;
+    line-height: 1.25;
+  }
+}
+
+/* The help, the date and the Islamic date: in the row, or on a phone's sheet under the list. */
+.kf-universe-time-day {
+  display: contents;
+}
+
+.kf-nav-day {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-1) var(--kf-space-2);
+  order: 1;
+  padding: var(--kf-space-2) var(--kf-space-3);
   border-block-start: 1px solid var(--kf-line);
-  border-block-end: 0;
+  font-size: 0.8125rem;
+}
+
+.kf-nav-day[hidden] {
+  display: none;
 }
 
 .kf-universe-time {
@@ -1756,9 +1821,33 @@
   color: var(--kf-gold-strong);
 }
 
-.kf-universe-time-button:hover,
-.kf-universe-time-now:hover {
+.kf-universe-time-button:not([aria-disabled="true"]):hover,
+.kf-universe-time-now:not([aria-disabled="true"]):hover {
   border-color: var(--kf-gold-soft);
+}
+
+/* A control that cannot act now: dimmed, still focusable, and a press says why (in the note below). */
+.kf-universe-time-button[aria-disabled="true"],
+.kf-universe-time-now[aria-disabled="true"] {
+  border-color: var(--kf-line);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.kf-universe-time-now[hidden] {
+  display: none;
+}
+
+.kf-universe-time-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--kf-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.kf-universe-time-note[hidden] {
+  display: none;
 }
 
 .kf-universe-time-rate {
@@ -1791,6 +1880,11 @@
     min-block-size: 2.75rem;
     min-inline-size: 2.75rem;
   }
+
+  /* Its help's reach keeps to its own line (the row wraps under the buttons). */
+  .kf-universe-time .kf-help {
+    margin-block: 0;
+  }
 }
 
 /* Photo mode: only the view, a way to save it, and a quiet way back. */
@@ -1815,53 +1909,6 @@
   /* On a narrow screen the controls wrap rather than run off its edge. */
   max-inline-size: calc(100vw - 2 * var(--kf-gutter));
   z-index: 5;
-}
-
-/* Its controls come with their own chunk, in a wrapper the bar lays out as its own children. */
-.kf-universe-photo-controls {
-  display: contents;
-}
-
-/* The camera's settings: a button that drops them down beneath it. */
-.kf-universe-photo-camera {
-  position: relative;
-}
-
-.kf-universe-photo-camera > summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.kf-universe-photo-camera > summary::-webkit-details-marker {
-  display: none;
-}
-
-.kf-universe-photo-camera-body {
-  position: absolute;
-  inset-block-start: calc(100% + var(--kf-space-2));
-  inset-inline-start: 0;
-  display: grid;
-  gap: var(--kf-space-2);
-  min-inline-size: 15rem;
-  max-inline-size: calc(100vw - 2 * var(--kf-gutter));
-  padding: var(--kf-space-2);
-  border-radius: var(--kf-radius);
-  background: rgb(10 12 20 / 0.82);
-}
-
-.kf-photo .kf-universe-photo-bar .kf-universe-photo-camera[open] .kf-btn {
-  opacity: 1;
-}
-
-.kf-photo .kf-universe-photo-bar .kf-btn {
-  display: inline-flex;
-  opacity: 0.4;
-  transition: opacity 200ms var(--kf-ease);
-}
-
-.kf-photo .kf-universe-photo-bar .kf-btn:hover,
-.kf-photo .kf-universe-photo-bar .kf-btn:focus-visible {
-  opacity: 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1898,13 +1945,16 @@
 }
 
 @media (pointer: coarse) {
-  /* A 44 px target whose visible circle stays small: the transparent border is the extra reach. */
+  /*
+   * A 44 px target whose visible circle stays small: the transparent border is the extra reach. It
+   * takes that room in its line (a line with a "?" is as tall as the target), so the reach of one in
+   * a row never lies over the next row's (a list of facts, each with its "?").
+   */
   .kf-help,
   .kf-help:hover,
   .kf-help[aria-expanded="true"] {
     inline-size: 2.75rem;
     block-size: 2.75rem;
-    margin-block: -0.625rem;
     border: 0.625rem solid transparent;
     background-clip: padding-box;
     box-shadow: inset 0 0 0 1px var(--kf-line-strong);
@@ -1931,96 +1981,6 @@
   margin-inline-start: 0;
 }
 
-/* The explanation: a small card beside its "?", inside the screen. */
-.kf-help-pop {
-  position: fixed;
-  z-index: 60;
-  display: grid;
-  gap: var(--kf-space-1);
-  inline-size: max-content;
-  max-inline-size: 20rem;
-  padding: var(--kf-space-3);
-  border: 1px solid var(--kf-gold-soft);
-  border-radius: var(--kf-radius);
-  background: rgb(10 12 20 / 0.96);
-  color: var(--kf-text);
-  box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.5);
-  font-family: var(--kf-font-ui);
-}
-
-.kf-help-pop:focus-visible {
-  outline: 2px solid var(--kf-gold-strong);
-  outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .kf-help-pop:not([hidden]) {
-    animation: kf-help-in 160ms var(--kf-ease);
-  }
-
-  @keyframes kf-help-in {
-    from {
-      opacity: 0;
-    }
-  }
-}
-
-.kf-help-head {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--kf-space-2);
-}
-
-.kf-help-title {
-  margin: 0;
-  color: var(--kf-gold-strong);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.kf-help-text {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-}
-
-.kf-help-close {
-  flex: none;
-  display: grid;
-  place-items: center;
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
-  margin: -0.25rem -0.25rem 0 0;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--kf-text-muted);
-  font-size: 1.25rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.kf-help-close:hover,
-.kf-help-close:focus-visible {
-  color: var(--kf-text);
-}
-
-@media (pointer: coarse) {
-  .kf-help-close {
-    inline-size: 2.75rem;
-    block-size: 2.75rem;
-  }
-}
-
-/* A section's "?" at the top corner of its body (the laboratory's sections and groups). */
-.kf-help-corner {
-  display: flex;
-  justify-content: flex-end;
-  margin-block-end: calc(-1 * var(--kf-space-2));
-}
-
 /* The list's heading in the navigator: what its figures are. */
 .kf-nav-list-head {
   display: flex;
@@ -2039,16 +1999,6 @@
 .kf-nav-sound {
   display: flex;
   align-items: center;
-}
-
-.kf-universe-photo-help {
-  margin: 0;
-  color: var(--kf-text);
-  font-size: 0.8125rem;
-}
-
-.kf-universe-photo-help > span {
-  margin-inline-end: auto;
 }
 
 .kf-universe-time-hijri-row {

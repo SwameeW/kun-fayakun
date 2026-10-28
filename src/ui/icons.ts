@@ -16,6 +16,7 @@ const PATHS = {
   photo: 'M4 8h3.5l2-2.5h5l2 2.5H20v10.5H4zM12 10.2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   sound: 'M4 9.5h3.5L12 6v12l-4.5-3.5H4zM15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10',
   soundOff: 'M4 9.5h3.5L12 6v12l-4.5-3.5H4zM16 10l4 4M20 10l-4 4',
+  ask: 'M4.5 5.5h15v10.5h-8L7 19.5V16H4.5zM8.5 10.75h.01M12 10.75h.01M15.5 10.75h.01',
 } as const;
 
 export type IconName = keyof typeof PATHS;

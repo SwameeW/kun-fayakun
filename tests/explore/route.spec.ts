@@ -88,22 +88,26 @@ test('from Chapter 7 the film’s compressed system stretches out to true scale,
   expect(first?.focus).toBe('sun');
   expect(first?.trueScale ?? 1).toBeLessThan(1);
   await expect(page.getByTestId('universe-scale')).toContainText(/not to scale/i);
-  // Sampled as it stretches: the Earth drawn smaller and nearer the Sun each time, the camera never inside a body.
-  const samples: Array<{ scale: number; earthPx: number; earthKm: number; altitudeKm: number }> = [];
+  // Sampled as it stretches: the Earth drawn smaller and nearer the Sun each time, the camera never inside a
+  // body; and none of the small worlds drawn (their orbits are at true scale, the film's planets not).
+  const samples: Array<{ scale: number; earthPx: number; earthKm: number; altitudeKm: number; worlds: number; loaded: boolean }> = [];
   await expect
     .poll(
       async () => {
         const v = await view(page);
         const earth = v?.bodies.find((b) => b.id === 'earth');
-        if (v && earth) samples.push({ scale: v.trueScale, earthPx: earth.screen.radiusPx, earthKm: Math.hypot(earth.ecliptic.x, earth.ecliptic.y, earth.ecliptic.z), altitudeKm: v.altitudeKm });
+        if (v && earth) samples.push({ scale: v.trueScale, earthPx: earth.screen.radiusPx, earthKm: Math.hypot(earth.ecliptic.x, earth.ecliptic.y, earth.ecliptic.z), altitudeKm: v.altitudeKm, worlds: v.worlds?.shown ?? 0, loaded: Boolean(v.worlds) });
         return v?.trueScale;
       },
       { timeout: 60_000 * SLOW, intervals: [250] },
     )
     .toBe(1);
   expect(samples.length).toBeGreaterThan(4);
+  // (The worlds came while it stretched: 2 s into the visit.)
+  expect(samples.some((s) => s.scale < 1 && s.loaded)).toBe(true);
   for (const [i, s] of samples.entries()) {
     expect(s.altitudeKm, `sample ${i}: outside the Sun`).toBeGreaterThan(0);
+    if (s.scale < 1) expect(s.worlds, `sample ${i}: no small world drawn at ${s.scale} of true scale`).toBe(0);
     const prev = samples[i - 1];
     if (!prev) continue;
     expect(s.scale).toBeGreaterThanOrEqual(prev.scale);

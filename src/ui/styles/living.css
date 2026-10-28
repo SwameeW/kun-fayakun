@@ -268,12 +268,14 @@
   display: none;
 }
 
+/* A name and a short detail on one line; where both do not fit, the detail goes under the name (never two ragged columns). */
 .kf-living-place {
   inline-size: 100%;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--kf-space-2);
+  gap: 2px var(--kf-space-2);
   padding-inline: var(--kf-space-3);
   border-radius: var(--kf-radius-small);
   text-align: start;
@@ -462,21 +464,7 @@
   }
 }
 
-/* The orbital laboratory's panel (src/ui/explore/lab-panel.ts). */
-.kf-nav-lab {
-  display: grid;
-  /* One column no wider than the panel, whatever a child's own width (a list of long choices). */
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--kf-space-2);
-  margin: 0 var(--kf-space-3) var(--kf-space-2);
-  padding: var(--kf-space-3);
-  border: 1px solid var(--kf-gold-soft);
-  border-radius: var(--kf-radius);
-  background: var(--kf-gold-faint);
-  font-size: 0.8125rem;
-}
-
-.kf-nav-lab[hidden],
+/* The ways into the laboratory and the stars, and their slots (src/ui/explore/navigator.ts). */
 .kf-nav-lab-entry[hidden] {
   display: none;
 }
@@ -487,20 +475,6 @@
   margin: 0 var(--kf-space-3) var(--kf-space-2);
   padding-block-start: var(--kf-space-2);
   border-block-start: 1px solid var(--kf-line);
-}
-
-.kf-lab-clock {
-  margin: 0;
-  color: var(--kf-gold-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-.kf-lab-warning {
-  margin: 0;
-  padding: var(--kf-space-2);
-  border: 1px solid var(--kf-danger);
-  border-radius: var(--kf-radius-small);
-  color: var(--kf-danger);
 }
 
 .kf-lab-row {
@@ -515,186 +489,108 @@
   min-inline-size: 0;
 }
 
-.kf-lab-vec {
-  max-inline-size: 5.5rem;
-}
-
-.kf-lab-fieldset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.kf-lab-file {
-  display: inline-flex;
-  align-items: center;
-}
-
-/* A list of long choices no wider than the panel. */
-.kf-nav-lab select {
-  max-inline-size: 100%;
-}
-
-/* A tick beside each body (several at once), and the inspector's tick boxes. */
-.kf-lab-body-row {
-  display: flex;
-  align-items: center;
-  gap: var(--kf-space-1);
-}
-
-.kf-lab-body-row > .kf-living-place {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-.kf-lab-check {
-  inline-size: 1.125rem;
-  block-size: 1.125rem;
-  margin: 0;
-  accent-color: var(--kf-gold-strong);
-  flex: none;
-}
-
-.kf-lab-check-label {
-  margin: 0;
-  flex: 1 1 0;
-  min-inline-size: 0;
-}
-
-/* The palette of real bodies to add, by kind. */
-.kf-lab-palette {
-  display: grid;
-  gap: var(--kf-space-1);
-  max-block-size: 18rem;
-  overflow-y: auto;
-  padding-inline-end: var(--kf-space-1);
-}
-
-.kf-lab-presets .kf-living-place[aria-pressed="true"] {
-  border-color: var(--kf-gold-strong);
-}
-
-/* A quantity over time: a line on a faint frame, in the text colour. */
-.kf-lab-chart {
-  display: block;
-  inline-size: 100%;
-  block-size: 6rem;
-  color: var(--kf-gold-strong);
-}
-
-@media (pointer: coarse) {
-  /* A 44 px target with a 24 px box drawn in it (the theme's line and gold: data images take no variables). */
-  .kf-lab-check {
-    appearance: none;
-    -webkit-appearance: none;
-    inline-size: 2.75rem;
-    block-size: 2.75rem;
-    border-radius: var(--kf-radius-small);
-    background: no-repeat center / 1.5rem 1.5rem url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='1.5' width='21' height='21' rx='4' fill='none' stroke='%23ede7da' stroke-opacity='0.55' stroke-width='2'/%3E%3C/svg%3E");
-    cursor: pointer;
-  }
-
-  .kf-lab-check:checked {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='1.5' width='21' height='21' rx='4' fill='%23e8c983'/%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%2305060a' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  }
-
-  .kf-lab-check:focus-visible {
-    outline: 2px solid var(--kf-gold-strong);
-    outline-offset: 2px;
-  }
-
-  .kf-lab-body-row {
-    min-block-size: 2.75rem;
-  }
-}
-
-.kf-nav.is-sheet .kf-nav-lab,
+/* On a phone's sheet the list of worlds comes first; the laboratory's and the stars' panels (their slots) and the ways in follow it. */
+.kf-nav.is-sheet .kf-nav-lab-slot,
 .kf-nav.is-sheet .kf-nav-lab-entry {
   order: 2;
 }
 
-/* The qibla and the new moon (src/ui/explore/islamic-panel.ts). */
-.kf-islamic {
+/* A part on its way, or one that did not come (./lazy). */
+.kf-part-waiting {
   display: grid;
-  gap: var(--kf-space-2);
+  gap: var(--kf-space-1);
   padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
 }
 
-/* The astrolabe (src/ui/explore/astrolabe-view.ts): drawn at a fixed size, scaled to the panel. */
-.kf-islamic-astrolabe {
-  display: block;
-  inline-size: 100%;
-  max-inline-size: 22rem;
-  block-size: auto;
-  aspect-ratio: 1;
-  margin: var(--kf-space-1) auto;
+/*
+ * On foot (src/ui/explore/walk-hud.ts): the view is the world's. The readout spans the view without
+ * taking its pointer (only its controls do): the way back to orbit where "Back to the start" stands in
+ * orbit (which waits while the visitor is on foot), and a dock at the lower left: a notice, the
+ * controls' card, the suit's one line (its figures folded under it, scrolling there if they must) and
+ * the pad, which never scrolls away.
+ */
+.kf-walk {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  color: var(--kf-text);
+  font-size: 0.8125rem;
 }
 
-.kf-islamic-astrolabe[hidden] {
+/* Over the page's rule that every aside takes the pointer (base.css): this one spans the view. */
+.kf-universe > .kf-walk {
+  pointer-events: none;
+}
+
+.kf-walk[hidden],
+.kf-universe.is-on-foot .kf-universe-back {
   display: none;
 }
 
-.kf-islamic-figure {
-  margin: 0;
-  color: var(--kf-text);
-  font-size: 0.875rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.kf-islamic-legend {
-  display: grid;
-  gap: var(--kf-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.75rem;
-}
-
-.kf-islamic-legend li {
-  display: grid;
-  grid-template-columns: 0.75rem 1fr auto;
-  align-items: center;
+.kf-walk-top {
+  position: absolute;
+  inset-block-start: calc(var(--kf-header-h) + var(--kf-space-2));
+  inset-inline: var(--kf-gutter) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--kf-space-2);
 }
 
-.kf-islamic-count {
+.kf-walk-top > *,
+.kf-walk-dock > * {
+  pointer-events: auto;
+}
+
+.kf-walk-back {
+  padding-inline: var(--kf-space-3);
+  border-color: var(--kf-gold-soft);
+  background: rgb(12 13 19 / 0.86);
+  font-weight: 600;
+}
+
+.kf-walk-back .kf-icon {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  color: var(--kf-gold);
+}
+
+.kf-walk-esc {
+  padding: 0 0.35em;
+  border: 1px solid var(--kf-line-strong);
+  border-radius: 0.3em;
   color: var(--kf-text-muted);
-  font-variant-numeric: tabular-nums;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 
-/* The map's colours (src/explore/islamic/index.ts ZONE_RGB), each beside its words: colour is never the only cue. */
-.kf-islamic-swatch {
-  inline-size: 0.75rem;
-  block-size: 0.75rem;
-  border-radius: 50%;
-}
-
-.kf-islamic-swatch.is-a { background: rgb(92 219 128); }
-.kf-islamic-swatch.is-b { background: rgb(189 224 92); }
-.kf-islamic-swatch.is-c { background: rgb(250 209 82); }
-.kf-islamic-swatch.is-d { background: rgb(250 148 66); }
-.kf-islamic-swatch.is-e { background: rgb(237 87 82); }
-.kf-islamic-swatch.is-f { background: rgb(143 145 161); }
-
-/* On foot (src/ui/explore/walk-hud.ts): the suit's readout, where the readout from orbit was. */
-.kf-walk {
+.kf-walk-dock {
   position: absolute;
   inset-block-end: var(--kf-space-4);
-  inset-inline-start: var(--kf-space-4);
-  max-inline-size: min(26rem, calc(100vw - 2 * var(--kf-space-4)));
-  padding: var(--kf-space-3);
+  inset-inline-start: var(--kf-gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--kf-space-2);
+  max-inline-size: min(24rem, calc(100% - 2 * var(--kf-gutter)));
+  /* Never up over the way back. */
+  max-block-size: calc(100% - var(--kf-header-h) - 5rem);
+}
+
+.kf-walk-suit,
+.kf-walk-notice,
+.kf-walk-help {
+  max-inline-size: 100%;
+  margin: 0;
+  padding: var(--kf-space-2) var(--kf-space-3);
   border: 1px solid var(--kf-line-strong);
   border-radius: var(--kf-radius);
   background: rgb(12 13 19 / 0.82);
-  color: var(--kf-text);
-  font-size: 0.8125rem;
-  display: grid;
-  gap: var(--kf-space-1);
-  z-index: 3;
 }
 
-.kf-walk[hidden] {
-  display: none;
+.kf-walk-suit {
+  min-block-size: 0;
+  overflow-y: auto;
 }
 
 .kf-walk-title {
@@ -702,12 +598,27 @@
   display: flex;
   align-items: center;
   gap: var(--kf-space-2);
+  min-block-size: 1.75rem;
   margin: 0;
+  cursor: pointer;
+}
+
+.kf-walk-heading {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--kf-space-2);
+}
+
+.kf-walk-heading > :first-child {
   color: var(--kf-gold-strong);
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
-  cursor: pointer;
+}
+
+.kf-walk-brief {
+  color: var(--kf-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .kf-walk-suit > :not(summary) {
@@ -715,14 +626,13 @@
 }
 
 .kf-walk-line,
-.kf-walk-keys,
-.kf-walk-notice,
-.kf-walk-credit {
+.kf-walk-credit,
+.kf-walk-help p {
   margin: 0;
 }
 
-.kf-walk-keys,
-.kf-walk-credit {
+.kf-walk-credit,
+.kf-walk-help {
   color: var(--kf-text-muted);
   font-size: 0.75rem;
 }
@@ -731,96 +641,139 @@
   color: var(--kf-gold-strong);
 }
 
-.kf-walk-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--kf-space-2);
-}
-
-.kf-walk-controls[hidden] {
+/* The controls' card: after landing, and with the figures. */
+.kf-walk-help {
   display: none;
 }
 
+.kf-walk-help.is-shown,
+.kf-walk-dock:has(> .kf-walk-suit[open]) > .kf-walk-help {
+  display: block;
+}
+
 .kf-walk-pad {
+  display: grid;
+  grid-template-columns: repeat(4, 2.75rem);
+  gap: var(--kf-space-1);
+  flex: none;
+}
+
+/* The rover stands beside the arrows, the height of both rows. */
+.kf-walk-rover {
+  grid-row: span 2;
+}
+
+/* The look's sense, among the figures: a 44 px row to tap. */
+.kf-walk-option {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: var(--kf-space-2);
+  min-block-size: 2.75rem;
+  cursor: pointer;
+}
+
+.kf-walk-pad[hidden] {
+  display: none;
 }
 
 .kf-walk-pad-btn {
+  min-inline-size: 2.75rem;
+  padding: 0;
+  font-size: 0.75rem;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
 
-/* With a keyboard the keys are named; on a touch screen, the pad. */
+.kf-walk-pad-btn .kf-icon {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.kf-walk-pad-btn[aria-pressed="true"] {
+  border-color: var(--kf-gold);
+  color: var(--kf-gold-strong);
+}
+
+/* The descent's pad and its way back (src/ui/explore/descent-hud.ts), a row at the foot of the dock. */
+.kf-walk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kf-space-2);
+  flex: none;
+}
+
+/* With a keyboard the keys are named; on a touch screen, the pad and the look. */
 .kf-walk-touch {
   display: none;
-  margin: 0;
-  color: var(--kf-text-muted);
-  font-size: 0.75rem;
 }
 
 /*
- * A narrow screen keeps the worlds' sheet at its foot: the suit's readout sits just above it, in
- * smaller type, while the notes and the hint wait; with the sheet pulled up, the readout waits too.
+ * A narrow screen keeps the worlds' sheet at its foot: the dock sits just above it, in smaller type,
+ * while the notes and the hint wait; with the sheet pulled up, the dock waits too (the way back stays).
  */
 @media (max-width: 899.98px), (max-height: 559.98px) {
-  .kf-walk {
-    inset-inline: var(--kf-space-2);
+  .kf-walk-top {
+    inset-inline-start: var(--kf-space-2);
+  }
+
+  .kf-walk-dock {
+    inset-inline-start: var(--kf-space-2);
     inset-block-end: calc(var(--kf-sheet-h, 5.5rem) + var(--kf-space-2));
-    max-inline-size: 30rem;
-    padding: var(--kf-space-2) var(--kf-space-3);
+    max-inline-size: calc(100% - 2 * var(--kf-space-2));
+    max-block-size: calc(100% - var(--kf-sheet-h, 5.5rem) - var(--kf-header-h) - 4.5rem);
     font-size: 0.75rem;
   }
 
-  .kf-walk-keys,
-  .kf-walk-touch,
+  .kf-walk-help,
   .kf-walk-credit {
     font-size: 0.6875rem;
   }
 
-  .kf-universe:is(.is-walking, .is-descending) :is(.kf-note-slot, .kf-universe-hint),
-  .kf-universe.is-sheet-open .kf-walk {
+  .kf-universe.is-sheet-open .kf-walk-dock {
     visibility: hidden;
   }
-}
 
-/* A short landscape screen: the sheet keeps to the right, so the readout takes the lower left, below the way back to the start (scrolling if it must). */
-@media (max-height: 500px) {
-  .kf-walk {
-    inset-inline-end: auto;
-    inset-block-end: var(--kf-space-2);
-    inline-size: min(22rem, 55vw);
-    max-block-size: calc(100% - var(--kf-header-h, 3.25rem) - 3.5rem);
-    overflow-y: auto;
+  /* With the figures open there is no room for the controls' card too (it comes again on the next landing). */
+  .kf-walk-dock:has(> .kf-walk-suit[open]) > .kf-walk-help:not(.is-shown) {
+    display: none;
   }
 }
 
-/* On foot, or going down through an atmosphere, the readout from orbit steps aside (its height is above the globe, not where the eye is). */
-.kf-universe:is(.is-walking, .is-descending) [data-testid="universe-readout"] {
+/* A short landscape screen: the sheet keeps to the lower right, so the dock has the lower left to itself (and the toast the top right). */
+@media (max-height: 500px) {
+  .kf-walk-dock {
+    inset-block-end: var(--kf-space-2);
+    max-inline-size: calc(40vw - 2 * var(--kf-space-2));
+    max-block-size: calc(100% - var(--kf-header-h) - 4.25rem);
+    gap: var(--kf-space-1);
+  }
+
+  .kf-universe.is-on-foot .kf-toast {
+    inset-inline: calc(40vw + var(--kf-space-2)) var(--kf-space-2);
+  }
+}
+
+/* On foot the toast keeps to the top, under the way back (the dock has the lower left). */
+.kf-universe.is-on-foot .kf-toast {
+  inset-block: calc(var(--kf-header-h) + var(--kf-space-2) + 3.25rem) auto;
+}
+
+/* On foot, or going down through an atmosphere: the readout from orbit, the notes and the hint step aside. */
+.kf-universe:is(.is-walking, .is-descending) :is([data-testid="universe-readout"], .kf-note-slot, .kf-universe-hint) {
   display: none;
 }
 
 @media (pointer: coarse) {
-  .kf-walk-back,
-  .kf-walk-pad-btn {
+  .kf-walk-title,
+  .kf-walk-suit .kf-help-row {
     min-block-size: 2.75rem;
   }
 
-  .kf-walk-title {
-    display: flex;
-    align-items: center;
-    min-block-size: 2.75rem;
-  }
-
-  .kf-walk-pad-btn {
-    min-inline-size: 4.5rem;
-  }
-
-  .kf-walk-keys {
+  .kf-walk-keys,
+  .kf-walk-esc {
     display: none;
   }
 
@@ -835,49 +788,7 @@
   accent-color: var(--kf-gold-strong);
 }
 
-/* Among the stars (src/ui/explore/neighbourhood-panel.ts): inset and set like the navigator's other sections. */
-.kf-stars {
-  margin: 0 var(--kf-space-3) var(--kf-space-2);
-  font-size: 0.8125rem;
-}
-
-/* The planets' list. */
-.kf-stars-planets {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.kf-stars-planet {
-  display: grid;
-  gap: var(--kf-space-1);
-  padding-block: var(--kf-space-1);
-  border-block-end: 1px solid var(--kf-line);
-}
-
-.kf-stars-hr {
-  display: block;
-  inline-size: 100%;
-  block-size: auto;
-  aspect-ratio: 600 / 440;
-  margin-block: var(--kf-space-2);
-  border-radius: var(--kf-radius-small);
-  background: rgb(255 255 255 / 0.03);
-}
-
-.kf-stars-credit {
-  font-size: 0.6875rem;
-}
-
 /* Among the stars the solar system's readout and notes step aside (the stars' panel has their facts). */
 .kf-universe.is-among-stars :is([data-testid="universe-readout"], .kf-note-slot, .kf-universe-hint) {
   display: none;
-}
-
-.kf-stars .kf-living-places {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--kf-space-1);
 }

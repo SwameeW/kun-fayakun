@@ -3,7 +3,7 @@
   "help.close": "Close",
 
   "help.navigator": "This is your guide to space. Tap a world to fly there, and open the sections below to learn about it and try things out.",
-  "help.time": "These buttons change time in the explorer. Speed it up to watch the planets move, slow it down, pause it, or pick a date to see the sky on another day.",
+  "help.time": "These buttons change time in the explorer: speed it up to watch the planets move, slow it down, run it backwards, pause it, or pick a date between 1600 and 2399. Outside JPL’s tables the Moon and planets come from published formulas, a little less exact. In an experiment they run its own clock, and backwards replays its history.",
   "help.hijri": "This is the date in the Islamic calendar, which follows the Moon: each month is about one Moon cycle. This one is worked out the way Saudi Arabia’s Umm al-Qura calendar does it.",
   "help.orrery": "A little map of the solar system seen from above, with the Sun in the middle. The directions are real for the date shown, but the distances are squeezed so everything fits.",
   "help.distance": "How far away each world is from you. An AU is the distance from the Earth to the Sun, about 150 million kilometres.",
@@ -88,6 +88,8 @@
   "help.descentProbe": "These numbers were measured by a real probe that fell through these clouds, sending them home by radio as it went.",
 
   "help.labClock": "The laboratory’s own clock. Speed it up to see orbits and changes happen faster, or pause it to change things carefully.",
+  "help.labSlow": "When something is about to hit something else, or a moon is about to be torn apart, the laboratory’s clock slows down so you can watch it, then speeds up again. The physics is the same at any speed. Turn it off to keep your own speed.",
+  "help.labThrow": "Aim a rock at a world. The laboratory works out where it must start so it strikes how and when you asked, shows you what will happen, and only then lets you throw it.",
   "help.labBodies": "Everything in this experiment. Choose one to see its numbers and change them, and tick several to follow them together.",
   "help.speed": "How fast it is moving, and how fast compared with the world it travels around.",
   "help.period": "How long one trip around its orbit takes.",

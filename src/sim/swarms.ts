@@ -22,6 +22,7 @@
  */
 
 import type { Vec3 } from './elements';
+import type { Look } from './looks';
 import { stateFromElements } from './elements';
 import { keplerDrift } from './kepler';
 
@@ -54,6 +55,9 @@ export interface Swarm {
   lost: number;
   /** A torn body's dust: it neither feels nor strikes that body's pieces (`rubble`), as the pieces do not one another. */
   torn?: boolean;
+  /** The body it came from (a torn body's dust) and what it looks like (./looks; drawing only). */
+  source?: string;
+  look?: Look;
 }
 
 /** The most particles in one swarm, and in a scenario. */

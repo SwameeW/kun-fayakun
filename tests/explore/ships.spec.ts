@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
 import type { UniverseLab } from '../../src/core/types';
 import { expect, test } from '../support/fixtures';
 import { SLOW } from '../support/env';
-import { JD, view, waitForUniverse } from '../support/universe';
+import { JD, place, view, waitForUniverse } from '../support/universe';
 
 const LIVE = { timeout: 60_000 * SLOW };
 const lab = async (page: Page): Promise<UniverseLab | null> => (await view(page))?.lab ?? null;
@@ -75,7 +75,20 @@ test('a ship about the Earth: its rocket read out, a prograde burn planned and r
   await page.getByTestId(`lab-body-${shipId}`).click();
   await expect.poll(async () => (await lab(page))?.selected, LIVE).toBe(shipId);
   const hud = (): Promise<string[]> => page.evaluate(() => (window as unknown as { __kf: { app: { hud(): { labels: Array<{ id: string }> } } } }).__kf.app.hud().labels.map((l) => l.id));
-  await expect.poll(async () => (await hud()).filter((id) => id.startsWith('lab-direction-')).sort(), LIVE).toEqual(['lab-direction-normal', 'lab-direction-prograde', 'lab-direction-radialOut']);
+  // (Names never show behind a world's disc: looked at from round the Earth, a quarter turn at a time,
+  // until the ship, held still at 629 km up, is on the near side.)
+  const named = ['lab-direction-normal', 'lab-direction-prograde', 'lab-direction-radialOut'];
+  let azimuth = 0;
+  await expect
+    .poll(async () => {
+      const shown = (await hud()).filter((id) => id.startsWith('lab-direction-')).sort();
+      if (shown.join() !== named.join()) {
+        azimuth = (azimuth + 90) % 360;
+        await place(page, { body: 'earth', distanceKm: 40_000, azimuthDeg: azimuth, elevationDeg: 20 });
+      }
+      return shown;
+    }, { ...LIVE, intervals: [1500] })
+    .toEqual(named);
   // A burn of 100 m/s prograde, now.
   await page.getByTestId('lab-ship-direction').selectOption('prograde');
   await expect(page.getByTestId('lab-ship-ref')).toHaveValue('earth');

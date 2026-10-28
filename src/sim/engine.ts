@@ -40,7 +40,8 @@ import { makeSwarm, particleCount, rehomeSwarms, ringPlaces, SWARM_LIMITS, swarm
  * Time only runs forward. Going back restores a checkpoint (taken before every edit, and every
  * `checkpointSteps` steps) and replays the log from there; an edit made after going back starts a new
  * branch, discarding the later part of the old log (the count is reported). Replay from the start
- * reruns the whole log.
+ * reruns the whole log. Playing the history backwards (./rewind) replays it the same way, with a
+ * replica made from a checkpoint (the constructor's `from`), and puts the run back with restoreFrom.
  *
  * Edits are interventions, not drift: each records the diagnostics before and after, and the drift
  * the engine reports is measured from the last intervention.
@@ -155,6 +156,7 @@ function settle(s: SimState, ids: readonly string[]): void {
 function pruneGone(s: SimState): void {
   if (Object.keys(s.stars).some((id) => indexOf(s, id) < 0)) s.stars = Object.fromEntries(Object.entries(s.stars).filter(([id]) => indexOf(s, id) >= 0));
   if (Object.keys(s.climate).some((id) => indexOf(s, id) < 0)) s.climate = Object.fromEntries(Object.entries(s.climate).filter(([id]) => indexOf(s, id) >= 0));
+  if (Object.keys(s.origins).some((id) => indexOf(s, id) < 0)) s.origins = Object.fromEntries(Object.entries(s.origins).filter(([id]) => indexOf(s, id) >= 0));
 }
 
 export interface LoggedCommand {
@@ -193,6 +195,13 @@ export interface Checkpoint {
   dt: number;
   /** Log entries already applied when it was taken. */
   logIndex: number;
+  /**
+   * The accelerations and torques the next step starts from, as the run had them (empty: worked out
+   * afresh, as at the start or after an edit). They are worked out within a step, before the spins'
+   * second half-kick, so worked out again from the state alone they differ in the last bits wherever
+   * a J2 ties the pull to a spin's axis: a replay from here without them would not be the run's own.
+   */
+  acc: readonly number[];
 }
 
 export interface PredictionResult {
@@ -205,6 +214,8 @@ export interface PredictionResult {
   framePath: number[];
   /** Its closest approaches to other bodies (at most ENCOUNTERS, nearest first relative to their size): when (s from now), how close (km between centres), where it is then and where the other is. */
   encounters: Encounter[];
+  /** The simulated time it was made from (s since the epoch): its times are from then. */
+  fromT: number;
 }
 
 export interface Encounter {
@@ -219,6 +230,8 @@ export interface Encounter {
 export const ENCOUNTERS = 3;
 
 const MAX_CHECKPOINTS = 48;
+/** Why an edit tied to one step (Engine.applyAt `exact`) is refused when the run cannot be put there. */
+export const STALE = 'the experiment has changed since it was aimed';
 
 /** A body spec's state: its rotation as a spin angular momentum, its J2 and moment of inertia factor. */
 function bodyOf(b: BodySpec): Parameters<typeof addBody>[1] {
@@ -245,6 +258,7 @@ export class Engine {
   private acc: number[] = [];
   /** Log entries applied so far (the rest replay as the steps reach them). */
   private logIndex = 0;
+  /** Checkpoints in order of step (at most MAX_CHECKPOINTS, spread over the whole run: see checkpoint()). */
   readonly checkpoints: Checkpoint[] = [];
   readonly interventions: Intervention[] = [];
   readonly events: MergeEvent[] = [];
@@ -261,13 +275,37 @@ export class Engine {
   /** Whether a body keeps its identity in a merger (Scenario.persistentIds). */
   readonly keep = (id: string): boolean => this.scenario.persistentIds?.includes(id) ?? false;
 
-  constructor(scenario: Scenario) {
+  /**
+   * A scenario run from its start; or, given `from` (one of another engine's checkpoints for the same
+   * scenario), a replica that goes on from that checkpoint exactly as the run did, without touching
+   * that engine (./rewind replays history with one). A replica only reads the scenario's log.
+   */
+  constructor(scenario: Scenario, from?: Checkpoint) {
     this.scenario = scenario;
+    if (from) {
+      this.state = cloneState(from.state);
+      this.dt = from.dt;
+      this.acc = [...from.acc];
+      this.logIndex = from.logIndex;
+      this.lastPeriodic = from.step;
+      this.reference = diagnostics(this.state);
+      return;
+    }
     this.state = stateFrom(scenario.bodies);
     resolveContacts(this.state, 0, null, this.events, this.keep);
     this.retime();
     this.reference = diagnostics(this.state);
     this.checkpoint();
+  }
+
+  /** Log entries applied so far: what a checkpoint taken now would record. */
+  get applied(): number {
+    return this.logIndex;
+  }
+
+  /** The state now as a checkpoint (a deep copy; without the rings' particles when `withSwarms` is false). */
+  snapshotNow(withSwarms = true): Checkpoint {
+    return { step: this.state.step, t: this.state.t, state: cloneState(this.state, withSwarms), dt: this.dt, logIndex: this.logIndex, acc: [...this.acc] };
   }
 
   /** The step size the state calls for now (or for a timescale already found). */
@@ -277,10 +315,31 @@ export class Engine {
     if (!Number.isFinite(this.dt)) this.dt = g.dtMaxS;
   }
 
+  /**
+   * Takes a checkpoint, kept in order of step (a run gone back over and run again takes them again:
+   * one already held for the same step and edits is not repeated). Bounded: past MAX_CHECKPOINTS, the
+   * one whose loss leaves the shortest gap goes, so they stay spread over the whole run (going back
+   * anywhere replays at most a gap's steps); the first (the scenario's start) and the latest stay.
+   */
   private checkpoint(): void {
-    this.checkpoints.push({ step: this.state.step, t: this.state.t, state: cloneState(this.state), dt: this.dt, logIndex: this.logIndex });
-    // Bounded: the oldest periodic checkpoints go first; the first (the scenario's start) stays.
-    while (this.checkpoints.length > MAX_CHECKPOINTS) this.checkpoints.splice(1, 1);
+    const list = this.checkpoints;
+    const { step } = this.state;
+    if (list.some((c) => c.step === step && c.logIndex === this.logIndex)) return;
+    let at = list.length;
+    while (at > 0 && (list[at - 1]?.step ?? 0) > step) at -= 1;
+    list.splice(at, 0, this.snapshotNow());
+    while (list.length > MAX_CHECKPOINTS) {
+      let drop = 1;
+      let shortest = Number.POSITIVE_INFINITY;
+      for (let k = 1; k < list.length - 1; k += 1) {
+        const gap = (list[k + 1]?.step ?? 0) - (list[k - 1]?.step ?? 0);
+        if (gap < shortest) {
+          shortest = gap;
+          drop = k;
+        }
+      }
+      list.splice(drop, 1);
+    }
   }
 
   /** Applies the logged edits due at the current step. */
@@ -437,8 +496,38 @@ export class Engine {
     this.reference = after;
   }
 
-  /** An edit from the visitor, at the current step: a checkpoint first; if later edits were logged (after going back), they are discarded (a new branch). */
-  apply(command: Command): void {
+  /**
+   * Why an edit would be refused now, or null: checkCommand against what exists at this moment (every id
+   * must), and the edits that would do nothing (a held body's velocity, removing the scene's light).
+   */
+  refusal(command: Command): string | null {
+    const s = this.state;
+    const known: KnownIds = { bodies: new Set(s.ids), swarms: new Set(s.swarms.map((w) => w.id)), ships: new Set(Object.keys(s.ships)), climates: new Set(Object.keys(s.climate)) };
+    const problem = checkCommand(command, known, IMPORT_LIMITS, true);
+    if (problem) return problem;
+    if (command.kind === 'setVelocity' && s.fixed.includes(command.id)) return 'held in place: its velocity stays 0';
+    if (command.kind === 'remove' && this.keep(command.id)) return 'kept: it is the scene’s light';
+    if (command.kind === 'addSwarm' && particleCount(s) >= SWARM_LIMITS.total) return `no room for more particles (at most ${SWARM_LIMITS.total})`;
+    // An id this experiment has used before (a body since merged or removed) is not used again: its file would be refused (ids there are never reused).
+    if (command.kind === 'add' || command.kind === 'addRing' || command.kind === 'addSwarm') {
+      const bodies = new Set(this.scenario.bodies.map((b) => b.id));
+      const swarms = new Set<string>();
+      for (const e of this.scenario.log.slice(0, this.logIndex)) learn(e.command, bodies, swarms);
+      const ids = command.kind === 'add' ? [command.body.id] : command.kind === 'addRing' ? Array.from({ length: Math.min(command.ring.count, IMPORT_LIMITS.ringBodies) }, (_, k) => `${command.ring.id}-${k + 1}`) : [];
+      if (ids.some((id) => bodies.has(id))) return 'adds an id this experiment has used before';
+      if (command.kind === 'addSwarm' && swarms.has(command.swarm.id)) return 'adds a swarm id this experiment has used before';
+    }
+    return null;
+  }
+
+  /**
+   * An edit from the visitor, at the current step: checked first (refused, nothing is logged and no
+   * checkpoint taken); then a checkpoint; if later edits were logged (after going back), they are
+   * discarded (a new branch). Returns the refusal's reason, or null.
+   */
+  apply(command: Command): string | null {
+    const refused = this.refusal(command);
+    if (refused) return refused;
     const log = this.scenario.log;
     this.discarded = log.length - this.logIndex;
     log.length = this.logIndex;
@@ -448,6 +537,7 @@ export class Engine {
     this.checkpoint();
     log.push({ step: this.state.step, command });
     this.applyDue();
+    return null;
   }
 
   /**
@@ -455,12 +545,24 @@ export class Engine {
    * last shown and the edit's arrival (a frame or two: a long stretch at a fast rate), so the run goes
    * back to that step first (exactly: a checkpoint, the log replayed), unless an edit has been made
    * since. A body placed beside another is then placed where that one was seen, not where it has
-   * moved since (at a day a second, a hundred thousand kilometres for the Earth).
+   * moved since (at a day a second, a hundred thousand kilometres for the Earth). An edit made at that
+   * same step before it is kept: the run goes back to just after it (its checkpoint, then the edits due
+   * there applied again, as a replay would).
+   *
+   * `exact`: made only at `atStep` (a thrown rock, worked out from the run there: ./aim), refused when the
+   * run cannot be put there (an edit made since, or it has not got there yet).
    */
-  applyAt(command: Command, atStep: number): void {
+  applyAt(command: Command, atStep: number, exact = false): string | null {
+    // Refused as things stand now: the run is not taken back for it.
+    const refused = this.refusal(command);
+    if (refused) return refused;
     const last = this.logIndex > 0 ? (this.scenario.log[this.logIndex - 1]?.step ?? 0) : -1;
-    if (!this.failure && atStep > last && atStep < this.state.step) this.restore(atStep);
-    this.apply(command);
+    if (!this.failure && atStep >= last && atStep < this.state.step) {
+      this.restore(atStep);
+      this.applyDue();
+    }
+    if (exact && this.state.step !== atStep) return STALE;
+    return this.apply(command);
   }
 
   /** Edits that can be undone (applied ones) and redone. */
@@ -530,6 +632,15 @@ export class Engine {
     return taken;
   }
 
+  /**
+   * How long the next step (stepOnce) will be: the edits due at this step applied first, as stepOnce
+   * applies them (an edit retimes the step), then the step size, shortened for a ship's burn.
+   */
+  nextStepS(): number {
+    this.applyDue();
+    return burnStep(this.state, this.dt);
+  }
+
   stepOnce(): void {
     this.applyDue();
     const before = this.events.length;
@@ -544,7 +655,8 @@ export class Engine {
     }
     if (!healthy(this.state)) {
       this.failure = 'non-finite';
-      this.restore(this.checkpoints[this.checkpoints.length - 1]?.step ?? 0, false);
+      // The last good checkpoint: the latest at or before this step.
+      this.restore(this.state.step, false);
       return;
     }
     // Shrink at once for a tightening encounter; otherwise retime (and grow) only every retimeSteps.
@@ -561,18 +673,26 @@ export class Engine {
     let best: Checkpoint | undefined;
     for (const c of this.checkpoints) if (c.step <= targetStep && c.logIndex <= maxLogIndex && (!best || c.step > best.step || (c.step === best.step && c.logIndex >= best.logIndex))) best = c;
     const c = best ?? this.checkpoints[0];
-    if (!c) return;
+    if (c) this.restoreFrom(c, replayTo ? targetStep : c.step);
+  }
+
+  /**
+   * Goes to `targetStep` from a given checkpoint of this run (one of its own, or one a replica took:
+   * ./rewind), replaying the log from it; exactly the state the run had there.
+   */
+  restoreFrom(c: Checkpoint, targetStep = c.step): void {
     this.state = cloneState(c.state);
     this.dt = c.dt;
     this.logIndex = c.logIndex;
     // The history as it stood then (the replay adds back what it passes again): interventions mirror the log entries applied, collisions their steps.
     this.interventions.length = Math.min(this.interventions.length, c.logIndex);
     for (let k = this.events.length - 1; k >= 0; k -= 1) if ((this.events[k]?.step ?? 0) >= c.step) this.events.splice(k, 1);
-    this.acc.length = 0;
+    // The step from here starts from the accelerations the run had here, as the run's own did.
+    this.acc = [...c.acc];
     this.reference = diagnostics(this.state);
     this.lastPeriodic = this.state.step;
     // Checkpoints later than this one belong to a future that is no longer certain: keep them (the log replays the same way) unless a new edit branches.
-    if (replayTo) while (this.state.step < targetStep && !this.failure) this.stepOnce();
+    while (this.state.step < targetStep && !this.failure) this.stepOnce();
   }
 
   /** The visitor going back (or forward) to a step: clears a stop for non-finite numbers, then restores and replays. */
@@ -585,6 +705,15 @@ export class Engine {
   replayFromStart(): void {
     this.failure = null;
     this.restore(0, false);
+  }
+
+  /** Back to the latest checkpoint at or before simulated time `t` (s), not replayed: the caller steps on toward `t` (a few steps at a time). */
+  restoreBefore(t: number): void {
+    this.failure = null;
+    let best: Checkpoint | undefined;
+    for (const c of this.checkpoints) if (c.t <= t && c.logIndex <= this.scenario.log.length && (!best || c.step > best.step)) best = c;
+    const c = best ?? this.checkpoints[0];
+    if (c) this.restoreFrom(c);
   }
 
   /** Integrates a copy of the current state `horizonS` ahead with the same rules, sampling body `id` `samples` times (all at once: see Prediction for the sliced form). */
@@ -639,7 +768,11 @@ export class Prediction {
   private readonly eta: number;
   done = false;
 
-  /** `accuracy` scales the step (eta): 0.25 four times finer than the live run, 4 four times coarser and faster. */
+  /**
+   * `accuracy` scales the step (eta): 0.25 four times finer than the live run, 4 four times coarser and
+   * faster. `from`: a moment of the run's history shown instead of its state now (while it is played
+   * backwards: ./rewind), with the step it had there.
+   */
   constructor(
     engine: Engine,
     readonly id: string,
@@ -647,13 +780,14 @@ export class Prediction {
     readonly samples: number,
     readonly maxSteps: number,
     accuracy = 1,
+    from: { state: SimState; dt: number } = engine,
   ) {
     // Test particles pull nothing, so the bodies' future is the same without them.
-    this.copy = cloneState(engine.state, false);
+    this.copy = cloneState(from.state, false);
     this.start = this.copy.t;
     this.g = engine.scenario.integrator;
     this.eta = this.g.eta * accuracy;
-    this.dt = this.g.fixedDtS ?? Math.min(this.g.dtMaxS, Math.max(this.g.dtMinS, engine.dt * accuracy));
+    this.dt = this.g.fixedDtS ?? Math.min(this.g.dtMaxS, Math.max(this.g.dtMinS, from.dt * accuracy));
     this.keep = engine.keep;
     const i = indexOf(this.copy, id);
     if (i < 0) this.done = true;
@@ -755,7 +889,7 @@ export class Prediction {
   }
 
   result(): PredictionResult {
-    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath], encounters: this.encounters() };
+    return { id: this.id, path: [...this.path], merged: this.merged, frame: this.frame, framePath: [...this.framePath], encounters: this.encounters(), fromT: this.start };
   }
 }
 
@@ -788,51 +922,149 @@ function cloneBody(b: BodySpec): BodySpec {
 /** Limits on an imported scenario (a file could ask for anything). */
 export const IMPORT_LIMITS = { bodies: MAX_BODIES, log: 5000, nameLength: 60, coordinateKm: 1e12, speedKmS: 3e5, gm: 1e14, radiusKm: 1e7, periodS: 1e12, particles: SWARM_LIMITS.perSwarm, ringBodies: RING_MAX_BODIES } as const;
 
+/** The ids an edit may name: the bodies, rings and belts (and, live, the ships and the worlds with a climate) that exist by then. */
+export interface KnownIds {
+  bodies: ReadonlySet<string>;
+  swarms: ReadonlySet<string>;
+  ships?: ReadonlySet<string>;
+  climates?: ReadonlySet<string>;
+}
+
+/** Ids of bodies a run makes on its own (./nbody: a breakup's remnant and debris, a torn body's pieces): a file may name them before they exist. */
+export const MADE_ID = /^(?:(?:remnant|debris)-\d+(?:-\d+)*|[a-z0-9-]+-piece-\d+(?:-\d+)*)$/u;
+/** Rings a run makes on its own (a torn body's dust): a file may name them before they exist. */
+export const MADE_SWARM = /^dust-[a-z0-9-]+$/u;
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNum = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+const isVec = (v: unknown, limit: number): v is [number, number, number] => Array.isArray(v) && v.length === 3 && v.every((x) => isNum(x, -limit, limit));
+
+/** Why a body spec is refused (a value missing, not finite or out of range), or null. */
+function bodyProblem(b: unknown, L: typeof IMPORT_LIMITS): string | null {
+  if (!isObj(b)) return 'not a body';
+  const spin = b.spin;
+  const spinOk = spin === undefined || (isObj(spin) && isNum(spin.periodS, 1e-3, L.periodS) && isVec(spin.pole, 1e6) && Math.hypot(...(spin.pole as number[])) > 0);
+  const ok =
+    typeof b.id === 'string' && /^[a-z0-9-]{1,40}$/u.test(b.id) &&
+    typeof b.name === 'string' && b.name.length > 0 && b.name.length <= L.nameLength &&
+    isNum(b.gm, 0, L.gm) && isNum(b.radiusKm, 1e-6, L.radiusKm) && isVec(b.pos, L.coordinateKm) && isVec(b.vel, L.speedKmS) &&
+    (b.origin === 'observed' || b.origin === 'modelled' || b.origin === 'user-edited') && Array.isArray(b.sourceIds) && b.sourceIds.every((x) => typeof x === 'string') &&
+    spinOk && (b.j2 === undefined || isNum(b.j2, 0, 0.5)) && (b.inertia === undefined || isNum(b.inertia, 0.01, 0.67)) &&
+    (b.ship === undefined || (isObj(b.ship) && isNum(b.ship.dryKg, 1, 1e9) && isNum(b.ship.fuelKg, 0, 1e10) && isNum(b.ship.thrustN, 1e-3, 1e10) && isNum(b.ship.ispS, 1, 1e5)));
+  return ok ? null : 'a value is missing, not finite or out of range';
+}
+
+/**
+ * Why an edit is refused, or null: the one check for every edit, whether it comes from a file, a link
+ * or the visitor (the panel, a lesson, a tool). Shapes and limits (IMPORT_LIMITS: an edit that would
+ * make a scenario its own save could not restore is refused), and the ids it names: in a file a body
+ * the run makes on its own (MADE_ID) may be named before it exists; `live`, every id must exist now.
+ */
+export function checkCommand(c: unknown, known: KnownIds, L: typeof IMPORT_LIMITS = IMPORT_LIMITS, live = false): string | null {
+  if (!isObj(c) || typeof c.kind !== 'string') return 'not an edit';
+  const named = (id: unknown): boolean => typeof id === 'string' && (known.bodies.has(id) || (!live && MADE_ID.test(id)));
+  switch (c.kind) {
+    case 'add': {
+      const problem = bodyProblem(c.body, L);
+      if (problem) return `body: ${problem}`;
+      const id = (c.body as Record<string, unknown>).id as string;
+      if (known.bodies.has(id)) return `adds an id that already exists (${id})`;
+      if (live && known.bodies.size >= L.bodies) return `no room for another body (at most ${L.bodies})`;
+      return null;
+    }
+    case 'addSwarm':
+    case 'addRing': {
+      const spec = c.kind === 'addSwarm' ? c.swarm : c.ring;
+      const ring = c.kind === 'addRing';
+      if (isObj(spec) && !named(spec.primary)) return 'names a body that does not exist';
+      const shape =
+        isObj(spec) && typeof spec.id === 'string' && /^[a-z0-9-]{1,40}$/u.test(spec.id) &&
+        typeof spec.name === 'string' && spec.name.length > 0 && spec.name.length <= L.nameLength &&
+        Number.isInteger(spec.count) && isNum(spec.count, ring ? 2 : 1, ring ? L.ringBodies : L.particles) &&
+        isNum(spec.innerKm, 1e-3, L.coordinateKm) && isNum(spec.outerKm, typeof spec.innerKm === 'number' ? spec.innerKm : 0, L.coordinateKm) &&
+        isVec(spec.normal, 1e6) && Math.hypot(...(spec.normal as number[])) > 0 &&
+        Number.isInteger(spec.seed) && isNum(spec.seed, 0, 4294967295) &&
+        (ring ? isNum(spec.gm, 0, L.gm) && isNum(spec.radiusKm, 1e-6, L.radiusKm) : isNum(spec.eccentricity, 0, 0.95) && isNum(spec.inclinationDeg, 0, 180));
+      if (!shape) return `${ring ? 'ring' : 'swarm'} values missing or out of range`;
+      if (!ring && known.swarms.has(spec.id as string)) return `adds a swarm id that already exists (${spec.id as string})`;
+      if (ring && live && known.bodies.size + 2 > L.bodies) return `no room for a ring’s bodies (at most ${L.bodies})`;
+      return null;
+    }
+    case 'removeSwarm':
+      return typeof c.id === 'string' && (known.swarms.has(c.id) || (!live && MADE_SWARM.test(c.id))) ? null : 'names a swarm that does not exist';
+    case 'burn':
+    case 'cancelBurns': {
+      if (typeof c.id !== 'string' || !known.bodies.has(c.id) || (known.ships !== undefined && !known.ships.has(c.id))) return 'names a ship that does not exist';
+      const b: unknown = c.kind === 'burn' ? c.burn : null;
+      if (c.kind === 'burn' && !(isObj(b) && isNum(b.startT, -1e12, 1e13) && isNum(b.durationS, 1e-3, 1e9) && isNum(b.throttle, 1e-3, 1) && typeof b.ref === 'string' && typeof b.direction === 'string' && (BURN_DIRECTIONS as readonly string[]).includes(b.direction))) return 'not a burn';
+      return null;
+    }
+    case 'setAtmosphere': {
+      if (!named(c.id) || (known.climates !== undefined && !known.climates.has(c.id as string))) return 'names a world with no climate';
+      const some = c.tau !== undefined || c.forcing !== undefined || c.pressurePa !== undefined;
+      if (!some || (c.tau !== undefined && !isNum(c.tau, 0, 1e6)) || (c.forcing !== undefined && !isNum(c.forcing, -1e4, 1e4)) || (c.pressurePa !== undefined && !isNum(c.pressurePa, 0, 1e12))) return 'atmosphere out of range';
+      return null;
+    }
+    case 'setMass':
+    case 'setVelocity':
+    case 'remove':
+    case 'setState':
+    case 'setRadius':
+    case 'setSpin':
+    case 'setFixed':
+    case 'rename': {
+      if (!named(c.id)) return 'names a body that does not exist';
+      if (c.kind === 'setMass' && !isNum(c.gm, 0, L.gm)) return 'mass out of range';
+      if (c.kind === 'setVelocity' && !isVec(c.vel, L.speedKmS)) return 'velocity out of range';
+      if (c.kind === 'setState' && !(isVec(c.pos, L.coordinateKm) && isVec(c.vel, L.speedKmS))) return 'position or velocity out of range';
+      if (c.kind === 'setRadius' && !(isNum(c.radiusKm, 1e-6, L.radiusKm) && (c.gm === undefined || isNum(c.gm, 0, L.gm)))) return 'radius out of range';
+      if (c.kind === 'setSpin' && !(isNum(c.periodS, 1e-3, L.periodS) && isVec(c.pole, 1e6) && Math.hypot(...(c.pole as number[])) > 0)) return 'rotation out of range';
+      if (c.kind === 'setFixed' && typeof c.fixed !== 'boolean') return 'not a hold';
+      if (c.kind === 'rename' && !(typeof c.name === 'string' && c.name.trim().length > 0 && c.name.length <= L.nameLength)) return 'not a name';
+      return null;
+    }
+    default:
+      return 'unknown edit';
+  }
+}
+
+/** An edit's ids added to those known after it (a body, a ring's bodies, a swarm), as a file is read in order. */
+function learn(c: Record<string, unknown>, bodies: Set<string>, swarms: Set<string>): void {
+  if (c.kind === 'add' && isObj(c.body) && typeof c.body.id === 'string') bodies.add(c.body.id);
+  else if (c.kind === 'addRing' && isObj(c.ring) && typeof c.ring.id === 'string' && typeof c.ring.count === 'number') for (let k = 1; k <= Math.min(c.ring.count, IMPORT_LIMITS.ringBodies); k += 1) bodies.add(`${c.ring.id}-${k}`);
+  else if (c.kind === 'addSwarm' && isObj(c.swarm) && typeof c.swarm.id === 'string') swarms.add(c.swarm.id);
+}
+
 /**
  * A scenario from a parsed file, or the reasons it is refused: unsupported version, missing or
  * non-finite numbers, impossible sizes, too many bodies or edits, duplicate ids, edits naming
- * bodies that never exist. Names are kept as text (the interface never renders them as HTML).
+ * bodies that never exist (each edit by checkCommand, as live edits are). Names are kept as text (the
+ * interface never renders them as HTML).
  */
 export function validateScenario(raw: unknown): { ok: true; scenario: Scenario } | { ok: false; errors: string[] } {
   const errors: string[] = [];
   const L = IMPORT_LIMITS;
-  const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-  const num = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
-  const vec = (v: unknown, limit: number): v is [number, number, number] => Array.isArray(v) && v.length === 3 && v.every((x) => num(x, -limit, limit));
-  if (!obj(raw)) return { ok: false, errors: ['not a scenario object'] };
+  if (!isObj(raw)) return { ok: false, errors: ['not a scenario object'] };
   if (raw.schemaVersion !== SCHEMA_VERSION) errors.push(`unsupported schema version ${String(raw.schemaVersion)} (this engine reads ${SCHEMA_VERSION})`);
   if (typeof raw.engineVersion !== 'string') errors.push('missing engine version');
-  if (!num(raw.epochJdTdb, 0, 1e7)) errors.push('epoch is not a valid Julian date');
+  if (!isNum(raw.epochJdTdb, 0, 1e7)) errors.push('epoch is not a valid Julian date');
   const integrator = raw.integrator;
-  if (!obj(integrator) || integrator.id !== 'kdk-leapfrog' || !num(integrator.eta, 1e-5, 0.1) || !num(integrator.dtMinS, 1e-3, 1e7) || !num(integrator.dtMaxS, 1e-3, 1e8) || !num(integrator.retimeSteps, 1, 1e6) || !(integrator.fixedDtS === null || num(integrator.fixedDtS, 1e-3, 1e8))) {
+  if (!isObj(integrator) || integrator.id !== 'kdk-leapfrog' || !isNum(integrator.eta, 1e-5, 0.1) || !isNum(integrator.dtMinS, 1e-3, 1e7) || !isNum(integrator.dtMaxS, 1e-3, 1e8) || !isNum(integrator.retimeSteps, 1, 1e6) || !(integrator.fixedDtS === null || isNum(integrator.fixedDtS, 1e-3, 1e8))) {
     errors.push('integrator settings are not valid');
   }
   const bodies: unknown[] = Array.isArray(raw.bodies) ? raw.bodies : [];
   if (!Array.isArray(raw.bodies) || bodies.length === 0) errors.push('no bodies');
   if (bodies.length > L.bodies) errors.push(`${bodies.length} bodies (at most ${L.bodies})`);
   const ids = new Set<string>();
-  const body = (b: unknown, where: string): b is BodySpec => {
-    if (!obj(b)) {
-      errors.push(`${where}: not a body`);
-      return false;
-    }
-    const spin = b.spin;
-    const spinOk = spin === undefined || (obj(spin) && num(spin.periodS, 1e-3, L.periodS) && vec(spin.pole, 1e6) && Math.hypot(...(spin.pole as number[])) > 0);
-    const ok =
-      typeof b.id === 'string' && /^[a-z0-9-]{1,40}$/u.test(b.id) &&
-      typeof b.name === 'string' && b.name.length > 0 && b.name.length <= L.nameLength &&
-      num(b.gm, 0, L.gm) && num(b.radiusKm, 1e-6, L.radiusKm) && vec(b.pos, L.coordinateKm) && vec(b.vel, L.speedKmS) &&
-      (b.origin === 'observed' || b.origin === 'modelled' || b.origin === 'user-edited') && Array.isArray(b.sourceIds) && b.sourceIds.every((x) => typeof x === 'string') &&
-      spinOk && (b.j2 === undefined || num(b.j2, 0, 0.5)) && (b.inertia === undefined || num(b.inertia, 0.01, 0.67)) &&
-      (b.ship === undefined || (obj(b.ship) && num(b.ship.dryKg, 1, 1e9) && num(b.ship.fuelKg, 0, 1e10) && num(b.ship.thrustN, 1e-3, 1e10) && num(b.ship.ispS, 1, 1e5)));
-    if (!ok) errors.push(`${where}: a value is missing, not finite or out of range`);
-    return ok;
-  };
   bodies.slice(0, L.bodies).forEach((b, i) => {
-    if (body(b, `bodies[${i}]`)) {
-      if (ids.has(b.id)) errors.push(`bodies[${i}]: duplicate id ${b.id}`);
-      ids.add(b.id);
+    const problem = bodyProblem(b, L);
+    if (problem) {
+      errors.push(`bodies[${i}]: ${problem}`);
+      return;
     }
+    const id = (b as BodySpec).id;
+    if (ids.has(id)) errors.push(`bodies[${i}]: duplicate id ${id}`);
+    ids.add(id);
   });
   const log: unknown[] = Array.isArray(raw.log) ? raw.log : [];
   if (!Array.isArray(raw.log)) errors.push('no edit log');
@@ -841,58 +1073,16 @@ export function validateScenario(raw: unknown): { ok: true; scenario: Scenario }
   const swarmIds = new Set<string>();
   log.slice(0, L.log).forEach((e, i) => {
     const where = `log[${i}]`;
-    if (!obj(e) || !num(e.step, 0, 1e12) || !obj(e.command)) {
+    if (!isObj(e) || !isNum(e.step, 0, 1e12) || !isObj(e.command)) {
       errors.push(`${where}: not an edit`);
       return;
     }
     if (e.step < lastStep) errors.push(`${where}: out of step order`);
     lastStep = e.step;
-    const c = e.command;
-    if (c.kind === 'add') {
-      if (body(c.body, `${where}.body`)) {
-        if (ids.has(c.body.id)) errors.push(`${where}: adds an id that already exists (${c.body.id})`);
-        ids.add(c.body.id);
-      }
-    } else if (c.kind === 'addSwarm' || c.kind === 'addRing') {
-      const spec = c.kind === 'addSwarm' ? c.swarm : c.ring;
-      const ring = c.kind === 'addRing';
-      const made = obj(spec) && typeof spec.primary === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(spec.primary);
-      const shape =
-        obj(spec) && typeof spec.id === 'string' && /^[a-z0-9-]{1,40}$/u.test(spec.id) &&
-        typeof spec.name === 'string' && spec.name.length > 0 && spec.name.length <= L.nameLength &&
-        typeof spec.primary === 'string' && (ids.has(spec.primary) || made) &&
-        Number.isInteger(spec.count) && num(spec.count, ring ? 2 : 1, ring ? L.ringBodies : L.particles) &&
-        num(spec.innerKm, 1e-3, L.coordinateKm) && num(spec.outerKm, typeof spec.innerKm === 'number' ? spec.innerKm : 0, L.coordinateKm) &&
-        vec(spec.normal, 1e6) && Math.hypot(...(spec.normal as number[])) > 0 &&
-        Number.isInteger(spec.seed) && num(spec.seed, 0, 4294967295) &&
-        (ring ? num(spec.gm, 0, L.gm) && num(spec.radiusKm, 1e-6, L.radiusKm) : num(spec.eccentricity, 0, 0.95) && num(spec.inclinationDeg, 0, 180));
-      if (!shape) errors.push(`${where}: ${ring ? 'ring' : 'swarm'} values missing or out of range`);
-      else if (ring) for (let k = 1; k <= (spec.count as number); k += 1) ids.add(`${spec.id as string}-${k}`);
-      else {
-        if (swarmIds.has(spec.id as string)) errors.push(`${where}: adds a swarm id that already exists (${spec.id as string})`);
-        swarmIds.add(spec.id as string);
-      }
-    } else if (c.kind === 'removeSwarm') {
-      if (typeof c.id !== 'string' || !swarmIds.has(c.id)) errors.push(`${where}: names a swarm that does not exist`);
-    } else if (c.kind === 'burn' || c.kind === 'cancelBurns') {
-      if (typeof c.id !== 'string' || !ids.has(c.id)) errors.push(`${where}: names a ship that does not exist`);
-      const b: unknown = c.kind === 'burn' ? c.burn : null;
-      if (c.kind === 'burn' && !(obj(b) && num(b.startT, -1e12, 1e13) && num(b.durationS, 1e-3, 1e9) && num(b.throttle, 1e-3, 1) && typeof b.ref === 'string' && typeof b.direction === 'string' && (BURN_DIRECTIONS as readonly string[]).includes(b.direction)))
-        errors.push(`${where}: not a burn`);
-    } else if (c.kind === 'setMass' || c.kind === 'setVelocity' || c.kind === 'remove' || c.kind === 'setState' || c.kind === 'setRadius' || c.kind === 'setSpin' || c.kind === 'setFixed' || c.kind === 'rename') {
-      // Bodies a collision made (src/sim/nbody fragment()) exist only once the run reaches it: their ids are checked for form, not presence.
-      const made = typeof c.id === 'string' && /^(remnant|debris)-\d+(-\d+)*$/u.test(c.id);
-      if (typeof c.id !== 'string' || !(ids.has(c.id) || made)) errors.push(`${where}: names a body that does not exist`);
-      if (c.kind === 'setMass' && !num(c.gm, 0, L.gm)) errors.push(`${where}: mass out of range`);
-      if (c.kind === 'setVelocity' && !vec(c.vel, L.speedKmS)) errors.push(`${where}: velocity out of range`);
-      if (c.kind === 'setState' && !(vec(c.pos, L.coordinateKm) && vec(c.vel, L.speedKmS))) errors.push(`${where}: position or velocity out of range`);
-      if (c.kind === 'setRadius' && !(num(c.radiusKm, 1e-6, L.radiusKm) && (c.gm === undefined || num(c.gm, 0, L.gm)))) errors.push(`${where}: radius out of range`);
-      if (c.kind === 'setSpin' && !(num(c.periodS, 1e-3, L.periodS) && vec(c.pole, 1e6) && Math.hypot(...(c.pole as number[])) > 0)) errors.push(`${where}: rotation out of range`);
-      if (c.kind === 'setFixed' && typeof c.fixed !== 'boolean') errors.push(`${where}: not a hold`);
-      if (c.kind === 'rename' && !(typeof c.name === 'string' && c.name.trim().length > 0 && c.name.length <= L.nameLength)) errors.push(`${where}: not a name`);
-    } else {
-      errors.push(`${where}: unknown edit`);
-    }
+    const problem = checkCommand(e.command, { bodies: ids, swarms: swarmIds }, L);
+    if (problem) errors.push(`${where}: ${problem}`);
+    // A body with a bad spec is not known after it (an edit naming it is refused too); a duplicate still is.
+    if (!(e.command.kind === 'add' && bodyProblem(e.command.body, L))) learn(e.command, ids, swarmIds);
   });
   if (raw.persistentIds !== undefined && !(Array.isArray(raw.persistentIds) && raw.persistentIds.every((id) => typeof id === 'string' && ids.has(id)))) errors.push('persistent ids must name bodies of the scenario');
   if (errors.length > 0) return { ok: false, errors };

@@ -35,7 +35,13 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
 - **Time machine.** Pause (Space), slower and faster ([ and ], real time to thirty days a second),
   backwards (\\), a date to go to, and back to now. Everything follows the clock: orbits, the
   Moon's phase, each world's turn, day and night, eclipses, the day's imagery of the Earth. It
-  stops at the ends of the Moon's table (2026 to 2035) and runs at real time during a trip.
+  reaches from 1600 to 2399: JPL's tables where they are (the Moon's 2026 to 2035, the planets'
+  1800 to 2050), and beyond them Meeus's lunar theory and JPL's long-span planetary elements, the
+  note under the row naming the model and its accuracy. It stops at either end (play, faster or
+  slower there turn it round), runs at real time during a trip and at most an hour a second on foot
+  (day and night never flicker). Past about 30 degrees a frame a world's turn is drawn at one hour of
+  its day rather than strobing; slowed down, it catches up the way time runs (backwards in time,
+  backwards), and paused it stays as it is. A control that cannot act is dimmed and says why.
   Satellites show up to 600 times real time, and earthquakes only near the present.
 - **Photo mode.** Only the view (H); H, Esc or "Show the interface" brings everything back. "Save
   the picture" (ledger CR-1) saves the view as drawn, as a PNG named for the place and the date,
@@ -62,12 +68,19 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
   mass, density, gravity, escape speed, its day (one turn, and sunrise to sunrise), year, orbit,
   axial tilt, how far it is now, and a size comparison to scale beside the Earth. The planets'
   numbers are JPL's "Planetary Physical Parameters" as given; the Sun's and the Moon's come from
-  DE440's GM and NAIF's radii.
+  DE440's GM and NAIF's radii. With the sky's switches and saved views, its body is a chunk of its
+  own (`src/ui/explore/sections.ts`), loaded the first time one of them opens.
 - **The real sky** (SpaceEngine's planetarium). The procedural backdrop is gone: behind the worlds
   are the Bright Star Catalogue's 9,096 naked-eye stars at their real places, colours (from B-V) and
-  brightness, so the planets stand in their real constellations. Switches in the navigator show the
+  brightness, so the planets stand in their real constellations. Each star's light is shared over the
+  pixels it touches, sized in device pixels with a floor (`src/explore/starlight.ts`, the stars'
+  view's too), so the faint ones neither vanish at one device pixel a CSS pixel nor shimmer as the
+  view turns; the stars panel's "Star brightness" and "Faintest stars" set it among the stars (the
+  solar system's sky keeps its own). Switches in the navigator show the
   constellation figures and names, the brightest stars' IAU names, the IAU boundaries, and a grid
-  with the celestial equator and the ecliptic. The Milky Way's glow waits for an all-sky map with a
+  with the celestial equator and the ecliptic. Behind them, the Milky Way's glow and the zodiacal
+  light, drawn from models (the Galaxy's discs, bulge and dust; the zodiacal cloud's dust, as seen
+  from wherever the camera is) and said to be models: an all-sky photograph waits for one with a
   clear licence.
 - **The qibla and the new moon** (`docs/ISLAMIC-ASTRONOMY.md`). The qibla from any place, drawn as a
   great circle on the globe; the four moments a year the Sun stands over the Kaaba or the point
@@ -84,14 +97,47 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
 - **On foot on the Earth** (SpaceEngine's surface view, and the brief's space suit, ledger GR-5;
   `docs/WALKING.md`). "Walk here" stands the visitor on the ground below: first person at 1.7 m,
   walking, running and jumping at the Earth's gravity, on the Terrain Tiles' heights out to the
-  horizon under the streamed imagery, with the day's sky, its twilight and the stars at night. The
-  suit reads out the ground's height, gravity, the air's pressure at the feet and the Sun's height.
-  Makkah's 25 km rule holds on foot.
+  horizon under the streamed imagery, with the day's sky (the explorer's own air, scattered from the
+  walker's eye), its twilight and the stars at night, the terrain's own shadows, and an eye that
+  adapts to the light where it stands and meters the ground it looks at. W A S D, Shift, Space and a
+  drag (or mouse-look) as in any first-person view, V for a rover, the wheel or a pinch to zoom; a pad
+  on every screen (its 44 px targets made for touch); Back to orbit (Esc) top left. The suit reads out the
+  ground's height, gravity, the air's pressure at the feet and the Sun's height. Makkah's 25 km rule
+  holds on foot.
 
 - **Saved views** (ledger GR-4): the navigator keeps views under a name in this browser: the world,
   the place beneath the camera, the height and the date, or on foot the walk (its place, heading and
   look). Going back to one sets its date, travels to its world if the camera is elsewhere, glides
   over its place, and on foot begins the walk again (`src/ui/explore/saved-views.ts`).
+
+- **More worlds** (ledger EX-10 to EX-12; `src/explore/worlds`, its own chunk). Half a million asteroids
+  from JPL's Small-Body Database, as many as the detail level draws (20,000 at Low, 250,000 at High,
+  500,000 at Ultra), each on its own orbit for the date, solved on the GPU: from far out the main belt,
+  the Hildas and Jupiter's two Trojan clouds come out of the data, and the clock moves them. Seen from
+  near the Earth they are as faint as they are; in wide views their light is raised so they show where
+  they are, which the readout says; "Arrange by orbit size" draws each in the planets' plane at its
+  orbit's mean distance from the Sun instead (a diagram, said so), so the Kirkwood gaps that Jupiter's resonances clear show
+  as empty rings. The periodic comets near the Sun grow their tails, pointing away
+  from it (their lengths illustrative). The major moons of Mars, Jupiter, Saturn, Uranus, Neptune and
+  Pluto, the dwarf planets and notable asteroids and comets can be flown to (the navigator's "Small
+  worlds" section, its search, a double click, or the tools' `world` command): at their measured
+  sizes and shapes (Haumea's elongation, Vesta's flattening; where no shape is measured a sphere of
+  the mean radius, and About says so), turning as they do, thirteen of them with the USGS's mosaics
+  from Dawn, Galileo, Voyager, Cassini and New Horizons (the parts never imaged, Triton's north and
+  Pluto's and Charon's far south, a grey grid, said so), the rest plain (said so). Their names keep
+  off the interface, each other and every disc and Saturn's rings, as the ten worlds' do. Pluto and
+  Charon go round their barycentre. Uranus's and Neptune's narrow, dark rings are
+  drawn from NASA's tables (brightened, and said so), and one body's shadow falls on another: the
+  Earth's on the Moon in a lunar eclipse (a copper Moon), the Moon's on the Earth in a solar one, the
+  moons' on their planets, the planets' on their moons. Moons' places: JPL's mean elements fitted to
+  Horizons (within a few degrees over the decade); asteroids' and comets': two-body orbits (a tenth of
+  a degree or so for most asteroids over the decade, up to two for the Hildas held in step with
+  Jupiter, more for comets that pass Jupiter). None of them is drawn while the film's compressed system
+  stretches out to true scale, in an experiment, on foot or on the way down. At a fast clock a moon's
+  eclipse and a shadow on a planet come in over half a second (no flashing), and a world turning too
+  fast to show is held at an hour of its day, as the ten are. The sky's glow is never lifted as the
+  exposure closes (looking at the Sun, or from Mercury, the sky stays dark), is not drawn through the
+  solar filter, shows the zodiacal light only from 0.3 to 3 au, and is not drawn at Low.
 
 - **Sound where there is air** (ledger CR-6; `src/explore/sound.ts`). Space is silent, and so is the
   explorer there. On foot on a world with air, and on the way down through Venus's or Jupiter's, the
@@ -108,8 +154,8 @@ as observations. Every mechanic of both, with its status, is in `docs/FEATURE-LE
 
 ## Planned, in this order (each from cited data)
 
-1. **More worlds.** The major moons (JPL's satellite mean elements; NASA and USGS maps), Pluto and
-   Charon, Ceres and Vesta, the asteroid belt as points from JPL's small-body database, and comets.
+1. **More worlds.** In (above). Still to come: an orbit integrated for the comets that pass Jupiter,
+   maps for the moons without one, and the rings' arcs and Saturn's small moons.
 2. **Beyond the Sun.** Flights to the nearest stars (catalogue parallaxes), systems with known
    exoplanets (NASA Exoplanet Archive), out of the Milky Way (the film's model), the Local Group,
    the SDSS cosmic web (Chapter 5's 420,000 galaxies) and the Planck CMB (Chapter 1): from a street

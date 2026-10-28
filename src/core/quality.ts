@@ -62,8 +62,11 @@ export interface QualityGovernor {
   suspend(): void;
 }
 
-/** Drops one tier when frame time stays above 20 ms (at 60 Hz) for 2 s; never upgrades mid-session. */
-export function createQualityGovernor(initial: QualityProfile, options: { enabled: boolean }): QualityGovernor {
+/**
+ * Drops one tier when frame time stays above 20 ms (at 60 Hz) for 2 s; never upgrades mid-session.
+ * While `held()` is true (a render budget: another load shares the GPU) every sample is ignored.
+ */
+export function createQualityGovernor(initial: QualityProfile, options: { enabled: boolean; held?: () => boolean }): QualityGovernor {
   let tier = initial.tier;
   let grace = GRACE;
   let suspended = false;
@@ -84,7 +87,7 @@ export function createQualityGovernor(initial: QualityProfile, options: { enable
       if (!options.enabled) return null;
       // Learned even while suspended: loading frames are light and show the display's real rate.
       cadence.sample(dt);
-      if (suspended || dt <= 0 || dt > STALL) return null;
+      if (suspended || options.held?.() || dt <= 0 || dt > STALL) return null;
       if (grace > 0) {
         grace -= dt;
         return null;

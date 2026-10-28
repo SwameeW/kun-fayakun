@@ -4,13 +4,21 @@
  * test hooks (docs/CONTRACTS.md, "Test hooks" and "UI test ids").
  */
 import { test as base, expect, type Page } from '@playwright/test';
-import type { App, ChapterContent, ChapterId, UniversePose, UniverseView } from '../../src/core/types';
+import type { ScriptedOptions, ScriptedReply } from '../../src/ai/engine/scripted';
+import type { CapabilityReport, Intelligence } from '../../src/ai/types';
+import type { App, ChapterContent, ChapterId, LabCommand, LabEditResult, UniversePose, UniverseView } from '../../src/core/types';
 import { env, SLOW } from './env';
 import { mockLiveHosts } from './live';
 
 export interface KfOptions {
   /** Add ?forceWebGL=1 to every navigation (the "webgl2" project). */
   forceWebGL: boolean;
+  /**
+   * The laboratory's "Slow down for events" (on for visitors unless they turn it off, src/explore/lab
+   * SLOW): off in the tests unless a spec turns it on with test.use({ labSlow: true }), so a spec's timing
+   * around an impact is its own (docs/SANDBOX-ROADMAP.md W1.13).
+   */
+  labSlow: boolean;
 }
 
 export interface FrameStats {
@@ -35,11 +43,26 @@ export interface KfHook {
     resetFrameStats(): void;
     step(frames?: number, dt?: number): void;
     camera(): { position: [number, number, number]; fov: number };
-    universe: { state(): UniverseView | null; place(pose: UniversePose): void };
+    universe: { state(): UniverseView | null; place(pose: UniversePose): void; lab?(command: LabCommand): Promise<LabEditResult>; labDraw?(): unknown; labEffects?(parts: Partial<Record<'rocks' | 'dust' | 'fire' | 'bands', boolean>>): Record<'rocks' | 'dust' | 'fire' | 'bands', boolean> | null };
     /** The film's sound (src/ui/film-sound.ts): what plays now, and an offline render of a chapter's stretch. */
     filmSound?: {
       state(): FilmSoundState | null;
       render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
+    };
+    /**
+     * The assistant (src/ai/boot.ts): start() loads it and resolves to the page's one Intelligence;
+     * useScripted() (there once start() has run) switches it to the scripted test engine and resolves
+     * to its counts of generations (under way now, and the most at once);
+     * useReport() makes detection answer with a canned device.
+     */
+    ai: {
+      start(): Promise<Intelligence>;
+      useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<{ readonly running: number; readonly mostAtOnce: number }>;
+      useReport(report: CapabilityReport): Promise<void>;
+    };
+    /** The explorer's more worlds, once come (src/explore/worlds): the GPU's own places of the first asteroids, read back, and their date. */
+    worlds?: {
+      probe(count: number, drawn?: boolean): Promise<{ days: number; places: number[] }>;
     };
   };
 }
@@ -135,9 +158,19 @@ interface Fixtures {
 
 export const test = base.extend<Fixtures & KfOptions>({
   forceWebGL: [false, { option: true }],
+  labSlow: [false, { option: true }],
 
-  page: async ({ page, forceWebGL }, use) => {
+  page: async ({ page, forceWebGL, labSlow }, use) => {
     if (forceWebGL) await page.addInitScript(ensureForceWebGL);
+    if (!labSlow) {
+      await page.addInitScript(() => {
+        try {
+          localStorage.setItem('kf-lab-slow', '0');
+        } catch {
+          // No storage here: the laboratory slows as a visitor's would.
+        }
+      });
+    }
     // No test reaches the Living Earth's live services (tests/support/live).
     await mockLiveHosts(page);
     // KF_THROTTLE=4 slows the CPU four times (Chromium only): a local stand-in for CI's slow runners, to check a test's timing holds there.

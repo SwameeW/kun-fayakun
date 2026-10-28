@@ -426,6 +426,10 @@ export interface SceneLabel {
    * joined to it by a thin leader line, so tags on crowded small features never overlap.
    */
   offset?: readonly [number, number];
+  /** Where tags crowd, which keeps its place: the higher (a body's radius, the chosen body's highest); others 0. */
+  rank?: number;
+  /** Whether the tag may take a box (CSS px: left, top, width, height); false where it would cover what it must not (the explorer's worlds' names keep off every disc). */
+  fits?: (x: number, y: number, width: number, height: number) => boolean;
 }
 
 /** How big the view really is: world units in metres, at a depth of interest. */
@@ -476,6 +480,16 @@ export type BodyId = 'sun' | 'mercury' | 'venus' | 'earth' | 'moon' | 'mars' | '
 export const BODY_IDS: readonly BodyId[] = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 /**
+ * A world beyond the ten the explorer can fly to (src/explore/worlds: a moon, a dwarf planet, an
+ * asteroid or a comet), as 'w:' and its name (public/assets/smallbodies/worlds.json: "w:Ceres",
+ * "w:Io", "w:1P/Halley").
+ */
+export type WorldId = `w:${string}`;
+/** What the explorer's camera can orbit: one of its ten bodies, or a world. */
+export type FocusId = BodyId | WorldId;
+export type WorldKind = 'moon' | 'dwarf' | 'asteroid' | 'comet';
+
+/**
  * A non-chapter experience: the chapter lifecycle minus content and cues (no film clock).
  * Lifecycle: load → enter → update* → exit → (enter again …) → dispose.
  */
@@ -501,12 +515,12 @@ export interface ExperienceModule {
 
 /** Where the explorer's camera is and what it is doing, for its UI and the tests. */
 export interface UniverseView {
-  /** The body the camera orbits (during a flight: the body it is flying to). */
-  focus: BodyId;
+  /** The body the camera orbits (during a flight: the body it is flying to): one of the ten, or a world (`worlds`). */
+  focus: FocusId;
   /** True while the camera flies from one body to another. */
   travelling: boolean;
   /** During a flight, the body it left (else null). */
-  from: BodyId | null;
+  from: FocusId | null;
   /** The camera moved this frame (a drag, a zoom, a flight); at rest nothing on screen moves but the sky's slow turn. */
   moving: boolean;
   /** Distance from the camera to the focus's centre and to its surface (cloud tops, photosphere), km. */
@@ -531,6 +545,8 @@ export interface UniverseView {
   walk: UniverseWalk | null;
   /** The last walk asked for was refused (a forbidden place: Makkah, by its framing rule), until another starts. */
   walkRefused: boolean;
+  /** A walk asked for and waiting (for a trip's arrival, or its own code) before `walk` reports it: the way back to orbit shows meanwhile. */
+  walkWaiting: boolean;
   /**
    * Where a walk without a place would begin: the point beneath the camera (degrees) on the world in
    * view when there is ground to walk on there and it is drawn at its true size; else null (and in
@@ -541,6 +557,8 @@ export interface UniverseView {
   descent: UniverseDescent | null;
   /** Among the stars around the Sun, while there; else null. */
   neighbourhood: UniverseNeighbourhood | null;
+  /** The small bodies and the worlds to fly to beyond the ten (src/explore/worlds), once loaded; else null. */
+  worlds?: UniverseWorlds | null;
   /** Sound where there is air (src/explore/sound.ts): whether it is on, and what plays (the wind, a suit's fans, or nothing). */
   sound: { on: boolean; playing: 'wind' | 'suit' | null };
   /** Photo mode's lens (degrees of field), or null for the explorer's own framing. */
@@ -586,6 +604,44 @@ export interface UniverseView {
   living: UniverseLiving | null;
   /** The lens over the Earth (degrees) and the ground one CSS pixel spans at the view's centre (m), when zoomed in. */
   lens: { deg: number; metresPerPixel: number } | null;
+}
+
+/** The small bodies and the worlds beyond the ten (src/explore/worlds), as the view reports them. */
+export interface UniverseWorlds {
+  /** The small bodies' layer: the asteroids, the comets, and the dwarf planets', asteroids' and comets' points and names (the moons always show). */
+  layer: boolean;
+  /** The asteroids coloured by group (illustrative), and drawn at their orbits' sizes (a diagram: the Kirkwood gaps). */
+  grouped: boolean;
+  arranged: boolean;
+  /**
+   * How much of the worlds is drawn (0 to 1): none in an experiment, on foot, on the way down, nor while
+   * the film's compressed system stretches out to true scale; fading in as they come.
+   */
+  shown: number;
+  /** Asteroids drawn now (the detail level's count, as far as loaded; 0 with the layer off), and loaded. */
+  asteroids: number;
+  asteroidsLoaded: number;
+  /** Of those drawn, how many in each group: the main belt (and the Hungarias and Mars-crossers), near the Earth, Jupiter's Trojans, the Hildas, centaurs, beyond Neptune, the rest. */
+  groups: Readonly<Record<'main' | 'near' | 'trojans' | 'hildas' | 'centaurs' | 'kuiper' | 'other', number>>;
+  /** Periodic comets drawn (within 8 au of the Sun), and those near enough to it to have tails. */
+  comets: number;
+  tails: number;
+  /** Every world that can be flown to. */
+  list: ReadonlyArray<{ id: WorldId; name: string; kind: WorldKind; host: FocusId }>;
+  /**
+   * The world in view when one is the focus: its facts (what it goes round, its own host: Charon's is
+   * Pluto; sizes km, and whether its shape is measured or a sphere of its mean radius stands in; its
+   * distance from the Sun, au; how much of the Sun its planet hides from it, 0 to 1), and its surface
+   * map's credit (null: drawn plain) and the share of that surface never imaged (drawn as a grey grid);
+   * where it is on screen (CSS px), as `bodies` give theirs.
+   */
+  focus: { id: WorldId; name: string; kind: WorldKind; host: FocusId; radiusKm: number; axesKm: number[]; shaped: boolean; albedo: number | null; rotationHours: number | null; sizeFromH: boolean; sunAu: number; eclipsed: number; unimaged: number; map: string | null; screen: { x: number; y: number; radiusPx: number; inView: boolean } } | null;
+  /** Shadows of one body on another under way: the receiver, the body casting it, and how much of the Sun it hides at its deepest on the receiver (1 total). */
+  eclipses: ReadonlyArray<{ on: FocusId; by: FocusId; depth: number }>;
+  /** The asteroid files' common epoch (TDB Julian date). */
+  epochJdTdb: number;
+  /** What the worlds hold on the GPU: surface maps, and the asteroids' slots (the largest detail level's asked for so far). */
+  gpu: { maps: number; asteroidSlots: number };
 }
 
 /** The Living Earth's live layers as the view's state reports them. */
@@ -711,15 +767,22 @@ export interface UniverseGraphics {
   /** The canvas's device-pixel-ratio ceiling. */
   setDprCap(cap: number): void;
   setBloom(on: boolean): void;
+  /** True while a render budget is held (AppCommands.requestRenderBudget): the explorer's governor rests. */
+  readonly held: () => boolean;
 }
 
 /**
  * Illustrative elements the explorer can draw: the Sun's surface detail, prominences and corona; the
  * Earth's fine detail below its maps' texels up close, the clouds' drift, and its night side (city
  * lights, moonlight, airglow) shown brighter than it is; the Moon's earthshine shown brighter; Jupiter's
- * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still.
+ * bands drifting at schematic, sped-up speeds; Saturn's ring particles, enlarged and still; the small
+ * bodies' light, enhanced in wide views so they show where they are (their places are the data's);
+ * the asteroids drawn at their orbits' sizes (a diagram); the comets' tails (their directions
+ * physical, their lengths and light not); the small worlds' plain surfaces (no maps); the parts of a
+ * world's map no spacecraft imaged (a grey grid); the eclipsed Moon's copper light, and Uranus's and
+ * Neptune's rings, shown brighter; the Milky Way's and the zodiacal light's glow, models.
  */
-export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles';
+export type UniverseIllustration = 'map-gaps' | 'monochrome' | 'dust-haze' | 'colour-balance' | 'cloud-structure' | 'colour-model' | 'sun-surface' | 'fine-detail' | 'cloud-drift' | 'night-side' | 'earthshine' | 'band-drift' | 'ring-particles' | 'small-body-light' | 'small-body-orbits' | 'comet-tails' | 'world-shape' | 'unimaged' | 'eclipse-red' | 'ring-light' | 'sky-glow';
 
 /**
  * The explorer's exposure: a chapter's, plus a veil the explorer eases itself (its fade-in and its
@@ -935,6 +998,10 @@ export interface UniverseNeighbourhood {
     radiusSun: number | null;
     massSun: number | null;
     luminositySun: number | null;
+    /** Its radius estimated from its light and temperature (in the Sun's) where the archive gives none, else null. */
+    radiusEstimated: number | null;
+    /** Where its parallax is from when not its own Hipparcos one: a close companion's ("HIP n") or a cited source's id. */
+    plxFrom: string | null;
   };
   /** The camera's distance from the star in view (pc, km) and from the Sun (pc, light years). */
   cameraPc: number;
@@ -942,6 +1009,60 @@ export interface UniverseNeighbourhood {
   fromSunPc: number;
   fromSunLy: number;
   travelling: boolean;
+  /**
+   * The camera: free look or orbit round the star in view; its speed when flying (pc/s), set by the
+   * distance to the nearest star; and the screen's direction of view (render frame).
+   */
+  camera: { mode: 'look' | 'orbit'; speedPcPerS: number; forward: [number, number, number] };
+  /** The visitor's star light (src/explore/starlight): brightness and the faintest magnitude drawn. */
+  starlight: { brightness: number; faintest: number };
+  /** Stars drawn: the neighbourhood's own and Hipparcos's placed in space, and those as directions (Tycho-2's and the rest); how many of the catalogue's have arrived. */
+  stars: { placed: number; far: number; loaded: number; catalogue: number };
+  /** The constellations' figures drawn between their stars' places in space. */
+  figures: boolean;
+  /** The star (or black hole) under the pointer, with its point on the screen (client CSS px). */
+  hover: { name: string; hip: number | null; distLy: number | null; mag: number | null; spType: string | null; x: number; y: number; hole: boolean } | null;
+  /** The black holes one can fly to (their distance from the Sun, pc). */
+  blackHoles: Array<{ id: string; name: string; distPc: number; kind: 'supermassive' | 'stellar' }>;
+  /**
+   * The black hole in view, as the catalogue gives it (each value's source an id in data/sources.json),
+   * with what is computed here: its Schwarzschild radius, the camera's distance in it, and its
+   * shadow's size from here and from the Earth (a non-spinning hole of the mass drawn).
+   */
+  blackHole: {
+    id: string;
+    name: string;
+    kind: 'supermassive' | 'stellar';
+    model: 'thin-disc' | 'hot-ring' | 'dormant';
+    massMsun: number;
+    massMinus: number;
+    massPlus: number;
+    /** A second estimate's mass where the catalogue gives a range (TON 618's), else null. */
+    massLow: number | null;
+    massSource: string;
+    massAlsoSource: string | null;
+    distPc: number;
+    distMinusPc: number | null;
+    distPlusPc: number | null;
+    distanceSource: string;
+    redshift: number | null;
+    lookbackGyr: number | null;
+    rsKm: number;
+    rsAu: number;
+    /** The camera's distance from it in Schwarzschild radii, and its shadow's angular radius from there (degrees). */
+    cameraRs: number;
+    shadowDeg: number;
+    /** Its shadow's angular diameter from the Earth (microarcseconds), and the ring the Event Horizon Telescope measured where it did. */
+    shadowFromEarthMicroArcsec: number;
+    observation: { ringMicroArcsec: number; error: number; source: string } | null;
+    /** Its companion star's orbital period (days); how each value was measured is said by the interface's messages, by the hole's id. */
+    companion: { periodDays: number } | null;
+    inclinationDeg: number | null;
+    /** Whether the sky behind it is stood in for by the catalogues' as seen from near the Sun (a stellar hole kiloparsecs out, the stars round it not catalogued). */
+    skyFromSun: boolean;
+    /** Whether its lens holds a capture of the sky's glow taken round this hole (none from another: forgotten when the camera comes near another). */
+    skyCaptured: boolean;
+  } | null;
   /** The star's planets drawn round it (the camera near enough, no trip under way). */
   systemShown: boolean;
   /** How far out the camera is (src/explore/neighbourhood/beyond.ts): among the stars, at the galaxy's scale, the Local Group's, or the universe's. */
@@ -969,8 +1090,8 @@ export interface UniverseNeighbourhood {
   places: Array<{ id: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web'; distKpc: number }>;
   /** The stars nearest the one in view (their distance from it, pc; how many planets they have). */
   nearest: Array<{ name: string; hip: number | null; distPc: number; planets: number }>;
-  /** The last search's matches (their distance from the Sun, pc, null where not placed). */
-  results: Array<{ name: string; hip: number | null; distPc: number | null; planets: number; galaxy: string | null }>;
+  /** The last search's matches (their distance from the Sun, pc, null where not placed): stars, galaxies of the Local Group, black holes. */
+  results: Array<{ name: string; hip: number | null; distPc: number | null; planets: number; galaxy: string | null; hole: string | null }>;
 }
 
 /** The worlds there is ground to walk on (src/explore/walk; docs/WALKING.md). */
@@ -978,8 +1099,14 @@ export type WalkableWorld = 'earth' | 'moon' | 'mars' | 'mercury' | 'venus';
 
 /** On foot (src/explore/walk) as the view reports it. */
 export interface UniverseWalk {
-  /** 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking'. */
-  state: 'landing' | 'walking';
+  /**
+   * 'landing' while the ground under the walker loads (the camera waits in orbit), then 'walking';
+   * 'unavailable' when no heights for the place have loaded after a while (still asked for, with a
+   * back-off: the walk lands as soon as some arrive).
+   */
+  state: 'landing' | 'walking' | 'unavailable';
+  /** Landed on coarser heights than the walk asks for (the finer ones did not load in time; they still may). */
+  coarse: boolean;
   world: WalkableWorld;
   lat: number;
   lon: number;
@@ -1001,8 +1128,9 @@ export interface UniverseWalk {
   pressureKpa: number | null;
   meanTempC: number | null;
   dayRangeC: { min: number; max: number } | null;
-  /** The Sun's elevation (degrees), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
+  /** The Sun's elevation and azimuth (degrees; azimuth clockwise from north), whether it can be seen (not through Venus's clouds), and the local apparent solar time (hours). */
   sunElevationDeg: number;
+  sunAzimuthDeg: number;
   sunSeen: boolean;
   solarTimeH: number;
   /** On the Earth, the qibla's great-circle bearing from where the walker stands (degrees from true north); null elsewhere. */
@@ -1011,6 +1139,12 @@ export interface UniverseWalk {
   groundZoom: number | null;
   tiles: { ready: number; loading: number; failed: number };
   rings: number;
+  /** Readings of the ground in view the eye's meter has taken (src/explore/walk/meter), and the last one: its luminance (scene units, before the exposure; null before one). */
+  metered: number;
+  groundLuminance: number | null;
+  /** The field of view on foot (degrees, top to bottom: the wheel or a pinch narrows and widens it), and whether the time machine's rate is held down to the most it runs on foot. */
+  fovDeg: number;
+  timeCapped: boolean;
 }
 
 /** Commands for the qibla and the new moon. */
@@ -1114,14 +1248,21 @@ export interface UniverseLab {
   seedNote: string;
   frame: string;
   epochJdTdb: number;
-  /** Simulated seconds since the epoch, steps taken and the current step (s). */
+  /** Simulated seconds since the epoch as drawn (between the worker's steps: src/explore/lab-clock), the run's own at its latest step (what an edit is made on), steps taken and the current step (s). */
   elapsedS: number;
+  t: number;
   step: number;
   dtS: number;
-  /** Requested and achieved simulated seconds per real second. */
+  /** Requested and achieved simulated seconds per real second (negative: its history played backwards). */
   requestedRate: number;
   achievedRate: number;
+  /** The worker could not keep up with the rate asked for (its step budget was spent): the achieved rate is the most this experiment allows here. */
+  budgetBound: boolean;
   paused: boolean;
+  /** Going to a moment (a date, or now): the simulated seconds since the epoch it is running or replaying to, or null. */
+  seekingS: number | null;
+  /** A laboratory of its own (none of the worlds): its star, which the view follows in the hidden Sun's stead; its name and the camera's height above it (km). */
+  standIn: { name: string; altitudeKm: number } | null;
   failure: string | null;
   bodies: UniverseLabBody[];
   selected: string | null;
@@ -1141,6 +1282,8 @@ export interface UniverseLab {
   climateView: boolean;
   co2DoublingWm2: number | null;
   logLength: number;
+  /** Edits (undoing and redoing too) sent to the run that its latest snapshot does not have yet: the next ones will. */
+  unapplied: number;
   discarded: number;
   prediction: { id: string; horizonS: number; merged: { t: number; with: string } | null; encounters: ReadonlyArray<{ with: string; t: number; distanceKm: number }> } | null;
   horizonS: number;
@@ -1169,15 +1312,53 @@ export interface UniverseLab {
   library: readonly string[];
   /** A link to this scenario, or why there is none (too large). */
   share: { url: string } | { tooLarge: true; chars: number } | null;
+  /** The last copy asked for with { kind: 'copy' }: the scenario encoded as a share link's data (any size), or why it could not be made. A new object each time. Never shown. */
+  copy: { data: string } | { error: string } | null;
   /** Placing a body with the pointer: about which body, and where it would go now (km from it, or null off the plane). */
   placing: { primary: string; name: string; offsetKm: number | null } | null;
   /** The chosen body's velocity arrow's tip on the canvas (client px; drag it to change the velocity), or null. */
   handle: { x: number; y: number } | null;
   /** The last save, load, export or reset, or a refusal with its reasons. */
-  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error' | 'shared' | 'deleted'; detail: string[] } | null;
+  status: { kind: 'saved' | 'loaded' | 'exported' | 'reset' | 'error' | 'shared' | 'deleted' | 'refused'; detail: string[] } | null;
   /** Every body's name seen in this scenario (by id), kept after it merges or is removed. */
   names: Readonly<Record<string, string>>;
+  /** The scenario's generation (a new one for each start, load or reset) and the edits the run has received in it. */
+  generation: number;
+  applied: number;
+  /**
+   * Slowing down for events (docs/SANDBOX-ROADMAP.md W1.13): whether it is on (the visitor's setting,
+   * on unless turned off), and while it acts: what for, the rate the clock runs at instead of the one
+   * set (simulated seconds a second), and the simulated seconds until contact (null once it has happened).
+   */
+  slow: { on: boolean; active: { kind: 'impact' | 'disrupt'; target: string; body: string; rate: number; inS: number | null } | null };
+  /** A throw worked out and not yet made (./lab-throw): its request, the contact it makes (run with the experiment's rules), or why it cannot be made; null for none. */
+  aim: LabAim | null;
+  /** The latest impact or tidal disruption, for the event card, with its numbers (the radius after: the event's own), how many of its own pieces have struck since (they fall back: counted, not a new card) and the survivor's radius once they have (null until one has); null before any. */
+  latest: { t: number; kind: 'merge' | 'fragment' | 'graze' | 'disrupt'; regime: string; survivor: string; absorbed: string; speedKmS: number; angleDeg: number; energyJ: number; created: number; craterKm: number | null; radiusBeforeKm: number | null; radiusAfterKm: number | null; massBeforeKg: number | null; massAfterKg: number | null; later: number; radiusNowKm: number | null } | null;
 }
+
+/** A throw being aimed (W1.12). */
+export interface LabAim {
+  status: 'working' | 'ready' | 'refused' | 'thrown';
+  target: string;
+  impactor: LabImpactor;
+  vInfKmS: number;
+  angleDeg: number;
+  leadS: number;
+  /** The contact it makes, worked out with the experiment's rules: with what, how soon (s), how fast (km/s), at what angle from the horizontal (degrees), its regime, crater (km) and energy (J). */
+  contact: { with: string; inS: number; speedKmS: number; angleDeg: number; regime: string; craterKm: number | null; energyJ: number } | null;
+  /** Why it cannot be thrown (src/sim/aim REFUSED, or the experiment changed since it was worked out: 'stale'), and for a miss how near it came (km between the surfaces). */
+  reason: string | null;
+  missKm: number | null;
+  /** The rock's id once thrown. */
+  id: string | null;
+}
+
+/** What can be thrown: a stone a kilometre across, a ten-kilometre asteroid (Chicxulub's impactor's size), Ceres, a Mars. */
+export type LabImpactor = 'stone' | 'asteroid' | 'ceres' | 'mars';
+
+/** What an edit came to: applied (with the bodies it made), or refused with the reason. */
+export type LabEditResult = { ok: true; created: string[] } | { ok: false; reason: string };
 
 /** What the laboratory's interface asks of it. Masses in kg, distances km, velocities km/s relative to a body. */
 export type LabCommand =
@@ -1205,6 +1386,8 @@ export type LabCommand =
   | { kind: 'loadSaved'; name: string }
   | { kind: 'deleteSaved'; name: string }
   | { kind: 'share' }
+  /** A copy of the scenario as it stands, for the assistant's background comparisons (UniverseLab.copy): never shown, and no status changes. */
+  | { kind: 'copy' }
   | { kind: 'importShared'; data: string }
   | { kind: 'removeMany'; ids: string[] }
   | { kind: 'duplicateMany'; ids: string[] }
@@ -1243,6 +1426,17 @@ export type LabCommand =
   | { kind: 'cancelBurns'; id: string }
   /** An autopilot: a prograde burn centred on the far side of the ship's orbit, to make the orbit round there (refused without the propellant for it). */
   | { kind: 'circularise'; id: string }
+  /** Slowing down for events: on or off (the visitor's setting, kept in this browser); or the slowing under way called off (Esc, a rate). */
+  | { kind: 'slow'; on?: boolean; cancel?: boolean }
+  /**
+   * A throw (W1.12): aimed (worked out first: speed far away km/s, angle from the horizontal degrees, time
+   * to contact s; where it strikes, a unit vector from the target's centre in the scenario's frame, and the
+   * way it comes in along the ground, by default the face toward the camera and from the camera's left),
+   * then let go, or put away.
+   */
+  | { kind: 'aim'; target: string; impactor: LabImpactor; vInfKmS: number; angleDeg: number; leadS: number; site?: [number, number, number]; heading?: [number, number, number] }
+  | { kind: 'throw' }
+  | { kind: 'aimClear' }
   /** The second autopilot: a Hohmann transfer from a round orbit to a round one `toKm` from the primary's centre (two burns; refused unless it can be done). */
   | { kind: 'transfer'; id: string; toKm: number };
 
@@ -1251,12 +1445,20 @@ export type LabBurnDirection = 'prograde' | 'retrograde' | 'normal' | 'antinorma
 
 /** The time machine as the view reports it. */
 export interface UniverseTime {
-  /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused (at real time during a trip). */
+  /** Explorer seconds per real second, as set (negative: backwards); the clock runs at it unless paused or held (`held`). */
   rate: number;
   paused: boolean;
-  /** The clock stopped at an end of the data's span, or null. */
+  /** The clock stopped at an end of the span (in the laboratory: back at the experiment's start), or null. */
   edge: 'start' | 'end' | null;
-  /** The span of dates the explorer can show (Unix ms). */
+  /** What holds the clock below the rate set when it is above the limit: a trip (real time), or being on foot or on the way down (src/explore/time FOOT_MAX_RATE); null when nothing does. */
+  held: 'trip' | 'foot' | null;
+  /** Where the date shown is beyond JPL's tables (src/astro/ephemeris): the Moon from Meeus's theory (outside 2026 to 2035), the planets from the long-span elements (outside 1800 to 2050). */
+  beyond: { moon: boolean; planets: boolean };
+  /** The world in view turns too fast to show at this rate (more than 30 degrees a frame): it is drawn at one hour of its day (src/explore/time-beyond). */
+  spinHeld: boolean;
+  /** A date asked for beyond JPL's tables waits for the published theories (the row says it is on its way; the clock goes there when they come). */
+  pending: boolean;
+  /** The span of dates the clock can show (Unix ms): the explorer's, or in the laboratory from the experiment's fork to a century after it. */
   startMs: number;
   endMs: number;
   /** The date shown in the Umm al-Qura calendar (its civil day, from midnight UTC); null in the laboratory or where the browser lacks that calendar. */
@@ -1290,6 +1492,12 @@ export type EarthCommand =
   | { kind: 'starsEnd' }
   | { kind: 'starsGoTo'; hip: number | null }
   | { kind: 'starsStop' }
+  /** The visitor's star light (brightness, a multiple; the faintest magnitude drawn); free look or orbit; the constellations' figures in space. */
+  | { kind: 'starsLight'; brightness: number; faintest: number }
+  | { kind: 'starsCamera'; mode: 'look' | 'orbit' }
+  | { kind: 'starsFigures'; on: boolean }
+  /** To a star, a galaxy of the Local Group or a black hole by its name (the best match of the search), as a tool would ask. */
+  | { kind: 'starsFind'; name: string }
   /** A place beyond the stars, or a galaxy of the Local Group as `galaxy:` and its catalogue name. */
   /** Sound where there is air, on or off (the visitor's choice; the interface keeps it). */
   | { kind: 'sound'; on: boolean }
@@ -1297,12 +1505,27 @@ export type EarthCommand =
   | { kind: 'lens'; fovDeg: number | null }
   /** Photo mode's tracking (ledger CR-2): the view turned about the focus as this body moves, so it keeps its place in the frame; null to stop. */
   | { kind: 'track'; body: BodyId | null }
-  | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` }
+  | { kind: 'starsPlace'; place: 'centre' | 'milky-way' | 'lmc' | 'smc' | 'andromeda' | 'triangulum' | 'local-group' | 'web' | `galaxy:${string}` | `bh:${string}` }
   /** Stars and planet hosts by a name or catalogue number (the matches come back in the view). */
   | { kind: 'starsSearch'; text: string }
   | { kind: 'walkEnd' }
-  /** On-screen walking (touch): Forward or Back held (1, -1, or 0), Jump held. */
-  | { kind: 'walkPad'; forward: number; jump: boolean };
+  /** On-screen walking (the pad): Forward or Back held (1, -1, or 0), a step left or right held (-1, 1, or 0), running, riding the rover, Jump held. */
+  | { kind: 'walkPad'; forward: number; right?: number; run?: boolean; rover?: boolean; jump: boolean }
+  /** The look's sense on foot: a drag turns the view the way the hand moves (false, the default), or moves the scene with it (true). */
+  | { kind: 'walkLook'; scene: boolean }
+  /** Asks again at once for the ground's heights that could not be loaded (a walk waiting on them). */
+  | { kind: 'walkRetry' }
+  /**
+   * Flies to a world by its name or designation, any case ("Ceres", "Io", "Halley", "67P", "433"): the
+   * tools' way in; a name that matches nothing does nothing, and an empty one only asks for the worlds
+   * to come (the navigator's Small worlds section, opened).
+   */
+  | { kind: 'world'; name: string }
+  /** The small bodies' layer on (the worlds asked for, if they have not come) or off (nothing loaded for it). */
+  | { kind: 'smallBodies'; on: boolean }
+  /** The asteroids coloured by group (illustrative) or as they are; drawn at their orbits' sizes (a diagram of the Kirkwood gaps) or where they are. */
+  | { kind: 'smallBodiesGrouped'; on: boolean }
+  | { kind: 'smallBodiesOrbits'; on: boolean };
 
 /** The Living Earth's live layers. */
 export type EarthLayer = 'satellites' | 'quakes';
@@ -1347,7 +1570,7 @@ export interface UniverseModule extends ExperienceModule {
 
 /** A camera pose around a body, for tests and frame captures. */
 export interface UniversePose {
-  body: BodyId;
+  body: FocusId;
   /** From the body's centre, km. */
   distanceKm: number;
   /** Degrees around and above the direction the camera is placed in (see `from`). */
@@ -1419,6 +1642,15 @@ export interface AppCommands {
    * the chapter: leaving it drops them. The returned function releases this hold (idempotent).
    */
   holdFilm(reason: string): () => void;
+  /**
+   * Holds the picture back while something else shares the GPU (the assistant's language model
+   * prefilling and generating, docs/AI-INTELLIGENCE.md §6). While any budget is held, the render
+   * scale is capped at the smallest maxScale held (the film's dynamic resolution and the explorer's
+   * scene pass), and the film's and the explorer's quality governors rest: their load is not read as
+   * the scene's, so no tier changes or is locked for the visit. The returned function releases this
+   * budget (idempotent) and the picture returns to what its governors chose.
+   */
+  requestRenderBudget(reason: string, budget: { maxScale: number }): () => void;
   /**
    * Opens the solar-system explorer (true scale), optionally on a body. From a chapter, the
    * explorer remembers where the film was, so closeUniverse() returns there.

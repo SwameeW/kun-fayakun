@@ -47,7 +47,7 @@ interfaces every builder shares so parallel work fits together. Types live in
 2. Scripture text only from `data/quran.json` (generated from pinned Tanzil files). Hadith
    wording only when a person has entered it (`text.en` non-null **and** `reviewer` set);
    otherwise show reference, narrator, grading, grader, dispute note and a sunnah.com link.
-3. Never reference `muslim:2789` (listed in `hadith.json` → `excluded`).
+3. Never reference a narration listed in `hadith.json` → `excluded` (by its key, its collection and number or its address); where it must be spoken of, say "a narration that is not in data/hadith.json".
 4. Panels render the three layers in order: text → scholarly (classical, then modern) → science
    (+ open questions).
 5. Verses fade in and out whole (no typewriter, no clipping, no cut mid-ayah). Never on a
@@ -201,6 +201,11 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `ui.disclaimer` = the spec's disclaimer, verbatim.
 - `src/i18n/en.chapters.json` (content builder): `ch00.*` to `ch10.*`.
 - `createI18n(locale)` in `src/i18n/index.ts` merges both and throws on a duplicate key.
+- Lazy parts add their own file with `app.i18n.extend(name, messages)` when their chunk loads (the
+  same name again is ignored), e.g. `en.discover.json` with Explore Mode's dock and the assistant's
+  three: `en.ai.engine.json`, `en.ai.tools.json` and `en.ai.mind.json` (see "Kun Fayakun
+  Intelligence" below). Every file is registered with the validator (`scripts/lib/context.ts`), and
+  rule g fails a key defined in two of them.
 - Honorifics per spec §1.5. Hadith summaries (if any) are labelled as summaries, never quotes.
 
 ## Module entry points
@@ -252,8 +257,12 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
   `data-travel="flying|arrived|stopped"` (the explorer's trips; removed when it leaves),
   `data-detail="ultra|high|medium|low"` (the explorer's detail tier running; removed when it leaves),
   and `data-universe-prefetched="true"` (the explorer's code fetched ahead of a visit by a chapter
-  that offers it, 1.5 s after the chapter is ready; only the code, never its maps).
-- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts).
+  that offers it, 1.5 s after the chapter is ready; only the code, never its maps). Once the
+  assistant has started: `data-ai-engine="guide|local|browser|scripted"` (the engine in use) and
+  `data-ai-turn` (its latest turn's TaskState: `planning`, `awaiting-confirmation`, `answering`,
+  `done`, `cancelled`…).
+- `window.__kf = { app, frameStats(): { frames, seconds, medianFps, onePercentLowFps, p99FrameMs, memory: { geometries, textures }, experience }, resetFrameStats(), step(frames = 1, dt = 1/60), universe: { state(), place(pose) }, filmSound: { state(): { chapter, level, voices, duck, shots } | null, render(chapter, content, from, to): Promise<{ rms[], peak[] }> }, worlds: { probe(count): Promise<{ days, places[] }> } }` (filmSound is added by the interface, src/ui/film-sound.ts; worlds by the explorer's more worlds once they have come, src/explore/worlds),
+  `ai: { start(): Promise<Intelligence>, useScripted(script, options?): Promise<void>, useReport(report): Promise<void>, evaluate(options | null): Promise<void>, generations(): GenerationRecord[] }` (the assistant: see "Kun Fayakun Intelligence" below).
   `universe.state()` is the explorer's `UniverseView` (focus, travelling and the body a flight left,
   whether the camera moved this frame, distance and altitude in km, sunlight, date) or null;
   `universe.place({ body, distanceKm, azimuthDeg?, elevationDeg?, from? })` puts its camera at once,
@@ -270,7 +279,8 @@ pixel with seam-safe gradients (no seam line, no pole pinch).
 `film-held` (the transport's status line while `app.holdFilm` holds the film), `open-universe`
 (the ways into the explorer: the welcome screen, and Chapters 7 to 10's outro and free-look hint),
 `universe` (the explorer's interface), `universe-bodies` (the navigator), `universe-back`,
-`universe-readout`, `universe-nav-toggle` (folds and unfolds the navigator), `universe-detail` and
+`universe-readout`, `universe-nav-toggle` (folds and unfolds the navigator), `ask` (the header's
+Ask button), `shortcuts-button`, `universe-detail` and
 `universe-detail-<auto|ultra|high|medium|low>` (the detail menu and its choices), `universe-trip`
 (the trip indicator), `universe-stop`, `universe-orbit` (stop a trip; orbit again from free
 flight), `universe-note` (the note about what is near), `universe-seen` (the log of what was seen).
@@ -331,7 +341,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   the picture is dim, with neither bank nor lens. Esc stops a trip (the camera coasts to rest in free
   flight; a reduced-motion cut not yet made is called off, the light easing back where the visitor
   was, and one already made finishes) or folds a pulled-up navigator sheet; with neither to do, Esc
-  goes back to the film. Entering, the camera pushes in on the first world from 2.4 times its framing
+  goes back to the film. On foot (or going down through an atmosphere) Esc is the walk's from the
+  moment one is asked for until a second after the climb back to orbit ends, each press within it
+  holding it a second longer, and a held Esc's repeats go nowhere: Esc never leaves the explorer from
+  the ground. Esc during that climb stops it where it is; a walk waiting for a trip is dropped with
+  the trip. Entering, the camera pushes in on the first world from 2.4 times its framing
   distance over 5.5 s (it fills much of the view from the first frame; none with reduced motion), and
   the hint waits until the camera has settled.
 - **Flight** (`src/explore/flight.ts`, `src/explore/input.ts`). Exact critically damped springs on
@@ -372,15 +386,38 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   (its summary says how many entries it holds, with no total, score or achievement; each new entry
   gets a quiet toast, a polite live region) and the detail menu; a side panel on wide screens (the
   menu opening beside it), a bottom sheet on phones (ten portraits in two rows when folded; the list first, the log, then the orrery as a
-  small strip, none held sideways; sized to what it holds, fading where it scrolls; held sideways,
-  pulled up at the right, the world framed beside it). The world in view is marked `aria-current`.
+  small strip, none held sideways; sized to what it holds; held sideways,
+  pulled up at the right, the world framed beside it). Its body fades at whichever edge it scrolls
+  on (`has-above`, `has-more`), never cutting a line in half. Folded, only the portraits stay, in an
+  experiment its worlds and among the stars none: the laboratory's and the stars' panels fold away
+  with every section and come back as they were; the folded rail never runs past the window's foot
+  (a short window scrolls it). Entering the laboratory or the stars brings their panel into view
+  from its top. The sections read only when opened (About, the sky, saved views: one chunk,
+  `src/ui/explore/sections.ts`; the Living Earth; the qibla) and the laboratory's and the stars'
+  panels are chunks of their own (`src/ui/explore/lazy.ts`): each loads once however often it is
+  asked for on the way, with a line while it comes (`part-waiting`) and, if its code does not
+  arrive, a status saying so with `part-retry` (and in the laboratory `lab-leave`, among the stars
+  `stars-leave`); nothing is thrown. Their styles travel in their code, so a part that comes on a
+  second try is styled as on the first. A "?" whose explanation does not load says so in the toast,
+  and its next press tries again. The world in view is marked `aria-current`.
   Every control is at least 44 px each way on touch. A note and the trip indicator share the top of
   the view (the same width) and never show at once: a trip takes the note out first, and a note comes
   back only after the indicator has gone. A note's title folds it; on a phone it folds by itself after
   6.5 s or at a touch on the scene. Names beside the bodies stay inside the clear view (at a body's
   left when its right has no room; a body just out of frame gets a pointer at the edge), each choice
   holding until the body is clearly past the line, and a name that gives way to another fades
-  quickly (no ghosting); they come up with the picture, never over a black screen. Notes near a body give numbers derived
+  quickly while one coming in waits until nothing still shows where it goes (no ghosting); they come
+  up with the picture, never over a black screen. Inside the clear view they keep off what stands
+  over it (the way back; on a wide screen the readout's card), which the interface reports on the
+  window as `kf-universe-avoid`: a pointer at the edge slides along the edge past it, a tag gives way.
+  A pointer's tag is inside the clear view whole, not only its point (it hangs toward the clear
+  view's middle; where there is no room for one, above a phone's sheet held sideways or between a
+  phone's readout and its sheet pulled up, it gives way at once, never drawn under them while it
+  fades; so does a tag beside its body held past the clear view's top or bottom).
+  The laboratory's names take part (`SceneLabel.rank`: the larger first): none behind a world's disc
+  or outside the clear view, each trying the four corners about its body, and two never show over
+  each other; the chosen body's name and its marks (burn directions, Lagrange points, encounters: no
+  rank) keep those rules too, but come first: the others and the worlds' names give way to them. Notes near a body give numbers derived
   from cited data only (`src/explore/discoveries.ts`: IAU rotation rates, JPL elements, the Cassini
   ring profile, and `light.speed`, `earth.atmosphere.scaleHeight`, `sun.effectiveTemperature` in
   data/constants.json). Exploration shows no scripture.
@@ -431,13 +468,37 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
 - **Time machine** (`src/explore/time.ts`, `src/ui/explore/time-control.ts`). The explorer's clock
   runs at `UniverseTime.rate` explorer seconds per real second (negative backwards), stepped along
   `TIME_RATES` (1 to 30 days a second) by `UniverseTimeCommand` (`toggle`, `faster`, `slower`,
-  `reverse`, `now`, `date`, `rate`) through `app.universeTime`. `advanceClock` keeps it inside the
-  data's span (the Moon's table, intersected with the planets'), stopping and pausing at either end
-  (`UniverseTime.edge`). During a trip it runs at real time. Satellites draw up to
+  `reverse`, `now`, `date`, `rate`) through `app.universeTime`. Every command is checked at that
+  boundary (`validTimeCommand`: a rate or date that is not a finite number is refused, a rate's size
+  held to [1, `MAX_RATE`]) and applied by one pure reducer, `applyTimeCommand`, which the laboratory
+  shares: faster and slower step to the next rung (never skipping one), and at an end with the rate
+  pointing into it play, faster and slower turn the clock round. `advanceClock` keeps it inside the
+  span, stopping and pausing at either end (`UniverseTime.edge`); a date outside it stops at its
+  nearest end, and the note says so once where the clock went is known. The span is JPL's tables'
+  (the Moon's 2026 to 2035) until the chunk beyond the everyday (`src/explore/time-beyond`, with
+  `src/astro/analytic`: Meeus's lunar theory, Standish's Table 2, blended into the tables at their
+  ends; `installTheories`) arrives a few seconds in or as the clock heads past them or runs fast;
+  then 1600-01-01 to 2399-12-31, and `UniverseTime.beyond` says which body comes from a theory (the
+  note names it and its accuracy). A date beyond the tables asked for before it arrives waits for it
+  (`UniverseTime.pending`, the row saying "Going to …"); offline, it stops at the tables' end and the
+  chunk is asked for again 30 s later (or at the next such date), never every frame. During a trip
+  (not the arrival's glide) it runs at real time, and on foot or on the way down at most
+  `FOOT_MAX_RATE` (an hour a second: flash safety); `UniverseTime.held` says which. Past about 30
+  degrees a frame (measured from the clock's own change, so a laboratory's goto counts) a world's turn
+  is held at one hour of its day (`UniverseTime.spinHeld`); it is let go once the clock has run on its
+  own under 20 degrees a frame for half a second (never while paused or during a trip), and caught up
+  the way time runs, at most 8 degrees a frame (with reduced motion, at once). Satellites draw up to
   `SATELLITE_MAX_RATE` (600) and hide a state further than `STALE_MS` from the clock until a fresh
   one arrives; earthquakes draw only within a day of the present. Keys: Space (the page's play key
-  pauses it in the explorer), [ and ], \. The controls head the navigator (after the list on a
-  phone's sheet); a change is announced politely.
+  pauses it in the explorer; in the row, even on a focused time button), [ and ], \ (also from the
+  date field). A control that cannot act is `aria-disabled`, dimmed, and says why in the note
+  (`universe-time-note`) when pressed. The controls head the navigator; on a phone's sheet the
+  buttons sit above its scrolling part, folded or not, and the help, date and Islamic date under
+  the list. Folded on a narrow sheet (under 600 px wide, or 500 px tall) the rate's words have a line
+  of their own under the buttons, so the folded sheet keeps one height whatever they say (and in an
+  experiment, its Reset among the buttons, as small as outside one). On a desktop's side panel the
+  row folds away with the panel (landing on foot folds it: opened again, the row is there). A change
+  is announced politely.
 - **Photo mode.** `kf-photo` on the root hides the header, the HUD tags and everything in the
   explorer's interface but "Show the interface"; H toggles it and Esc leaves it (before Esc would
   leave the explorer).
@@ -457,8 +518,13 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
   `names`, `boundaries`, `grid`); `UniverseView.sky` reports them. It replaced the explorer's
   procedural starfield (the chapters keep theirs).
 - **Messages.** The explorer's strings live in `src/i18n/en.explore.json`, added to the catalogue by
-  its interface (`I18n.extend`) so they never weigh on the shell; the validator reads it with
-  en.json and en.chapters.json (no key in two files).
+  its interface (`I18n.extend`) so they never weigh on the shell (the Living Earth's and its field
+  notes' own words in `en.living.json`, with its chunk); the validator reads them with en.json and
+  en.chapters.json (no key in two files).
+- **Layout under stress** (`tests/explore/layout-stress.spec.ts`, helpers in `tests/support/layout.ts`):
+  at 1280x800, 1440x900, 2000x1300 and on a touch phone held both ways, every section, panel and mode
+  opened and closed in bursts; every control inside the window or its own scroller, nothing wider
+  than the window, no control over another, no text cut off, no error logged.
 - Roadmap for the rest of SpaceEngine's mechanics: `docs/EXPLORER-MECHANICS.md`.
 
 ## Living Earth (explorer)
@@ -466,9 +532,11 @@ are their own chunks; `scripts/check-bundle.ts` holds them to 150 KB gzipped and
 Zoom-anywhere imagery, live layers and Claude's field notes on the explorer's Earth.
 
 - **Imagery** (`src/explore/earth-tiles`). Tiles stream into toroidal clipmaps: ranks from coarse
-  to fine, each an atlas of k x k tiles addressed modulo k, with an index texture of the tiles
-  loaded (`clipmap.ts`, `atlas.ts`: GPU textures made from a one-texel stub, tiles copied in with
-  `copyExternalImageToTexture` or `texSubImage2D`). The Earth's surface shader samples them at the
+  to fine, each a layer of the clipmap's one atlas (a 2D array texture) of k x k tiles addressed
+  modulo k, with one index texture of the tiles loaded, k rows a level (`clipmap.ts`, `atlas.ts`: GPU
+  textures created at full size with nothing uploaded, tiles copied in with
+  `copyExternalImageToTexture` or `texSubImage3D`). Two texture bindings a clipmap, whatever has
+  streamed in (three.js r186 notes: the 16 a stage). The Earth's surface shader samples them at the
   exact ray-sphere point (`sample.ts`) and weighs each rank by footprint, window edge and no-data.
   Two layers: EOX Sentinel-2 cloudless 2016 (WGS84, 256 px, z0 to z13) and NASA GIBS VIIRS NOAA-20
   for the last whole UTC day (EPSG:4326 "250m", 512 px, z0 to z8, plus a fixed z2 globe). The
@@ -567,9 +635,13 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   path for drawing), `validateScenario` and `IMPORT_LIMITS`; `ENGINE_VERSION` `kf-nbody-1`,
   `SCHEMA_VERSION` 1. `seed.ts`: `seedSolarSystem` (from the explorer's ephemeris; the Sun in
   `persistentIds`), `seedLaboratory`.
-- **Worker protocol** (`src/sim/protocol.ts`). Requests `load`, `run` (rate, paused), `command`,
-  `predict` (id, horizon), `seek`, `replay`, `save`; replies `snapshot` (ids, names, GM, radii,
-  positions, velocities, step, dt, drift, requested and achieved rate, failure, collision events
+- **Worker protocol** (`src/sim/protocol.ts`). Requests `load`, `run` (signed rate, paused, and
+  paused the moment drawn, `landAt`: a negative rate plays the history backwards, exactly, by
+  `src/sim/rewind`; a run stops a goto under way), `goto` (a time), `command`,
+  `predict` (id, horizon), `seek`, `replay`, `save`; `run` and `goto` carry a `control` count the
+  snapshots echo; replies `snapshot` (ids, names, GM, radii,
+  positions, velocities, accelerations, step, dt, time owed, timeline, edge (back at the start),
+  a goto under way, whether the step budget was spent, drift, requested and achieved rate, failure, collision events
   (with the crater's size, depth and rim, and the contact site in the scenario's frame),
   interventions, checkpoints), `prediction` (path, merger, frame and its path), `saved`, `error`. Every message
   carries the scenario's `generation`; replies from an older one are dropped, and snapshots by
@@ -588,9 +660,22 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   (`src/explore/bodies/marks.ts`) on the Earth, the Moon, Mercury and Mars; `Lab.marks(body)` gives
   them, placed in each world's own frame at the moment of impact (`SolarSystem.basisAt`). `LabCommand` (masses in kg, velocities relative to a body): `start` (a seed: `solar`,
   `two`, `three`), `select`, `mass`, `velocity`, `addOrbit`, `addState`, `duplicate`, `remove`,
-  `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`. Following a
+  `horizon`, `seek`, `replay`, `reset`, `save`, `restoreSaved`, `export`, `import`, `copy` (the
+  scenario as a share link's data in `UniverseLab.copy`, for the assistant's background comparisons:
+  never shown, the status line unchanged). Following a
   world is the explorer's own focus. The time machine's commands drive the experiment's clock
-  (`toggle`, `faster`, `slower`, `rate`); `reverse`, `now` and `date` are disabled in it.
+  through the same reducer: backwards replays its history and stops at the fork (`UniverseTime.edge`
+  'start'); `now` and `date` go to that moment (from the fork to `LAB_DATE_SPAN_S` after it;
+  `UniverseLab.seekingS`; a run request stops it where it is: Pause there, a rate or Reverse on from
+  there); the row's Reset (`universe-time-reset`, added by the laboratory's panel) goes back to the
+  fork, paused, as `seek` (only to a whole step, at most the run's or its latest checkpoint's: never
+  an endless replay), `replay` and `reset` all leave it paused. The drawn clock
+  (`src/explore/lab-clock`) runs at the rate asked for, or at the pace the worker reaches when it
+  cannot keep up, never against its direction, the bodies drawn between two snapshots; paused, it
+  lands on the run's own latest step (`UniverseLab.t`), which the worker steps on to (`run`
+  `landAt`), so an edit is made at the moment drawn. A laboratory of its own (none of the worlds)
+  is followed at its star, standing in for the hidden Sun (`UniverseLab.standIn`: the readout gives
+  its name and height).
 - **Persistence.** IndexedDB database `kf-lab`, store `scenarios`, key `current`; export as
   `kun-fayakun-<name>.json`; import through `validateScenario` (refused with reasons, nothing
   changed).
@@ -605,7 +690,7 @@ numbers are in `docs/LAB.md`, and the brief's whole ambition in `docs/FEATURE-LE
   `lab-checkpoint-<step>`, `lab-replay`, `lab-reset`, `lab-preset-solar|two|three`. In an
   experiment the navigator hides About, Living Earth and the rows of removed worlds.
 - **Budget.** `scripts/check-bundle.ts` holds the laboratory's lazy files (adapter, panel, worker)
-  to 250,000 bytes gzipped, apart from the explorer's 150,000.
+  to 250,000 bytes gzipped, apart from the explorer's 155,000.
 - **Messages.** `ui.universe.lab.*` in `src/i18n/en.explore.json`; the validator's "reflection, not
   proof" phrasing rule applies to them too (paths are "integrated ahead", never "predicted").
 
@@ -615,46 +700,364 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
 `docs/WALKING.md`.
 
 - **Modules** (`src/explore/walk/`, its own lazy chunk, loaded with the first walk):
-  - `terrain.ts`: `TERRAIN`, `decodeTerrarium`, `mercatorPixel`, `zoomFor`, and
-    `createHeights(loader)`, which has `at`, `want`, `stats` and `revision(zoom)`. `revision(zoom)`
-    counts the tiles returned at that zoom or coarser. Also `terrariumLoader(url)`.
-  - `walker.ts`: `WALK`, `createWalker`, `look`, `stepWalker`, `localFrame`, `walkerPose`,
-    `pressureKpa`, `sunElevationDeg`, `solarTimeHours`.
-  - `ground.ts`: `GROUND`, and `createGround(colour, sunlight, noise)`, the clipmap.
-  - `sky.ts`: `createWalkSky`.
-  - `daylight.ts`: `DAYLIGHT`, `starlight`, `skyGain`, `ambient`, `haze`, `twilight`,
-    `preethamSunIntensity`.
+  - `terrain.ts`: `TERRAIN` (with `retryS`, the waits before a failed tile is asked for again),
+    `decodeTerrarium`, `despike`, `mercatorPixel`, `zoomFor`, and `createHeights(loader, maxZoom,
+    now)`, which has `at`, `read` (without asking), `want`, `stats`, `retry` and `revision(zoom)`.
+    `revision(zoom)` counts the tiles returned at that zoom or coarser. Also `terrariumImage(url)`
+    and `terrariumLoader(url)`.
+  - `png.ts`: `decodePng(bytes)` and `unfilter`: PNG pixels in script (no canvas read-back).
+  - `walker.ts`: `WALK` (walking, running and the rover's speeds), `createWalker`, `look`
+    (first-person sense), `stepWalker`, `localFrame`, `walkerPose`, `pressureKpa`, `sunElevationDeg`,
+    `sunAzimuthDeg`, `solarTimeHours`.
+  - `ground.ts`: `GROUND`, `HORIZON`, `VENUS_HAZE`, `MARS_HAZE`, and `createGround(colour, { light,
+    seaLevel, surface })`, the clipmap with its horizon maps (its `copy`, the rings again, is what
+    the eye's meter draws), and on the Earth the sea as water.
+  - `light.ts`: `EXPOSURE`, `METER`, `MARS_DUST`, `VENUS_FILL`, `AIRLESS_FILL`, `NIGHT_SKY`,
+    `GROUND_ALBEDO`, `MULTIPLE`, `CLEAR_DAY_AEROSOLS`, `SKY_KNEE`, `SUN_DISC`, `REGOLITH`,
+    `HORIZON_MARCH`, `luminance`, `airMass`, `sunThroughAir`, `earthSkyLight`, `marsSunlight`,
+    `marsSkyLight`, `venusDay`, `groundIlluminance`, `walkExposure(illuminance, light, seen)`,
+    `skyRadiance` (the CPU twin of the sky), `clearDayAir`, `sunDiscTint`, `lunarLambert`,
+    `horizonRise`, `skyCompression`.
+  - `meter.ts`: `createMeter(ground)`: the eye's meter, the ground in view drawn small and read back
+    from the GPU without waiting (its `luminance`, `readings`).
+  - `scatter.ts`: `scatter(air, table, eye, ray, sun, steps, limit)`, the Earth's air along a ray
+    (TSL), for the sky and the ground's aerial perspective.
+  - `sky.ts`: `createWalkSky(kind, air)`, `heldUnderBloom`, `MARS_SKY`, `VENUS_SKY`.
+  - `daylight.ts`: `DAYLIGHT`, `starlight`.
   - `index.ts`: `createWalk(setup)`, which returns `start`, `stop`, `where`, `starlight`, `look`,
-    `step`, `place`, `view` and `dispose`.
-- **App, module and view.** `app.earthCommand` takes three walk commands:
-  - `{ kind: 'walk', lat?, lon? }`: at the place, or at the point below the view;
+    `step`, `place`, `view`, `exposure`, `sunColour`, `setDetail`, `retry` and `dispose`.
+- **App, module and view.** `app.earthCommand` takes five walk commands:
+  - `{ kind: 'walk', world?, lat?, lon?, headingDeg?, pitchDeg? }`: at the place, or at the point
+    below the view (during a trip it waits for the arrival);
   - `{ kind: 'walkEnd' }`;
-  - `{ kind: 'walkPad', forward, jump }`: the on-screen pad.
+  - `{ kind: 'walkPad', forward, right?, run?, rover?, jump }`: the on-screen pad (values that are
+    not numbers count as 0);
+  - `{ kind: 'walkLook', scene }`: the look's sense on foot (a drag moves the scene with it when
+    true; the default turns the view the way the hand moves);
+  - `{ kind: 'walkRetry' }`: ask again at once for heights that could not be loaded.
 
-  `UniverseView.walk` is a `UniverseWalk` or null. It holds the state (`landing`, `walking`), the
-  place, the ground's height and the feet's, the heading and pitch, `airborne`, `blocked`,
-  `walkedM`, `gravity`, `pressureKpa`, `meanTempC`, `sunElevationDeg`, `solarTimeH`, `groundZoom`,
-  the tiles, and the rings filled. `UniverseView.walkRefused` says a walk was refused at Makkah.
+  `UniverseView.walk` is a `UniverseWalk` or null. It holds the state (`landing`, `walking`, or
+  `unavailable` when no heights for the place have come after 15 s), `coarse` (landed on coarser
+  heights than asked for), the place, the ground's height and the feet's, the heading and pitch,
+  `airborne`, `blocked`, `walkedM`, `gravity`, `pressureKpa`, `meanTempC`, `sunElevationDeg`,
+  `sunAzimuthDeg`, `solarTimeH`, `groundZoom`, the tiles, the rings filled, the eye's meter's
+  readings (`metered`) and its last (`groundLuminance`), the field of view (`fovDeg`), and whether
+  the time machine is held down on foot (`timeCapped`). `UniverseView.walkRefused` says a walk was
+  refused at Makkah; `UniverseView.walkWaiting` that one asked for waits (for a trip's arrival, or
+  its code). While walking the explorer's exposure is the walk's (`exposure()`), the Sun's disc and
+  glare take its colour (`sunColour`), the camera is not turned to frame the clear part of the view
+  (the horizon stays level), the worlds' names show only as the stars come out (never the Sun's),
+  and the time machine runs at most an hour a second (on the way down through an atmosphere too).
+  The input's `onFoot` is what is shown, not what is asked for: `'ground'` once the walker's eye is
+  the camera (Space jumps; a mouse's click takes the pointer), `'air'` on the way down (a click takes
+  the pointer; Space stays the play key), null while landing waits in orbit.
 - **Constants used:**
   - `earth.atmosphere.surfacePressure` (101.4 kPa);
   - `earth.atmosphere.scaleHeight`;
   - `earth.atmosphere.averageTemperature` (15 °C);
   - gravity from the Earth's GM (DE440) at the mean of `physical.bodies.Earth.radiiKm`.
 - **Interface:**
-  - `src/ui/explore/walk-hud.ts`. Test ids: `walk-hud`, `walk-title`, `walk-place`, `walk-ground`,
-    `walk-gravity`, `walk-air`, `walk-sun`, `walk-notice`, `walk-forward`, `walk-backward`,
-    `walk-jump` and `walk-end`.
+  - `src/ui/explore/walk-hud.ts`, loaded with the first walk (or refusal). Test ids: `walk-hud`,
+    `walk-title`, `walk-brief`, `walk-place`, `walk-ground`, `walk-gravity`, `walk-air`, `walk-sun`,
+    `walk-qibla`, `walk-notice`, `walk-help`, `walk-forward`, `walk-backward`, `walk-left`,
+    `walk-right`, `walk-run` and `walk-rover` (`aria-pressed`), `walk-jump`, `walk-drag-scene` (the
+    look's sense, kept in localStorage as `kf-walk-drag-scene`), `walk-end` (with
+    `aria-keyshortcuts` Escape) and `walk-retry` (only while the heights could not be loaded).
   - The Living Earth panel's `living-walk` button.
-  - The explorer section gets `is-walking`, which hides the readout from orbit, and the notes and
-    the hint on a narrow screen.
+  - The explorer section gets `is-on-foot` while a walk is asked for (waiting included), landing or under way (the way
+    back to orbit stands in for `universe-back`, which waits), and `is-walking` once landed, which
+    hides the readout from orbit, the notes and the hint on every screen. Landing folds the
+    navigator (it opens again after, if it was open); the notes say nothing on foot.
+  - The HUD (`kf-walk`) spans the view without taking its pointer: the way back at the top left
+    (`kf-walk-top`), and a dock at the lower left (`kf-walk-dock`) whose parts take the pointer. The
+    descent's HUD (`descent-hud`, `src/ui/explore/descent-hud.ts`) shares it: its notice, readout,
+    keys (`kf-walk-help`) and its pad with Back to orbit (`kf-walk-controls`) in the dock, "Back to
+    the start" staying at the top left.
   - Messages: `ui.universe.walk.*`.
 - **Rules:**
   - No walk begins within `MAKKAH_FRAME.radiusKm` (25 km) of the Kaaba, and no step enters it.
-  - The fixed 70° field of view spans at least 35 km there.
-  - A trip (`nav.travelling`) ends a walk.
-- **Budget.** `scripts/check-bundle.ts` holds walking's lazy files to 30,000 bytes gzipped.
+  - The field of view on foot (70°, the wheel or a pinch narrowing it to 20° or widening it to 90°)
+    never narrows there below `MAKKAH_FRAME.minWidthKm` (30 km) across.
+  - A trip (`nav.travelling`) ends a walk; a walk asked for during a trip goes where the trip goes
+    (dropped if the trip turns elsewhere, is stopped, or ends at another world).
+- **Budget.** `scripts/check-bundle.ts` holds walking's lazy files (the suit's readout included) to
+  30,000 bytes gzipped.
 - **Tests** (mocked terrain): `tests/support/live.ts` serves `tests/support/terrain-1000m.png`, flat
-  at `MOCK_GROUND_M` (1,000 m), for every terrain tile.
+  at `MOCK_GROUND_M` (1,000 m), for every terrain tile; `tests/support/terrain.ts` makes PNGs and,
+  per tile, terrarium tiles of any height field over the world (`routeTerrain`: a cliff, a hill, the
+  sea), the same at every zoom.
+
+## Kun Fayakun Intelligence (the assistant)
+
+The design is docs/AI-INTELLIGENCE.md; the contracts are `src/ai/types.ts`. It runs in the
+visitor's browser only: no API key, account, subscription or hosted inference.
+
+- **Entry.** `startIntelligence(app, announce): Promise<AiOrchestrator>` in `src/ai/boot.ts`: adds
+  the message files, builds the tool registry (with the scripture catalogue read from
+  data/quran.json and data/hadith.json), the engine host (`createEngineHost(app)`) and the
+  knowledge retriever (`loadRetriever(app)`), and returns `createIntelligence(app, deps)`. One per
+  page: later calls return the same one. The shell imports nothing from `src/ai` statically; its
+  only references are dynamic imports (the test hook's starter, and the Ask button's panel).
+  `scripts/check-bundle.ts` fails if any file with `src/ai` code is in the shell.
+- **The panel** (`src/ai/ui`, its own chunk with `ai.css` and `src/i18n/en.ai.json`):
+  `mountAssistant(app, root, askButton, announce): Promise<AssistantUi>` (`open`, `close`,
+  `toggle`), loaded by the header's Ask button (`data-testid="ask"`, label `ui.header.ask` in
+  en.json) or `/` (`ui.shortcuts.ask`); Ask shows `aria-busy="true"` while the code loads.
+  - At least 900 × 560 px: a non-modal `<aside>` at the inline start, placed by
+    `src/ai/ui/layout.ts` from what is on screen (below the header and the explorer's way back,
+    above the timeline or the readout, short of the notes and the navigator). It publishes its edge
+    as `--kf-ai-inset` on `<html>` and fires `kf-ai-inset` on window; the explorer's
+    `reportInsets` (the view insets' one writer) sends it as `left`. `<html>` gets
+    `kf-ai-side-open` (the stage steps aside; Explore Mode's dock folds).
+  - Smaller: a bottom sheet on a modal `<dialog class="kf-dialog">` (`kf-ai-sheet-open`), between
+    the chrome at the top and at the bottom; with less than 320 px there it comes up over the
+    bottom chrome (the laboratory's navigator on a phone). It minimises to a non-modal bar
+    (`is-minimised`) when a view or an experiment starts running (`Turn.running`; an experiment
+    once it is confirmed, so its card waits in the open sheet), once for each call.
+  - Both carry `data-kf-keys="own"`: keys pressed inside are the panel's; Esc closes it and focus
+    returns to Ask. Hidden in photo mode.
+  - Test ids: `ai-panel`, `ai-engine` (what is answering), `ai-minimise`, `ai-close`, `ai-log`
+    (its `li` per turn, `data-state` its TaskState), `ai-input`, `ai-send`, `ai-stop`,
+    `ai-suggestions`/`ai-suggestion`, `ai-author`, `ai-flags`, `ai-facts`, `ai-comparison`,
+    `ai-action` (`data-status`), `ai-action-status`, `ai-confirm`, `ai-cancel`, `ai-undo`,
+    `ai-undo-refused` (why an Undo was refused),
+    `ai-turn-state`; the model section `ai-model`, `ai-found`, `ai-suggested`, `ai-model-select`,
+    `ai-model-size`, `ai-model-licence`, `ai-model-source`, `ai-larger`, `ai-download`,
+    `ai-metered` (`ai-metered-confirm`, `ai-metered-cancel`), `ai-progress`, `ai-load-status`,
+    `ai-download-cancel`, `ai-model-error`, `ai-retry`, `ai-load-cancelled`, `ai-load-ready`,
+    `ai-stored`, `ai-delete`, `ai-stored-status`, `ai-persist`, `ai-use-guide`, `ai-use-browser`,
+    `ai-in-use`; the settings `ai-settings`, `ai-level` (`ai-level-plain|standard|deeper`),
+    `ai-memory`, `ai-clear`.
+  - The orchestrator's additions for it (`AiOrchestrator`): `level()`/`setLevel()` (the explanation
+    level, one line of the answer prompt: `LEVEL_LINES` in `src/ai/prompts.ts`), `kindOf(tool)`,
+    `restore()` (with memory on, the kept turns as earlier turns; `boot.ts` calls it once before the
+    panel shows). A text block a model wrote has `by: 'model'` and `writer` (the engine that wrote
+    that block, which its label names); a refused action card carries `reason`, and one whose Undo
+    was refused `undoRefused`. A tool's undo may report an `UndoOutcome` (done, not-confirmed, or
+    refused with why); `Turn.running` names the calls whose tool is running now.
+- **Message files.** `src/i18n/en.ai.engine.json` (engines: devices, models, downloads, errors),
+  `src/i18n/en.ai.tools.json` (the tools: previews, outcomes, problems),
+  `src/i18n/en.ai.mind.json` (the orchestrator, the guide's templates, the knowledge index's
+  templates) and `src/i18n/en.ai.json` (the panel, `ai.ui.*`, added by `src/ai/ui`). Added with `app.i18n.extend` by `boot.ts` (and by the module that owns each, so a
+  part used alone still speaks); registered in `scripts/lib/context.ts`.
+- **Render budget.** `app.requestRenderBudget(reason, { maxScale }): () => void` (AppCommands):
+  while any budget is held, the render scale is capped at the smallest `maxScale` held (the film's
+  dynamic resolution, or the explorer's scene pass) and the film's and the explorer's quality
+  governors rest, so the model's load on the GPU is not read as the scene's (no tier drops, none is
+  locked). The returned function releases it (idempotent); the picture goes back to what the
+  governors chose. The assistant's pacer (`src/ai/engine/pacing.ts`; `visible(until?)` waits for a
+  hidden tab to show, or for `until`, and removes its listener either way) holds one at scale 0.75 for
+  each generation, prefill included, from when it is asked for (while it waits for the one before
+  it) to its end, let go on every way out (done, stopped, failed, the worker ended, unloaded), and
+  while a model loads from its weights' upload (or its shaders' compilation) to the end of the load.
+- **`UniverseGraphics.held: () => boolean`.** What the explorer's quality governor reads: true
+  while a render budget is held, and then it ignores every frame.
+- **The model worker.** `src/ai/engine/webllm-worker.ts` is the only module that imports
+  `@mlc-ai/web-llm`; the page talks to it in the messages of `src/ai/engine/protocol.ts` (load with
+  progress, generate then pull each piece, interrupt with the stream it is for, ping, unload,
+  hasModelInCache, deleteModelAllInfoInCache; failures as EngineError data). Its file is fetched
+  only when a model loads (or a stored one is deleted). What it does with each message is
+  `src/ai/engine/worker-handler.ts` (`createWorkerHandler(runtime, post)`, WebLLM's runtime given to
+  it), so tests run the same code on WebLLM's own `MLCEngine`.
+- **One generation at a time** (docs/AI-INTELLIGENCE.md §3). WebLLM 0.2.86's streamed reply holds
+  the model's lock until its generator ends, fails or is returned. In the worker
+  (`src/ai/engine/generations.ts`, `createGenerations(source)`) a `generate` first ends the
+  generation under way: interrupted, its step under way finished, its iterator returned (the lock
+  let go); a stopped stream's pieces up to the stop and its usage still come to its pulls. A stop
+  for a generation not yet pulled, or not yet started, is kept there and the generation is never
+  started (WebLLM clears its interrupt on a generation's first step). The page sends its stop for a
+  generation once the worker has said it started (a stop names the stream, whose id comes with that
+  answer), so only the first of those is the page's; the second is the worker's API alone. The
+  worker watches the loaded model's `GPUDevice.lost` (`deviceOf(engine, modelId)` in
+  `src/ai/engine/worker-handler.ts`, where WebLLM 0.2.86 keeps it), and every generation that fails
+  after the loss is sent as `device-lost`, whatever WebLLM's error names (it never names the
+  device); a failure that comes before the loss is told waits up to 250 ms for it. A device lost as
+  its model is freed or loaded again is not told. The page's engine
+  (`loadWebLLM` in `src/ai/engine/webllm.ts`) asks for a generation only once the one before it has
+  ended; `interrupt()` stops the one under way and any waiting, a stop that comes while the worker
+  starts one included; `unload()` ends them as stopped. While it waits on the worker during a
+  generation it pings it (`WATCH`: every 5 s); a ping unanswered for 30 s or a step over 5 minutes
+  ends the worker and the generation (finish `error`, `lastError` saying which, a console warning).
+  `lastError` is that of the last generation to end (null when it did not fail); `lost` is set once
+  the engine can no longer generate (the watch ended its worker, or a generation ended
+  `device-lost`), and `LanguageEngine.lost` (optional) says so for any engine. The orchestrator's
+  turns ask for one generation at a time too (`ask`, `confirm` and `use` stop the turn under way
+  first), and the engine state stays `busy` until the last has ended. A generation that ends in error on an
+  engine that is `lost` lets the engine go: it is unloaded, the engine state reads `error` with that
+  EngineError, and the guide answers until a model is chosen again (a plan that ended in an engine
+  error shows `ai.mind.notice.engineError`, as an answer does). `ai.mind.announce.engineLost` is
+  said ahead of the announcement that ends the turn, in that same announcement: the page's live
+  region (`src/ui/announcer.ts`) writes only the last of announcements made within 60 ms of each
+  other. Where that turn was stopped before its generation ended, it is said alone once the model
+  is let go, or with the end of a question asked over it; a model chosen (`use`, `attach`) drops
+  it. Announcements name a catalogue model as the panel does (`ModelSpec.name`), any other engine
+  by its `model`.
+- **How a model reads its prompt** (`src/ai/engine/prefill.ts`, docs/AI-INTELLIGENCE.md §6). A
+  `load` message carries a `PrefillSetting` (`chunkTokens`, null for none; `yieldBetween`), the
+  model's own from `prefillFor(model)` unless the evaluation gives another; after every load the
+  worker sets it on WebLLM's pipeline with `applyPrefill(engine, modelId, setting)`, which never
+  throws, changes nothing unless WebLLM's internals are where 0.2.86 keeps them, and returns a
+  `PrefillReport` (`src/ai/types.ts`: `outcome` set, off, kept, no-pipeline, no-field or failed; the
+  compiled chunk; the chunk now; whether it waits between chunks). The `loaded` answer carries the
+  report, `WebLlmEngine.prefill` holds it, and each generation's `engineUsage.prefill` gives it with
+  `chunkAtGeneration`, the chunk the pipeline held as the reply ended (read in the worker; the
+  usage's `prefillChunk`). `tests/unit/ai-prefill.spec.ts` checks WebLLM's file for the fields it
+  reaches; the real-model evaluation fails a run whose generations do not report the setting asked
+  for.
+- **Test hook.** `window.__kf.ai.start()` loads the assistant (the shell's starter) and resolves to
+  its Intelligence; the assistant's own chunk then replaces `window.__kf.ai` with
+  `{ start, useScripted(script, options?), useReport(report) }`. `useReport` makes the engine
+  host's detection answer with a canned CapabilityReport from then on (CI has no GPU to detect;
+  nothing a visitor does reaches it). `useScripted` switches the running assistant to the
+  scripted engine (`src/ai/engine/scripted.ts`: replies written in the test, matched on the last
+  user message and the format; `options.delayMs` between streamed words; `options.stopMs`, how long
+  a stopped reply takes to end, as a model's does; a reply marked `loses` ends the engine instead,
+  as a model whose worker ended: finish `error`, `lost` set, every generation after it an error),
+  labelled `scripted`, and resolves to its counts:
+  `running` (generations under way now) and `mostAtOnce`.
+  `evaluate({ router: 'first' | 'skip', prefill? })` is the real-model evaluation's alone (`tests/ai-eval`):
+  from then on every generation is recorded as a `GenerationRecord` (`src/ai/types.ts`: the turn,
+  the purpose (plan, repair or answer), the messages sent, the raw reply, the finish, tokens, the
+  plan's validity and problems, `engineUsage`, WebLLM's own prefill and decode rates, time to
+  first token and grammar start, and `startedMs`, when it began on the page's clock, so frames can be
+  set against it), taken with `generations()`; with `router: 'skip'` a loaded model
+  plans every question, the router bypassed (`IntelligenceDeps.evaluation`), even a model that
+  writes explanations only (`ModelSpec.plans: false`, the pocket tier), which in the shipping order
+  is never asked to plan. With `prefill` (`{ chunkTokens, yieldBetween }`), a model loaded after it
+  reads its prompt with that setting in place of its own (the engine host's `assumePrefill`); without
+  it, each model's own. `evaluate(null)` puts the shipping order back. Nothing a visitor does
+  reaches it.
+  `<html>` gets `data-ai-engine` and `data-ai-turn` (Test hooks, above).
+- **Model hosts in tests.** Every page's requests to huggingface.co, hf.co (and their
+  subdomains: the file CDNs), cdn.jsdelivr.net and raw.githubusercontent.com are answered 404 in the
+  browser (`tests/support/live.ts`, `mockModelHosts`, registered before the live hosts, so a test's
+  own route wins); `modelRequests(page)` counts them. No test downloads a model.
+  `tests/ai-engine.spec.ts` also resolves those hosts to nothing. The real-model evaluation
+  (`tests/ai-eval`, its own Playwright project, only with `KF_AI_EVAL=1`) resolves huggingface.co
+  and cdn.jsdelivr.net to a local HTTPS server that streams the pinned files from the copies on disk
+  (`tests/ai-eval/serve.ts`; `route.fulfill` cannot carry a file over about 75 MB). It logs every
+  request the browser makes: one to a model host the local server does not serve (resolved to
+  nothing, so the server never sees it) fails the run, as does one for a file that is not pinned;
+  any other host off the page's origin is counted and written down. Only its `network.spec.ts`,
+  with `KF_AI_EVAL_NETWORK=1`, reaches Hugging Face. Its results are in `docs/AI-EVALUATION.md`.
+- **Laboratory names reach the assistant as the bodies' own.** A body the visitor renamed (or a
+  shared link named) is given to the assistant's prompts and tools as its own name and "(renamed by
+  the visitor)" (`src/ai/context.ts` `labForAssistant`): a name can carry any 60 characters, and an
+  instruction in one was once reported as fact. The laboratory shows the name itself.
+- **Budgets** (`scripts/check-bundle.ts`, gzip): the assistant's chunks on start (with its panel) 120,000 B; the
+  model worker 2,400,000 B (and the only built file holding WebLLM's runtime); the comparison
+  worker 50,000 B; `assets/ai/index.json` 150,000 B.
+- **Tests.** `tests/unit/ai-*.spec.ts` (schema, router through the real registry, guards,
+  retrieval, planner, tools, orchestrator, engines, render budget, generations one at a time on
+  WebLLM's own MLCEngine); `tests/ai-engine.spec.ts` (the
+  engine host on the real page, webgpu); `tests/ai-pipeline.spec.ts` (the whole pipeline through
+  the hook, webgpu and webgl2); `tests/ai-panel.spec.ts` and `tests/ai-panel-model.spec.ts` (the
+  panel through its own controls, webgpu and webgl2) and `tests/ai-panel-mobile.spec.ts` (the
+  sheet, mobile).
+
+## More worlds (explorer)
+
+- **Chunk.** `src/explore/worlds/` (its own chunk, `scripts/check-bundle.ts` WORLDS_SOURCES, 30,000 B
+  with `src/ui/explore/worlds-panel.ts` and `src/i18n/en.worlds.json`), asked for 2 s into a visit, at
+  once by a `world` command or a `smallBodies` one turning the layer on (one turning it off asks for
+  nothing), again 30 s after a failure; its pipelines compiled before it is first drawn, its maps put
+  on the GPU as they come, and the governor holding off meanwhile, so a first visit ends with all of it
+  built, as a later one does. `createWorlds(ctx, system, obliquity, detail, hold)` (`detail` a getter:
+  the level as it is when the data has come; the explorer sets it again as they arrive) returns
+  `Worlds`: `advance(jdTdb)` after the ten bodies are placed and before the camera moves;
+  `nearestKm(camera)` joins the depth range's nearest surface; `update(frame)` with the camera, lens,
+  the ten bodies as placed, the exposure's adaptation, the solar filter's amount, the clock's step
+  (for the hold of the worlds' turn) and whether the real sky's worlds show (not in an experiment, on
+  foot, on the way down, nor while the film's compressed system stretches to true scale: none of the
+  worlds is drawn then, and they fade in over half a second after); `labels(out)`; `nav(id)`,
+  `navList()`, `host(id)`, `find(name)`, `pick(x, y, nearerKm)` (a world under the pointer wins over a
+  body whose disc holds the point only when nearer), `held(id)`, `setDetail`, `setLayer`,
+  `setGrouped`, `setArranged`, `view(focus)`, `illustrative(out)`, `dispose`. Its parts: `orbits.ts`
+  (pure: the files' decoding, Kepler's equation as the GPU solves it and to convergence, heliocentric
+  and moon positions, the H, G law), `belt.ts` (the asteroids on the GPU), `probe.ts` (the GPU's
+  places read back, for the tests only: its own chunk), `comets.ts`, `bodies.ts` (the worlds to fly
+  to, their maps), `rings.ts`, `eclipses.ts`, `glow.ts` (the Milky Way's and the zodiacal light's
+  models), `screen.ts` (pure: boxes against discs and convex outlines).
+- **Names.** The worlds' names go through the explorer's own layout for names (`declutterLab`, the
+  laboratory's, used outside an experiment for the worlds'): inside the clear view and off what stands
+  over it (gone at once, never drawn under it while fading), clear of the ten bodies' names and of one
+  another, at one of four corners about their world; each name's `SceneLabel.fits` keeps it off every
+  disc on screen (the ten bodies', the worlds' drawn, Saturn's rings' outline projected point by point)
+  but its own world's; a world behind a nearer disc is not named. A name is anchored at its disc's
+  limb, or at its point.
+- **Light.** The sky's glow (Milky Way and zodiacal light) is held in display terms with the stars as
+  the exposure opens, never lifted as it closes (`glowLight`), not drawn through the solar filter, and
+  the zodiacal light only from 0.3 to 3 au from the Sun (`zodiacalScale`); the readout's `sky-glow`
+  only while it shows somewhere in view (about ten eight-bit steps above black). A world's eclipse and
+  a shadow on a planet (`eclipses.ts`) come in over half a second, never in one frame; past 30 degrees
+  of turn a frame, or a turn and a half a second (its map's light would flash), a world's turn is held
+  at an hour of its day as the ten bodies' are
+  (`UniverseView.time.spinHeld` for a world flown to). Maps and eases are timed in seconds, not frames.
+- **Data.** `public/assets/smallbodies/` from `scripts/smallbodies/build.py <download dir>` (stdlib
+  Python; `fixtures` writes `tests/support/astro/horizons-smallbodies.json`) and `maps.py` (Pillow and
+  numpy in `.cache/venv-worlds`): `manifest.json` (common epoch, classes, counts, tiers with sha256,
+  every query and its reply's sha256), `asteroids-0..3.bin` (16 bytes an object, brightest first,
+  cumulative: 20,000, 80,000, 250,000, 500,000; `checks`: the records of Juno, Hilda, Achilles and
+  Ixion, which the unit tests compare with Horizons), `comets.json`, `worlds.json` (66 worlds and the
+  rings), `maps.json` and `maps/<world>.jpg` (2048 x 1024; `maps/1k/` 1024 x 512 for Low; east
+  longitude 0 in the middle, mean linear brightness 0.4; the parts never imaged a grey grid, their
+  share of the surface `unimaged`).
+- **Detail.** `ExploreDetail.smallBodies`: 20,000 (Low), 80,000 (Medium), 250,000 (High), 500,000
+  (Ultra) asteroids; the files are fetched as far as the level needs. At Low the sky's glow is not
+  drawn and the worlds' maps are the 1024-wide set; a map is fetched only once its world's disc is 24
+  px across, and let go after a minute not drawn.
+- **Focus.** `FocusId = BodyId | WorldId` (`WorldId = \`w:${string}\``, the catalogue's name:
+  `w:Ceres`, `w:Io`, `w:1P/Halley`). The navigator, trips, `UniverseView.focus` and `from`, and
+  `UniversePose.body` take either. A world has no place beneath the camera (no saved view, no walk) and
+  no notes; the readout keeps its planet's illustrative items while the planet is in view and more than
+  40 px in radius; its host (`Worlds.host`: a moon's planet, the Sun for the rest, Pluto's moons too)
+  is what the ten bodies' code reads, while `UniverseWorlds.focus.host` is its own (Charon's is
+  `w:Pluto`). Entering an experiment from a world flies to the Sun.
+- **Commands.** `app.earthCommand({ kind: 'world', name })` flies to a world by its name or
+  designation in any case ("Ceres", "io", "Halley", "67P", "433"; a name contained in one name is
+  enough); asked before the chunk has come it is flown to when it does; a name that matches nothing
+  does nothing, and an empty one only asks for the worlds (the navigator's section, opened). `{ kind:
+  'smallBodies', on }` shows or hides the small bodies' layer (the asteroids, the comets, and the dwarf
+  planets', asteroids' and comets' points and names; the moons always show); `{ kind:
+  'smallBodiesGrouped', on }` colours the asteroids by group (illustrative); `{ kind:
+  'smallBodiesOrbits', on }` draws each asteroid in the ecliptic at its orbit's semi-major axis, at its
+  own longitude (a diagram: the Kirkwood gaps show as empty rings).
+- **View.** `UniverseView.worlds` (null until loaded): `layer`, `grouped`, `arranged`, `shown` (0 to 1:
+  how much of the worlds is drawn), `asteroids` (drawn; 0 with the layer off), `asteroidsLoaded`,
+  `groups` (main, near, trojans, hildas, centaurs, kuiper, other), `comets`, `tails`, `list` (id,
+  name, kind, host), `focus` (the world in view's facts: kind, its own host, radius, axes, `shaped`
+  (false: a sphere of its mean radius stands in), albedo, rotation, sizeFromH, sunAu, eclipsed,
+  `unimaged`, its map's credit, `screen`), `eclipses` (receiver, occluder, depth) and `epochJdTdb`.
+  Illustrative items: `small-body-light`, `small-body-orbits`, `comet-tails`, `world-shape`,
+  `unimaged`, `eclipse-red`, `ring-light`, `sky-glow`. Test hook: `window.__kf.worlds.probe(count)`
+  (the GPU's places of the first asteroids, read back, and their date).
+- **Cost** (2026-10-27, after the review's fixes; this Mac's GPU, Chromium on WebGPU, 1440 x 900 at a
+  pixel ratio of 2, `?profile=1`; `tests/explore/small-worlds-perf.spec.ts`, PERF=1): 59.88 fps with
+  the 99th percentile frame at 16.8 ms (the display's own rate) at High (250,000 asteroids) and at Low
+  (20,000), the layer on and off, in the Earth's default view, the belt from above (7.4 au), Jupiter's
+  system, Saturn's ring plane, the Sun at 4 million km and the outer system from 50 au; and at High
+  with the clock at 30 days a second in the belt's view and Jupiter's system. On the phone project
+  (Pixel 7 emulated on this Mac's GPU, its own pixel ratio) at Low: 59.88 fps, 16.8 ms in the Earth's,
+  the belt's, Jupiter's and the Sun's views. Uncapped (vsync and the frame-rate limit off), the median
+  frame in ms over two runs each, with the layer on / off, against the commit before the worlds
+  (48988b7), interleaved, on a machine busy with another worktree's runs (load 5 to 8): Low: Earth
+  0.4 / 0.3–0.4 against 0.3, the belt 0.9–1.1 / 0.7–0.8 against 0.6, Jupiter 0.6–0.7 / 0.6–0.7 against
+  0.5, Saturn's ring plane 0.4–0.5 / 0.3 against 0.2, the Sun 0.4 / 0.3 against 0.2, the outer system
+  0.9–1.1 / 0.7–0.9 against 0.6; High: 2.1 / 1.9–2.2 against 1.9–2.0, 1.6–1.8 / 1.1–1.3 against
+  1.0–1.1, 0.9–1.2 / 0.9–1.2 against 0.8–0.9, 0.8–1.0 / 0.7–0.8 against 0.6–0.7, 1.1 / 1.0 against
+  0.9–1.0, 1.8–1.9 / 1.1–1.5 against 0.9. Before the fixes Low cost about twice the commit before's
+  (Earth 0.8–1.0, the Sun 0.7–0.9): the sky's glow ran trigonometry for every pixel at every level.
+  Now it reads two small tables by the sphere's own texture coordinates and is not drawn at Low, the
+  maps are 1024 wide at Low and fetched only for a disc 24 px across, and a map unseen for a minute is
+  let go. What else keeps it so: a point's light and colour are worked out once in the vertex stage (a
+  varying), not for each of its pixels; a point too faint to see has no size, so no pixels; the comets
+  are placed again only when the clock has moved; the files are decoded, and the glows' tables worked
+  out, a slice a frame; every part's pipeline is built before it is first drawn.
+- **Test ids.** `universe-worlds` (the navigator's section), `worlds-intro` (the counts: not a live
+  region), `worlds-status` (the one announcement that the worlds have come), `worlds-layer`,
+  `worlds-grouped`, `worlds-orbits`, `worlds-groups`, `worlds-group-<group>`, `worlds-search`, `worlds-results`,
+  `worlds-go-<name>`, `worlds-none`; the About section's `about-size`, `about-albedo`, `about-day`,
+  `about-now` for a world.
 
 ## Browsers and local testing (measured on this machine)
 
@@ -689,6 +1092,13 @@ The space-suit walk on the Earth (ledger GR-5's first slice). Method, sources an
   `webgpu_instance_points` example (check node_modules/three/examples). Must also run on WebGL2.
 - No compute shaders in M1 unless there is a non-compute WebGL2 path; prefer analytic
   vertex-stage animation (positions as a function of time) which runs on both backends.
+- At most 16 sampled textures and 16 samplers in any one stage of a material: WebGPU's default
+  limits (which the renderer keeps to), all many phones and integrated GPUs offer, and WebGL2's 16
+  texture units on many GPUs. Past them the pipeline fails and the mesh is not drawn. Texture nodes
+  that hold the same texture when a material is built share one binding for good, so a node whose
+  texture is swapped later (a streamed map, a clipmap's atlas) needs a placeholder of its own, and a
+  material is counted at its largest: `tests/explore/gpu-limits.spec.ts` counts every pipeline's
+  bindings per stage over a tour that streams first and builds after (the Earth's surface binds 13).
 
 ### Five-planet extension
 
@@ -701,7 +1111,7 @@ Mercury and Mars reuse the regolith renderer with their own texture slots, true 
 flattening and phase-dependent solar angular size; neither gets the Moon's earthshine
 or synthetic microcraters. Mars has an explicitly labelled schematic dust haze.
 Venus and the ice giants use cloud-deck shading and uniform illustrative colour maps.
-Optional Uranus/Neptune rings and additional moons are not drawn.
+Uranus's and Neptune's rings and the moons are drawn by the small worlds' chunk (below).
 
 The pipeline registers USGS GeoTIFFs using their metadata, including Mercury's DEM
 central meridian, and preserves source pins, landmark probes and decoded-file checks.

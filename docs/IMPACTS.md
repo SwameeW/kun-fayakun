@@ -104,9 +104,15 @@ disruption criterion; and every outcome sums to the total mass.
     lengths, as from their young craters; dark on Mars, where an impact blows the bright dust off the
     basalt; grey brown on the Earth's land (the sea closes over an ocean impact: nothing is drawn
     there); the colours, the ejecta's hummocky texture and the rays' pattern are illustrative;
-  - the floor glows while its melt is hot, a dull red-orange no brighter than half the sunlit ground
-    (rock near 1,400 K is far fainter than sunlit regolith), its surface crusting over within a few
-    hours of simulated time (illustrative);
+  - the floor glows while its melt is hot (about 2,000 K, illustrative), as bright as Planck's law makes
+    its surface's temperature while a crust forms over it (εσT⁴ = k(T_m − T) / √(πκt), Turcotte and
+    Schubert 2014; `src/explore/lab-fx/heat.ts`), held to the glow's drawn strength: below the visible glow
+    (about 1,100 K) within about three minutes of simulated time (fourteen for melt at 3,000 K), so seen when the clock slows for the impact (docs/LAB.md, "Slow
+    down for events"); a giant impact (no crater) leaves the face it struck glowing the same way, its melt
+    hotter (its energy per kilogram over rock's heat capacity, 1,500 to 3,000 K), and its bodies glowing;
+  - every merger or breakup has a fireball at the contact, its size from the impact's energy (Collins,
+    Melosh and Marcus 2005), its colour and brightness by Planck's law under a ceiling, slowed for
+    safety (docs/LAB.md, "How experiments are drawn");
   - nothing appears at once (flash safety): a crater eases in over about a second and a half, its
     glow rises at most twice its full strength a second and falls at most a third of it a second, so
     there is never a step in brightness; a crater smaller than a few pixels fades out, and its rays
@@ -126,7 +132,8 @@ disruption criterion; and every outcome sums to the total mass.
     crater stays there as the Moon turns.
 - **Not yet:**
   - the crater on the ground a walker stands on (the walk's terrain, ledger GR-5);
-  - the hit body's heating beyond the crater's glow (ledger WR-2, Phase 3).
+  - the hit body's heating beyond the glow (its climate, ledger WR-2; the melt kept below the crust,
+    roadmap W2.3).
 
 ## The steps, in order
 

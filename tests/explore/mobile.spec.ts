@@ -3,11 +3,13 @@
  * phone, so the GPU is this machine's): touch gestures through real CDP touch events (a pinch zooms
  * in log distance, two fingers pan, a double tap on a world flies there), the bottom sheet, layouts
  * in portrait and landscape with nothing wider than the screen, touch-action: none only while the
- * explorer is on screen, and axe on the navigator and the heads-up readout.
+ * explorer is on screen, axe on the navigator and the heads-up readout, and the time machine's buttons
+ * in reach on the sheet whether it is folded or pulled up.
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { CDPSession, Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
+import { fits } from '../support/layout';
 import { JD, overflow, place, settled, view, waitForUniverse } from '../support/universe';
 import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 
@@ -38,13 +40,14 @@ async function tap(cdp: CDPSession, p: Point): Promise<void> {
   await touch(cdp, 'touchEnd', []);
 }
 
-/** The middle of the clear part of the view (between the readout and the sheet). */
+/** The middle of the clear part of the view (between the readout and the sheet, or a note standing above it: where the view frames the bodies). */
 async function middle(page: Page): Promise<Point> {
   return page.evaluate(() => {
     const readout = document.querySelector('[data-testid="universe-readout"]')?.getBoundingClientRect();
     const sheet = document.querySelector('[data-testid="universe-bodies"]')?.getBoundingClientRect();
+    const card = document.querySelector('.kf-note.is-visible')?.getBoundingClientRect();
     const top = readout ? readout.bottom : 0;
-    const bottom = sheet ? sheet.top : window.innerHeight;
+    const bottom = Math.min(sheet ? sheet.top : window.innerHeight, card && card.height > 0 && card.top > top ? card.top : Infinity);
     return { x: window.innerWidth / 2, y: (top + bottom) / 2 };
   });
 }
@@ -121,6 +124,75 @@ test('a double tap on a world flies there; one finger orbits', async ({ page, kf
   const b = await view(page);
   expect(Math.hypot((b?.camera.x ?? 0) - (a?.camera.x ?? 0), (b?.camera.z ?? 0) - (a?.camera.z ?? 0))).toBeGreaterThan(1000);
   expect(Math.abs((b?.altitudeKm ?? 0) - (a?.altitudeKm ?? 0)) / (a?.altitudeKm ?? 1)).toBeLessThan(0.05);
+  expect(pageErrors).toEqual([]);
+});
+
+test('among the stars by touch: one finger looks round (the Sun moving with it), a pinch moves toward its middle, a tap names the star there, a double tap flies to it, the Sun in the clear part of the view', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_REAL_FRAMES);
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  // (The sheet's way out, as a tool would ask: its button is in the folded sheet.)
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'stars' });
+  });
+  const stars = async () => (await view(page))?.neighbourhood ?? null;
+  await expect.poll(async () => (await stars())?.focus.name ?? null, { timeout: 60_000 * SLOW }).toBe('Sun');
+  const sun = async (): Promise<Point | null> => page.evaluate(() => (window as unknown as KfHook).__kf.app.hud().labels.find((l) => l.id === 'star-sun') ?? null);
+  await expect.poll(async () => (await sun()) !== null, { timeout: 30_000 * SLOW }).toBe(true);
+  // The Sun sits in the clear part of the view, above the sheet, not under it.
+  const sheet = await page.getByTestId('universe-bodies').boundingBox();
+  const at = await sun();
+  expect(at?.y ?? Infinity).toBeLessThan(sheet?.y ?? 0);
+  const cdp = await page.context().newCDPSession(page);
+  const c = await middle(page);
+  // One finger: the sky follows it, the Sun with it.
+  await touch(cdp, 'touchStart', [{ x: c.x - 60, y: c.y }]);
+  for (let i = 1; i <= 10; i++) await touch(cdp, 'touchMove', [{ x: c.x - 60 + i * 8, y: c.y }]);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(async () => ((await sun())?.x ?? 0) - (at?.x ?? 0), { timeout: 5000 * SLOW }).toBeGreaterThan(50);
+  // A tap on a named star (another than the Sun where one is named) says what it is; a double tap flies there, into orbit round it.
+  const named = await page.evaluate(() => {
+    const top = document.querySelector('[data-testid="universe-bodies"]')?.getBoundingClientRect().top ?? 0;
+    const list = (window as unknown as KfHook).__kf.app.hud().labels.filter((l) => l.id.startsWith('star-') && l.y > 80 && l.y < top - 20 && l.x > 20 && l.x < window.innerWidth - 20);
+    return list.find((l) => l.id !== 'star-sun') ?? list[0] ?? null;
+  });
+  if (!named) throw new Error('no named star in the clear part of the view');
+  await tap(cdp, { x: named.x, y: named.y });
+  await expect.poll(async () => (await stars())?.hover?.name ?? null, { timeout: 5000 * SLOW }).toBe(named.text ?? '');
+  // Said beside it, the sheet folded as it is.
+  await expect(page.getByTestId('stars-hover')).toBeVisible();
+  await expect(page.getByTestId('stars-hover')).toContainText(named.text ?? '');
+  await page.waitForTimeout(80);
+  await tap(cdp, { x: named.x, y: named.y });
+  await expect.poll(async () => (await stars())?.travelling ?? null, { timeout: 10_000 * SLOW }).toBe(true);
+  await expect.poll(async () => (await stars())?.travelling ?? null, { timeout: 30_000 * SLOW }).toBe(false);
+  expect((await stars())?.focus.name).toBe(named.text ?? '');
+  expect((await stars())?.camera.mode).toBe('orbit');
+  // A pinch outward in orbit: in toward it, never inside it.
+  const before = (await stars())?.cameraPc ?? 0;
+  await twoFingers(cdp, [{ x: c.x - 40, y: c.y }, { x: c.x + 40, y: c.y }], [{ x: c.x - 140, y: c.y }, { x: c.x + 140, y: c.y }]);
+  await expect.poll(async () => (await stars())?.cameraPc ?? Infinity, { timeout: 5000 * SLOW }).toBeLessThan(before * 0.6);
+  // Pinches whose middle is on empty sky, away from the star and every name: still in toward it, never off to a faint star.
+  const focus = (await stars())?.focus.name;
+  const labels = await page.evaluate(() => (window as unknown as KfHook).__kf.app.hud().labels.map((l) => ({ x: l.x, y: l.y })));
+  const sheetTop = (await page.getByTestId('universe-bodies').boundingBox())?.y ?? 600;
+  const spots = [
+    { x: 80, y: 140 },
+    { x: 300, y: 160 },
+    { x: 100, y: sheetTop - 60 },
+    { x: 290, y: sheetTop - 80 },
+  ].filter((p) => labels.every((l) => Math.hypot(l.x - p.x, l.y - p.y) > 60 && Math.hypot(l.x + 40 - p.x, l.y - 16 - p.y) > 60));
+  expect(spots.length).toBeGreaterThanOrEqual(2);
+  for (const p of spots) {
+    const was = (await stars())?.cameraPc ?? 0;
+    await twoFingers(cdp, [{ x: p.x - 20, y: p.y }, { x: p.x + 20, y: p.y }], [{ x: p.x - 45, y: p.y }, { x: p.x + 45, y: p.y }]);
+    await page.waitForTimeout(300);
+    const now = await stars();
+    expect(now?.focus.name).toBe(focus);
+    expect(now?.travelling).toBe(false);
+    expect(now?.cameraPc ?? Infinity).toBeLessThanOrEqual(was);
+  }
   expect(pageErrors).toEqual([]);
 });
 
@@ -346,6 +418,47 @@ test('the orbital laboratory on a phone: opened from the sheet, every control a 
   expect(pageErrors).toEqual([]);
 });
 
+test('the orbital laboratory on a phone: entered, its panel shows from its top after the list of worlds; folded, the sheet is as small as outside it', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const nav = page.getByTestId('universe-bodies');
+  const toggle = page.getByTestId('universe-nav-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  const small = (await nav.boundingBox())?.height ?? 0;
+  await toggle.tap();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  const panel = page.getByTestId('lab-panel');
+  await expect(panel).toBeVisible({ timeout: 60_000 * SLOW });
+  // In view from its heading, though it was entered from the foot of the sheet.
+  await expect
+    .poll(() =>
+      panel.locator('h3').first().evaluate((h) => {
+        const body = h.closest('.kf-nav-body-wrap')?.getBoundingClientRect();
+        const r = h.getBoundingClientRect();
+        return body !== undefined && r.top >= body.top - 1 && r.bottom <= body.bottom + 1;
+      }),
+    )
+    .toBe(true);
+  // The sheet puts the list of worlds first: the panel comes after the last of the experiment's worlds.
+  const order = await page.evaluate(() => {
+    const body = document.querySelector('.kf-nav-body-wrap');
+    const rows = [...document.querySelectorAll<HTMLElement>('.kf-nav-row')].filter((r) => r.offsetParent !== null);
+    const lab = document.querySelector('[data-testid="lab-panel"]');
+    if (!body || !lab || rows.length === 0) return null;
+    return { rowsEnd: Math.max(...rows.map((r) => r.getBoundingClientRect().bottom)), panelTop: lab.getBoundingClientRect().top };
+  });
+  expect(order).not.toBeNull();
+  expect(order?.panelTop ?? 0).toBeGreaterThanOrEqual(order?.rowsEnd ?? Infinity);
+  // Folded in the experiment: its worlds in two rows, nothing of the panel, as small as outside it.
+  await toggle.tap();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toBeHidden();
+  await expect.poll(async () => Math.abs(((await nav.boundingBox())?.height ?? 0) - small)).toBeLessThanOrEqual(2);
+  expect(pageErrors).toEqual([]);
+});
+
 test('the qibla and the new moon on a phone: opened from the sheet, every control a touch target, the map computed, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
   test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
@@ -380,20 +493,69 @@ test('the qibla and the new moon on a phone: opened from the sheet, every contro
   expect(pageErrors).toEqual([]);
 });
 
+test('the small worlds on a phone: opened from the sheet, searched, a world flown to by a tap, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.getByTestId('universe-nav-toggle').click();
+  const section = page.getByTestId('universe-worlds');
+  await section.locator('summary').scrollIntoViewIfNeeded();
+  await section.locator('summary').tap();
+  await expect(page.getByTestId('worlds-intro')).toContainText(/asteroids? drawn/u, { timeout: 60_000 * SLOW });
+  // As many as the detail level running draws (the largest first).
+  const v = await view(page);
+  expect(v?.worlds?.asteroids).toBe({ low: 20_000, medium: 80_000, high: 250_000, ultra: 500_000 }[v?.detail.tier ?? 'low']);
+  await page.getByTestId('worlds-search').fill('europa');
+  const go = page.getByTestId('worlds-go-Europa');
+  await go.scrollIntoViewIfNeeded();
+  const width = page.viewportSize()?.width ?? 0;
+  const problems = await page.evaluate((w) => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid="universe-worlds"] button, [data-testid="universe-worlds"] input, [data-testid="universe-worlds"] summary')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.height < 43.5) out.push(`${el.dataset.testid ?? el.tagName} ${Math.round(r.height)}px tall`);
+      if (r.right > w + 0.5) out.push(`${el.dataset.testid ?? el.tagName} past the screen's edge`);
+    }
+    return out;
+  }, width);
+  expect(problems).toEqual([]);
+  const wide = await overflow(page);
+  expect(wide.offenders).toEqual([]);
+  expect(wide.scroll).toBeLessThanOrEqual(wide.client);
+  const results = await new AxeBuilder({ page }).include('[data-testid="universe-worlds"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations.map((v) => v.id)).toEqual([]);
+  await go.tap();
+  await expect.poll(async () => {
+    const v = await view(page);
+    return v?.focus === 'w:Europa' && !v.travelling;
+  }, { timeout: 60_000 * SLOW }).toBe(true);
+  expect(pageErrors).toEqual([]);
+});
+
 test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
   // In software rendering (CI) on a phone's screen every frame of the walk is slow: about fifteen minutes in all.
   test.setTimeout(450_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
+  // What the page says to a screen reader, kept as it is said.
+  await page.evaluate(() => {
+    const said: string[] = [];
+    (window as unknown as { said: string[] }).said = said;
+    const live = document.querySelector('.kf-sr-only[aria-live="polite"]');
+    if (live) new MutationObserver(() => said.push(live.textContent)).observe(live, { childList: true, characterData: true, subtree: true });
+  });
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', lat: 23.4, lon: 25 });
   });
   await expect.poll(async () => (await view(page))?.walk?.state, { timeout: 60_000 * SLOW }).toBe('walking');
   const hud = page.getByTestId('walk-hud');
   await expect(hud).toBeVisible();
-  // A touch screen is told about the pad, not the keys.
+  // A touch screen is told about the pad, not the keys (shown, and said to a screen reader).
   await expect(hud.locator('.kf-walk-touch')).toBeVisible();
   await expect(hud.locator('.kf-walk-keys')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { said: string[] }).said.some((t) => t.includes('The pad walks and jumps'))), { timeout: 30_000 * SLOW }).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { said: string[] }).said.some((t) => t.includes('W A S D')))).toBe(false);
   const cdp = await page.context().newCDPSession(page);
   const centre = async (testId: string): Promise<Point> => {
     const box = await page.getByTestId(testId).boundingBox();
@@ -411,7 +573,7 @@ test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, 
   await page.waitForTimeout(500);
   expect((await view(page))?.walk?.walkedM ?? 0).toBeCloseTo(stopped, 1);
   // A finger dragged across the scene (above the suit's readout) looks round.
-  const hudBox = await hud.boundingBox();
+  const hudBox = await hud.locator('.kf-walk-dock').boundingBox();
   const mid = { x: (page.viewportSize()?.width ?? 0) / 2, y: (hudBox?.y ?? 400) / 2 + 40 };
   await touch(cdp, 'touchStart', [mid]);
   for (let i = 1; i <= 8; i++) await touch(cdp, 'touchMove', [{ x: mid.x - i * 18, y: mid.y }]);
@@ -442,5 +604,228 @@ test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, 
   // Back to orbit.
   await page.getByTestId('walk-end').tap();
   await expect.poll(async () => (await view(page))?.walk, { timeout: 30_000 * SLOW }).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+test('on foot on a phone upright and sideways (390 x 844, 844 x 390): the way back always on screen, the sheet folded or pulled up and the figures open or not; every control a 44 px target inside the screen, none over another; Step right and Run on the pad; turned ten times, Back to orbit still ends the walk', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(450_000 * SLOW);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', lat: 23.4, lon: 25, headingDeg: 90 });
+  });
+  await expect.poll(async () => (await view(page))?.walk?.state, { timeout: 60_000 * SLOW }).toBe('walking');
+  const cdp = await page.context().newCDPSession(page);
+  const centre = async (testId: string): Promise<Point> => {
+    const box = await page.getByTestId(testId).boundingBox();
+    if (!box) throw new Error(`${testId} has no box`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  // Step right, held, while facing east: the walker goes south, still facing east.
+  const before = (await view(page))?.walk;
+  await touch(cdp, 'touchStart', [await centre('walk-right')]);
+  await expect.poll(async () => ((await view(page))?.walk?.walkedM ?? 0) - (before?.walkedM ?? 0), { timeout: 30_000 * SLOW }).toBeGreaterThan(0.3);
+  await touch(cdp, 'touchEnd', []);
+  const stepped = (await view(page))?.walk;
+  expect(stepped?.lat ?? 0).toBeLessThan(before?.lat ?? 0);
+  expect(Math.abs((stepped?.headingDeg ?? 0) - (before?.headingDeg ?? 0))).toBeLessThan(1);
+  await page.getByTestId('walk-run').tap();
+  await expect(page.getByTestId('walk-run')).toHaveAttribute('aria-pressed', 'true');
+  for (const size of [
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(size);
+    const label = `${String(size.width)} x ${String(size.height)}`;
+    await expect(page.getByTestId('walk-end')).toBeVisible();
+    await fits(page, label);
+    // Every control of the walk a touch target.
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('[data-testid="walk-hud"] :is(button, summary)')]
+        .filter((el) => el.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true }))
+        .map((el) => ({ id: el.dataset.testid ?? el.className, r: el.getBoundingClientRect() }))
+        .filter(({ r }) => r.height < 43.5 || r.width < 43.5)
+        .map(({ id, r }) => `${id} ${String(Math.round(r.width))} x ${String(Math.round(r.height))}`),
+    );
+    expect(small, label).toEqual([]);
+    // The figures open: the pad and the way back still there.
+    await page.getByTestId('walk-title').tap();
+    await expect(page.getByTestId('walk-gravity')).toBeVisible();
+    await fits(page, `${label}, figures open`);
+    await expect(page.getByTestId('walk-forward')).toBeInViewport();
+    await page.getByTestId('walk-title').tap();
+    // The sheet pulled up: the way back stays, and reaches.
+    await page.getByTestId('universe-nav-toggle').tap();
+    await expect(page.getByTestId('universe-nav-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('walk-end')).toBeInViewport();
+    await fits(page, `${label}, sheet pulled up`);
+    await page.getByTestId('universe-nav-toggle').tap();
+    const wide = await overflow(page);
+    expect(wide.offenders, label).toEqual([]);
+    expect(wide.scroll).toBeLessThanOrEqual(wide.client);
+  }
+  // Turned between upright and sideways ten times, then Back to orbit.
+  for (let i = 0; i < 10; i += 1) await page.setViewportSize(i % 2 === 0 ? { width: 390, height: 844 } : { width: 844, height: 390 });
+  await expect(page.getByTestId('walk-end')).toBeInViewport();
+  await page.getByTestId('walk-end').tap();
+  await expect.poll(async () => (await view(page))?.walk, { timeout: 30_000 * SLOW }).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+test('the time machine stays in reach on the sheet: its buttons above the list folded or pulled up, its date under the list, every tap answered', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(150_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await settled(page, ['universe-readout', 'universe-bodies']);
+  const nav = page.getByTestId('universe-bodies');
+  const ids = ['universe-time-reverse', 'universe-time-slower', 'universe-time-pause', 'universe-time-faster', 'universe-time-now', 'universe-photo'];
+  /** Each button: in the window, on top at its middle, at least 44 px each way. */
+  const reach = (): Promise<string[]> =>
+    page.evaluate((list) => {
+      const out: string[] = [];
+      for (const id of list) {
+        const el = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+        const r = el?.getBoundingClientRect();
+        if (!el || !r || r.width === 0) {
+          out.push(`${id} missing`);
+          continue;
+        }
+        if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) out.push(`${id} outside`);
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!(hit === el || el.contains(hit))) out.push(`${id} covered`);
+        if (r.width < 43.5 || r.height < 43.5) out.push(`${id} ${String(Math.round(r.width))}x${String(Math.round(r.height))}`);
+      }
+      return out;
+    }, ids);
+  expect(await reach()).toEqual([]);
+  for (let i = 0; i < 3; i += 1) await page.getByTestId('universe-time-faster').tap();
+  expect((await view(page))?.time.rate).toBe(600);
+  // Pulled up: the buttons stay where they were reached; the date is under the list, by scrolling the sheet.
+  await page.getByTestId('universe-nav-toggle').tap();
+  await expect(nav).toHaveClass(/is-expanded/);
+  await page.waitForTimeout(400);
+  expect(await reach()).toEqual([]);
+  await page.getByTestId('universe-time-date').scrollIntoViewIfNeeded();
+  await page.getByTestId('universe-time-date').fill('2031-03-20');
+  await expect.poll(async () => new Date((await view(page))?.unixMs ?? 0).toISOString().slice(0, 10)).toBe('2031-03-20');
+  // A hundred taps on Faster and Slower in turn, the sheet folded and pulled up between bursts (forced: a finger presses a control at a ladder's end too).
+  for (let round = 0; round < 20; round += 1) {
+    for (let k = 0; k < 5; k += 1) await page.getByTestId(k % 2 === 0 ? 'universe-time-faster' : 'universe-time-slower').tap({ force: true });
+    await page.getByTestId('universe-nav-toggle').tap();
+  }
+  expect([1, 10, 60, 600, 3600, 21_600, 86_400, 604_800, 2_592_000]).toContain(Math.abs((await view(page))?.time.rate ?? 0));
+  expect(await reach()).toEqual([]);
+  const sides = await overflow(page);
+  expect(sides.scroll).toBeLessThanOrEqual(sides.client);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the small worlds at Low on a phone: frame rate and slowest frames in four views (recorded)', { tag: '@perf' }, async ({ page, kf, pageErrors }, testInfo) => {
+  test.setTimeout(300_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD, detail: 'low', profile: '1' } });
+  await waitForUniverse(page);
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'smallBodies', on: true });
+  });
+  await expect.poll(async () => (await view(page))?.worlds?.asteroids ?? 0, { timeout: 60_000 * SLOW }).toBe(20_000);
+  const results: Record<string, { fps: number; p99: number }> = {};
+  for (const [name, pose] of [
+    ['earth', { body: 'earth', distanceKm: 26_000 }],
+    ['belt from above', { body: 'sun', distanceKm: 1.1e9, elevationDeg: 85 }],
+    ['jupiter system', { body: 'jupiter', distanceKm: 3.2e6, elevationDeg: 5 }],
+    ['sun', { body: 'sun', distanceKm: 4e6 }],
+  ] as const) {
+    await place(page, pose);
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.resetFrameStats();
+    });
+    await page.waitForTimeout(5000);
+    const s = await page.evaluate(() => (window as unknown as KfHook).__kf.frameStats());
+    results[name] = { fps: +s.medianFps.toFixed(2), p99: +s.p99FrameMs.toFixed(2) };
+  }
+  // An emulated phone on this machine's GPU (the CPU and GPU are not a phone's): recorded, against the
+  // phone budget of 30 frames a second at Low (SPEC.md), which it must at least hold here.
+  console.log(`[perf] ${testInfo.project.name} low: ${JSON.stringify(results)}`);
+  testInfo.annotations.push({ type: 'perf', description: JSON.stringify({ tier: 'low', results }) });
+  for (const [name, r] of Object.entries(results)) expect(r.fps, `${name}: median frame rate`).toBeGreaterThanOrEqual(30);
+  expect(pageErrors).toEqual([]);
+});
+
+test('slowed for an impact on a phone: the sheet’s header says the rate shown and offers Full speed, a 44 px touch target, folded or pulled up', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const toggle = page.getByTestId('universe-nav-toggle');
+  await toggle.tap();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  await expect(page.getByTestId('lab-panel')).toBeVisible({ timeout: 60_000 * SLOW });
+  const command = (c: Parameters<NonNullable<KfHook['__kf']['universe']['lab']>>[0]): Promise<unknown> => page.evaluate((x) => (window as unknown as KfHook).__kf.universe.lab?.(x), c);
+  await command({ kind: 'slow', on: true });
+  await command({ kind: 'reset' });
+  await expect.poll(async () => (await view(page))?.lab?.elapsedS, { timeout: 60_000 * SLOW }).toBe(0);
+  await command({ kind: 'aim', target: 'earth', impactor: 'mars', vInfKmS: 20, angleDeg: 80, leadS: 10 * 86_400, site: [0.6, -0.5, 0.62], heading: [0, 0, 1] });
+  await expect.poll(async () => (await view(page))?.lab?.aim?.status, { timeout: 60_000 * SLOW }).toBe('ready');
+  await command({ kind: 'throw' });
+  // Folded, as a visitor watching it come in would have it.
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.tap();
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeTime({ kind: 'rate', rate: 86_400 });
+  });
+  const cancel = page.getByTestId('lab-slowed-cancel');
+  await expect(cancel).toBeVisible({ timeout: 90_000 * SLOW });
+  await expect(page.getByTestId('lab-slowed-text')).toContainText('Slowed:');
+  const box = await cancel.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  // Inside the screen, and hit where it is drawn.
+  const size = page.viewportSize();
+  expect((box?.x ?? -1) >= 0 && (box?.x ?? 0) + (box?.width ?? 0) <= (size?.width ?? 0)).toBe(true);
+  await cancel.tap();
+  await expect.poll(async () => (await view(page))?.lab?.slow.active ?? null).toBeNull();
+  await expect(cancel).toBeHidden();
+  expect(pageErrors).toEqual([]);
+});
+
+test('the chosen body’s velocity arrow on a phone: taken by a finger 20 px off its tip (a 44 px target), dragged, and its velocity changed', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/moon', { query: { jd: JD } });
+  await waitForUniverse(page);
+  const toggle = page.getByTestId('universe-nav-toggle');
+  await toggle.tap();
+  await page.getByTestId('lab-open').scrollIntoViewIfNeeded();
+  await page.getByTestId('lab-open').tap();
+  await expect(page.getByTestId('lab-panel')).toBeVisible({ timeout: 60_000 * SLOW });
+  const lab = async (): Promise<NonNullable<Awaited<ReturnType<typeof view>>>['lab']> => (await view(page))?.lab ?? null;
+  await page.evaluate(async () => {
+    const kf = (window as unknown as KfHook).__kf;
+    await kf.universe.lab?.({ kind: 'reset' });
+    await kf.universe.lab?.({ kind: 'select', id: 'moon' });
+  });
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.tap();
+  // The handle where it rests (the view re-frames as the sheet folds).
+  let tip = { x: -1e9, y: -1e9 };
+  await expect
+    .poll(
+      async () => {
+        const was = tip;
+        tip = (await lab())?.handle ?? { x: -1e9, y: -1e9 };
+        return Math.hypot(tip.x - was.x, tip.y - was.y);
+      },
+      { timeout: 60_000 * SLOW, intervals: [300] },
+    )
+    .toBeLessThan(0.5);
+  const before = (await lab())?.bodies.find((b) => b.id === 'moon')?.relativeVelKmS ?? [0, 0, 0];
+  const cdp = await page.context().newCDPSession(page);
+  // Taken 20 px off the tip (within the finger's reach), dragged 60 px further out.
+  const start = { x: tip.x + 20, y: tip.y };
+  await touch(cdp, 'touchStart', [start]);
+  for (let k = 1; k <= 10; k += 1) await touch(cdp, 'touchMove', [{ x: start.x + 6 * k, y: start.y }]);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(async () => (await lab())?.interventions.some((i) => i.kind === 'setVelocity' && i.id === 'moon') ?? false, { timeout: 30_000 * SLOW }).toBe(true);
+  const after = (await lab())?.bodies.find((b) => b.id === 'moon')?.relativeVelKmS ?? [0, 0, 0];
+  expect(Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2])).toBeGreaterThan(0.01);
   expect(pageErrors).toEqual([]);
 });

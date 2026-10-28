@@ -15,9 +15,14 @@
  * Also measured on its own, outside the first-visit budget: the solar-system explorer, whose
  * engine and interface chunks load only when a visitor opens it. Its code (what it adds beyond
  * the shell) must stay within 150 KB gzipped, and none of it may be in the shell. So are the parts
- * that load later still (the orbital laboratory, the qibla and new moon section, walking, photo mode,
- * the film's sound, Explore Mode's dock), each
+ * that load later still (the orbital laboratory and its effects, the qibla and new moon section, walking, the stars and a black hole's lens, photo mode,
+ * the time machine beyond the everyday, more worlds, the film's sound, Explore Mode's dock), each
  * against its own budget.
+ *
+ * And the assistant (docs/AI-INTELLIGENCE.md), none of it in the shell: the chunks it loads when it
+ * starts (the Ask button's panel with the assistant itself, or the test hook's start()), the language model's worker (WebLLM's runtime,
+ * fetched only when a model loads, and found in that file and no other), the background
+ * comparison's worker, and the knowledge index it fetches when it first answers.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -59,24 +64,48 @@ const SHELL_GROWTH_LIMIT_BYTES = 10_000;
 const CH00_SOURCE = 'src/chapters/ch00/scene.ts';
 /** The solar-system explorer's lazy entry points: its engine module and its interface. */
 const EXPLORE_SOURCES = ['src/explore/index.ts', 'src/ui/explore/index.ts'] as const;
-/** What the explorer's code may add beyond the shell, gzipped. */
-const EXPLORE_BUDGET_BYTES = 150_000;
+/** What the explorer's code may add beyond the shell, gzipped (150,000 until D1 in docs/SANDBOX-ROADMAP.md). */
+const EXPLORE_BUDGET_BYTES = 155_000;
 /** The orbital laboratory's lazy entry points (loaded with the first experiment): its explorer adapter, with the engine's worker, and its panel. */
 const LAB_SOURCES = ['src/explore/lab.ts', 'src/ui/explore/lab-panel.ts'] as const;
-/** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget). */
+/** What the laboratory may add beyond the shell and the explorer, gzipped, worker included (the brief's initial Sandbox budget); its effects' chunk counts toward it too. */
 const LAB_BUDGET_BYTES = 250_000;
+/** The laboratory's effects (src/explore/lab-fx: loaded with the first experiment, after its adapter and panel): rocks, dust and rings, fireballs, the flash guard. */
+const LAB_FX_SOURCES = ['src/explore/lab-fx/index.ts'] as const;
+/** What the effects may add beyond the shell, the explorer and the laboratory, gzipped (docs/SANDBOX-ROADMAP.md, section 5.1). */
+const LAB_FX_BUDGET_BYTES = 40_000;
 /** The qibla and the new moon's lazy entry points (loaded when their section first opens): the explorer's part and its panel. */
 const ISLAMIC_SOURCES = ['src/explore/islamic/index.ts', 'src/ui/explore/islamic-panel.ts'] as const;
 /** What that section may add beyond the shell and the explorer, gzipped. */
 const ISLAMIC_BUDGET_BYTES = 40_000;
-/** Walking on a world's ground's lazy entry points (loaded with the first walk): the walk (walker, ground, sky), its terrain tiles' reader, and the Moon's and Mars's grids' reader. */
-const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts', 'src/explore/walk/equirect.ts'] as const;
+/** Walking on a world's ground's lazy entry points (loaded with the first walk): the walk (walker, ground, sky), its terrain tiles' reader, the Moon's and Mars's grids' reader, and the suit's readout. */
+const WALK_SOURCES = ['src/explore/walk/index.ts', 'src/explore/walk/terrain.ts', 'src/explore/walk/equirect.ts', 'src/ui/explore/walk-hud.ts'] as const;
 /** What walking may add beyond the shell and the explorer, gzipped. */
 const WALK_BUDGET_BYTES = 30_000;
+/** Among the stars' lazy entry points (loaded with the first visit): the stars, their camera, the deep catalogue's worker, the galaxies beyond, and its panel. */
+const STARS_SOURCES = ['src/explore/neighbourhood/index.ts', 'src/ui/explore/neighbourhood-panel.ts'] as const;
+/** What the stars may add beyond the shell and the explorer, gzipped. */
+const STARS_BUDGET_BYTES = 40_000;
+/** A black hole's lens (loaded the first time the camera comes near one): the light-bending shader and the sky's capture. */
+const LENS_SOURCES = ['src/explore/neighbourhood/lens-view.ts'] as const;
+/** What the lens may add beyond the shell, the explorer and the stars, gzipped. */
+const LENS_BUDGET_BYTES = 6_000;
 /** Photo mode's controls (loaded the first time it opens): the picture, a video, the lens, the exposure, tracking. */
 const PHOTO_SOURCES = ['src/ui/explore/photo-bar.ts'] as const;
 /** What photo mode's controls may add beyond the shell and the explorer, gzipped. */
 const PHOTO_BUDGET_BYTES = 10_000;
+/** The time machine beyond the everyday (loaded as the explorer's clock heads past JPL's tables or runs fast): Meeus's Moon, Standish's long-span elements, the hold of a world's turn too fast to show. */
+const THEORY_SOURCES = ['src/explore/time-beyond.ts'] as const;
+/** What they may add beyond the shell and the explorer, gzipped. */
+const THEORY_BUDGET_BYTES = 6_000;
+/**
+ * More worlds (loaded a few seconds into a visit to the explorer, or when first asked for): the small
+ * bodies, the moons, Uranus's and Neptune's rings and the eclipses; and the navigator's Small worlds
+ * panel, with its strings.
+ */
+const WORLDS_SOURCES = ['src/explore/worlds/index.ts', 'src/ui/explore/worlds-panel.ts'] as const;
+/** What they may add beyond the shell and the explorer, gzipped. */
+const WORLDS_BUDGET_BYTES = 30_000;
 /** The film's sound (loaded the first time a chapter plays with sound on): its voices and score. */
 const FILM_SOUND_SOURCES = ['src/core/film-score.ts'] as const;
 /** What the film's sound may add beyond the shell, gzipped. */
@@ -85,6 +114,21 @@ const FILM_SOUND_BUDGET_BYTES = 12_000;
 const DISCOVER_SOURCES = ['src/ui/discover-dock.ts'] as const;
 /** What the dock may add beyond the shell, gzipped. */
 const DISCOVER_BUDGET_BYTES = 20_000;
+/** The assistant's entry points, loaded when it starts: its own, and its panel's (the Ask button's); their static imports with them, workers later. */
+const AI_SOURCES = ['src/ai/boot.ts', 'src/ai/ui/index.ts'] as const;
+/** What starting the assistant may add beyond the shell, gzipped. */
+const AI_BUDGET_BYTES = 120_000;
+/** The language model's worker (src/ai/engine/webllm-worker.ts): WebLLM's runtime, fetched only when a model loads. */
+const AI_MODEL_WORKER = /^assets\/webllm-worker-[\w-]+\.js$/u;
+const AI_MODEL_WORKER_BUDGET_BYTES = 2_400_000;
+/** Strings only WebLLM's runtime holds (its engine class, its TVM runtime): they must be in the model's worker alone. */
+const WEBLLM_MARKERS = [/\bMLCEngine\b/u, /\btvmjs\b/u] as const;
+/** The background comparison's worker (src/ai/planner/batch-worker.ts), fetched when a comparison or a search runs. */
+const AI_BATCH_WORKER = /^assets\/batch-worker-[\w-]+\.js$/u;
+const AI_BATCH_WORKER_BUDGET_BYTES = 50_000;
+/** The knowledge index (built by scripts/build-ai-index.ts), fetched when the assistant first answers. */
+const AI_INDEX = 'assets/ai/index.json';
+const AI_INDEX_BUDGET_BYTES = 150_000;
 /** The one calligraphy atlas Chapter 0 loads (src/chapters/ch00/scene.ts, ATLAS_META). */
 const CH00_ATLAS_META = 'assets/calligraphy/kun.json';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -158,6 +202,18 @@ function exploreFiles(manifest: Manifest, shell: ReadonlySet<string>, sources: r
     collectChunk(manifest, key, 'explore', files);
   }
   return new Map([...files].filter(([, group]) => group === 'explore'));
+}
+
+/** Scripts listed as a chunk's assets: workers, fetched when the worker starts (not with the chunk that names them). */
+function workerFiles(manifest: Manifest): Set<string> {
+  return new Set(Object.values(manifest).flatMap((chunk) => (chunk.assets ?? []).filter((file) => file.endsWith('.js'))));
+}
+
+/** The one worker file whose name matches, or an error. */
+function oneWorker(workers: ReadonlySet<string>, pattern: RegExp): string {
+  const found = [...workers].filter((file) => pattern.test(file));
+  if (found.length !== 1) throw new Error(`expected one worker matching ${String(pattern)}, found ${found.length}`);
+  return found[0] ?? '';
 }
 
 function measure(files: Map<string, Group>): Row[] {
@@ -236,6 +292,17 @@ function main(): void {
   const labBytes = labRows.reduce((sum, row) => sum + row.gzip, 0);
   const labOk = labBytes <= LAB_BUDGET_BYTES;
   console.log(`${labOk ? 'PASS' : 'FAIL'}: orbital laboratory (lazy, ${labRows.length} files) = ${formatBytes(labBytes)} bytes gzipped (budget ${formatBytes(LAB_BUDGET_BYTES)})`);
+  // Its effects, beyond the shell, the explorer and the laboratory: what the first experiment's drawing adds; and the laboratory with them, against its budget.
+  const labLoaded = new Set([...loaded, ...labRows.map((row) => row.file)]);
+  const labFxRows = measure(exploreFiles(manifest, labLoaded, LAB_FX_SOURCES));
+  for (const row of [...labFxRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`lab-fx   ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const labFxBytes = labFxRows.reduce((sum, row) => sum + row.gzip, 0);
+  const labFxOk = labFxRows.length > 0 && labFxBytes <= LAB_FX_BUDGET_BYTES;
+  console.log(`${labFxOk ? 'PASS' : 'FAIL'}: the laboratory's effects (lazy, ${labFxRows.length} files) = ${formatBytes(labFxBytes)} bytes gzipped (budget ${formatBytes(LAB_FX_BUDGET_BYTES)})`);
+  const labAllOk = labBytes + labFxBytes <= LAB_BUDGET_BYTES;
+  console.log(`${labAllOk ? 'PASS' : 'FAIL'}: the laboratory with its effects = ${formatBytes(labBytes + labFxBytes)} bytes gzipped (budget ${formatBytes(LAB_BUDGET_BYTES)})`);
   // The qibla and the new moon, beyond the shell and the explorer: what opening their section adds.
   const islamicRows = measure(exploreFiles(manifest, loaded, ISLAMIC_SOURCES));
   for (const row of [...islamicRows].sort((a, b) => b.gzip - a.gzip)) {
@@ -252,6 +319,22 @@ function main(): void {
   const walkBytes = walkRows.reduce((sum, row) => sum + row.gzip, 0);
   const walkOk = walkRows.length > 0 && walkBytes <= WALK_BUDGET_BYTES;
   console.log(`${walkOk ? 'PASS' : 'FAIL'}: walking (lazy, ${walkRows.length} files) = ${formatBytes(walkBytes)} bytes gzipped (budget ${formatBytes(WALK_BUDGET_BYTES)})`);
+  // Among the stars, beyond the shell and the explorer: what the first visit to the stars adds (the catalogue's worker counted).
+  const starsRows = measure(exploreFiles(manifest, loaded, STARS_SOURCES));
+  for (const row of [...starsRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`stars  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const starsBytes = starsRows.reduce((sum, row) => sum + row.gzip, 0);
+  const starsOk = starsRows.length > 0 && starsBytes <= STARS_BUDGET_BYTES;
+  console.log(`${starsOk ? 'PASS' : 'FAIL'}: among the stars (lazy, ${starsRows.length} files) = ${formatBytes(starsBytes)} bytes gzipped (budget ${formatBytes(STARS_BUDGET_BYTES)})`);
+  // A black hole's lens, beyond the shell, the explorer and the stars: what coming near one adds.
+  const lensRows = measure(exploreFiles(manifest, new Set([...loaded, ...starsRows.map((row) => row.file)]), LENS_SOURCES));
+  for (const row of [...lensRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`lens  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const lensBytes = lensRows.reduce((sum, row) => sum + row.gzip, 0);
+  const lensOk = lensRows.length > 0 && lensBytes <= LENS_BUDGET_BYTES;
+  console.log(`${lensOk ? 'PASS' : 'FAIL'}: a black hole's lens (lazy, ${lensRows.length} files) = ${formatBytes(lensBytes)} bytes gzipped (budget ${formatBytes(LENS_BUDGET_BYTES)})`);
   // Photo mode's controls, beyond the shell and the explorer: what opening photo mode adds.
   const photoRows = measure(exploreFiles(manifest, loaded, PHOTO_SOURCES));
   for (const row of [...photoRows].sort((a, b) => b.gzip - a.gzip)) {
@@ -260,6 +343,22 @@ function main(): void {
   const photoBytes = photoRows.reduce((sum, row) => sum + row.gzip, 0);
   const photoOk = photoRows.length > 0 && photoBytes <= PHOTO_BUDGET_BYTES;
   console.log(`${photoOk ? 'PASS' : 'FAIL'}: photo mode (lazy, ${photoRows.length} files) = ${formatBytes(photoBytes)} bytes gzipped (budget ${formatBytes(PHOTO_BUDGET_BYTES)})`);
+  // The time machine beyond the everyday, beyond the shell and the explorer: what the clock's first trip past JPL's tables (or fast) adds.
+  const theoryRows = measure(exploreFiles(manifest, loaded, THEORY_SOURCES));
+  for (const row of [...theoryRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`theory  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const theoryBytes = theoryRows.reduce((sum, row) => sum + row.gzip, 0);
+  const theoryOk = theoryRows.length > 0 && theoryBytes <= THEORY_BUDGET_BYTES;
+  console.log(`${theoryOk ? 'PASS' : 'FAIL'}: the time machine beyond the everyday (lazy, ${theoryRows.length} files) = ${formatBytes(theoryBytes)} bytes gzipped (budget ${formatBytes(THEORY_BUDGET_BYTES)})`);
+  // More worlds, beyond the shell and the explorer: what the small bodies, moons and rings add.
+  const worldsRows = measure(exploreFiles(manifest, loaded, WORLDS_SOURCES));
+  for (const row of [...worldsRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`worlds  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const worldsBytes = worldsRows.reduce((sum, row) => sum + row.gzip, 0);
+  const worldsOk = worldsRows.length > 0 && worldsBytes <= WORLDS_BUDGET_BYTES;
+  console.log(`${worldsOk ? 'PASS' : 'FAIL'}: more worlds (lazy, ${worldsRows.length} files) = ${formatBytes(worldsBytes)} bytes gzipped (budget ${formatBytes(WORLDS_BUDGET_BYTES)})`);
   // The film's sound, beyond the shell: what the first chapter played with sound on adds.
   const soundRows = measure(exploreFiles(manifest, shellFiles, FILM_SOUND_SOURCES));
   for (const row of [...soundRows].sort((a, b) => b.gzip - a.gzip)) {
@@ -276,7 +375,36 @@ function main(): void {
   const discoverBytes = discoverRows.reduce((sum, row) => sum + row.gzip, 0);
   const discoverOk = discoverRows.length > 0 && discoverBytes <= DISCOVER_BUDGET_BYTES;
   console.log(`${discoverOk ? 'PASS' : 'FAIL'}: Explore Mode's dock (lazy, ${discoverRows.length} files) = ${formatBytes(discoverBytes)} bytes gzipped (budget ${formatBytes(DISCOVER_BUDGET_BYTES)})`);
-  if (!totalOk || !shellOk || !exploreOk || !labOk || !islamicOk || !walkOk || !photoOk || !soundOk || !discoverOk) process.exitCode = 1;
+  // The assistant, beyond the shell: what starting it adds (its workers are fetched later, on their own).
+  const workers = workerFiles(manifest);
+  const aiRows = measure(new Map([...exploreFiles(manifest, shellFiles, AI_SOURCES)].filter(([file]) => !workers.has(file))));
+  for (const row of [...aiRows].sort((a, b) => b.gzip - a.gzip)) {
+    console.log(`ai  ${row.file}  ${formatBytes(row.raw)} raw, ${formatBytes(row.gzip)} gzip`);
+  }
+  const aiBytes = aiRows.reduce((sum, row) => sum + row.gzip, 0);
+  const aiOk = aiRows.length > 0 && aiBytes <= AI_BUDGET_BYTES;
+  console.log(`${aiOk ? 'PASS' : 'FAIL'}: the assistant on start (lazy, ${aiRows.length} files) = ${formatBytes(aiBytes)} bytes gzipped (budget ${formatBytes(AI_BUDGET_BYTES)})`);
+  // The language model's worker: WebLLM's runtime, in that file and in no other (the page never imports it).
+  const modelWorker = oneWorker(workers, AI_MODEL_WORKER);
+  const [modelRow] = measure(new Map([[modelWorker, 'explore']]));
+  const withRuntime = listDir('assets', (name) => name.endsWith('.js')).filter((file) => {
+    const text = readFileSync(join(DIST, file), 'utf8');
+    return WEBLLM_MARKERS.some((marker) => marker.test(text));
+  });
+  const loadedOnStart = new Set([...shellFiles, ...aiRows.map((row) => row.file)]);
+  const modelOk = modelRow !== undefined && modelRow.gzip <= AI_MODEL_WORKER_BUDGET_BYTES && withRuntime.length === 1 && withRuntime[0] === modelWorker && !loadedOnStart.has(modelWorker);
+  console.log(`model worker  ${modelWorker}  ${formatBytes(modelRow?.raw ?? 0)} raw, ${formatBytes(modelRow?.gzip ?? 0)} gzip; WebLLM's runtime found in: ${withRuntime.join(', ') || 'no file'}`);
+  console.log(`${modelOk ? 'PASS' : 'FAIL'}: the language model's worker (fetched when a model loads) = ${formatBytes(modelRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_MODEL_WORKER_BUDGET_BYTES)}), the only file with WebLLM's runtime`);
+  // The background comparison's worker.
+  const batchWorker = oneWorker(workers, AI_BATCH_WORKER);
+  const [batchRow] = measure(new Map([[batchWorker, 'explore']]));
+  const batchOk = batchRow !== undefined && batchRow.gzip <= AI_BATCH_WORKER_BUDGET_BYTES && !loadedOnStart.has(batchWorker);
+  console.log(`${batchOk ? 'PASS' : 'FAIL'}: the comparison worker ${batchWorker} = ${formatBytes(batchRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_BATCH_WORKER_BUDGET_BYTES)})`);
+  // The knowledge index.
+  const [indexRow] = measure(new Map([[AI_INDEX, 'data']]));
+  const indexOk = indexRow !== undefined && indexRow.gzip <= AI_INDEX_BUDGET_BYTES;
+  console.log(`${indexOk ? 'PASS' : 'FAIL'}: the knowledge index ${AI_INDEX} = ${formatBytes(indexRow?.raw ?? 0)} raw, ${formatBytes(indexRow?.gzip ?? 0)} bytes gzipped (budget ${formatBytes(AI_INDEX_BUDGET_BYTES)})`);
+  if (!totalOk || !shellOk || !exploreOk || !labOk || !labFxOk || !labAllOk || !islamicOk || !walkOk || !starsOk || !lensOk || !photoOk || !theoryOk || !worldsOk || !soundOk || !discoverOk || !aiOk || !modelOk || !batchOk || !indexOk) process.exitCode = 1;
 }
 
 try {

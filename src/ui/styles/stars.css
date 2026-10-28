@@ -1,0 +1,85 @@
+/* The stars' panel (src/ui/explore/neighbourhood-panel.ts): its own chunk's styles, carried in its code (src/ui/explore/lazy.ts styles: they come with it, a second try too). */
+.kf-stars {
+  margin: 0 var(--kf-space-3) var(--kf-space-2);
+  font-size: 0.8125rem;
+}
+
+/* The planets' list. */
+.kf-stars-planets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kf-stars-planet {
+  display: grid;
+  gap: var(--kf-space-1);
+  padding-block: var(--kf-space-1);
+  border-block-end: 1px solid var(--kf-line);
+}
+
+.kf-stars-hr {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 600 / 440;
+  margin-block: var(--kf-space-2);
+  border-radius: var(--kf-radius-small);
+  background: rgb(255 255 255 / 0.03);
+}
+
+.kf-stars-credit {
+  font-size: 0.6875rem;
+}
+
+.kf-stars .kf-living-places {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--kf-space-1);
+}
+
+/* Star light's controls: a label and its value on a line, the slider under them, wide enough to take a thumb. */
+.kf-stars-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--kf-space-1) var(--kf-space-2);
+  margin-block: var(--kf-space-2);
+}
+
+.kf-stars-value {
+  color: var(--kf-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-stars-range {
+  grid-column: 1 / -1;
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  margin: 0;
+  accent-color: var(--kf-gold);
+}
+
+/* What is a model, set apart from what is measured. */
+.kf-stars-model {
+  padding-inline-start: var(--kf-space-2);
+  border-inline-start: 2px solid var(--kf-gold-soft);
+}
+
+/* The star under the pointer: a small tag beside it, over the view, never taking the pointer. */
+.kf-stars-tip {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 40;
+  max-inline-size: min(22rem, calc(100vw - 2rem));
+  padding: var(--kf-space-1) var(--kf-space-2);
+  border: 1px solid var(--kf-line-strong);
+  border-radius: var(--kf-radius-small);
+  background: rgb(5 6 10 / 0.82);
+  color: var(--kf-text);
+  font: 500 0.75rem/1.35 var(--kf-font-ui);
+  pointer-events: none;
+}

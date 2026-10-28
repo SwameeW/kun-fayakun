@@ -1,0 +1,299 @@
+{
+  "$comment": "Written by scripts/smallbodies/build.py fixtures. Geometric Horizons vectors (km) that tests/unit/small-bodies.spec.ts checks the explorer's propagation of the small worlds against.",
+  "frame": "ecliptic and mean equinox of J2000 (REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF)",
+  "timeScale": "TDB",
+  "epochsJdTdb": [
+    2461339.5,
+    2464328.5
+  ],
+  "objects": {
+    "Juno": {
+      "command": "'3;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%273%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "a948d67d3cc71d3a43c2aeeb75339288e42e685a1f7eeec194cdbd4f87ec5663",
+      "km": [
+        [
+          303985670.0921656,
+          -228628930.3934551,
+          39493375.29850538
+        ],
+        [
+          103899622.2127453,
+          -434028855.1386256,
+          94067007.98750626
+        ]
+      ]
+    },
+    "Hilda": {
+      "command": "'153;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27153%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "dd51c4dab47060185b92783f1cb9339da17ae78687ec1f8ee1107ff97cc8d241",
+      "km": [
+        [
+          244430604.484797,
+          623380083.9852456,
+          -32267180.74855164
+        ],
+        [
+          155228761.7558705,
+          654091038.8559368,
+          -44505527.47589546
+        ]
+      ]
+    },
+    "Achilles": {
+      "command": "'588;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27588%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "9c9026de19d06a10879d2006fc551cfe08cbf5e2afa400aab8fdf80ab6b124bf",
+      "km": [
+        [
+          -697121045.2898015,
+          -417149024.2392926,
+          -142388096.0522543
+        ],
+        [
+          107142747.2471786,
+          650457889.8598405,
+          99328227.30846077
+        ]
+      ]
+    },
+    "Ixion": {
+      "command": "'28978;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%2728978%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "7f9d40144cae58c105d622b7cfda7ead789868abaebf941d2bab602a2257c50e",
+      "km": [
+        [
+          768215207.830108,
+          -5465894103.350466,
+          -892903442.0784984
+        ],
+        [
+          1872862344.125963,
+          -4797615428.234894,
+          -1187857662.064961
+        ]
+      ]
+    },
+    "Ceres": {
+      "command": "'1;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%271%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "a1831d984e8718e3566728dfbc336fcc3f9ca4117fb6b309f560e932fff7aa2b",
+      "km": [
+        [
+          2636123.209764794,
+          396909274.1210462,
+          12079469.58103821
+        ],
+        [
+          421714713.1903371,
+          92052093.95785768,
+          -74596836.75759017
+        ]
+      ]
+    },
+    "Vesta": {
+      "command": "'4;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%274%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "6be14292d50e0c1b291813a6c93a8dafcca5e3d02dad42f42cde4c7ab4af9cc5",
+      "km": [
+        [
+          339357141.9275335,
+          142151752.6201943,
+          -45542597.06431691
+        ],
+        [
+          -72987006.61310822,
+          374222938.2420405,
+          -2140863.598106027
+        ]
+      ]
+    },
+    "Hektor": {
+      "command": "'624;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27624%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "a248a5036b2fb1b6c306a93d9bab4c7d909ddafeab782b68d5640d5bec15ccca",
+      "km": [
+        [
+          -710538488.0225171,
+          -266677993.0102434,
+          -152357866.6504507
+        ],
+        [
+          117047930.9299509,
+          740954735.0331293,
+          243171724.068435
+        ]
+      ]
+    },
+    "Eris": {
+      "command": "'136199;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27136199%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "a880d512b800efe4e85b0ecdb086bac1c7185675e4f4fc2a8d24946f451f72ee",
+      "km": [
+        [
+          12726355147.63947,
+          5941731915.44251,
+          -2576088152.724155
+        ],
+        [
+          12492915586.36519,
+          6314098940.966548,
+          -2152462823.828886
+        ]
+      ]
+    },
+    "67P": {
+      "command": "'DES=67P;CAP;NOFRAG;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27DES%3D67P%3BCAP%3BNOFRAG%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "522649bc37cbc7f868e0810a27e7b454360ca9238ee9716c5635fc95a614a7a6",
+      "km": [
+        [
+          12885774.84761198,
+          -659042339.8884463,
+          -36414709.25923276
+        ],
+        [
+          -61225139.33247366,
+          209317418.5911499,
+          13247668.84255219
+        ]
+      ]
+    },
+    "1P": {
+      "command": "'DES=1P;CAP;NOFRAG;'",
+      "center": "500@10",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27DES%3D1P%3BCAP%3BNOFRAG%3B%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "367ea1386cc1dbf54059df3a1b93cf9f72a7b9f6a00f76bb15d150e4191a0d00",
+      "km": [
+        [
+          -2893534719.320374,
+          4109652540.458686,
+          -1473640050.495021
+        ],
+        [
+          -2554418989.980463,
+          4030657604.839219,
+          -1367785379.866339
+        ]
+      ]
+    },
+    "Io": {
+      "command": "'501'",
+      "center": "500@599",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27501%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40599%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "85632eb9a917a888a14f8344d4038e58bc2e9521bf92fbf03b7cf52e7d058874",
+      "km": [
+        [
+          -278372.5154623585,
+          318175.8146886943,
+          7524.12621071942
+        ],
+        [
+          318529.2751783437,
+          -273701.5488019107,
+          -5343.638969579246
+        ]
+      ]
+    },
+    "Titan": {
+      "command": "'606'",
+      "center": "500@699",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27606%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40699%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "fd3febe16b02da7077114a89b84277ee02b1135021ebea75ffccd7b852aa82af",
+      "km": [
+        [
+          -862851.1996025955,
+          -754014.5157618586,
+          474617.2386532774
+        ],
+        [
+          996083.167244287,
+          540659.1870193001,
+          -378286.9941678756
+        ]
+      ]
+    },
+    "Triton": {
+      "command": "'801'",
+      "center": "500@899",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27801%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40899%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "e30863233747d4c077c0e5662737da9c06cd09c50abc9f4ff664ccc1b7510533",
+      "km": [
+        [
+          -21596.44786876122,
+          -271910.6480704613,
+          -226898.476376228
+        ],
+        [
+          198051.6467312022,
+          284478.2925498512,
+          75372.86590575644
+        ]
+      ]
+    },
+    "Charon": {
+      "command": "'901'",
+      "center": "500@999",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27901%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40999%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "5887106ce9ecde9da1a65da8ef64d5f8f46377a99be5acad7cc753d9ffcef9a2",
+      "km": [
+        [
+          2777.935319834372,
+          12347.90773500644,
+          14957.41351912525
+        ],
+        [
+          -320.7605173272285,
+          10114.72013181821,
+          16778.66182543191
+        ]
+      ]
+    },
+    "Phobos": {
+      "command": "'401'",
+      "center": "500@499",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27401%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40499%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "21ff61008c313bbf8bba3f802d25b4982277588b59ff1c3b76d07227d5404ae3",
+      "km": [
+        [
+          5556.269156000106,
+          7072.664103365294,
+          -2222.234629373364
+        ],
+        [
+          -3485.369231205511,
+          -8480.5710004399,
+          1124.02594585615
+        ]
+      ]
+    },
+    "Oberon": {
+      "command": "'704'",
+      "center": "500@799",
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27704%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%40799%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&VEC_TABLE=%271%27&CSV_FORMAT=%27YES%27&OUT_UNITS=%27KM-S%27&TLIST=%272461339.5%27+%272464328.5%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27",
+      "sha256": "e4f0f2e7bb382e5b1e41f96054bd5a2b60ff8965c1c441ee5eb59d387b568c5f",
+      "km": [
+        [
+          559129.5259350953,
+          -103930.1767468003,
+          125925.1373140153
+        ],
+        [
+          565230.568492207,
+          -111226.8392619208,
+          85086.5323313792
+        ]
+      ]
+    }
+  }
+}

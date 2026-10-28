@@ -40,32 +40,34 @@ export interface ExploreDetail {
   readonly bloom: boolean;
   /** Device-pixel-ratio ceiling for the canvas. */
   readonly dprCap: number;
-  /** Stars in the backdrop. */
+  /** Stars drawn, brightest first: the sky's Bright Star Catalogue whole, then among the stars Hipparcos's and Tycho-2's up to this many (a phone 150,000, a desktop all 2.6 million). */
   readonly starCount: number;
   /** Lowest internal render scale the governor may use before it drops a tier. */
   readonly minRenderScale: number;
   /** On foot, the ground's illustrative detail: all of it, or without the stones (the costliest part). */
   readonly groundDetail: 'full' | 'basic';
+  /** Asteroids drawn (the brightest first; ../worlds). */
+  readonly smallBodies: number;
 }
 
 export const DETAIL: Readonly<Record<ExploreTier, ExploreDetail>> = {
   ultra: {
     tier: 'ultra', maxTexture: 8192, atmosphere: 'scatter', atmosphereSteps: 16, sphereSegments: 256, clouds: true, cloudShadows: true,
-    nightLights: true, normalMaps: true, ringDetail: 'particles', sunDetail: 'full', bloom: true, dprCap: 2, starCount: 20_000, minRenderScale: 0.6, groundDetail: 'full',
+    nightLights: true, normalMaps: true, ringDetail: 'particles', sunDetail: 'full', bloom: true, dprCap: 2, starCount: 2_600_000, minRenderScale: 0.6, groundDetail: 'full', smallBodies: 500_000,
   },
   high: {
     tier: 'high', maxTexture: 4096, atmosphere: 'scatter', atmosphereSteps: 12, sphereSegments: 192, clouds: true, cloudShadows: true,
-    nightLights: true, normalMaps: true, ringDetail: 'particles', sunDetail: 'full', bloom: true, dprCap: 2, starCount: 12_000, minRenderScale: 0.6, groundDetail: 'full',
+    nightLights: true, normalMaps: true, ringDetail: 'particles', sunDetail: 'full', bloom: true, dprCap: 2, starCount: 2_600_000, minRenderScale: 0.6, groundDetail: 'full', smallBodies: 250_000,
   },
   medium: {
     tier: 'medium', maxTexture: 2048, atmosphere: 'scatter', atmosphereSteps: 8, sphereSegments: 128, clouds: true, cloudShadows: false,
-    nightLights: true, normalMaps: true, ringDetail: 'strip', sunDetail: 'basic', bloom: true, dprCap: 1.5, starCount: 7000, minRenderScale: 0.6, groundDetail: 'full',
+    nightLights: true, normalMaps: true, ringDetail: 'strip', sunDetail: 'basic', bloom: true, dprCap: 1.5, starCount: 600_000, minRenderScale: 0.6, groundDetail: 'full', smallBodies: 80_000,
   },
   // Low keeps the 1024 night lights (the night side's whole content) and the 1024 relief maps (the
   // Moon's terminator reads by them): two small files, one texture tap each.
   low: {
     tier: 'low', maxTexture: 1024, atmosphere: 'chord', atmosphereSteps: 0, sphereSegments: 64, clouds: true, cloudShadows: false,
-    nightLights: true, normalMaps: true, ringDetail: 'strip', sunDetail: 'basic', bloom: false, dprCap: 1.5, starCount: 3500, minRenderScale: 0.55, groundDetail: 'basic',
+    nightLights: true, normalMaps: true, ringDetail: 'strip', sunDetail: 'basic', bloom: false, dprCap: 1.5, starCount: 150_000, minRenderScale: 0.55, groundDetail: 'basic', smallBodies: 20_000,
   },
 };
 

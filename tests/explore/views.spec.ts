@@ -95,7 +95,9 @@ test.describe('saved views', () => {
     const stood = await walkView(page);
     expect(stood?.headingDeg).toBeCloseTo(135, 3);
     expect(stood?.pitchDeg).toBeCloseTo(-10, 3);
-    // The navigator stays while walking (the readout from orbit hides): its saved views keep the walk.
+    // Landing folds the navigator (the view is the world's); opened again, its saved views keep the walk.
+    await expect(page.getByTestId('universe-nav-toggle')).toHaveAttribute('aria-expanded', 'false');
+    await page.getByTestId('universe-nav-toggle').click();
     await page.getByTestId('saved-views').locator(':scope > summary').click();
     await page.getByTestId('saved-name').fill('Tranquillity');
     await page.getByTestId('saved-save').click();

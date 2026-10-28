@@ -106,6 +106,8 @@ export interface ExploreMoon {
   readonly object: Group;
   /** The ground's colour (linear) at a direction in the world's own frame, as the globe shows it (for the ground a walker stands on). */
   groundColour(direction: Vec3Node): Vec3Node;
+  /** Its colour map's mean luminance (linear): what an eye on its ground adapts to. */
+  albedo(): number;
   /** Set the object's position, scale and orientation first, and its world matrix current. */
   update(frame: MoonFrame, cameraWorld: Vector3): void;
   prepare(detail: ExploreDetail): Object3D[];
@@ -317,6 +319,10 @@ export function createMoon(textures: PlanetTextures, sunAngularRadius: number, i
 
   return {
     object,
+    albedo() {
+      const m = colourSlot.mean.value;
+      return 0.2126 * m.x + 0.7152 * m.y + 0.0722 * m.z;
+    },
     groundColour(direction) {
       const c = mapCoords(direction, direction.y, options.uAtLon0);
       const colour = sampleSlot(colourSlot, c).rgb;

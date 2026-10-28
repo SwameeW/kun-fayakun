@@ -234,6 +234,12 @@ a:hover {
   flex: none;
 }
 
+/* A button whose code is still on its way (the assistant's Ask, the first time). */
+.kf-btn[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
 /* Header -------------------------------------------------------------- */
 
 .kf-header {
@@ -398,6 +404,13 @@ a:hover {
   .kf-header-actions .kf-btn {
     padding: 0;
     inline-size: 2.75rem;
+  }
+}
+
+/* The narrowest touch screens: the header keeps its brand and Ask; the shortcuts list (for a keyboard) is still on "?". */
+@media (pointer: coarse) and (max-width: 379.98px) {
+  .kf-shortcuts-button {
+    display: none;
   }
 }
 

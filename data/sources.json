@@ -1236,6 +1236,57 @@
       }
     },
     {
+      "id": "wyman-2013-cie-fits",
+      "kind": "paper",
+      "title": "Simple Analytic Approximations to the CIE XYZ Color Matching Functions",
+      "author": "C. Wyman, P.-P. Sloan and P. Shirley (2013), Journal of Computer Graphics Techniques 2(2), 1-11",
+      "url": "https://jcgt.org/published/0002/02/01/",
+      "version": "read 2026-10-27",
+      "license": "The paper is CC BY-ND 3.0; only its fitted formula's coefficients (facts) are used, credited",
+      "licenseUrl": "https://creativecommons.org/licenses/by-nd/3.0/",
+      "credit": "Wyman, Sloan and Shirley (2013)",
+      "notes": "The eye's response (the CIE 1931 standard observer's colour matching functions, y-bar being the photopic V(lambda)) as the multi-lobe fit gives it, for the brightness and colour of hot rock by Planck's law in the laboratory (src/explore/lab-fx/incandescence.ts): a fireball, a crater's melt, debris cooling. No CIE table is copied.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "collins-2005-impact-effects",
+      "kind": "paper",
+      "title": "Earth Impact Effects Program: a web-based computer program for calculating the regional environmental consequences of a meteoroid impact on Earth",
+      "author": "G. S. Collins, H. J. Melosh and R. A. Marcus (2005), Meteoritics & Planetary Science 40, 817-840",
+      "url": "https://doi.org/10.1111/j.1945-5100.2005.tb00157.x",
+      "version": "read 2026-10-27",
+      "license": "Facts only, credited",
+      "licenseUrl": null,
+      "credit": "Collins, Melosh and Marcus (2005)",
+      "notes": "The size of an impact's fireball in the laboratory (src/explore/lab-fx/fireball.ts): its radius as the cube root of the impact's energy, 0.002 E^(1/3) m (E in joules), held between the impactor's radius and half the target's. The crater scaling the laboratory already used comes from the same paper (src/sim/craters.ts, docs/IMPACTS.md).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "turcotte-schubert-2014",
+      "kind": "paper",
+      "title": "Geodynamics, third edition (chapter 4, heat transfer: the cooling of a lava lake's surface)",
+      "author": "D. L. Turcotte and G. Schubert (2014), Cambridge University Press",
+      "url": "https://doi.org/10.1017/CBO9780511843877",
+      "version": "read 2026-10-27",
+      "license": "Facts only, credited",
+      "licenseUrl": null,
+      "credit": "Turcotte and Schubert (2014)",
+      "notes": "How long an impact's melt glows in the laboratory (src/explore/lab-fx/heat.ts): the surface of molten rock radiating what conducts up through the crust forming over it, emissivity sigma T^4 = k (T_m - T) / sqrt(pi kappa t), with rock's conductivity (2 W/m/K) and diffusivity (1e-6 m^2/s).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "hipparcos-van-leeuwen-2007",
       "kind": "dataset",
       "title": "Hipparcos, the New Reduction of the Raw Data (CDS I/311/hip2)",
@@ -1263,6 +1314,227 @@
       "licenseUrl": "https://cds.unistra.fr/vizier-org/licences_vizier.html",
       "credit": "ESA (1997), The Hipparcos and Tycho Catalogues, ESA SP-1200",
       "notes": "The nearby stars' V magnitudes, B-V colours and spectral types, and the HD numbers that match the Bright Star Catalogue to Hipparcos.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "tycho-2-hog-2000",
+      "kind": "dataset",
+      "title": "The Tycho-2 Catalogue of the 2.5 Million Brightest Stars (CDS I/259)",
+      "author": "E. Høg, C. Fabricius, V. V. Makarov, S. Urban, T. Corbin, G. Wycoff, U. Bastian, P. Schwekendiek and A. Wicenec (2000), A&A 355, L27",
+      "url": "https://cdsarc.cds.unistra.fr/viz-bin/cat/I/259",
+      "version": "the 20 files tyc2.dat.00.gz to tyc2.dat.19.gz from CDS, retrieved 2026-10-26 (each file's sha256 in public/assets/stars/catalogue.json)",
+      "license": "Free use with acknowledgement (ESA's Hipparcos mission; data from CDS)",
+      "licenseUrl": "https://cds.unistra.fr/vizier-org/licences_vizier.html",
+      "credit": "ESA Hipparcos (Tycho-2); Høg et al. (2000), The Tycho-2 Catalogue of the 2.5 Million Brightest Stars, A&A 355, L27; CDS, Strasbourg",
+      "notes": "The faint stars of the explorer's skies (public/assets/stars/tycho2-*.bin and band.bin, from scripts/stars/catalogue.py): 2.42 million stars that are not Hipparcos stars, as directions on the sky (Tycho-2 measured no parallaxes), V and B-V from its BT and VT by the catalogue's own relations; and the Milky Way's band as the density of its stars fainter than V = 9.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "kervella-2016-alpha-cen",
+      "kind": "paper",
+      "title": "Close stellar conjunctions of α Centauri A and B until 2050 (the system's parallax, table 1)",
+      "author": "P. Kervella, F. Mignard, A. Mérand and F. Thévenin (2016), A&A 594, A107",
+      "url": "https://doi.org/10.1051/0004-6361/201629201",
+      "version": "arXiv:1610.06079, read 2026-10-26",
+      "license": "Facts only: the parallax, credited",
+      "licenseUrl": null,
+      "credit": "Kervella et al. (2016)",
+      "notes": "Alpha Centauri A and B's parallax, 747.17 ± 0.61 mas (1.3384 pc), for both stars in the explorer's stellar neighbourhood: Hipparcos's own for B (796.92 ± 25.9 mas) put it 0.07 pc from A, though they orbit each other about 23 au apart.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "simbad-black-holes",
+      "kind": "dataset",
+      "title": "SIMBAD: the ICRS positions of Sgr A*, M 87, Ton 618, Gaia BH1, BH2 and BH3 (their Gaia DR3 sources) and HD 226868 (Cygnus X-1)",
+      "author": "Centre de Données astronomiques de Strasbourg (CDS); Wenger et al. (2000), A&AS 143, 9",
+      "url": "https://simbad.cds.unistra.fr/simbad/",
+      "version": "SIMBAD TAP, retrieved 2026-10-26 (the query and its result's sha256 in public/assets/stars/black-holes.json)",
+      "license": "Free use with acknowledgement: \"This research has made use of the SIMBAD database, operated at CDS, Strasbourg, France\"",
+      "licenseUrl": null,
+      "credit": "SIMBAD, CDS, Strasbourg",
+      "notes": "Where the explorer places the black holes one can fly to (public/assets/stars/black-holes.json, from scripts/stars/black_holes.py): each at its position on the sky and its cited distance.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "gravity-2022-sgr-a",
+      "kind": "paper",
+      "title": "Mass distribution in the Galactic Center based on interferometric astrometry of multiple stellar orbits",
+      "author": "GRAVITY Collaboration (R. Abuter et al. 2022), A&A 657, L12",
+      "url": "https://doi.org/10.1051/0004-6361/202142465",
+      "version": "arXiv:2112.07478, read 2026-10-26",
+      "license": "Facts only: the mass and distance, credited",
+      "licenseUrl": null,
+      "credit": "GRAVITY Collaboration (2022)",
+      "notes": "Sagittarius A*'s mass, (4.297 ± 0.012 statistical ± 0.040 systematic) million Suns, and its distance, 8,277 ± 9 ± 30 pc, from the orbits of the stars round it.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "eht-2022-sgr-a",
+      "kind": "paper",
+      "title": "First Sagittarius A* Event Horizon Telescope Results. I. The Shadow of the Supermassive Black Hole in the Center of the Milky Way",
+      "author": "Event Horizon Telescope Collaboration (2022), ApJL 930, L12",
+      "url": "https://doi.org/10.3847/2041-8213/ac6674",
+      "version": "read 2026-10-26",
+      "license": "Facts only: the ring's measured diameter, credited",
+      "licenseUrl": null,
+      "credit": "Event Horizon Telescope Collaboration (2022)",
+      "notes": "The ring the Event Horizon Telescope imaged round Sagittarius A* at 1.3 mm: 51.8 ± 2.3 microarcseconds across. The explorer's panel sets it beside the shadow the model of the same mass gives.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "eht-2019-m87",
+      "kind": "paper",
+      "title": "First M87 Event Horizon Telescope Results. VI. The Shadow and Mass of the Central Black Hole",
+      "author": "Event Horizon Telescope Collaboration (2019), ApJL 875, L6",
+      "url": "https://doi.org/10.3847/2041-8213/ab1141",
+      "version": "arXiv:1906.11243, read 2026-10-26",
+      "license": "Facts only: the mass, distance and ring, credited",
+      "licenseUrl": null,
+      "credit": "Event Horizon Telescope Collaboration (2019)",
+      "notes": "M87*'s mass, (6.5 ± 0.2 statistical ± 0.7 systematic) billion Suns, the distance taken, 16.8 (+0.8, -0.7) Mpc, and its ring, 42 ± 3 microarcseconds across, at 1.3 mm.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "shemmer-2004-ton618",
+      "kind": "paper",
+      "title": "Near-Infrared Spectroscopy of High-Redshift Active Galactic Nuclei. I. A Metallicity-Accretion Rate Relationship (tables 1 and 2: TON 618)",
+      "author": "O. Shemmer, H. Netzer, R. Maiolino, E. Oliva, S. Croom, E. Corbett and L. di Fabrizio (2004), ApJ 614, 547",
+      "url": "https://doi.org/10.1086/423607",
+      "version": "arXiv:astro-ph/0406559, read 2026-10-26",
+      "license": "Facts only: the redshift, line width and mass estimate, credited",
+      "licenseUrl": null,
+      "credit": "Shemmer et al. (2004)",
+      "notes": "TON 618: redshift 2.219, and its black hole's mass from the width of its H-beta line and its brightness at 5100 Å (one epoch), log M = 10.82 (66 billion Suns). Such single-epoch estimates are uncertain by a factor of about three; the explorer shows the range with Ge et al. (2019)'s.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "ge-2019-ton618",
+      "kind": "paper",
+      "title": "The Blueshift of the C IV Broad Emission Line in QSOs (table 2: TON 618; CDS J/AJ/157/148)",
+      "author": "X. Ge, B.-X. Zhao, W.-H. Bian and R. F. Green (2019), AJ 157, 148",
+      "url": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/AJ/157/148",
+      "version": "the VizieR table, read 2026-10-26",
+      "license": "Facts only: the tabulated mass, credited",
+      "licenseUrl": null,
+      "credit": "Ge et al. (2019)",
+      "notes": "TON 618's black hole mass from the same H-beta spectrum (host-corrected, from Ge et al. 2016): log M = 10.61, 41 billion Suns: the low end of the range the explorer shows.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "el-badry-2023-gaia-bh1",
+      "kind": "paper",
+      "title": "A Sun-like star orbiting a black hole",
+      "author": "K. El-Badry et al. (2023), MNRAS 518, 1057",
+      "url": "https://doi.org/10.1093/mnras/stac3140",
+      "version": "arXiv:2209.06833, read 2026-10-26",
+      "license": "Facts only: the mass, distance and orbit, credited",
+      "licenseUrl": null,
+      "credit": "El-Badry et al. (2023)",
+      "notes": "Gaia BH1: a black hole of 9.62 ± 0.18 Suns, 480 pc away, with a Sun-like star on a 185.6-day orbit; no accretion disc.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "el-badry-2023-gaia-bh2",
+      "kind": "paper",
+      "title": "A red giant orbiting a black hole",
+      "author": "K. El-Badry et al. (2023), MNRAS 521, 4323",
+      "url": "https://doi.org/10.1093/mnras/stad799",
+      "version": "arXiv:2302.07880, read 2026-10-26",
+      "license": "Facts only: the mass, distance and orbit, credited",
+      "licenseUrl": null,
+      "credit": "El-Badry et al. (2023)",
+      "notes": "Gaia BH2: a black hole of 8.9 ± 0.3 Suns, 1.16 kpc away, with a red giant on a 1,277-day orbit; no accretion disc.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "gaia-2024-bh3",
+      "kind": "paper",
+      "title": "Discovery of a dormant 33 solar-mass black hole in pre-release Gaia astrometry",
+      "author": "Gaia Collaboration (P. Panuzzo et al. 2024), A&A 686, L2",
+      "url": "https://doi.org/10.1051/0004-6361/202449763",
+      "version": "arXiv:2404.10486, read 2026-10-26",
+      "license": "Facts only: the mass, distance and orbit, credited",
+      "licenseUrl": null,
+      "credit": "Gaia Collaboration, Panuzzo et al. (2024)",
+      "notes": "Gaia BH3: a black hole of 32.70 ± 0.82 Suns, 590 pc away, with an old, metal-poor giant of the galaxy's halo on an 11.6-year orbit; no accretion disc. Only the paper's figures are used, no Gaia catalogue data.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "miller-jones-2021-cyg-x1",
+      "kind": "paper",
+      "title": "Cygnus X-1 contains a 21-solar mass black hole: Implications for massive star winds",
+      "author": "J. C. A. Miller-Jones et al. (2021), Science 371, 1046",
+      "url": "https://doi.org/10.1126/science.abb3363",
+      "version": "arXiv:2102.09091, read 2026-10-26",
+      "license": "Facts only: the mass, distance and orbit, credited",
+      "licenseUrl": null,
+      "credit": "Miller-Jones et al. (2021)",
+      "notes": "Cygnus X-1: a black hole of 21.2 ± 2.2 Suns, 2.22 (+0.18, -0.17) kpc away by its radio parallax, with the blue supergiant HDE 226868 on a 5.6-day orbit inclined 27.5 degrees; it pulls gas from it into a disc that shines in X-rays.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "planck-2018-cosmology",
+      "kind": "paper",
+      "title": "Planck 2018 results. VI. Cosmological parameters (table 2)",
+      "author": "Planck Collaboration (N. Aghanim et al. 2020), A&A 641, A6",
+      "url": "https://doi.org/10.1051/0004-6361/201833910",
+      "version": "H0 = 67.66 km/s/Mpc, matter density 0.30966, as astropy's Planck18",
+      "license": "Facts only: the parameters, credited",
+      "licenseUrl": null,
+      "credit": "Planck Collaboration (2020)",
+      "notes": "The cosmology TON 618's distance is worked out in (scripts/stars/black_holes.py: the comoving distance of redshift 2.219, 5,621 Mpc), the same the survey's galaxies are placed by.",
       "review": {
         "reviewer": null,
         "role": null,
@@ -1314,6 +1586,159 @@
       "licenseUrl": "https://github.com/ofrohn/d3-celestial/blob/master/LICENSE",
       "credit": "Constellations: d3-celestial by Olaf Frohn (figures after the IAU's charts; boundaries Davenhall and Leggett 1989)",
       "notes": "The explorer's constellation figures, names and boundaries. The figures are a convention for joining stars (the IAU defines each constellation by its boundary, not its lines).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "web-llm",
+      "kind": "software",
+      "title": "WebLLM (in-browser language model engine) and its compiled model libraries",
+      "author": "MLC AI (the MLC LLM and WebLLM contributors)",
+      "url": "https://github.com/mlc-ai/web-llm",
+      "version": "@mlc-ai/web-llm 0.2.86; model libraries from github.com/mlc-ai/binary-mlc-llm-libs at commit 00fe7a40e57e5e8eb9fef87526a4bf28ad5846c0 (web-llm-models/v0_2_86/base)",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://github.com/mlc-ai/web-llm/blob/main/LICENSE",
+      "credit": "WebLLM, MLC AI, Apache License 2.0.",
+      "notes": "Runs the assistant's language model on the visitor's own device, in a worker with WebGPU. Loaded only when a visitor asks for a model; no account, key or hosted service is involved.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "qwen3",
+      "kind": "software",
+      "title": "Qwen3 language models (0.6B, 1.7B, 4B and 8B), MLC builds (q4f16_1 and q4f32_1)",
+      "author": "Qwen Team, Alibaba Cloud; MLC builds by MLC AI",
+      "url": "https://huggingface.co/mlc-ai",
+      "version": "Each build pinned to its Hugging Face commit (src/ai/engine/catalogue.ts)",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://huggingface.co/Qwen/Qwen3-4B/blob/1cfa9a7208912126459214e8b04321603b3df60c/LICENSE",
+      "credit": "Qwen3 by the Qwen Team (Alibaba Cloud), Apache License 2.0; MLC builds by MLC AI.",
+      "notes": "The assistant's optional on-device models, downloaded from huggingface.co only when a visitor asks, after showing the size, licence and source. Their words are shown as explanation; facts, numbers and scripture never come from them.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "qwen3-5",
+      "kind": "software",
+      "title": "Qwen3.5 language models (4B and 9B), MLC builds (q4f16_1 and q4f32_1)",
+      "author": "Qwen Team, Alibaba Cloud; MLC builds by MLC AI",
+      "url": "https://huggingface.co/mlc-ai",
+      "version": "Each build pinned to its Hugging Face commit (src/ai/engine/catalogue.ts)",
+      "license": "Apache License 2.0",
+      "licenseUrl": "https://huggingface.co/Qwen/Qwen3.5-4B/blob/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a/LICENSE",
+      "credit": "Qwen3.5 by the Qwen Team (Alibaba Cloud), Apache License 2.0; MLC builds by MLC AI.",
+      "notes": "Evaluation candidates only: measured on the project's own machine against the Qwen3 models, not offered to visitors.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "jpl-sbdb",
+      "kind": "dataset",
+      "title": "JPL Small-Body Database (SBDB): orbital elements, absolute magnitudes and physical parameters of asteroids and comets (SBDB Query API and SBDB API)",
+      "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics",
+      "url": "https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html",
+      "version": "queried 2026-10-26 (the 500,000 brightest asteroids by H with closed orbits, the periodic comets with a total-magnitude law, and 38 named objects; each query and its reply's sha256 are in public/assets/smallbodies/manifest.json)",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Asteroids and comets: NASA/JPL-Caltech Solar System Dynamics, Small-Body Database",
+      "notes": "The explorer's small bodies (src/explore/worlds): every asteroid's orbit (two-body, from the database's osculating elements, carried to their common epoch by its mean motion), its absolute magnitude for its brightness (the H, G law, G = 0.15 where none is given), and the periodic comets' orbits and total magnitudes; the dwarf planets', named asteroids' and comets' elements, sizes, shapes, spins, poles and albedos where the database gives them. Built by scripts/smallbodies/build.py.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "jpl-sat-elements",
+      "kind": "dataset",
+      "title": "Planetary Satellite Mean Elements",
+      "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics (R. A. Jacobson, M. Brozović and others)",
+      "url": "https://ssd.jpl.nasa.gov/sats/elem/",
+      "version": "retrieved 2026-10-26",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Moons' orbits: NASA/JPL-Caltech Solar System Dynamics, Planetary Satellite Mean Elements, with JPL Horizons",
+      "notes": "The major moons' mean orbits on their reference planes (Laplace planes, their planets' equators or the ecliptic) and their apsides' and nodes' precession; each moon's mean anomaly and its rate fitted to JPL Horizons' positions from 2026-01-01 to 2034-01-01 (scripts/smallbodies/build.py), the precessions' senses chosen by that fit.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "jpl-sat-physical",
+      "kind": "dataset",
+      "title": "Planetary Satellite Physical Parameters",
+      "author": "NASA Jet Propulsion Laboratory, Solar System Dynamics",
+      "url": "https://ssd.jpl.nasa.gov/sats/phys_par/",
+      "version": "retrieved 2026-10-26",
+      "license": "Public information from NASA/JPL",
+      "licenseUrl": "https://www.jpl.nasa.gov/jpl-image-use-policy",
+      "credit": "Moons' sizes and masses: NASA/JPL-Caltech Solar System Dynamics",
+      "notes": "The moons' mean radii and GM, and Pluto's GM (for Pluto's and Charon's places about their barycentre).",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "nssdca-fact-sheets",
+      "kind": "dataset",
+      "title": "NSSDCA Planetary Fact Sheets: the satellites of Mars, Jupiter, Saturn, Uranus, Neptune and Pluto, and the rings of Uranus and Neptune",
+      "author": "David R. Williams, NASA Space Science Data Coordinated Archive (Goddard Space Flight Center)",
+      "url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/",
+      "version": "retrieved 2026-10-26",
+      "license": "Public domain (U.S. Government work, NASA)",
+      "licenseUrl": null,
+      "credit": "Moons' albedos and shapes, and the rings of Uranus and Neptune: NASA NSSDCA Planetary Fact Sheets",
+      "notes": "The moons' visual geometric albedos and three axes where measured (Pluto's 0.52 and Charon's 0.42 from the Pluto sheet); the rings' radii, widths, normal optical depths and particle albedos.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "usgs-astrogeology-mosaics",
+      "kind": "dataset",
+      "title": "USGS Astrogeology Science Center global mosaics of Ceres, Vesta, Io, Europa, Ganymede, Callisto, Enceladus, Tethys, Rhea, Iapetus, Triton, Pluto and Charon",
+      "author": "USGS Astrogeology Science Center, from NASA's Dawn, Galileo, Voyager, Cassini and New Horizons missions (with DLR for Dawn's)",
+      "url": "https://astrogeology.usgs.gov/search",
+      "version": "downloaded 2026-10-26 from https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/ (each file's sha256 in public/assets/smallbodies/maps.json)",
+      "license": "Public domain (USGS and NASA works)",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Moons' and dwarf planets' maps: USGS Astrogeology Science Center; NASA/JPL, NASA/JPL-Caltech/Space Science Institute, NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, NASA/JHUAPL/SwRI",
+      "notes": "Resampled to 2048 by 1024 (and 1024 by 512 for the Low detail level) and scaled to a common mean brightness by scripts/smallbodies/maps.py; the explorer multiplies each by the world's albedo. The parts no spacecraft imaged (the mosaics' empty pixels: a third of Triton, a quarter of Pluto and of Charon) are drawn as a neutral grey grid, not filled, the data fading into it; their share of each surface is in maps.json and the explorer's readout and About say so.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "small-body-models",
+      "kind": "paper",
+      "title": "The models behind the small worlds and the sky's glow",
+      "author": "Bowell et al. 1989 (Asteroids II, 524: the H, G magnitude system); Archinal et al. 2018 (Celest. Mech. Dyn. Astron. 130, 22: rotation models of Ceres, Vesta and Pluto); Nimmo et al. 2017, Sicardy et al. 2011 (and Eris's geometric albedo, 0.96), Ortiz et al. 2017, Brown 2013, Pal et al. 2012, Braga-Ribas et al. 2013, Kiss et al. 2019, Fornasier et al. 2013, Spencer et al. 2020 (the sizes of Pluto, Eris, Haumea, Makemake, Sedna, Quaoar, Gonggong, Orcus and Arrokoth); Bland-Hawthorn and Gerhard 2016 (ARA&A 54, 529: the Galaxy's discs and bulge); Kelsall et al. 1998 (ApJ 508, 44: the zodiacal cloud); Hong 1985 (A&A 146, 67: its dust's phase function); Leinert et al. 1998 (A&AS 127, 1: the night sky's brightness); Standish 1992 via JPL's \"Keplerian Elements for Approximate Positions of the Major Planets\" (Jupiter's mean longitude, for the unit tests' Trojan clouds)",
+      "url": "https://ui.adsabs.harvard.edu/",
+      "version": null,
+      "license": "Cited for their published values",
+      "licenseUrl": null,
+      "credit": "Small worlds and the sky's glow: models after the papers named here",
+      "notes": "Values typed from these papers are listed with their references in scripts/smallbodies/build.py and src/explore/worlds/glow.ts; the Milky Way's and the zodiacal light's glows are models, and the explorer's readout says so.",
       "review": {
         "reviewer": null,
         "role": null,

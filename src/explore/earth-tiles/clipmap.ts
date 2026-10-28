@@ -10,13 +10,22 @@ import type { TileSource } from './sources';
  * beyond the finest window, coarser imagery around it, down to the global map (the shader blends
  * them coarse to fine, ./sample).
  *
- * Each level is an atlas (./atlas) addressed toroidally: tile column x lives in atlas column
- * x mod kx, so when the window moves only the tiles that came into it are fetched and written. A small
- * index texture records which tile each atlas slot holds; the shader reads only tiles the index
- * confirms, so a slot still holding a tile from before the window moved is never shown in the wrong
- * place. Atlases are tied to a zoom (zoom z lives in atlas z mod levels), so when the finest zoom
- * steps by one only one atlas is reassigned; ranks (coarse to fine) are handed to the shader each
- * frame by swapping which atlas each rank's texture node holds.
+ * Each level is a layer of one atlas (./atlas) addressed toroidally: tile column x lives in atlas
+ * column x mod kx, so when the window moves only the tiles that came into it are fetched and written.
+ * A small index texture records which tile each atlas slot holds (each level's k rows of it, one level
+ * under another); the shader reads only tiles the index confirms, so a slot still holding a tile from
+ * before the window moved is never shown in the wrong place. Layers are tied to a zoom (zoom z lives
+ * in layer z mod levels), so when the finest zoom steps by one only one layer is reassigned; ranks
+ * (coarse to fine) are handed to the shader each frame as the layer each reads.
+ *
+ * One atlas and one index for every level, not a pair a level: a shader that reads the clipmap binds
+ * two textures however many levels it keeps, whatever has streamed in when it is built. (three.js gives
+ * texture nodes that hold the same texture when a material is built one binding, for good. With a pair
+ * a level, a shader built before the levels were made, every rank on one placeholder, read the coarsest
+ * rank's pair for all of them, so the finer ranks never showed; one built after bound a pair a level,
+ * and the Earth's surface, three clipmaps beside its seven maps, came to 19 sampled textures, past the
+ * 16 a stage may bind on WebGPU's default limits and on many phones and integrated GPUs: its pipeline
+ * failed and the globe went undrawn.)
  *
  * Requests: a few at a time per host, nearest the aim first and coarse levels before fine ones, each
  * abandoned (AbortController) when its tile leaves its window. Decoded tiles (ImageBitmap, decoded off
@@ -44,8 +53,8 @@ export interface ClipmapOptions {
 export interface RankState {
   /** Off: the rank holds nothing (the shader skips it). */
   on: boolean;
-  atlas: TileAtlas | null;
-  index: DataTexture | null;
+  /** Its level's layer of the atlas, and band of the index. */
+  layer: number;
   zoom: number;
   /** Window: top-left tile (column normalised into the wrap), tiles per degree (geographic) or across (mercator), the wrap. */
   originX: number;
@@ -67,8 +76,8 @@ export interface ClipmapStats {
 }
 
 interface Level {
-  atlas: TileAtlas;
-  index: DataTexture;
+  /** Its layer of the atlas, and its band of the index's data (k x k slots of four numbers). */
+  layer: number;
   indexData: Float32Array;
   zoom: number;
   originX: number;
@@ -96,6 +105,9 @@ export interface Clipmap {
   readonly options: ClipmapOptions;
   /** Ranks, coarse to fine (length options.levels), rewritten by update(). */
   readonly ranks: readonly RankState[];
+  /** Every level's tiles (a layer each) and the index of what each slot holds (k rows a level); null until first aimed close enough. */
+  readonly atlas: TileAtlas | null;
+  readonly index: DataTexture | null;
   /** Aims the clipmap: the place under the view's centre (radians) and the ground radians per screen pixel there. Null turns it off. */
   update(aim: { lat: number; lon: number; footprint: number } | null): void;
   /** The layer's date (for dated layers): changing it forgets every tile. */
@@ -112,21 +124,27 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
   const size = k * grid.tilePx;
   let currentDate = date;
   const levels: Level[] = [];
+  // Made on first need (the whole stack at once: once one level is wanted, the others are within moments).
+  let atlas: TileAtlas | null = null;
+  let index: DataTexture | null = null;
+  const indexData = new Float32Array(k * k * count * 4).fill(-1);
   const makeLevel = (i: number): Level => {
-    const atlas = createAtlas(renderer, size, size, source.colour, `earth-${source.id}-${i}`);
-    const indexData = new Float32Array(k * k * 4).fill(-1);
-    const index = new DataTexture(indexData, k, k, RGBAFormat, FloatType);
-    index.magFilter = NearestFilter;
-    index.minFilter = NearestFilter;
-    index.generateMipmaps = false;
-    index.needsUpdate = true;
-    return { atlas, index, indexData, zoom: -1, originX: 0, originY: 0, slots: new Array<string | null>(k * k).fill(null) };
+    if (!atlas) atlas = createAtlas(renderer, size, size, count, source.colour, `earth-${source.id}`);
+    if (!index) {
+      index = new DataTexture(indexData, k, k * count, RGBAFormat, FloatType);
+      index.magFilter = NearestFilter;
+      index.minFilter = NearestFilter;
+      index.needsUpdate = true;
+    }
+    return { layer: i, indexData: indexData.subarray(i * k * k * 4, (i + 1) * k * k * 4), zoom: -1, originX: 0, originY: 0, slots: new Array<string | null>(k * k).fill(null) };
+  };
+  const indexChanged = (): void => {
+    if (index) index.needsUpdate = true;
   };
 
   const ranks: RankState[] = Array.from({ length: count }, () => ({
     on: false,
-    atlas: null,
-    index: null,
+    layer: 0,
     zoom: -1,
     originX: 0,
     originY: 0,
@@ -189,7 +207,7 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
         changed = true;
       }
     }
-    if (changed) level.index.needsUpdate = true;
+    if (changed) indexChanged();
     level.zoom = z;
     level.originX = originX;
     level.originY = originY;
@@ -206,11 +224,11 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
     // The slot of the tile's unwrapped column (so neighbours in the window are neighbours in the atlas).
     const sx = (((level.originX + dx) % k) + k) % k;
     const sy = (((level.originY + dy) % k) + k) % k;
-    if (!level.atlas.write(image, sx * grid.tilePx, sy * grid.tilePx)) return;
+    if (!atlas?.write(image, sx * grid.tilePx, sy * grid.tilePx, level.layer)) return;
     const s = sy * k + sx;
     level.slots[s] = keyOf(z, x, y);
     level.indexData.set([x, y, z, 1], s * 4);
-    level.index.needsUpdate = true;
+    indexChanged();
     stats.loaded += 1;
   };
 
@@ -301,8 +319,7 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
 
       Object.assign(state, {
         on: true,
-        atlas: level.atlas,
-        index: level.index,
+        layer: level.layer,
         zoom: z,
         originX,
         originY,
@@ -360,10 +377,10 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
     missing.clear();
     for (const level of levels) {
       level.slots.fill(null);
-      level.indexData.fill(-1);
-      level.index.needsUpdate = true;
       level.zoom = -1;
     }
+    indexData.fill(-1);
+    indexChanged();
     fineZoom = -1;
   };
 
@@ -371,6 +388,12 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
     source,
     options,
     ranks,
+    get atlas() {
+      return atlas;
+    },
+    get index() {
+      return index;
+    },
     update,
     stats,
     setDate(d) {
@@ -385,10 +408,10 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
     },
     dispose() {
       forgetAll();
-      for (const level of levels) {
-        level.atlas.dispose();
-        level.index.dispose();
-      }
+      atlas?.dispose();
+      index?.dispose();
+      atlas = null;
+      index = null;
       levels.length = 0;
     },
   };

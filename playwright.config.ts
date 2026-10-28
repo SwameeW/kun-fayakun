@@ -35,7 +35,18 @@ const BRAVE_PATH = env('BRAVE_PATH') ?? '/Applications/Brave Browser.app/Content
 const HAS_BRAVE = existsSync(BRAVE_PATH);
 
 /** Specs that run only on the emulated phone (the "mobile" project). */
-const MOBILE_SPECS = /explore\/mobile\.spec\.ts/u;
+const MOBILE_SPECS = /explore\/mobile\.spec\.ts|ai-panel-mobile\.spec\.ts/u;
+
+/**
+ * The real-model evaluation (tests/ai-eval, docs/AI-INTELLIGENCE.md §9): local only, never CI, and
+ * never part of a normal run. Its project exists only with KF_AI_EVAL=1, and every other project
+ * ignores its folder. It downloads nothing: the model hosts resolve to nothing in Chromium, and the
+ * spec answers the pinned files from the copies scripts/ai-eval/fetch-models.ts keeps on disk.
+ */
+const AI_EVAL = flag('KF_AI_EVAL');
+/** Matched against absolute paths, so anchored on tests/ (a checkout may itself sit in a folder named ai-eval). */
+const AI_EVAL_SPECS = /[\\/]tests[\\/]ai-eval[\\/]/u;
+const MODEL_HOST_RULES = ['huggingface.co', '*.huggingface.co', 'hf.co', '*.hf.co', 'cdn.jsdelivr.net', 'raw.githubusercontent.com'].map((h) => `MAP ${h} ~NOTFOUND`).join(', ');
 
 const desktopChromium = {
   ...devices['Desktop Chrome'],
@@ -56,8 +67,8 @@ export default defineConfig<KfOptions>({
   fullyParallel: CI,
   forbidOnly: CI,
   retries: CI ? 1 : 0,
-  // GPU-bound pages interfere with each other; perf runs must be alone.
-  workers: PERF || CI ? 1 : 2,
+  // GPU-bound pages interfere with each other; perf runs and the real-model evaluation must be alone.
+  workers: PERF || CI || AI_EVAL ? 1 : 2,
   ...(PERF ? { grep: /@perf/ } : { grepInvert: /@perf/ }),
   reporter: CI ? [['github'], ['list'], ['html', { open: 'never' }]] : [['list']],
   use: {
@@ -78,12 +89,12 @@ export default defineConfig<KfOptions>({
     { name: 'unit', testMatch: /unit\//u },
     {
       name: 'webgpu',
-      testIgnore: [/unit\//u, MOBILE_SPECS],
+      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS],
       use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS } },
     },
     {
       name: 'webgl2',
-      testIgnore: [/unit\//u, MOBILE_SPECS],
+      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS],
       use: { ...desktopChromium, forceWebGL: true },
     },
     // A phone (Pixel 7: 412 x 839 CSS px at DPR 2.625, touch, Android Chrome's user agent) for the
@@ -93,11 +104,26 @@ export default defineConfig<KfOptions>({
       testMatch: MOBILE_SPECS,
       use: { ...devices['Pixel 7'], channel: 'chromium', launchOptions: { args: WEBGPU_ARGS } },
     },
+    // The real-model evaluation: the webgpu project's Chromium and real-GPU WebGPU, one model at a
+    // time, hours allowed (KF_AI_EVAL=1 KF_AI_EVAL_MODEL=<id> npx playwright test --project=ai-eval).
+    ...(AI_EVAL
+      ? [
+          {
+            name: 'ai-eval',
+            testMatch: /[\\/]tests[\\/]ai-eval[\\/][^\\/]+\.spec\.ts$/u,
+            timeout: 8 * 60 * 60_000,
+            expect: { timeout: 120_000 },
+            fullyParallel: false,
+            retries: 0,
+            use: { ...desktopChromium, launchOptions: { args: [...WEBGPU_ARGS, `--host-resolver-rules=${MODEL_HOST_RULES}`] }, trace: 'off' as const, screenshot: 'off' as const },
+          },
+        ]
+      : []),
     ...(HAS_BRAVE
       ? [
           {
             name: 'brave',
-            testMatch: /smoke\.spec\.ts|explore\/five-planets\.spec\.ts|explore\/lab\.spec\.ts|perf\//,
+            testMatch: /smoke\.spec\.ts|explore\/five-planets\.spec\.ts|explore\/lab\.spec\.ts|explore\/walk-light\.spec\.ts|perf\//,
             use: { ...desktopChromium, channel: undefined, launchOptions: { executablePath: BRAVE_PATH, args: WEBGPU_ARGS } },
           },
         ]

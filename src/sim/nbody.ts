@@ -1,6 +1,7 @@
 import { cloneClimate, type ClimateState, type StarLight } from './climate';
 import { contactCrater } from './craters';
 import { impactOutcome, type ImpactOutcome, type ImpactRegime } from './impacts';
+import { blendLooks, eventKey, lookOf, type BodyOrigin } from './looks';
 import { cloneShip, dropEnded, kickThrust, spendPropellant, type ShipState } from './ships';
 import { cloneSwarm, driftSwarms, kickSwarms, loseStruck, rehomeSwarms, swarmHomes, type Swarm } from './swarms';
 
@@ -85,6 +86,8 @@ export interface SimState {
   rubble: string[];
   /** Ships (./ships), by id: their mass, rocket and burns (each a test particle among the bodies). */
   ships: Record<string, ShipState>;
+  /** Bodies a collision or the tides made, by id: where each came from and what it looks like (./looks; drawing only, never physics). */
+  origins: Record<string, BodyOrigin>;
 }
 
 /** A collision (what happened to the target, which keeps its id, and the projectile), or a tidal disruption (the body that held, and the body torn apart). */
@@ -112,6 +115,9 @@ export interface ContactEvent {
   crater: { diameterKm: number; complex: boolean; depthKm: number; rimKm: number } | null;
   /** Where the projectile touched: a unit vector from the target's centre, in the scenario's frame, at the moment of contact. */
   site: [number, number, number];
+  /** The survivor's radius (km) and GM just after it: what this event made of it, before any of its pieces fall back. */
+  radiusKm: number;
+  gm: number;
 }
 /** The engine's and the interface's earlier name for it. */
 export type MergeEvent = ContactEvent;
@@ -135,12 +141,12 @@ export const count = (s: SimState): number => s.ids.length;
 
 /** A deep copy (the engine's checkpoints and predictions run on copies). */
 export function cloneState(s: SimState, withSwarms = true): SimState {
-  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [], stars: Object.fromEntries(Object.entries(s.stars).map(([id, l]) => [id, { ...l }])), climate: Object.fromEntries(Object.entries(s.climate).map(([id, c]) => [id, cloneClimate(c)])), climateAt: s.climateAt, rubble: [...s.rubble], ships: Object.fromEntries(Object.entries(s.ships).map(([id, ship]) => [id, cloneShip(ship)])) };
+  return { ids: [...s.ids], names: [...s.names], gm: [...s.gm], radius: [...s.radius], pos: [...s.pos], vel: [...s.vel], spin: [...s.spin], j2: [...s.j2], inertia: [...s.inertia], fixed: [...s.fixed], t: s.t, step: s.step, internal: s.internal, passing: [...s.passing], swarms: withSwarms ? s.swarms.map(cloneSwarm) : [], stars: Object.fromEntries(Object.entries(s.stars).map(([id, l]) => [id, { ...l }])), climate: Object.fromEntries(Object.entries(s.climate).map(([id, c]) => [id, cloneClimate(c)])), climateAt: s.climateAt, rubble: [...s.rubble], ships: Object.fromEntries(Object.entries(s.ships).map(([id, ship]) => [id, cloneShip(ship)])), origins: { ...s.origins } };
 }
 
 /** An empty state. */
 export function emptyState(): SimState {
-  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [], stars: {}, climate: {}, climateAt: 0, rubble: [], ships: {} };
+  return { ids: [], names: [], gm: [], radius: [], pos: [], vel: [], spin: [], j2: [], inertia: [], fixed: [], t: 0, step: 0, internal: 0, passing: [], swarms: [], stars: {}, climate: {}, climateAt: 0, rubble: [], ships: {}, origins: {} };
 }
 
 /** The body a gone body merged into (the latest collision that ended it), or null. */
@@ -478,6 +484,9 @@ export function fragment(s: SimState, t: number, p: number, o: ImpactOutcome): {
   const kick = [0, 1, 2].map((i) => masses.reduce((sum, m, k) => sum + m * (speeds[k] ?? 0) * (dirs[k]?.[i] ?? 0), 0) / largest);
   const names = { target: s.names[t] ?? '', projectile: s.names[p] ?? '' };
   const targetId = s.ids[t] ?? '';
+  // What the pieces look like (drawing only): the two bodies' looks blended by mass; keyed as the event that made them is.
+  const look = blendLooks(lookOf(s, t), lookOf(s, p), mp / total);
+  const event = eventKey({ step: s.step, absorbed: s.ids[p] ?? '', kind: 'fragment' });
   const spin = [0, 1, 2].map((k) => (s.spin[t * 3 + k] ?? 0) + (s.spin[p * 3 + k] ?? 0));
   // The remnant keeps the target's id; the projectile goes; the pieces are added at the end.
   s.gm[t] = largest;
@@ -490,6 +499,7 @@ export function fragment(s: SimState, t: number, p: number, o: ImpactOutcome): {
     const number = k + (o.second > 0 ? 0 : 1);
     const id = freshId(s, second ? `remnant-${s.step}` : `debris-${s.step}-${number}`);
     addBody(s, { id, name: second ? `${names.projectile} remnant` : `${names.target} debris ${number}`, gm: m, radiusKm: radiusOf(m), pos: [0, 0, 0], vel: [0, 0, 0] });
+    s.origins[id] = { parent: targetId, event, kind: second ? 'remnant' : 'debris', look };
     created.push(id);
   });
   const first = count(s) - masses.length;
@@ -588,6 +598,8 @@ export function tidalDisruptions(s: SimState, events: ContactEvent[], keep: (id:
     const h = [(r[1] ?? 0) * (v[2] ?? 0) - (r[2] ?? 0) * (v[1] ?? 0), (r[2] ?? 0) * (v[0] ?? 0) - (r[0] ?? 0) * (v[2] ?? 0), (r[0] ?? 0) * (v[1] ?? 0) - (r[1] ?? 0) * (v[0] ?? 0)];
     const omega = h.map((x) => x / (d * d));
     const name = s.names[i] ?? id;
+    const look = lookOf(s, i);
+    const event = eventKey({ step: s.step, absorbed: id, kind: 'disrupt' });
     const spin = [0, 1, 2].map((k) => s.spin[i * 3 + k] ?? 0);
     const m = gi / pieces;
     const rp = ri / Math.cbrt(pieces);
@@ -603,6 +615,7 @@ export function tidalDisruptions(s: SimState, events: ContactEvent[], keep: (id:
       const pid = freshId(s, `${id}-piece-${k + 1}`.slice(0, 36));
       addBody(s, { id: pid, name: `${name} ${k + 1}`.slice(0, 60), gm: m, radiusKm: rp, pos, vel });
       s.rubble.push(pid);
+      s.origins[pid] = { parent: id, event, kind: 'piece', look };
       created.push(pid);
     }
     // The angular momentum the pieces do not carry goes to the first piece's spin, so the total is kept exactly.
@@ -617,7 +630,7 @@ export function tidalDisruptions(s: SimState, events: ContactEvent[], keep: (id:
     const survivor = s.ids[jNow] ?? '';
     const room = Math.min(TIDAL.dust, 4000 - s.swarms.reduce((n, w) => n + w.pos.length / 3, 0));
     if (room > 0 && jNow >= 0) {
-      const dust = { id: freshSwarmId(s, `dust-${id}`), name: `${name} dust`.slice(0, 60), primary: survivor, pos: [] as number[], vel: [] as number[], lost: 0, torn: true };
+      const dust = { id: freshSwarmId(s, `dust-${id}`), name: `${name} dust`.slice(0, 60), primary: survivor, pos: [] as number[], vel: [] as number[], lost: 0, torn: true, source: id, look };
       for (let k = 0; k < room; k += 1) {
         // On a shell just outside the body (a Fibonacci spiral over the sphere, 1.1 to 1.6 of its radius), with its orbit's turn.
         const z = 1 - (2 * (k + 0.5)) / room;
@@ -633,7 +646,7 @@ export function tidalDisruptions(s: SimState, events: ContactEvent[], keep: (id:
       }
       s.swarms.push(dust);
     }
-    events.push({ kind: 'disrupt', step: s.step, t: s.t, survivor, absorbed: id, regime: 'tidal', speedKmS: Math.hypot(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0), b: 0, created, unresolved: 0, heat, energy: 0, crater: null, site: [(radial[0] ?? 0), (radial[1] ?? 0), (radial[2] ?? 0)] });
+    events.push({ kind: 'disrupt', step: s.step, t: s.t, survivor, absorbed: id, regime: 'tidal', speedKmS: Math.hypot(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0), b: 0, created, unresolved: 0, heat, energy: 0, crater: null, site: [(radial[0] ?? 0), (radial[1] ?? 0), (radial[2] ?? 0)], radiusKm: s.radius[s.ids.indexOf(survivor)] ?? 0, gm: s.gm[s.ids.indexOf(survivor)] ?? 0 });
     changed = true;
     i = -1;
   }
@@ -716,14 +729,14 @@ export function resolveContacts(s: SimState, dt: number, acc: readonly number[] 
     const crater = outcome?.regime === 'hit-and-run' ? null : contactCrater({ gm: s.gm[t] ?? 0, radiusKm: s.radius[t] ?? 0 }, { gm: s.gm[p] ?? 0, radiusKm: s.radius[p] ?? 0 }, speed, bImpact);
     if (!outcome || outcome.regime === 'merge') {
       const heat = merge(s, t, p);
-      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat, crater });
+      events.push({ ...base, kind: 'merge', regime: 'merge', created: [], unresolved: 0, heat, crater, radiusKm: s.radius[s.ids.indexOf(ids.survivor)] ?? 0, gm: s.gm[s.ids.indexOf(ids.survivor)] ?? 0 });
     } else if (outcome.regime === 'hit-and-run') {
       s.passing.push(pairKey(ids.survivor, ids.absorbed));
-      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0, crater: null });
+      events.push({ ...base, kind: 'graze', regime: 'hit-and-run', created: [], unresolved: 0, heat: 0, crater: null, radiusKm: s.radius[t] ?? 0, gm: s.gm[t] ?? 0 });
       continue;
     } else {
       const made = fragment(s, t, p, outcome);
-      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat, crater });
+      events.push({ ...base, kind: 'fragment', regime: outcome.regime, created: made.created, unresolved: made.unresolved, heat: made.heat, crater, radiusKm: s.radius[s.ids.indexOf(ids.survivor)] ?? 0, gm: s.gm[s.ids.indexOf(ids.survivor)] ?? 0 });
     }
     changed = true;
     acc = null;

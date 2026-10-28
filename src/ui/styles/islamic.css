@@ -1,0 +1,62 @@
+/* The qibla and the new moon's panel (src/ui/explore/islamic-panel.ts): its own chunk's styles, carried in its code (src/ui/explore/lazy.ts styles: they come with it, a second try too). */
+.kf-islamic {
+  display: grid;
+  gap: var(--kf-space-2);
+  padding: var(--kf-space-1) var(--kf-space-1) var(--kf-space-2);
+}
+
+/* The astrolabe (src/ui/explore/astrolabe-view.ts): drawn at a fixed size, scaled to the panel. */
+.kf-islamic-astrolabe {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 22rem;
+  block-size: auto;
+  aspect-ratio: 1;
+  margin: var(--kf-space-1) auto;
+}
+
+.kf-islamic-astrolabe[hidden] {
+  display: none;
+}
+
+.kf-islamic-figure {
+  margin: 0;
+  color: var(--kf-text);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kf-islamic-legend {
+  display: grid;
+  gap: var(--kf-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+}
+
+.kf-islamic-legend li {
+  display: grid;
+  grid-template-columns: 0.75rem 1fr auto;
+  align-items: center;
+  gap: var(--kf-space-2);
+}
+
+.kf-islamic-count {
+  color: var(--kf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The map's colours (src/explore/islamic/index.ts ZONE_RGB), each beside its words: colour is never the only cue. */
+.kf-islamic-swatch {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: 50%;
+}
+
+.kf-islamic-swatch.is-a { background: rgb(92 219 128); }
+.kf-islamic-swatch.is-b { background: rgb(189 224 92); }
+.kf-islamic-swatch.is-c { background: rgb(250 209 82); }
+.kf-islamic-swatch.is-d { background: rgb(250 148 66); }
+.kf-islamic-swatch.is-e { background: rgb(237 87 82); }
+.kf-islamic-swatch.is-f { background: rgb(143 145 161); }

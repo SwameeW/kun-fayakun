@@ -25,8 +25,8 @@
  * pixel-ratio cap. Notes about what the camera is near come from ./discoveries.
  */
 
-import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D } from 'three/webgpu';
-import { createEphemeris, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
+import { DepthTexture, Group, MathUtils, Matrix4, Mesh, Quaternion, RenderTarget, Vector3, type Data3DTexture, type Object3D, type PerspectiveCamera } from 'three/webgpu';
+import { createEphemeris, installTheories, tableRange, validRange, type MoonFile, type PlanetsFile } from '../astro/ephemeris';
 import { obliquityRad, PHYSICAL_URL, ringTransmission, type PhysicalFile } from '../astro/physical';
 import type { RotatingBody } from '../astro/rotation';
 import { julianDateUtc, utcToTdb } from '../astro/time';
@@ -38,6 +38,8 @@ import { createExposureControl, type EngineExposure } from '../core/post';
 import {
   BODY_IDS,
   type BodyId,
+  type FocusId,
+  type LabCommand,
   type SceneLabel,
   type UniverseBodyView,
   type UniverseContext,
@@ -66,10 +68,12 @@ import type { LocalGroupFile, WebManifest } from './neighbourhood/beyond';
 import type { NeighbourhoodFile } from './neighbourhood/data';
 import type { DescentFile } from './descent/profile';
 import type { Walk } from './walk';
+import type { Worlds } from './worlds';
 import type { EquirectGrids } from './walk/equirect';
 import type { WalkInput } from './walk/walker';
 import { hijriDate } from './islamic/hijri';
 import type { Lab, LabPointerView } from './lab';
+import { layoutNames, NAME_GEOM, NAME_TAG_PX, type NameState, type NameView } from './label-layout';
 import { composeBulletin } from './field-notes/bulletin';
 import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes/data';
 import { centralAngle, loadPlaces, type Place } from './field-notes/places';
@@ -94,7 +98,8 @@ import { filmUnitKm, moonOffsetFactor, sizeFactor, STRETCH, stretchEase, stretch
 import { createSky, SKY_LAYERS, SKY_URL, type Sky, type SkyFile } from './sky';
 import { createSoundscape, type Soundscape, type SoundState } from './sound';
 import { createSolarSystem, type SolarSystem } from './system';
-import { advanceClock, fasterRate, slowerRate } from './time';
+import { advanceClock, applyTimeCommand, FOOT_MAX_RATE, heldRate, LAB_DATE_SPAN_S, validTimeCommand } from './time';
+import type { SpinHold } from './time-beyond';
 
 const DEFAULT_BODY: BodyId = 'earth';
 const NOISE = { size: 64, seed: 31_415 } as const;
@@ -119,6 +124,8 @@ const SATELLITE_PICK_PX = 9;
 const LIVING_RANGE_KM = 4e6;
 /** On foot: the field of view (degrees), and the depth range (km) the ground's logarithmic depth spans, past any horizon a walker sees. */
 const WALK_FOV = 70;
+/** On foot the wheel or a pinch narrows and widens the view, between these (degrees: binoculars to a wide lens). */
+const WALK_ZOOM = { min: 20, max: 90 } as const;
 const WALK_LENS = { near: 1e-4, far: 2000 } as const;
 /** On foot the imagery is aimed at the walker's feet as if a pixel there spanned a metre, which asks for its finest level (km). */
 const WALK_FOOTPRINT_KM = 0.001;
@@ -155,6 +162,8 @@ const MARKER_RANGE_KM = 60_000;
 const MARKER_SPACING_PX = 64;
 const MARKER_EASE = 0.12;
 const UNIX_EPOCH_JD = 2440587.5;
+/** The chunk beyond the everyday, when it failed to come: asked for again after this long (s), or at once for a date beyond the tables. */
+const BEYOND_RETRY_S = 30;
 
 /** Exposure adapts to sunlight as r^EXPOSURE_POWER (2 would be full adaptation), r in au. */
 const EXPOSURE_POWER = 1.8;
@@ -221,6 +230,8 @@ const LABEL = {
   /** A form (tag or edge pointer) taking over from the other waits until that one is below this opacity. */
   handover: 0.08,
 } as const;
+/** The letters reckoned for a laboratory name given only by its key (a ship's burn directions: the longest of them, "anti-normal"). */
+const LAB_KEY_LETTERS = 11;
 /**
  * Up close only the focus's own orbit is drawn (and the Moon's around the Earth); the others come
  * in as the view widens, between these distances in bounding radii of the focus. Changes ease.
@@ -282,6 +293,9 @@ interface BodyLabels {
   form: LabelForm;
   /** It gave way to another tag (and needs more room to come back). */
   blocked: boolean;
+  /** Where its tag's box is, and its pointer's (CSS px, top left; the pointer's stays where it was drawn last), for one coming in where either still shows. */
+  tagBox: [number, number];
+  edgeBox: [number, number];
   tagLabel: MutableLabel;
   edgeLabel: MutableLabel;
   edgeAt: [number, number, number];
@@ -293,7 +307,7 @@ function bodyLabels(id: BodyId): BodyLabels {
   const edgeOffset: [number, number] = [0, 0];
   const tagLabel: MutableLabel = { id: `body-${id}`, textKey: '', position: [0, 0, 0], opacity: 0 };
   const edgeLabel: MutableLabel = { id: `edge-${id}`, textKey: '', position: [0, 0, 0], opacity: 0, offset: edgeOffset };
-  return { tag: 0, edge: 0, form: 'none', blocked: false, tagLabel, edgeLabel, edgeAt: [0, 0, 0], edgeOffset };
+  return { tag: 0, edge: 0, form: 'none', blocked: false, tagBox: [0, 0], edgeBox: [0, 0], tagLabel, edgeLabel, edgeAt: [0, 0, 0], edgeOffset };
 }
 
 const unit = (out: Km, from: Km, to: Km): Km => {
@@ -375,6 +389,18 @@ export default function create(): UniverseModule {
   let input: ExploreInput | null = null;
   let world: NavWorld | null = null;
   let range = { startJd: 0, endJd: Infinity };
+  /** JPL's tables' own spans (positions beyond them come from the published theories: UniverseTime.beyond). */
+  let tables: ReturnType<typeof tableRange> | null = null;
+  /**
+   * The time machine beyond the everyday (./time-beyond, its own chunk: the published theories beyond
+   * the tables, and the hold of a world's turn too fast to show): not asked for, on the way, in, or
+   * failed (offline: asked for again BEYOND_RETRY_S later, not every frame).
+   */
+  let theoryState: 'none' | 'loading' | 'ready' | 'failed' = 'none';
+  let theoryRetryAt = 0;
+  let spinHold: SpinHold | null = null;
+  /** A date asked for beyond the tables before the theories came (UTC), and whether the clock was paused before it. */
+  let pendingDate: { utc: number; paused: boolean } | null = null;
   /**
    * The orbital laboratory (./lab): while an experiment runs it owns the worlds' positions and the
    * clock; the bodies it removed are hidden; and the explorer's own time and imagery wait, to be put
@@ -389,6 +415,8 @@ export default function create(): UniverseModule {
   let wantLab = false;
   /** A share link's scenario (src/sim/share), waiting for the laboratory to open. */
   let pendingShare: string | null = null;
+  /** Commands for the laboratory sent before its chunk came (the same tick as opening it): done once it has. */
+  const labQueue: LabCommand[] = [];
   const hiddenBodies = new Set<BodyId>();
   /** The qibla and the new moon (./islamic, its own chunk): loaded when their section first asks; commands wait for it. */
   let islamic: Islamic | null = null;
@@ -424,9 +452,25 @@ export default function create(): UniverseModule {
    */
   let hood: Neighbourhood | null = null;
   let hoodLoading = false;
+  /**
+   * More worlds (./worlds, its own chunk: the small bodies, the moons, Uranus's and Neptune's rings,
+   * eclipses): asked for 2 s into a visit, once the engine has learned the display's rate (at once for
+   * a world asked for by name, flown to when it comes, or for the layer; again BEYOND_RETRY_S after a
+   * failure), and the layer's choice meanwhile. Their pipelines are compiled before they are first
+   * drawn and the governor judges nothing while they settle, so their coming holds no frame up; the
+   * first visit ends with all of them built, as a later one does.
+   */
+  let worlds: Worlds | null = null;
+  let worldsAt = 2;
+  let worldsLoading = false;
+  let worldWanted: string | null = null;
+  let worldsLayer = true;
   let hoodShown = false;
   let hoodDip: { into: boolean; t: number; switched: boolean } | null = null;
   let hoodVeil = 1;
+  /** Still wanted when it has loaded (Esc calls it off); Esc held until this time (ms) after a switch. */
+  let hoodWanted = false;
+  let hoodHeld = 0;
   /** The orbit a walk's descent left (its body, the direction from it, render frame, and the height), to climb back to. */
   let walkReturn: { body: BodyId; dir: Km; altitudeKm: number } | null = null;
   let walkRefused = false;
@@ -437,8 +481,20 @@ export default function create(): UniverseModule {
   let descentVeil = 1;
   let walkCut = false;
   const walkInput: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
-  /** The on-screen pad's (touch) Forward or Back and Jump, and the keys and pad together as the walker gets them. */
-  const walkPad = { forward: 0, jump: false };
+  /** The on-screen pad's walk, step aside, run and jump; Q and E turning on foot; the keys and pad together as the walker gets them. */
+  const walkPad = { forward: 0, right: 0, run: false, rover: false, jump: false };
+  /** The field of view on foot (the wheel's and a pinch's), and whether a drag moves the scene with it (the visitor's choice) rather than the look. */
+  let walkFov = WALK_FOV;
+  let walkScene = false;
+  let walkTurnKeys = 0;
+  /**
+   * Esc is the walk's (and a descent's) from the moment one is asked for until a second after the
+   * climb back to orbit ends (performance.now() ms), so a repeated or held Esc never carries on out of
+   * the explorer; a walk asked for during a trip waits for the arrival.
+   */
+  let escapeHeld = 0;
+  let walkClimb = false;
+  let walkAfterTrip: { on: WalkWorld; lat: number; lon: number; headingDeg: number; pitchDeg: number } | null = null;
   const walkStep: WalkInput = { ...walkInput };
   /** The point on the Earth beneath the camera when near it (degrees), for the qibla from below and walks begun there. */
   let belowEarth: { lat: number; lon: number } | null = null;
@@ -479,6 +535,15 @@ export default function create(): UniverseModule {
   /** The clear part's offset from the middle of the view, CSS px, eased so a readout growing a line never jolts the view. */
   let offsetPx = 0;
   let offsetXPx = 0;
+  /** Turns the camera (its fov set) so what it looks at sits in the middle of the clear part, eased by `settle` (level: looking exactly where it faces). */
+  const inset = (camera: PerspectiveCamera, viewportPx: number, settle: number, level: boolean): void => {
+    const pxPerTan = viewportPx / (2 * Math.tan(MathUtils.degToRad(camera.fov / 2)));
+    offsetPx += ((level ? 0 : (insets.bottom - insets.top) / 2) - offsetPx) * settle;
+    offsetXPx += ((level ? 0 : (insets.right - insets.left) / 2) - offsetXPx) * settle;
+    if (level) return;
+    camera.rotateX(-Math.atan(offsetPx / pxPerTan));
+    camera.rotateY(-Math.atan(offsetXPx / pxPerTan));
+  };
 
   /* Detail: the rung running, the governor, what the device allows, and the visitor's wish. */
   let detail: ExploreDetail = DETAIL.high;
@@ -519,6 +584,8 @@ export default function create(): UniverseModule {
   const stretch = { active: false, t: 0, amount: 1, rush: false, steered: false, then: DEFAULT_BODY };
   /** Each body's drawn size over its true one this frame, and its true distance from the Sun (for its light). */
   const grow = Object.fromEntries(BODY_IDS.map((id) => [id, 1])) as Record<BodyId, number>;
+  /** Each world's IAU spin (degrees a day), for the hold of its turn at fast time (./time-beyond). */
+  const spinRate = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
   const trueSunKm = Object.fromEntries(BODY_IDS.map((id) => [id, 0])) as Record<BodyId, number>;
   const earthTrue = km();
   /** The film's scene unit, km (set on the way in). */
@@ -528,6 +595,8 @@ export default function create(): UniverseModule {
   let jdUtc = 0;
   /** Seconds of the bodies' own illustrative motion (drifting clouds and bands, the Sun's surface): still with reduced motion. */
   let ambient = 0;
+  /** Seconds since the explorer was entered (the theories' chunk comes a few seconds in, off the first frames). */
+  let shownFor = 0;
   /** The camera's height above the nearest surface (rings included), km: the depth range and the turn rate follow it. */
   let nearestKm = Infinity;
   /** The Earth's air model (its limb reddens the Sun seen through it). */
@@ -542,6 +611,33 @@ export default function create(): UniverseModule {
   const labelOrder: BodyId[] = [...BODY_IDS];
   const taken = BODY_IDS.map(() => ({ x: 0, y: 0 }));
   let takenCount = 0;
+  /**
+   * What stands over the view inside it (the way back, the readout's card on a wide screen: CSS px), from
+   * the interface ('kf-universe-avoid' on the window); names keep clear of it.
+   */
+  const avoid: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+  const onAvoid = (event: Event): void => {
+    const rects = (event as CustomEvent<unknown>).detail;
+    avoid.length = 0;
+    if (!Array.isArray(rects)) return;
+    for (const r of rects as unknown[]) {
+      const q = r as Partial<Record<'left' | 'top' | 'right' | 'bottom', unknown>>;
+      if (typeof q.left === 'number' && typeof q.top === 'number' && typeof q.right === 'number' && typeof q.bottom === 'number') avoid.push({ left: q.left, top: q.top, right: q.right, bottom: q.bottom });
+    }
+  };
+  window.addEventListener('kf-universe-avoid', onAvoid);
+  /**
+   * The laboratory's names (declutterLab, laid out by ./label-layout): each one's eased opacity and the
+   * corner it sits at (`labNames`), the frame it was last seen, and where each is (NAME_GEOM numbers a
+   * name). `labShown` (in `labNames`): the names showing last frame, and the chosen body's name and marks
+   * given a place (showing or coming in), four numbers each (a box's left, top and width, its height
+   * NAME_TAG_PX; 1 for the chosen body's, which the worlds' names give way to).
+   */
+  const labNames: NameState = { place: new Map(), fade: new Map(), order: [], boxes: [], shown: [] };
+  const labSeen = new Map<string, number>();
+  let labFrame = 0;
+  const labGeom: number[] = [];
+  const labShown = labNames.shown;
   const labels: SceneLabel[] = [];
   const dotList: ImpostorDot[] = BODY_IDS.map(() => ({ position: km(), color: [0, 0, 0], opacity: 0, sizePx: 6, marker: 0 }));
   /** Saturn's rings' span and pole, for the lens (set from physical.json on load, the pole each frame). */
@@ -606,18 +702,127 @@ export default function create(): UniverseModule {
   const focusBodies: BodyId[] = [];
   const sunTint: [number, number, number] = [1, 1, 1];
 
-  const setDate = (utc: number | null): void => {
-    if (!timeConstants) return;
+  /** Goes to a date (UTC; null: now). A date outside the explorer's span is shown at its nearest end, which is returned (null inside it). */
+  const setDate = (utc: number | null): 'start' | 'end' | null => {
+    if (!timeConstants) return null;
     const wanted = utc ?? julianDateUtc(Date.now());
     const tdb = utcToTdb(wanted, timeConstants);
-    // The Moon's table spans 2026 to 2035: dates outside are shown at its nearest edge.
     jdTdb = Math.min(range.endJd, Math.max(range.startJd, tdb));
     jdUtc = wanted + (jdTdb - tdb);
+    return tdb < range.startJd ? 'start' : tdb > range.endJd ? 'end' : null;
   };
+  /** The span the clock keeps to: where both the planets' and the Moon's positions are good. */
+  const spanOf = (moon: MoonFile): void => {
+    const valid = validRange(moon);
+    range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
+  };
+  /**
+   * The chunk beyond the everyday, loaded when the clock heads beyond the tables or runs fast
+   * (backwards, a day a second or more, near an end, or a date beyond asked for: `now`, which asks
+   * again at once after a failure), or a few seconds in. Once in, the span widens to the theories': a
+   * clock held at a table's end goes on, and a date asked for beyond is gone to. Offline, the tables'
+   * span stays, the date waits no more (the note gives the span), and it is asked for again later.
+   */
+  const loadTheories = (now = false): void => {
+    const inputs = labInputs;
+    if (!inputs || theoryState === 'loading' || theoryState === 'ready' || (theoryState === 'failed' && !now && shownFor < theoryRetryAt)) return;
+    theoryState = 'loading';
+    import('./time-beyond').then(
+      (m) => {
+        installTheories(m.theories);
+        spinHold = m.createSpinHold(spinRate);
+        theoryState = 'ready';
+        spanOf(inputs.moon);
+        const asked = pendingDate;
+        pendingDate = null;
+        if (asked) goToDate(asked.utc, asked.paused);
+        else if (timeEdge && jdTdb > range.startJd && jdTdb < range.endJd) {
+          timeEdge = null;
+          timePaused = false;
+        }
+      },
+      () => {
+        theoryState = 'failed';
+        theoryRetryAt = shownFor + BEYOND_RETRY_S;
+        pendingDate = null;
+      },
+    );
+  };
+  /** Loads more worlds (./worlds); a world asked for meanwhile is flown to when they come. */
+  const loadWorlds = (): void => {
+    const c = ctx;
+    const sys = system;
+    const inputs = labInputs;
+    if (!c || !sys || !inputs) return;
+    worldsLoading = true;
+    import('./worlds')
+      .then((m) => m.createWorlds(c, sys, obliquityRad(inputs.physical), () => detail, () => governor?.holdOff()))
+      .then(async (w) => {
+        // Every part compiled now, drawn yet or not (a comet's tails, a ring, a shadow, a world's
+        // mesh): one first drawn later would build its pipeline then, holding that frame up. The
+        // compile reads what to build as it is called, so each part is shown, and in view, only for the call.
+        const was = new Map<Object3D, readonly [boolean, boolean]>();
+        w.object.traverse((o) => {
+          was.set(o, [o.visible, o.frustumCulled]);
+          o.visible = true;
+          o.frustumCulled = false;
+        });
+        const compiled = compileForFrames([w.object]);
+        for (const [o, [visible, culled]] of was) {
+          o.visible = visible;
+          o.frustumCulled = culled;
+        }
+        await compiled;
+        return w;
+      })
+      .then(
+        (w) => {
+          // The explorer closed meanwhile: nothing to add them to.
+          if (ctx !== c) {
+            w.dispose();
+            return;
+          }
+          governor?.holdOff();
+          worlds = w;
+          root.add(w.object);
+          (world?.all as NavBody[] | undefined)?.push(...w.navList());
+          // The layer and the detail level chosen meanwhile (the governor may have changed it while they came).
+          w.setLayer(worldsLayer);
+          w.setDetail(detail);
+          const wanted = worldWanted;
+          worldWanted = null;
+          const id = wanted ? w.find(wanted) : null;
+          if (id && world) nav.flyTo(world, id);
+        },
+        () => {
+          worldsAt = shownFor + BEYOND_RETRY_S;
+        },
+      )
+      .finally(() => {
+        worldsLoading = false;
+      });
+  };
+  /** Goes to a date (UTC), running or paused as given; beyond the span, stopped at its end (which says why), and the theories asked for. */
+  const goToDate = (utc: number, paused: boolean): void => {
+    const outside = setDate(utc);
+    timeEdge = outside;
+    timePaused = outside ? true : paused;
+    if (outside && theoryState !== 'ready') {
+      pendingDate = { utc, paused };
+      loadTheories(true);
+    }
+  };
+  /** A TDB Julian date as UTC (TDB runs about a minute ahead of UTC), for the span's ends as dates. */
+  const tdbToUtc = (tdb: number): number => (timeConstants ? tdb - (utcToTdb(tdb, timeConstants) - tdb) : tdb);
+  /** What holds the clock below the rate set: a trip (real time), or being on foot or on the way down (FOOT_MAX_RATE); null when nothing does. */
+  const clockHold = (): 'trip' | 'foot' | null => (nav.travelling ? 'trip' : walk?.active || descent?.active ? 'foot' : null);
 
-  const exposureFor = (id: BodyId): number => {
-    if (!system || id === 'sun') return 1;
-    const p = system.bodies[id].position;
+  /** The body a world belongs to (its planet; the Sun for the rest); a body is its own. */
+  const host = (id: FocusId): BodyId => worlds?.host(id) ?? (id as BodyId);
+
+  const exposureFor = (id: FocusId): number => {
+    if (!world || !system || id === 'sun') return 1;
+    const p = world.body(id).position;
     const au = Math.hypot(p.x, p.y, p.z) / system.auKm;
     return Math.max(0.05, au) ** EXPOSURE_POWER * (id === 'moon' ? MOON_EXPOSURE : 1);
   };
@@ -647,6 +852,9 @@ export default function create(): UniverseModule {
    * it goes. A reduced-motion cut keeps the old body's until it cuts (then the exposure jumps).
    */
   const exposureTarget = (): number => {
+    // On foot the eye adapts to the light where it stands (./walk/light), not to the distance from the Sun.
+    const metered = walking ? walk?.exposure() : null;
+    if (metered) return metered;
     const to = exposureFor(nav.focus);
     if (!navOut.from) return to;
     const from = exposureFor(navOut.from);
@@ -680,12 +888,13 @@ export default function create(): UniverseModule {
     solarFilter: false,
     jdTdb: 0,
     unixMs: 0,
-    time: { rate: 1, paused: false, edge: null, startMs: 0, endMs: 0, hijri: null },
+    time: { rate: 1, paused: false, edge: null, held: null, beyond: { moon: false, planets: false }, spinHeld: false, pending: false, startMs: 0, endMs: 0, hijri: null },
     sky: { layers: { constellations: false, boundaries: false, grid: false, names: false }, stars: 0 },
     lab: null,
     islamic: null,
     walk: null,
     walkRefused: false,
+    walkWaiting: false,
     walkHere: null,
     place: null,
     descent: null,
@@ -735,8 +944,8 @@ export default function create(): UniverseModule {
   const refreshView = (): void => {
     const cam = origin.camera;
     const focus = nav.focus;
-    const spec = system?.specs[focus];
-    const p = system?.bodies[focus].position;
+    const spec = world?.body(focus);
+    const p = spec?.position;
     const distanceKm = p ? Math.hypot(cam.x - p.x, cam.y - p.y, cam.z - p.z) : 0;
     const auKm = system?.auKm ?? 1;
     const fromSun = Math.max(1, Math.hypot(cam.x, cam.y, cam.z));
@@ -757,7 +966,11 @@ export default function create(): UniverseModule {
     // In the laboratory the time controls run the experiment's clock.
     v.time.rate = lab?.active ? lab.rate : timeRate;
     v.time.paused = lab?.active ? lab.paused : timePaused;
-    v.time.edge = lab?.active ? null : timeEdge;
+    v.time.edge = lab?.active ? lab.edge : timeEdge;
+    v.time.held = lab?.active ? null : clockHold();
+    v.time.spinHeld = worlds?.held(focus) ?? spinHold?.held(focus as BodyId) ?? false;
+    v.time.beyond.moon = !lab?.active && tables !== null && (jdTdb < tables.moon.startJd || jdTdb > tables.moon.endJd);
+    v.time.beyond.planets = !lab?.active && tables !== null && (jdTdb < tables.planets.startJd || jdTdb > tables.planets.endJd);
     v.lab = lab?.view() ?? null;
     // The Umm al-Qura date of the day shown (looked up once a day of the clock); none over an experiment.
     const day = Math.floor(v.unixMs / 86_400_000);
@@ -769,17 +982,25 @@ export default function create(): UniverseModule {
     v.islamic = lab?.active ? null : (islamic?.view() ?? null);
     const walkView = walk?.view() ?? null;
     // Landed but not yet shown (the glide down, the dip): still landing, as far as anyone looking can tell.
-    if (walkView && !walkShown) walkView.state = 'landing';
+    if (walkView?.state === 'walking' && !walkShown) walkView.state = 'landing';
+    if (walkView) {
+      walkView.fovDeg = navOut.fov;
+      walkView.timeCapped = !timePaused && Math.abs(timeRate) > FOOT_MAX_RATE;
+    }
     v.walk = walkView;
     v.walkRefused = walkRefused;
+    v.walkWaiting = walkAfterTrip !== null || walkAsked !== null;
     v.walkHere = walkHere;
     v.place = placeBelow;
     v.descent = descent?.view() ?? null;
     v.neighbourhood = hoodShown ? (hood?.view() ?? null) : null;
     v.sound = soundView;
-    // The span in TDB, shown as dates (TDB runs about a minute ahead of UTC: no date changes by it).
-    v.time.startMs = (range.startJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
-    v.time.endMs = Number.isFinite(range.endJd) ? (range.endJd - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
+    // The span (TDB), as the UTC dates the clock shows at its ends: the explorer's, or an experiment's (from its
+    // fork to LAB_DATE_SPAN_S after it); and a date asked for beyond the tables, waiting for the theories.
+    const span = v.lab ? { startJd: v.lab.epochJdTdb, endJd: v.lab.epochJdTdb + LAB_DATE_SPAN_S / SECONDS_PER_DAY } : range;
+    v.time.startMs = (tdbToUtc(span.startJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000;
+    v.time.endMs = Number.isFinite(span.endJd) ? (tdbToUtc(span.endJd) - UNIX_EPOCH_JD) * SECONDS_PER_DAY * 1000 : v.time.startMs;
+    v.time.pending = !v.lab && pendingDate !== null;
     v.mode = navOut.mode;
     v.speedKmS = navOut.speedKmS;
     const trip = nav.tripState;
@@ -809,7 +1030,10 @@ export default function create(): UniverseModule {
     } else {
       v.lens = null;
     }
-    v.illustrative = illustrations();
+    const notes = illustrations();
+    worlds?.illustrative(notes);
+    v.illustrative = notes;
+    v.worlds = worlds?.view(focus) ?? null;
     v.lightKmS = lightKmS;
   };
 
@@ -853,6 +1077,8 @@ export default function create(): UniverseModule {
     }
     // The detail's share of the sky: its brightest stars (the catalogue is sorted by magnitude).
     if (stars) stars.object.count = Math.min(stars.count, detail.starCount);
+    hood?.setDetail(detail.tier, detail.starCount);
+    worlds?.setDetail(detail);
     // On foot, the ground's illustrative detail.
     for (const id of WALK_IDS) walks[id]?.setDetail(detail.groundDetail === 'full');
     if (entered && ctx) {
@@ -900,10 +1126,11 @@ export default function create(): UniverseModule {
       const v = pointerRay.set(0, 0, -1).applyQuaternion(c.camera.quaternion);
       return { x: v.x, y: v.y, z: v.z };
     },
+    insets: () => insets,
   };
   const pointerRay = new Vector3();
 
-  const pick = (clientX: number, clientY: number): BodyId | null => {
+  const pick = (clientX: number, clientY: number): FocusId | null => {
     const c = ctx;
     if (!c) return null;
     const rect = c.renderer.domElement.getBoundingClientRect();
@@ -937,7 +1164,8 @@ export default function create(): UniverseModule {
         best = id;
       }
     }
-    return best;
+    // A world under the pointer nearer than that body (a moon before its planet) is chosen instead.
+    return worlds?.pick(x, y, bestDistance) ?? best;
   };
 
   /** The stretch's clock: it holds the film's view, eases to true scale, rests, then flies on (unless the visitor has steered). */
@@ -1078,9 +1306,10 @@ export default function create(): UniverseModule {
       lab.start('solar', jdTdb);
       lab.setRun(86_400, false);
       if (pendingShare) {
-        lab.command({ kind: 'importShared', data: pendingShare });
+        void lab.command({ kind: 'importShared', data: pendingShare });
         pendingShare = null;
       }
+      for (const c of labQueue.splice(0)) void lab.command(c);
     } else if (!wantLab && lab.active) {
       lab.stop();
       hiddenBodies.clear();
@@ -1114,7 +1343,15 @@ export default function create(): UniverseModule {
     if (!sys || !c || lab?.active) return;
     walkRefused = on === 'earth' && nearMakkah(sys, lat, lon);
     if (walkRefused) return;
+    // During a trip the walk waits for the arrival (a trip ends a walk under way).
+    if (nav.travelling) {
+      walkAfterTrip = { on, lat, lon, headingDeg, pitchDeg };
+      return;
+    }
     if (walk?.active && walkWorld !== on) endWalk(true);
+    walkFov = WALK_FOV;
+    // Asked for again while dipping out of a walk on this world, before the dark: the dip turns back in.
+    if (walkDip && !walkDip.into && !walkDip.switched && walkWorld === on) walkDip.into = true;
     walkAsked = { on, lat, lon, headingDeg, pitchDeg };
     // The descent: with the world in view, the camera glides down over the place to the lowest orbit
     // while the ground loads (at once with reduced motion); the walk is dipped into once both are done.
@@ -1149,7 +1386,7 @@ export default function create(): UniverseModule {
           on === 'earth'
             ? createWalk({
                 groundColour: (d) => b.earth.groundColour(d),
-                sunlight: (mu) => b.earth.sunlight(mu),
+                ...(earthAirModel ? { air: earthAirModel } : {}),
                 terrain: terrariumLoader((z, x, y) => RELIEF.url(z, x, y, '')),
                 forbidden: (la, lo) => nearMakkah(sys, la, lo),
                 world: { name: 'earth', radiusKm, gravity, ...walkAir },
@@ -1157,7 +1394,7 @@ export default function create(): UniverseModule {
             : grids
               ? createWalk({
                   // The globe's own colour (Venus has none to stand on: the walk's illustrative ground).
-                  ...(on === 'venus' ? {} : { groundColour: (d: Parameters<typeof b.moon.groundColour>[0]) => (on === 'moon' ? b.moon : on === 'mars' ? b.mars : b.mercury).groundColour(d) }),
+                  ...(on === 'venus' ? {} : { groundColour: (d: Parameters<typeof b.moon.groundColour>[0]) => (on === 'moon' ? b.moon : on === 'mars' ? b.mars : b.mercury).groundColour(d), albedo: { map: (on === 'moon' ? b.moon : on === 'mars' ? b.mars : b.mercury).albedo(), bond: labFigure(`${on}.bondAlbedo`) ?? 0.15 } }),
                   terrain: equirectLoader(grids, (path) => c.assets.url(path)),
                   maxZoom: equirectMaxZoom(grids),
                   forbidden: () => false,
@@ -1225,7 +1462,9 @@ export default function create(): UniverseModule {
    */
   const startStars = (): void => {
     const c = ctx;
-    if (!c || !labInputs || lab?.active || hoodShown || hoodLoading) return;
+    hoodWanted = true;
+    // A second press on the way in changes nothing (the dip is not begun again).
+    if (!c || !labInputs || lab?.active || hoodShown || hoodLoading || hoodDip?.into) return;
     if (walk?.active) endWalk(true);
     if (descent?.active) endDescent(true);
     const begin = (made: Neighbourhood): void => {
@@ -1246,10 +1485,11 @@ export default function create(): UniverseModule {
     void Promise.all([import('./neighbourhood'), c.assets.json<NeighbourhoodFile>('assets/stars/neighbourhood.json'), c.assets.json<LocalGroupFile>('assets/stars/localgroup.json')])
       .then(([{ createNeighbourhood }, file, localGroup]) => {
         hoodLoading = false;
-        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN }, { localGroup, loadWeb, detail: detail.groundDetail });
+        const made = createNeighbourhood(file, obliquity, { absoluteV: labFigure('sun.absoluteMagnitudeV') ?? Number.NaN, bv: labFigure('sun.colourBV') ?? Number.NaN }, { localGroup, loadWeb, detail: detail.groundDetail, ctx: c });
         hood = made;
+        made.setDetail(detail.tier, detail.starCount);
         starsRoot.add(...made.objects);
-        begin(made);
+        if (hoodWanted) begin(made);
       })
       .catch(() => {
         hoodLoading = false;
@@ -1272,6 +1512,7 @@ export default function create(): UniverseModule {
   /** Back to orbit from a descent: dipped out of one that is shown, at once otherwise (or when `now`). */
   const endDescent = (now = false): void => {
     descentPad.climb = 0;
+    if (descent?.active || descentDip) escapeHeld = performance.now() + 1000;
     if (descentShown && !now) {
       if (!descentDip || descentDip.into) descentDip = { into: false, t: 0, switched: false };
       return;
@@ -1284,12 +1525,21 @@ export default function create(): UniverseModule {
 
   /** Back to orbit: dipped out of a walk that is shown, at once otherwise (or when `now`). */
   const endWalk = (now = false): void => {
+    // Esc held a second after a walk that was asked for or under way (not after a call with none).
+    if (walk?.active || walkAsked || walkDip) escapeHeld = performance.now() + 1000;
     walkAsked = null;
+    walkAfterTrip = null;
     for (const k of ['forward', 'right', 'turn', 'tip'] as const) walkInput[k] = 0;
     walkInput.run = false;
+    walkInput.rover = false;
     walkInput.jump = false;
-    walkPad.forward = 0;
-    walkPad.jump = false;
+    Object.assign(walkPad, { forward: 0, right: 0, run: false, rover: false, jump: false });
+    if (document.pointerLockElement) document.exitPointerLock();
+    // A dip into the walk not yet at its darkest turns back out there (the picture never jumps).
+    if (!now && walkDip && !walkDip.switched) {
+      walkDip.into = false;
+      return;
+    }
     if (walkShown && !now) {
       if (!walkDip || walkDip.into) walkDip = { into: false, t: 0, switched: false };
       return;
@@ -1429,15 +1679,21 @@ export default function create(): UniverseModule {
     nav.reducedMotion = c.reducedMotion;
     adaptation.setReducedMotion(c.reducedMotion);
     ambient += c.reducedMotion ? 0 : dt;
+    shownFor += dt;
+    // How far the clock moves this frame (days; a jump, a cut, is not a movement), for the hold of the worlds' turn.
+    let days = jdTdb;
     if (lab?.active) {
-      // The experiment's clock (its epoch plus the simulated time), with no data span to keep to.
+      // The experiment's clock as drawn (its epoch plus the simulated time: ./lab-clock), with no data span to keep to.
+      const cut = lab.tick(performance.now());
       const jd = lab.jdTdb();
       clockRate = lab.paused ? 0 : lab.rate;
       jdUtc += jd - jdTdb;
       jdTdb = jd;
+      if (cut) days = jd;
     } else {
-      // The time machine: the clock at its rate (real time during a trip), kept in the data's span.
-      clockRate = timePaused ? 0 : nav.busy ? Math.sign(timeRate) : timeRate;
+      // The time machine: the clock at its rate, held to real time during a trip (not the arrival's glide,
+      // which follows its own world) and to FOOT_MAX_RATE on foot or on the way down, kept in the span.
+      clockRate = timePaused ? 0 : heldRate(timeRate, clockHold());
       const clock = advanceClock(jdTdb, dt, clockRate, range.startJd, range.endJd);
       jdUtc += clock.jd - jdTdb;
       jdTdb = clock.jd;
@@ -1446,7 +1702,11 @@ export default function create(): UniverseModule {
         timeEdge = clock.edge;
       }
     }
+    days = jdTdb - days;
+    if (shownFor > 3 || clockRate < 0 || clockRate >= 86_400 || Math.abs(days) > 0.02 || jdTdb - range.startJd < 120 || range.endJd - jdTdb < 120) loadTheories();
     sys.update(jdTdb);
+    worlds?.advance(jdTdb);
+    if (!worlds && !worldsLoading && shownFor > worldsAt) loadWorlds();
     // Among the stars: the dip into or out of them, and then their own scene and camera instead of the solar system's.
     hoodVeil = 1;
     const hdip = hoodDip;
@@ -1456,6 +1716,8 @@ export default function create(): UniverseModule {
       if (!hdip.switched && hdip.t >= WALK_DIP.downS) {
         hdip.switched = true;
         hoodCut = true;
+        // Back in the solar system: Esc held a moment (a burst goes no further than the way back).
+        if (!hdip.into) hoodHeld = performance.now() + 600;
         hoodShown = hdip.into;
         if (!hdip.into) hood?.exit();
         root.visible = !hoodShown;
@@ -1468,16 +1730,17 @@ export default function create(): UniverseModule {
       const camera = c.camera;
       // Points beyond the stars are sized in device pixels from their distance: the screen's focal length.
       const focalPx = (c.renderer.domElement.clientHeight * c.renderer.getPixelRatio()) / (2 * Math.tan(MathUtils.degToRad((lensFov ?? DEFAULT_FOV) / 2)));
-      const pose = hood.update(dt, jdTdb - 2451545, camera, focalPx);
+      const pose = hood.update(dt, jdTdb - 2451545, camera, focalPx, insets);
       camera.position.set(0, 0, 0);
       target.set(...pose.forward);
       up.set(...pose.up);
       look.lookAt(eye, target, up);
       camera.quaternion.setFromRotationMatrix(look);
+      camera.fov = lensFov ?? DEFAULT_FOV;
+      inset(camera, c.renderer.domElement.clientHeight || 1, hoodCut ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS), false);
       camera.up.copy(up);
       camera.near = pose.near;
       camera.far = pose.far;
-      camera.fov = lensFov ?? DEFAULT_FOV;
       camera.updateProjectionMatrix();
       camera.updateMatrixWorld();
       c.exposure.setTarget(1);
@@ -1499,9 +1762,17 @@ export default function create(): UniverseModule {
       lab.applyBuiltIns(sys, hiddenBodies);
       const refocus = lab.takeRefocus();
       if (refocus && !hiddenBodies.has(refocus)) nav.flyTo(world, refocus);
+      // A laboratory of its own (two or three bodies, none of them the worlds): the view goes to its star, at the Sun's place, never to a world it lacks
+      // (at once: the entry glide toward the world it left gives way).
+      else if ((hiddenBodies.has(nav.focus as BodyId) || nav.focus !== host(nav.focus)) && nav.focus !== 'sun' && !nav.travelling) nav.flyTo(world, 'sun');
     }
+    // Too fast to show a world turning: held at an hour of its day (./time-beyond), let go only as the clock runs on its own (not paused, not a trip).
+    const running = clockRate !== 0 && (lab?.active === true || !nav.travelling);
+    spinHold?.update(sys, days, dt, running, c.reducedMotion);
     advanceStretch(dt);
     warpSystem(sys);
+    // In the laboratory each world is drawn at the experiment's radius (eased; shrinking away when it ends).
+    if (lab?.active) for (const id of BODY_IDS) grow[id] *= lab.scale(id);
     for (const path of orbitPaths) path.setDate(jdTdb);
 
     // The view the bodies are framed in: the camera's resting lens and what the interface covers.
@@ -1532,7 +1803,7 @@ export default function create(): UniverseModule {
     // Photo mode's tracking (ledger CR-2): the view turned about the focus by the body's own motion round
     // it since the last frame, so it keeps its place in the frame; while it does, the Earth's spin is not followed.
     if (tracking && tracking !== nav.focus && !nav.busy && nav.mode === 'orbit') {
-      const f = sys.bodies[nav.focus].position;
+      const f = world.body(nav.focus).position;
       const t = sys.bodies[tracking].position;
       const len = Math.hypot(t.x - f.x, t.y - f.y, t.z - f.z) || 1;
       const nx = (t.x - f.x) / len;
@@ -1564,6 +1835,14 @@ export default function create(): UniverseModule {
       pendingPlace = null;
       goToPlace(p.lat, p.lon, p.viewKm);
     }
+    if (walkAfterTrip) {
+      // A walk waiting for a trip goes where the trip goes: dropped once the trip turns elsewhere
+      // (another world chosen, a place flown to, a stop) or ends at another world.
+      const to = nav.tripState?.to ?? nav.focus;
+      const p = walkAfterTrip;
+      if (to !== p.on || !nav.travelling) walkAfterTrip = null;
+      if (to === p.on && !nav.travelling) startWalk(p.on, p.lat, p.lon, p.headingDeg, p.pitchDeg);
+    }
     if (pendingView && nav.focus === pendingView.body && !nav.busy) {
       const p = pendingView;
       pendingView = null;
@@ -1580,7 +1859,7 @@ export default function create(): UniverseModule {
     if (descent?.active && nav.travelling && !descentDip) endDescent();
     walking = false;
     /** An eye's pose in a world's own frame (km from its centre) put in place of the navigator's camera. */
-    const eyeAt = (pose: { position: readonly number[]; forward: readonly number[]; up: readonly number[] }, id: BodyId): void => {
+    const eyeAt = (pose: { position: readonly number[]; forward: readonly number[]; up: readonly number[] }, id: BodyId, fov: number): void => {
       const m = sys.bodies[id].basis;
       const e = sys.bodies[id].position;
       const toRender = (v: readonly number[], out: Km, from: Km | null): void => {
@@ -1591,12 +1870,15 @@ export default function create(): UniverseModule {
       toRender(pose.position, navOut.position, e);
       toRender(pose.forward, navOut.forward, null);
       toRender(pose.up, navOut.up, null);
-      navOut.fov = WALK_FOV;
+      navOut.fov = fov;
     };
     // The dip into or out of a walk: dark, the switch while it is dark, light again.
     walkVeil = 1;
     walkCut = false;
     const dip = walkDip;
+    // A dip, or the climb back after one, still holds Esc (as a descent's dip does).
+    if (dip || descentDip || (walkClimb && nav.gliding)) escapeHeld = performance.now() + 1000;
+    else walkClimb = false;
     if (dip) {
       dip.t += dt;
       if (!dip.switched && dip.t >= WALK_DIP.downS) {
@@ -1612,7 +1894,10 @@ export default function create(): UniverseModule {
           // Back up to the orbit the descent left (unless a trip has taken the camera elsewhere).
           const back = walkReturn;
           walkReturn = null;
-          if (back && nav.focus === back.body && !nav.travelling) nav.glideTo(world, back.dir, back.altitudeKm, DEFAULT_FOV);
+          if (back && nav.focus === back.body && !nav.travelling) {
+            nav.glideTo(world, back.dir, back.altitudeKm, DEFAULT_FOV);
+            walkClimb = true;
+          }
         }
       }
       walkVeil = dip.switched ? smoothstep(0, 1, (dip.t - WALK_DIP.downS) / WALK_DIP.upS) : 1 - smoothstep(0, 1, dip.t / WALK_DIP.downS);
@@ -1621,13 +1906,23 @@ export default function create(): UniverseModule {
     if (walk?.active) {
       Object.assign(walkStep, walkInput);
       walkStep.forward = Math.max(-1, Math.min(1, walkInput.forward + walkPad.forward));
+      walkStep.right = Math.max(-1, Math.min(1, walkInput.right + walkPad.right));
+      walkStep.turn = Math.max(-1, Math.min(1, walkInput.turn + walkTurnKeys));
+      walkStep.run = walkInput.run || walkPad.run;
+      walkStep.rover = walkInput.rover === true || walkPad.rover;
       walkStep.jump = walkInput.jump || walkPad.jump;
+      // On foot, Esc is the walk's: the climb back to orbit counts as on foot.
+      escapeHeld = performance.now() + 1000;
       const pose = walk.step(dt, walkStep);
       // Landed: once any glide down has ended, the picture dips into the walk.
       if (pose && !walkShown && !walkDip && !nav.gliding) walkDip = { into: true, t: 0, switched: false };
       if (pose && walkShown) {
         walking = true;
-        eyeAt(pose, walkWorld);
+        // Never narrower near Makkah than its framing rule allows (MAKKAH_FRAME: 30 km across, from 25 km or more).
+        const at = walkWorld === 'earth' ? walk.where() : null;
+        const makkah = at ? site('mecca') : undefined;
+        const kaabaKm = at && makkah ? centralAngle(at.lat, at.lon, makkah.lat, makkah.lon) * sys.specs.earth.radiusKm : Infinity;
+        eyeAt(pose, walkWorld, Math.max(walkFov, MathUtils.radToDeg(2 * Math.atan(MAKKAH_FRAME.minWidthKm / 2 / kaabaKm))));
       }
     }
     // Down through an atmosphere: its dip, then its eye in place of the navigator's.
@@ -1655,12 +1950,14 @@ export default function create(): UniverseModule {
       if (pose && !descentShown && !descentDip) descentDip = { into: true, t: 0, switched: false };
       if (pose && descentShown) {
         descending = true;
-        eyeAt(pose, descent.world);
+        eyeAt(pose, descent.world, WALK_FOV);
         // On Venus, at the bottom of the probe's column: the walk lands where the probe did.
         const v = descent.view();
         if (v?.atBottom && descent.world === 'venus' && !walk?.active && !walkAsked) startWalk('venus', v.hereLatDeg, v.hereLonDeg);
       }
     }
+    // Mouse-look lasts only while an eye is shown on foot or on the way down.
+    if (!walking && !descending && document.pointerLockElement === c.renderer.domElement) document.exitPointerLock();
     origin.setCamera(navOut.position);
     BODY_IDS.forEach((id, i) => {
       const p = placed[id];
@@ -1677,7 +1974,7 @@ export default function create(): UniverseModule {
     ringSphere.pole.x = pole[3] ?? 0;
     ringSphere.pole.y = pole[4] ?? 1;
     ringSphere.pole.z = pole[5] ?? 0;
-    nearestKm = nearestAltitude(spheres);
+    nearestKm = Math.min(nearestAltitude(spheres), worlds?.nearestKm(origin.camera) ?? Infinity);
     lensFor(nearestKm, lens);
     if (walking || descending) {
       lens.near = WALK_LENS.near;
@@ -1697,17 +1994,13 @@ export default function create(): UniverseModule {
     }
     // Photo mode's lens, when chosen, in place of the explorer's own framing (ledger CR-2).
     const fov = lensFov ?? navOut.fov;
-    const tanHalf = Math.tan(MathUtils.degToRad(fov / 2));
-    const pxPerTan = viewportPx / (2 * tanHalf);
-    const settle = entering ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS);
-    offsetPx += ((insets.bottom - insets.top) / 2 - offsetPx) * settle;
-    offsetXPx += ((insets.right - insets.left) / 2 - offsetXPx) * settle;
-    camera.rotateX(-Math.atan(offsetPx / pxPerTan));
-    camera.rotateY(-Math.atan(offsetXPx / pxPerTan));
+    const pxPerTan = viewportPx / (2 * Math.tan(MathUtils.degToRad(fov / 2)));
+    camera.fov = fov;
+    // On foot the eye looks exactly where it faces: a turn about its tipped axes would tilt the horizon.
+    inset(camera, viewportPx, entering || walkCut ? 1 : 1 - Math.exp(-Math.max(0, dt) / INSET_SECONDS), walking || descending);
     camera.up.copy(up);
     camera.near = lens.near;
     camera.far = lens.far;
-    camera.fov = fov;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     projected.set(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -1771,6 +2064,8 @@ export default function create(): UniverseModule {
     if (airTable && !airTable.baked) airTable.bake(c.renderer);
     camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    // On foot, the Sun through the air the walker looks through (its disc and its glare).
+    if (walking && walk) walk.sunColour(sunTint);
     bodies.sun.update({
       time: ambient,
       kelvin: SUN_KELVIN,
@@ -1778,6 +2073,7 @@ export default function create(): UniverseModule {
       light: (walking && walk?.skySeen === false ? 0 : sunDisplay / adapted) * (descending ? (descent?.sunSeen() ?? 1) : 1),
       exposure: adapted,
       filter: filterColor,
+      tint: walking ? sunTint : undefined,
       filtered: filterAmount,
       radiusPx: placed.sun.radiusPx,
       right: camRight,
@@ -1804,11 +2100,11 @@ export default function create(): UniverseModule {
         earthTiles.setDate(lastWholeDay(day * 86_400_000 + 43_200_000));
       }
       // Scene pixels: the canvas's, at the internal render scale.
-      const scenePxPerTan = (c.renderer.domElement.height * renderScale) / (2 * tanHalf);
+      const scenePxPerTan = (c.renderer.domElement.height * renderScale * pxPerTan) / viewportPx;
       // On foot, aimed where the walker stands (looking along the ground, the view's centre may miss the globe).
       const standing = walking && walkWorld === 'earth' ? (walk?.where() ?? null) : null;
       const aim =
-        entering || stretch.amount < 1
+        entering || stretch.amount < 1 || hiddenBodies.has('earth')
           ? null
           : standing
             ? { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: WALK_FOOTPRINT_KM / sys.specs.earth.radiusKm }
@@ -1842,6 +2138,8 @@ export default function create(): UniverseModule {
     bodies.jupiter.update({ time: ambient, sun: sunDir, light: lightAt('jupiter') }, origin3);
     unit(sunDir, sys.bodies.saturn.position, sun);
     bodies.saturn.update({ time: ambient, sun: sunDir, light: lightAt('saturn') }, origin3);
+    // A world the experiment does not have (merged, removed, or a laboratory of its own) is not drawn, lit or not.
+    for (const id of hiddenBodies) bodies.objects[id].visible = false;
     // Saturn's ring particles: the camera in the rings' frame (km, doubles), the Sun in the view's.
     const particles = bodies.saturn.rings?.particles;
     if (particles?.enabled) {
@@ -1876,17 +2174,23 @@ export default function create(): UniverseModule {
 
     // Stars at the back of the depth range, hidden by the bodies in front of them.
     stars.setRadius(lens.far * LENS.starShare);
-    // On foot by day, the sky hides the stars (and through twilight lets them through).
+    // On foot the walk holds them short of white by night, and by day the sky hides them (through the
+    // twilight letting them through) or, on an airless world, the sunlit ground's glare holds them under
+    // a peak on the screen (the exposure multiplies what they draw), at the target's pixels a CSS pixel;
+    // and, on foot or in orbit, which are drawn is judged on the screen, the eye's exposure included
+    // (./starlight StarScreen: far out, at Neptune's 458, judged before it they were cut, not faded).
     const starlight = walking ? (walk?.starlight() ?? 1) : descending ? (descent?.starlight() ?? 1) : 1;
-    stars.setLight(STARS.light * adapted ** (STARS.follow - 1) * starlight);
+    const followed = STARS.light * adapted ** (STARS.follow - 1);
+    const onFoot = walking ? walk?.starLight(followed, adapted, (c.renderer.domElement.height * renderScale) / viewportPx, stars.brightest) : null;
+    stars.setLight(onFoot ? onFoot.light : followed * starlight, adapted, onFoot?.knee ?? 0);
     stars.update(dt);
 
     // Orbit lines: the focus's own (and the Moon's around the Earth) up close, the rest as the view
     // widens; each only from where it reads as an orbit; none over the Sun seen through its filter.
-    const focus = placed[nav.focus];
+    const focus = world.body(nav.focus);
+    const focusKm = Math.hypot(focus.position.x - origin.camera.x, focus.position.y - origin.camera.y, focus.position.z - origin.camera.z);
     const wide = nav.focus === 'sun' ? SUN_ORBITS_WIDE : ORBITS_WIDE;
-    const bound = sys.specs[nav.focus].boundKm;
-    const wideness = smoothstep(Math.log(wide.from * bound), Math.log(wide.to * bound), Math.log(Math.max(focus.distance, 1)));
+    const wideness = smoothstep(Math.log(wide.from * focus.boundKm), Math.log(wide.to * focus.boundKm), Math.log(Math.max(focusKm, 1)));
     const orbitSettle = dt > 0 ? 1 - Math.exp(-dt / ORBITS_WIDE.seconds) : 0;
     orbitPaths.forEach((path, i) => {
       const own = path.body === nav.focus || (path.body === 'moon' && nav.focus === 'earth');
@@ -1907,9 +2211,9 @@ export default function create(): UniverseModule {
       forward,
       near: lens.near,
       far: lens.far,
-      focus: sys.bodies[nav.focus].position,
-      focusRadius: sys.specs[nav.focus].radiusKm,
-      focusDistance: focus.distance,
+      focus: focus.position,
+      focusRadius: focus.radiusKm,
+      focusDistance: focusKm,
       compensation: adapted,
       light: 1 + TRIP_ORBIT_GLOW * tripGlow,
       ...(stretch.amount < 1 ? { warp: warpOrbitPoint } : {}),
@@ -1921,14 +2225,17 @@ export default function create(): UniverseModule {
     // Names on the sky (the brightest stars', the constellations'), when shown.
     stars.labels(labels);
 
-    // The experiment's trails, prediction and new bodies (with their names).
+    // The experiment's trails, prediction and new bodies (with their names); else the small worlds'
+    // names. Either kept apart, clear of the interface and of the ten bodies' names (declutterLab).
+    const from = labels.length;
     if (lab?.active) {
       lab.update(
-        { camera: origin.camera, forward, near: lens.near, far: lens.far, pxPerTan, focus: sys.bodies[nav.focus].position, focusRadius: sys.specs[nav.focus].radiusKm, focusDistance: placed[nav.focus].distance, compensation: adapted },
+        { camera: origin.camera, forward, near: lens.near, far: lens.far, pxPerTan, focus: focus.position, focusRadius: focus.radiusKm, focusDistance: focusKm, compensation: adapted, dt },
         (abs, out) => origin.relative(abs, out),
       );
       lab.labels(labels);
-    }
+    } else worlds?.labels(labels);
+    declutterLab(from, dt, viewportPx, widthPx);
 
     // The point beneath the camera when near the Earth: the direction from its centre to the camera (at the origin), in its own frame.
     {
@@ -1953,10 +2260,11 @@ export default function create(): UniverseModule {
     // on there and it is drawn at its true size (the direction from its centre to the camera, at the
     // origin, in its own frame).
     {
-      const id = nav.focus;
+      // (A world flown to has neither: its host's place is not beneath the camera.)
+      const id = host(nav.focus);
       const p = placed[id];
       // The place beneath the camera on any body in view, at its true size (for saving the view).
-      if (!lab?.active && !nav.travelling && p.k > 0.999 && grow[id] === 1) {
+      if (!lab?.active && !nav.travelling && p.k > 0.999 && grow[id] === 1 && id === nav.focus) {
         const m = sys.bodies[id].basis;
         const bx = -p.drawn.x * (m[0] ?? 1) - p.drawn.y * (m[1] ?? 0) - p.drawn.z * (m[2] ?? 0);
         const by = -p.drawn.x * (m[3] ?? 0) - p.drawn.y * (m[4] ?? 1) - p.drawn.z * (m[5] ?? 0);
@@ -1964,7 +2272,7 @@ export default function create(): UniverseModule {
         const r = Math.hypot(bx, by, bz);
         placeBelow = r > 0 ? { body: id, lat: MathUtils.radToDeg(Math.asin(by / r)), lon: MathUtils.radToDeg(Math.atan2(-bz, bx)), altitudeKm: r - sys.specs[id].radiusKm } : null;
       } else placeBelow = null;
-      if (walkable(id) && !lab?.active && p.k > 0.999 && grow[id] === 1) {
+      if (walkable(id) && id === nav.focus && !lab?.active && p.k > 0.999 && grow[id] === 1) {
         const m = sys.bodies[id].basis;
         const dx = -p.drawn.x;
         const dy = -p.drawn.y;
@@ -1989,7 +2297,7 @@ export default function create(): UniverseModule {
       unit(scratch, sys.bodies[walkWorld].position, sys.bodies.sun.position);
       const sunWorld: [number, number, number] = [scratch.x * (m[0] ?? 1) + scratch.y * (m[1] ?? 0) + scratch.z * (m[2] ?? 0), scratch.x * (m[3] ?? 0) + scratch.y * (m[4] ?? 1) + scratch.z * (m[5] ?? 0), scratch.x * (m[6] ?? 0) + scratch.y * (m[7] ?? 0) + scratch.z * (m[8] ?? 1)];
       const subSolarLon = MathUtils.radToDeg(Math.atan2(-sunWorld[2], sunWorld[0]));
-      walk.place({ centre: placed[walkWorld].rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt(walkWorld), subSolarLon, near: lens.near, far: lens.far });
+      walk.place({ centre: placed[walkWorld].rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt(walkWorld), subSolarLon, near: lens.near, far: lens.far, exposure: adapted, renderer: c.renderer, camera, eye: walking });
     }
 
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
@@ -2060,9 +2368,11 @@ export default function create(): UniverseModule {
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
     dots.update(dotList, adapted);
+    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, filter: filterAmount, shown: !lab?.active && !walking && !descending && stretch.amount >= 1, focus: nav.focus, span: focusKm, dt, days, running, reduced: c.reducedMotion, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : 1, placed });
 
     const sunPlaced = placed.sun;
-    sunThroughEarth(sunTint);
+    // From orbit, the Sun through the Earth's limb (on foot, through the air the walker looks through).
+    if (!walking) sunThroughEarth(sunTint);
     glare.update({
       position: sunPlaced.drawn,
       drawnRadius: sys.specs.sun.radiusKm * grow.sun * sunPlaced.k,
@@ -2153,9 +2463,11 @@ export default function create(): UniverseModule {
 
   /** What the view draws now that is illustrative, for the readout to say. */
   const illustrations = (): UniverseIllustration[] => {
-    if (!system || !bodies) return [];
-    const altitude = Math.max(0, placed[nav.focus].distance - system.specs[nav.focus].radiusKm);
-    switch (nav.focus) {
+    // A world flown to: its planet's notes while its planet is large in view.
+    const id = host(nav.focus);
+    if (!system || !bodies || (id !== nav.focus && !(placed[id].inView && placed[id].radiusPx > LARGE_PX / 5))) return [];
+    const altitude = Math.max(0, placed[id].distance - system.specs[id].radiusKm);
+    switch (id) {
       case 'sun':
         return ['sun-surface'];
       case 'earth': {
@@ -2262,11 +2574,11 @@ export default function create(): UniverseModule {
     const ringTilt = Math.asin(Math.min(1, Math.max(-1, (saturnBasis[3] ?? 0) * scratch.x + (saturnBasis[4] ?? 1) * scratch.y + (saturnBasis[5] ?? 0) * scratch.z)));
     const v = viewState;
     const input = discoveryInput;
-    input.focus = nav.focus;
+    input.focus = host(nav.focus);
     input.travelling = nav.travelling;
     input.altitudeKm = v.altitudeKm;
-    input.radiusKm = sys.specs[nav.focus].radiusKm;
-    input.framedAltitudeKm = world ? nav.framingKm(world.body(nav.focus)) - sys.specs[nav.focus].radiusKm : 0;
+    input.radiusKm = sys.specs[input.focus].radiusKm;
+    input.framedAltitudeKm = world ? nav.framingKm(world.body(input.focus)) - input.radiusKm : 0;
     for (const id of BODY_IDS) {
       discPx[id] = placed[id].radiusPx;
       inView[id] = placed[id].inView;
@@ -2280,7 +2592,7 @@ export default function create(): UniverseModule {
     input.sunlight = v.sunlight;
     input.solarFilter = v.solarFilter;
     // The notes are about the real worlds: none over an experiment.
-    discovery = lab?.active ? null : discoveries.update(input);
+    discovery = lab?.active || input.focus !== nav.focus ? null : discoveries.update(input);
   };
 
   /** The data-travel hook: "flying" while a trip is under way, then "arrived" or "stopped". */
@@ -2288,8 +2600,8 @@ export default function create(): UniverseModule {
     const travelling = nav.travelling;
     if (travelling && !wasTravelling) {
       stopped = false;
-      const to = system?.specs[nav.focus];
-      const p = system?.bodies[nav.focus].position;
+      const to = world?.body(nav.focus);
+      const p = to?.position;
       tripStartKm = to && p ? Math.max(0, Math.hypot(origin.camera.x - p.x, origin.camera.y - p.y, origin.camera.z - p.z) - to.radiusKm) : 0;
       setHook('data-travel', 'flying');
     } else if (!travelling && wasTravelling) {
@@ -2316,6 +2628,8 @@ export default function create(): UniverseModule {
     labelOrder.sort((a, b) => (a === nav.focus ? -1 : b === nav.focus ? 1 : placed[b].radiusPx - placed[a].radiusPx));
     takenCount = 0;
     labels.length = 0;
+    const onFoot = walking || descending;
+    const night = walking ? (walk?.starlight() ?? 1) : descending ? (descent?.starlight() ?? 1) : 1;
     const show = 1 - Math.exp(-Math.max(0, dt) / LABEL.seconds);
     const hide = 1 - Math.exp(-Math.max(0, dt) / LABEL.hideSeconds);
     // The clear part of the view, in CSS px (inside what the interface covers, with a margin).
@@ -2339,7 +2653,8 @@ export default function create(): UniverseModule {
       const inFront = anchor.z < 1 && anchor.z > -1;
       const sx = ((anchor.x + 1) / 2) * widthPx;
       const sy = ((1 - anchor.y) / 2) * viewportPx;
-      const wanted = inFront && p.radiusPx < LABEL.maxDiscPx && !occluded(id) && !hiddenBodies.has(id);
+      // On foot the names come out with the stars (none on a daylit sky), and the Sun's never.
+      const wanted = inFront && p.radiusPx < LABEL.maxDiscPx && !occluded(id) && !hiddenBodies.has(id) && (!onFoot || (id !== 'sun' && night > 0.05));
       // Which form: the tag at its right; at its left (no room on the right); or a pointer at the edge
       // (its point is out of the clear view). Each holds until the body is a margin past the line.
       const hold = (form: LabelForm): number => (state.form === form ? LABEL.holdPx : -LABEL.holdPx);
@@ -2359,7 +2674,8 @@ export default function create(): UniverseModule {
         else if (sx > rightEdge) edgeDx = -LABEL.pointerPx;
         if (sy < top) edgeDy = LABEL.pointerPx * 0.7;
         else if (sy > bottom) edgeDy = -LABEL.pointerPx * 0.7;
-        if (edgeDx === 0) edgeDx = sx < widthPx / 2 ? LABEL.pointerPx : -LABEL.pointerPx;
+        // (Above or below the view, it hangs toward the clear view's middle, not the window's: a sheet at the side covers the rest.)
+        if (edgeDx === 0) edgeDx = sx < (left + rightEdge) / 2 ? LABEL.pointerPx : -LABEL.pointerPx;
       } else if (form === 'left') {
         // At the left limb, the tag ending a short line to its left.
         projected.set(p.drawn.x, p.drawn.y, p.drawn.z).addScaledVector(right, -drawnRadius).project(camera);
@@ -2368,19 +2684,80 @@ export default function create(): UniverseModule {
         edgeDx = -LABEL.gapPx;
         edgeDy = -LABEL.tagPx / 2;
       }
-      // Its box, for collisions: the tag extends right of its point (or left, for a pointer at the right edge).
+      // A pointer's tag hangs off its line's end (centred on it up and down, to its right or left): all of it
+      // inside the clear view, not only its point (where the view is too small for one, as above a phone's
+      // sheet held sideways, it gives way).
+      const minY = insets.top + LABEL.tagPx / 2 - edgeDy;
+      const maxY = viewportPx - insets.bottom - LABEL.tagPx / 2 - edgeDy;
+      const minX = insets.left - edgeDx + (edgeDx < 0 ? LABEL.widthPx : 0);
+      const maxX = widthPx - insets.right - edgeDx - (edgeDx < 0 ? 0 : LABEL.widthPx);
+      if (form === 'edge') {
+        y = Math.min(maxY, Math.max(minY, y));
+        x = Math.min(maxX, Math.max(minX, x));
+      }
+      // Clear of what stands over the view inside it (the way back, the readout's card): a pointer at the
+      // edge slides along the edge past one; a tag beside its body that would sit under one gives way.
+      const cramped = form === 'edge' && (minY > maxY || minX > maxX);
+      let under = cramped;
+      if (form !== 'none') {
+        const pad = state.blocked ? LABEL.marginPx : 0;
+        for (const r of avoid) {
+          const bx = offView ? (edgeDx < 0 ? x + edgeDx - LABEL.widthPx : x + edgeDx) : x + LABEL.gapPx;
+          const by = offView ? y + edgeDy - LABEL.tagPx / 2 : y - LABEL.tagPx;
+          if (bx > r.right + pad || bx + LABEL.widthPx < r.left - pad || by > r.bottom + pad || by + LABEL.tagPx < r.top - pad) continue;
+          if (form !== 'edge') under = true;
+          else {
+            y = r.top < viewportPx / 2 ? r.bottom + LABEL.tagPx / 2 + LABEL.marginPx - edgeDy : r.top - LABEL.tagPx / 2 - LABEL.marginPx - edgeDy;
+            if (y < minY || y > maxY) under = true;
+          }
+        }
+      }
+      // Its box, for collisions: the tag extends right of its point (or left, for a pointer at the right
+      // edge), above its point beside the body, centred on its line's end as a pointer (as the tags are drawn).
       const boxX = offView && edgeDx < 0 ? x + edgeDx - LABEL.widthPx : x + (offView ? edgeDx : LABEL.gapPx);
-      const boxY = y + (offView ? edgeDy : 0) - LABEL.tagPx;
+      const boxY = offView ? y + edgeDy - LABEL.tagPx / 2 : y - LABEL.tagPx;
       const room = state.blocked ? LABEL.clearAgain : 1;
-      let blocked = false;
+      // Under what covers the view wherever it goes: a pointer with no room for it in the clear view (a
+      // phone's sheet pulled up to its readout), or a tag beside its body held a little past the clear
+      // view's top or bottom (so it does not flicker between forms) where that puts it under the readout
+      // across a phone's top or the sheet. It gives way at once, never drawn there while it fades.
+      const covered = cramped || (form !== 'edge' && form !== 'none' && (boxY < insets.top || boxY + LABEL.tagPx > viewportPx - insets.bottom));
+      let blocked = under || covered;
       for (let t = 0; t < takenCount; t++) {
         const other = taken[t];
         if (!other) continue;
         if (Math.abs(other.x - boxX) < LABEL.widthPx * room && Math.abs(other.y - boxY) < LABEL.tagPx * room) blocked = true;
       }
+      // The laboratory's chosen body's name and marks keep their place: a world's name gives way to them.
+      const spare = state.blocked ? LABEL.marginPx : 0;
+      for (let t = 0; t + 3 < labShown.length; t += 4) {
+        const lx = labShown[t] ?? 0;
+        const ly = labShown[t + 1] ?? 0;
+        if (labShown[t + 3] === 1 && boxX - spare < lx + (labShown[t + 2] ?? 0) && lx < boxX + LABEL.widthPx + spare && boxY - spare < ly + NAME_TAG_PX && ly < boxY + LABEL.tagPx + spare) blocked = true;
+      }
       state.blocked = wanted && blocked;
       const showTag = wanted && !blocked && !offView;
       const showEdge = wanted && !blocked && offView;
+      // One coming in (not yet showing) waits until no other name still shows where it goes (one that gave
+      // way, or one whose world has gone, fading out), keeping its place meanwhile: two never show at once there.
+      let wait = false;
+      if ((showTag || showEdge) && Math.max(state.tag, state.edge) < LABEL.handover) {
+        for (const other of BODY_IDS) {
+          if (other !== id && worldNameAt(other, boxX, boxY, LABEL.widthPx, LABEL.tagPx)) wait = true;
+        }
+        // (The laboratory's names showing last frame too.)
+        for (let t = 0; t + 3 < labShown.length; t += 4) {
+          const lx = labShown[t] ?? 0;
+          const ly = labShown[t + 1] ?? 0;
+          if (boxX < lx + (labShown[t + 2] ?? 0) && lx < boxX + LABEL.widthPx && boxY < ly + NAME_TAG_PX && ly < boxY + LABEL.tagPx) wait = true;
+        }
+      }
+      state.tagBox[0] = sx + LABEL.gapPx;
+      state.tagBox[1] = sy - LABEL.tagPx;
+      if (offView) {
+        state.edgeBox[0] = boxX;
+        state.edgeBox[1] = boxY;
+      }
       if (showTag || showEdge) {
         const slot = taken[takenCount];
         if (slot) {
@@ -2398,11 +2775,11 @@ export default function create(): UniverseModule {
         const now = was + (want - was) * k;
         return now < 1e-3 && want === 0 ? 0 : now;
       };
-      const tagWant = showTag ? LABEL.opacity : 0;
-      const edgeWant = showEdge ? LABEL.opacity : 0;
+      const tagWant = showTag && !wait ? LABEL.opacity : 0;
+      const edgeWant = showEdge && !wait ? LABEL.opacity : 0;
       const tagWas = state.tag;
-      state.tag = settleTo(tagWas, tagWant, state.edge, edgeWant > 0);
-      state.edge = settleTo(state.edge, edgeWant, tagWas, tagWant > 0);
+      state.tag = covered ? 0 : settleTo(tagWas, tagWant, state.edge, edgeWant > 0);
+      state.edge = covered ? 0 : settleTo(state.edge, edgeWant, tagWas, tagWant > 0);
       labelOpacity.set(id, state.tag);
       if (state.tag > 1e-3) {
         const label = state.tagLabel;
@@ -2433,6 +2810,96 @@ export default function create(): UniverseModule {
     }
   };
 
+  /** A world's name gives way at once (to the laboratory's chosen body's name or mark over it): gone this frame, back once it has room again. */
+  const giveWay = (id: BodyId): void => {
+    const s = labelState[id];
+    s.tag = 0;
+    s.edge = 0;
+    s.blocked = true;
+    s.tagLabel.opacity = 0;
+    s.edgeLabel.opacity = 0;
+    labelOpacity.set(id, 0);
+  };
+
+  /** A world's name (its tag or its pointer) still shows over a box (CSS px, top left, width and height). */
+  const worldNameAt = (id: BodyId, x: number, y: number, w: number, h: number): boolean => {
+    const s = labelState[id];
+    const t = s.tagBox;
+    const e = s.edgeBox;
+    return (s.tag > LABEL.handover && x < t[0] + LABEL.widthPx && t[0] < x + w && y < t[1] + LABEL.tagPx && t[1] < y + h) || (s.edge > LABEL.handover && x < e[0] + LABEL.widthPx && e[0] < x + w && y < e[1] + LABEL.tagPx && e[1] < y + h);
+  };
+
+  /**
+   * The laboratory's names (its new bodies, a ship's burn directions), or outside an experiment the small
+   * worlds' (./worlds: each keeping off every disc by its fits()), kept apart as the ten worlds' are:
+   * none behind a world's disc, outside the clear view or under the interface, the chosen body's own
+   * name and marks (its burn directions, its Lagrange points, the encounters ahead: the names without a
+   * rank) included. Where two would meet (a torn moon's pieces start strung along one line) each tries
+   * the four corners about its body, keeping the one it had while it has room, and the lesser gives way
+   * (the chosen body's first, then the larger): one showing gives way with a margin to spare, fading out
+   * quickly, and one coming in (or moving corner) waits until nothing still shows where it goes, so two
+   * never show over each other. The chosen body's name and marks come before the others and before the
+   * worlds' names, which give way to them (at once where one shows over a world's); with no corner clear
+   * of the interface and of each other, one waits out of sight. Nothing is allocated per frame but a
+   * new name's entries.
+   */
+  const declutterLab = (from: number, dt: number, viewportPx: number, widthPx: number): void => {
+    const c = ctx;
+    const sys = system;
+    if (!c || !sys) return;
+    labFrame += 1;
+    const left = insets.left + LABEL.marginPx;
+    const rightEdge = widthPx - insets.right - LABEL.marginPx;
+    const top = insets.top + LABEL.tagPx;
+    const bottom = viewportPx - insets.bottom - LABEL.marginPx;
+    // First where each name is now (its point on screen, whether it shows at all, its width (its text at 7.5 px a letter, its padding and rule)).
+    const count = labels.length - from;
+    labGeom.length = count * NAME_GEOM;
+    for (let j = 0; j < count; j += 1) {
+      const label = labels[from + j];
+      if (!label) continue;
+      const [px, py, pz] = label.position;
+      const d = Math.hypot(px, py, pz);
+      projected.set(px, py, pz).project(c.camera);
+      const sx = ((projected.x + 1) / 2) * widthPx;
+      const sy = ((1 - projected.y) / 2) * viewportPx;
+      const front = d > 0 && projected.z < 1 && projected.z > -1;
+      let visible = front && sx >= left && sx <= rightEdge && sy >= top && sy <= bottom;
+      // Behind a world: nearer than it and inside its outline as seen from here.
+      for (const id of BODY_IDS) {
+        if (!visible) break;
+        const p = placed[id];
+        const q = Math.hypot(p.drawn.x, p.drawn.y, p.drawn.z);
+        if (hiddenBodies.has(id) || q <= 0 || q >= d) continue;
+        const cos = (px * p.drawn.x + py * p.drawn.y + pz * p.drawn.z) / (d * q);
+        if (Math.acos(Math.min(1, Math.max(-1, cos))) < Math.asin(Math.min(1, (sys.specs[id].radiusKm * grow[id] * p.k) / q))) visible = false;
+      }
+      const g = j * NAME_GEOM;
+      labGeom[g] = sx;
+      labGeom[g + 1] = sy;
+      labGeom[g + 2] = (label.text?.length ?? LAB_KEY_LETTERS) * 7.5 + 20;
+      labGeom[g + 3] = visible ? 1 : 0;
+    }
+    labView.right = widthPx - insets.right;
+    labView.bottom = viewportPx - insets.bottom;
+    labView.left = insets.left;
+    labView.top = insets.top;
+    labView.takenCount = takenCount;
+    layoutNames(labels, from, count, labGeom, labView, labNames, 1 - Math.exp(-Math.max(0, dt) / LABEL.seconds), 1 - Math.exp(-Math.max(0, dt) / LABEL.hideSeconds), entering);
+    for (let j = 0; j < count; j += 1) {
+      const label = labels[from + j];
+      if (label) labSeen.set(label.id, labFrame);
+    }
+    for (const [id, at] of labSeen) {
+      if (at === labFrame) continue;
+      labSeen.delete(id);
+      labNames.fade.delete(id);
+      labNames.place.delete(id);
+    }
+  };
+  /** What the laboratory's names keep clear of (./label-layout): the clear view, the interface, the worlds' names. */
+  const labView: NameView<BodyId> = { left: 0, top: 0, right: 0, bottom: 0, avoid, taken, takenCount: 0, worldW: LABEL.widthPx, worldH: LABEL.tagPx, worlds: BODY_IDS, worldAt: worldNameAt, giveWay };
+
   const occluded = (id: BodyId): boolean => {
     if (!system) return false;
     const p = placed[id];
@@ -2454,7 +2921,10 @@ export default function create(): UniverseModule {
       const pole = km(b[3] ?? 0, b[4] ?? 1, b[5] ?? 0);
       return {
         id,
-        radiusKm: spec.radiusKm,
+        // The camera keeps outside a world the experiment has grown.
+        get radiusKm() {
+          return spec.radiusKm * (lab?.active ? lab.scale(id) : 1);
+        },
         boundKm: spec.boundKm,
         minAltitudeKm: spec.minAltitudeKm,
         fill: spec.fill,
@@ -2474,7 +2944,7 @@ export default function create(): UniverseModule {
       all: list,
       sun: sys.bodies.sun.position,
       body(id) {
-        const found = byId.get(id);
+        const found = byId.get(id) ?? worlds?.nav(id);
         if (!found) throw new Error(`no body ${id}`);
         return found;
       },
@@ -2511,8 +2981,9 @@ export default function create(): UniverseModule {
       ]);
       noise = volume;
       timeConstants = physical.time;
-      const valid = validRange(moon);
-      range = { startJd: Math.max(valid.planets.startJd, valid.moon.startJd), endJd: Math.min(valid.planets.endJd, valid.moon.endJd) };
+      for (const id of BODY_IDS) spinRate[id] = physical.bodies[(id.charAt(0).toUpperCase() + id.slice(1)) as keyof PhysicalFile['bodies']].pm[1];
+      tables = tableRange(moon);
+      spanOf(moon);
       system = createSolarSystem(planets, moon, physical);
       labInputs = { planets, moon, physical };
       skyData = skyFile;
@@ -2527,7 +2998,7 @@ export default function create(): UniverseModule {
       fixed = !c.graphics.adaptive;
       const start: ExploreTier = fixedDetail ? (available.includes(fixedDetail) ? fixedDetail : 'high') : initialTier(device);
       const minScale = Object.fromEntries(EXPLORE_TIERS.map((t) => [t, DETAIL[t].minRenderScale])) as Record<ExploreTier, number>;
-      governor = createDetailGovernor({ tier: start, choice: 'auto', enabled: c.graphics.adaptive, available, minScale, mobile: device.mobile });
+      governor = createDetailGovernor({ tier: start, choice: 'auto', enabled: c.graphics.adaptive, available, minScale, mobile: device.mobile, held: c.graphics.held });
       detail = DETAIL[start];
       if (pendingChoice) {
         const choice = pendingChoice;
@@ -2670,7 +3141,9 @@ export default function create(): UniverseModule {
             return;
           }
           if (walk?.active) {
-            walk.look(dx, dy);
+            // A drag moves the scene with it if the visitor chose so (mouse-look never does).
+            const sense = walkScene && document.pointerLockElement !== c.renderer.domElement ? -1 : 1;
+            walk.look(dx * sense, dy * sense);
             return;
           }
           if (descent?.active) {
@@ -2682,11 +3155,11 @@ export default function create(): UniverseModule {
         },
         pan: (dx, dy) => {
           if (hoodShown) {
-            hood?.drag(dx, dy);
+            hood?.pan(dx, dy);
             return;
           }
           if (walk?.active) {
-            walk.look(dx, dy);
+            walk.look(walkScene ? -dx : dx, walkScene ? -dy : dy);
             return;
           }
           if (descent?.active) {
@@ -2696,11 +3169,13 @@ export default function create(): UniverseModule {
           stretch.steered = true;
           nav.pan(w, dx, dy);
         },
-        zoom: (dLn) => {
+        zoom: (dLn, x, y) => {
           if (hoodShown) {
-            hood?.zoom(dLn);
+            hood?.zoom(dLn, x, y);
             return;
           }
+          // On foot the view narrows and widens (binoculars to a wide lens).
+          if (walk?.active) walkFov = Math.min(WALK_ZOOM.max, Math.max(WALK_ZOOM.min, walkFov * Math.exp(Number.isFinite(dLn) ? dLn : 0)));
           if (walk?.active || descent?.active) return;
           stretch.steered = true;
           nav.zoom(w, dLn);
@@ -2709,41 +3184,91 @@ export default function create(): UniverseModule {
           // The left arrow turns the walker left (its azimuth is +1, for the orbit's own sense).
           walkInput.turn = -azimuth;
           walkInput.tip = elevation;
+          // Among the stars the keys are the stars' camera's (the solar system's waits).
+          if (hoodShown) {
+            hood?.turn(azimuth, elevation, zoom);
+            return;
+          }
           if (walk?.active || descent?.active) return;
           if (azimuth !== 0 || elevation !== 0 || zoom !== 0) stretch.steered = true;
           nav.setOrbitKeys(azimuth, elevation, zoom);
         },
-        flightKeys: (move, roll, boost) => {
+        flightKeys: (move, roll, boost, ride) => {
           walkInput.forward = move.z;
           walkInput.right = move.x;
           walkInput.jump = move.y > 0;
           walkInput.run = boost;
+          walkInput.rover = ride === true;
+          // On foot Q and E turn, as the arrows do.
+          walkTurnKeys = roll;
+          if (hoodShown) {
+            hood?.keys(move, roll, boost);
+            return;
+          }
           if (walk?.active || descent?.active) return;
           if (move.x !== 0 || move.y !== 0 || move.z !== 0 || roll !== 0) stretch.steered = true;
           nav.setFlightKeys(w, move, roll, boost);
         },
         stop: () => {
-          if (hoodShown) {
-            if (hood?.travelling) hood.stop();
+          // Among the stars, or on the way in or out: Esc stops a flight, then goes back to the solar
+          // system; on the way in it turns round, while they load it calls them off. A switch holds Esc a
+          // little while (a burst or a held key goes no further, though an open card still closes on it).
+          if (performance.now() < hoodHeld) return 'held';
+          if (hoodShown || hoodDip || hoodLoading) {
+            if (hoodDip && !hoodDip.into) return true;
+            if (hoodDip && !hoodDip.switched) {
+              hoodDip = { into: false, t: WALK_DIP.downS + WALK_DIP.upS * (1 - hoodDip.t / WALK_DIP.downS), switched: true };
+              hood?.exit();
+              hoodHeld = performance.now() + 1500;
+            } else if (hoodLoading) {
+              hoodWanted = false;
+              hoodHeld = performance.now() + 600;
+            } else if (hood?.travelling) hood.stop();
             else endStars();
             return true;
           }
-          if (walk?.active) {
+          // A walk (asked for, landing, on foot, or dipping out) or a descent takes Esc, and holds it a
+          // second after (through the climb back): pressed again or held, it goes no further. A walk
+          // waiting for a trip is dropped with the trip.
+          if (walkAfterTrip) {
+            walkAfterTrip = null;
+            escapeHeld = performance.now() + 1000;
+            steer('stop');
+            return true;
+          }
+          // The climb back to orbit after a walk (from the dip's darkest on): stopped where it is.
+          if (walkClimb && nav.stopGlide()) {
+            walkClimb = false;
+            escapeHeld = performance.now() + 1000;
+            return true;
+          }
+          if (walkDip && !walkDip.into) return true;
+          if (walk?.active || walkAsked || walkLoading || walkDip) {
             endWalk();
             return true;
           }
-          if (descent?.active) {
+          if (descentDip && !descentDip.into) return true;
+          if (descent?.active || descentDip) {
             endDescent();
             return true;
           }
-          // Esc while placing a body leaves placing.
-          if (lab?.active && lab.placing) {
-            lab.command({ kind: 'place', on: false });
+          // Esc while placing a body leaves placing; while the laboratory slows for an event, calls that off.
+          if (lab?.active && lab.escape()) return true;
+          if (steer('stop')) return true;
+          // Held: and pressed again within the second, held a second longer (only a pause lets Esc go on).
+          if (performance.now() < escapeHeld) {
+            escapeHeld = performance.now() + 1000;
             return true;
           }
-          return steer('stop');
+          return false;
         },
+        // What is shown, not what is asked for: landing, the camera still waits in orbit.
+        onFoot: () => (walking ? 'ground' : descending ? 'air' : null),
         orbit: () => {
+          if (hoodShown) {
+            hood?.toggleMode();
+            return;
+          }
           if (walk?.active) {
             endWalk();
             return;
@@ -2765,8 +3290,9 @@ export default function create(): UniverseModule {
         },
         hover: (x, y) => {
           if (lab?.active) lab.hover(x, y);
+          if (hoodShown) hood?.hover(x, y);
         },
-        tap: (x, y) => (lab?.active ? lab.tap(x, y) : false),
+        tap: (x, y) => (lab?.active ? lab.tap(x, y) : hoodShown ? (hood?.tap(x, y) ?? false) : false),
         travel: (id) => {
           nav.flyTo(w, id);
           // The interface keeps the address in step (app.focusBody), as for a choice from its list.
@@ -2781,7 +3307,7 @@ export default function create(): UniverseModule {
       if (options.labShare) pendingShare = options.labShare;
       if (entered) applyLab();
       if (options.jdUtc !== null || !entered) pinnedUtc = options.jdUtc;
-      if (entered && options.jdUtc !== null) setDate(options.jdUtc);
+      if (entered && options.jdUtc !== null) goToDate(options.jdUtc, timePaused);
       nav.reducedMotion = options.reducedMotion;
       if (entered && options.body && world) nav.flyTo(world, options.body);
       else wantBody = options.body;
@@ -2803,7 +3329,9 @@ export default function create(): UniverseModule {
       root.visible = true;
       entered = true;
       ambient = 0;
-      setDate(pinnedUtc);
+      shownFor = 0;
+      if (pinnedUtc === null) setDate(null);
+      else goToDate(pinnedUtc, timePaused);
       system.update(jdTdb);
       nav.reducedMotion = c.reducedMotion;
       // Framing needs the view before the first pose is chosen.
@@ -2949,6 +3477,18 @@ export default function create(): UniverseModule {
         case 'starsPlace':
           hood?.goToPlace(command.place);
           return;
+        case 'starsLight':
+          hood?.setStarlight(command.brightness, command.faintest);
+          return;
+        case 'starsCamera':
+          hood?.setMode(command.mode);
+          return;
+        case 'starsFigures':
+          hood?.setFigures(command.on);
+          return;
+        case 'starsFind':
+          hood?.find(command.name);
+          return;
         case 'sound':
           soundView.on = command.on;
           soundscape?.setEnabled(command.on);
@@ -2969,8 +3509,38 @@ export default function create(): UniverseModule {
           endWalk();
           return;
         case 'walkPad':
-          walkPad.forward = Math.max(-1, Math.min(1, command.forward));
+          walkPad.forward = Math.max(-1, Math.min(1, command.forward || 0));
+          walkPad.right = Math.max(-1, Math.min(1, command.right || 0));
+          walkPad.run = command.run === true;
+          walkPad.rover = command.rover === true;
           walkPad.jump = command.jump;
+          return;
+        case 'walkLook':
+          walkScene = command.scene;
+          return;
+        case 'world': {
+          const id = worlds?.find(command.name);
+          if (id && world) nav.flyTo(world, id);
+          else if (!worlds) {
+            worldWanted = command.name;
+            worldsAt = 0;
+          }
+          return;
+        }
+        case 'smallBodies':
+          worldsLayer = command.on;
+          // (Off asks for nothing: the worlds come in their own time.)
+          if (command.on) worldsAt = 0;
+          worlds?.setLayer(command.on);
+          return;
+        case 'smallBodiesGrouped':
+          worlds?.setGrouped(command.on);
+          return;
+        case 'smallBodiesOrbits':
+          worlds?.setArranged(command.on);
+          return;
+        case 'walkRetry':
+          walk?.retry();
           return;
         case 'goto':
           goToPlace(command.lat, command.lon, command.viewKm);
@@ -3022,46 +3592,31 @@ export default function create(): UniverseModule {
     },
 
     lab(command) {
-      lab?.command(command);
+      // Asked before the laboratory's chunk has come: done once it has.
+      if (lab) void lab.command(command);
+      else labQueue.push(command);
     },
 
-    time(command) {
-      // In the laboratory: pause, faster and slower drive the experiment; going back is by its checkpoints, not a reversed clock.
+    time(asked) {
+      // Checked at the boundary: a rate or a date that is not a finite number is refused, a rate's size held to the ladder's.
+      const command = validTimeCommand(asked);
+      if (!command) return;
+      // In the laboratory the commands drive the experiment's clock (./lab: backwards by replaying its history).
       if (lab?.active) {
-        if (command.kind === 'toggle') lab.setRun(lab.rate, !lab.paused);
-        else if (command.kind === 'faster') lab.setRun(fasterRate(lab.rate), false);
-        else if (command.kind === 'slower') lab.setRun(slowerRate(lab.rate), false);
-        else if (command.kind === 'rate') lab.setRun(command.rate === 0 ? lab.rate : Math.abs(command.rate), command.rate === 0);
+        // A date as the clock shows it: TDB minus UTC as drawn (carried from the explorer's date).
+        lab.time(command, jdTdb - jdUtc);
         return;
       }
-      // A change of rate or direction sets the clock running; a new date keeps it as it was.
-      if (command.kind !== 'date' && command.kind !== 'toggle') timePaused = false;
-      timeEdge = null;
-      switch (command.kind) {
-        case 'toggle':
-          timePaused = !timePaused;
-          return;
-        case 'faster':
-          timeRate = fasterRate(timeRate);
-          return;
-        case 'slower':
-          timeRate = slowerRate(timeRate);
-          return;
-        case 'reverse':
-          timeRate = -timeRate;
-          return;
-        case 'now':
-          timeRate = 1;
-          setDate(null);
-          return;
-        case 'date':
-          setDate(command.jdUtc);
-          return;
-        case 'rate':
-          if (command.rate === 0) timePaused = true;
-          else timeRate = command.rate;
-          return;
-      }
+      // The pure reducer (./time): a change of rate or direction sets the clock running, a new date keeps it as it
+      // was; at an end, play, faster and slower turn it round. On foot faster stops at FOOT_MAX_RATE.
+      const next = applyTimeCommand({ rate: timeRate, paused: timePaused, edge: timeEdge }, command, clockHold() === 'foot' ? FOOT_MAX_RATE : undefined).state;
+      timeRate = next.rate;
+      timePaused = next.paused;
+      timeEdge = next.edge;
+      pendingDate = null;
+      if (command.kind === 'now') setDate(null);
+      // A date outside the span is shown at its nearest end, stopped there, and the end says why.
+      else if (command.kind === 'date') goToDate(command.jdUtc, next.paused);
     },
 
     focus(body) {
@@ -3082,7 +3637,7 @@ export default function create(): UniverseModule {
       if (!world || !system) return;
       // A placed camera is at true scale.
       Object.assign(stretch, { active: false, amount: 1 });
-      const body = system.bodies[pose.body].position;
+      const body = world.body(pose.body).position;
       const from = pose.from ?? 'sun';
       const other = from === 'sun' ? (pose.body === 'sun' ? system.bodies.earth.position : system.bodies.sun.position) : system.bodies[from].position;
       // 'sun': toward the Sun (the lit face). A body: from the far side of the focus, so that body shows behind it.
@@ -3118,6 +3673,8 @@ export default function create(): UniverseModule {
       endWalk(true);
       endDescent(true);
       endStars(true);
+      // Coming back, Esc is the explorer's at once (the hold after a walk belongs to that visit).
+      escapeHeld = 0;
       // Photo mode's lens and tracking end with the visit.
       lensFov = null;
       viewState.lensFov = null;
@@ -3140,6 +3697,7 @@ export default function create(): UniverseModule {
       soundscape = null;
       window.removeEventListener('pointerdown', unlockSound);
       window.removeEventListener('keydown', unlockSound);
+      window.removeEventListener('kf-universe-avoid', onAvoid);
       root.removeFromParent();
       input?.detach();
       bodies?.dispose();
@@ -3173,6 +3731,7 @@ export default function create(): UniverseModule {
       }
       descent = null;
       hood?.dispose();
+      worlds?.dispose();
       hood = null;
       starsRoot.removeFromParent();
       walk = null;

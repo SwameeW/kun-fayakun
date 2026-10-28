@@ -10,11 +10,12 @@ import { helpButton } from './help';
  * date, and on foot the walker's place, heading and look, kept in this browser under a name (a
  * per-viewer convenience: nothing leaves the browser, and nothing breaks without storage). Going back
  * to one sets its date, travels to its world if the camera is elsewhere, glides over its place, and
- * on foot begins the walk again, facing as it did.
+ * on foot begins the walk again, facing as it did. Its own chunk (./sections), loaded the first time
+ * the section opens (the section and its summary are the navigator's).
  */
 
 export interface SavedViews {
-  readonly element: HTMLDetailsElement;
+  readonly body: HTMLElement;
   update(view: UniverseView): void;
 }
 
@@ -67,19 +68,13 @@ export function createSavedViews(app: App, f: Formatters, onGo: () => void): Sav
   const notice = h('p', { class: 'kf-living-hint', 'data-testid': 'saved-notice', hidden: true });
   const empty = h('p', { class: 'kf-living-hint', 'data-testid': 'saved-empty' }, i18n.t('ui.universe.saved.empty'));
   const list = h('ul', { class: 'kf-living-places', 'data-testid': 'saved-list' });
-  const summary = h('summary', {}, i18n.t('ui.universe.saved.title'));
-  const element = h(
-    'details',
-    { class: 'kf-nav-saved', 'data-testid': 'saved-views' },
-    summary,
-    h(
-      'div',
-      { class: 'kf-living-body' },
-      h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.saved.intro'), helpButton(app, 'saved', i18n.t('ui.universe.saved.title'))),
-      h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: nameId }, i18n.t('ui.universe.saved.name')), nameInput, saveButton, notice),
-      empty,
-      list,
-    ),
+  const body = h(
+    'div',
+    { class: 'kf-living-body' },
+    h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.saved.intro'), helpButton(app, 'saved', i18n.t('ui.universe.saved.title'))),
+    h('div', { class: 'kf-living-group' }, h('label', { class: 'kf-living-label', for: nameId }, i18n.t('ui.universe.saved.name')), nameInput, saveButton, notice),
+    empty,
+    list,
   );
 
   const dateOf = (jdUtc: number): string => new Date((jdUtc - UNIX_EPOCH_JD) * 86_400_000).toLocaleDateString(i18n.locale, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -131,7 +126,8 @@ export function createSavedViews(app: App, f: Formatters, onGo: () => void): Sav
     }
     notice.hidden = true;
     const jdUtc = julianDateUtc(v.unixMs);
-    const body = w ? w.world : (place?.body ?? v.focus);
+    const body = w ? w.world : place?.body;
+    if (!body) return;
     const name = nameInput.value.trim() || i18n.t('ui.universe.saved.defaultName', { body: f.name(body), date: dateOf(jdUtc) });
     const entry: Saved = {
       id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,
@@ -152,7 +148,7 @@ export function createSavedViews(app: App, f: Formatters, onGo: () => void): Sav
 
   render();
   return {
-    element,
+    body,
     update(view) {
       latest = view;
       saveButton.disabled = view.place === null && view.walk === null;

@@ -1,0 +1,207 @@
+{
+ "probeOf": ".work/ai-eval/results/prefill-full/prefill-probe-Qwen3-1.7B-q4f16_1-MLC.json (tests/ai-eval/prefill.spec.ts)",
+ "note": "the replies themselves are not copied: they are a model's words before any guard",
+ "model": "Qwen3-1.7B-q4f16_1-MLC",
+ "switchTo": "Qwen3.5-4B-q4f16_1-MLC",
+ "setting": {
+  "chunkTokens": 128,
+  "yieldBetween": true
+ },
+ "startedAt": "2026-10-27T21:29:07.818Z",
+ "loadavgStart": [
+  3.29,
+  3.36,
+  2.83
+ ],
+ "loadavgEnd": [
+  2.88,
+  3.25,
+  2.81
+ ],
+ "asCompiled": {
+  "load": {
+   "ms": 1025.7999999523163,
+   "prefill": {
+    "outcome": "off",
+    "compiled": null,
+    "chunkTokens": null,
+    "yieldBetween": false
+   }
+  },
+  "long": {
+   "finish": "stop",
+   "promptTokens": 3618,
+   "outputTokens": 27,
+   "ttftMs": 3134.4000000953674,
+   "prefillTokensPerS": 1154.2879019556913,
+   "prefill": {
+    "outcome": "off",
+    "compiled": null,
+    "chunkTokens": null,
+    "yieldBetween": false,
+    "chunkAtGeneration": 1024
+   },
+   "wallMs": 3824,
+   "marker": null,
+   "textChars": 126
+  },
+  "short": {
+   "finish": "stop",
+   "promptTokens": 35,
+   "outputTokens": 47,
+   "ttftMs": 39.89999997615814,
+   "prefillTokensPerS": 877.1929829802986,
+   "prefill": {
+    "outcome": "off",
+    "compiled": null,
+    "chunkTokens": null,
+    "yieldBetween": false,
+    "chunkAtGeneration": 1024
+   },
+   "wallMs": 454,
+   "marker": null,
+   "textChars": 215
+  }
+ },
+ "chunked": {
+  "load": {
+   "ms": 1007.1000000238419,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true
+   }
+  },
+  "long": {
+   "finish": "stop",
+   "promptTokens": 3618,
+   "outputTokens": 23,
+   "ttftMs": 3648.5,
+   "prefillTokensPerS": 991.6404001644512,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true,
+    "chunkAtGeneration": 128
+   },
+   "wallMs": 4231,
+   "marker": null,
+   "textChars": 89
+  },
+  "short": {
+   "finish": "stop",
+   "promptTokens": 35,
+   "outputTokens": 47,
+   "ttftMs": 40.10000002384186,
+   "prefillTokensPerS": 872.8179545932768,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true,
+    "chunkAtGeneration": 128
+   },
+   "wallMs": 456,
+   "marker": null,
+   "textChars": 215
+  },
+  "stopped": {
+   "finish": "abort",
+   "promptTokens": 3618,
+   "outputTokens": 1,
+   "ttftMs": 3602.399999976158,
+   "prefillTokensPerS": 1004.3304463757343,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true,
+    "chunkAtGeneration": 128
+   },
+   "wallMs": 3604,
+   "marker": null,
+   "textChars": 1
+  },
+  "again": {
+   "finish": "stop",
+   "promptTokens": 3618,
+   "outputTokens": 23,
+   "ttftMs": 3603.1999999284744,
+   "prefillTokensPerS": 1004.1074600554562,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true,
+    "chunkAtGeneration": 128
+   },
+   "wallMs": 4175,
+   "marker": null,
+   "textChars": 89
+  }
+ },
+ "switched": {
+  "load": {
+   "ms": 1840,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true
+   }
+  },
+  "short": {
+   "finish": "stop",
+   "promptTokens": 35,
+   "outputTokens": 45,
+   "ttftMs": 376.7000000476837,
+   "prefillTokensPerS": 92.91213165800266,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true,
+    "chunkAtGeneration": 128
+   },
+   "wallMs": 1605,
+   "marker": null,
+   "textChars": 218
+  }
+ },
+ "reloaded": {
+  "load": {
+   "ms": 1045.1000000238419,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true
+   }
+  },
+  "short": {
+   "finish": "stop",
+   "promptTokens": 35,
+   "outputTokens": 47,
+   "ttftMs": 91.59999990463257,
+   "prefillTokensPerS": 382.09607026680703,
+   "prefill": {
+    "outcome": "set",
+    "compiled": 1024,
+    "chunkTokens": 128,
+    "yieldBetween": true,
+    "chunkAtGeneration": 128
+   },
+   "wallMs": 521,
+   "marker": null,
+   "textChars": 215
+  }
+ },
+ "sameLong": false,
+ "sameLongPrefixChars": 26,
+ "sameShort": true,
+ "sameAfterStop": true,
+ "unexpectedRequests": [],
+ "pageErrors": []
+}

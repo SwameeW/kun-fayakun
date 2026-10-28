@@ -1,6 +1,11 @@
+import type { ThrowPlan, ThrowRequest } from './aim';
+import type { Approach } from './approach';
 import type { ClimateSpec } from './climate';
 import type { Command, Encounter, Scenario } from './engine';
+import type { Within } from './goto';
+import type { BodyOrigin, Look } from './looks';
 import type { MergeEvent } from './nbody';
+import type { SwarmPlaces } from './rewind';
 import type { Burn } from './ships';
 
 /**
@@ -12,9 +17,25 @@ import type { Burn } from './ships';
 
 export type LabRequest =
   | { type: 'load'; generation: number; scenario: Scenario }
-  | { type: 'run'; generation: number; rate: number; paused: boolean }
-  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt). */
-  | { type: 'command'; generation: number; command: Command; atStep?: number }
+  /**
+   * The clock: simulated seconds per real second (negative: the history played backwards, exactly, by
+   * replaying it from its checkpoints: ./rewind) and whether paused. `control` counts the page's run
+   * and goto requests; snapshots echo the latest they had, so the page takes a stop at the start or a
+   * goto's end only from a snapshot that knew its latest request. A run stops a goto under way where
+   * it is. Paused, `landAt` is the moment the page draws (s): the run steps on to the first whole step
+   * at or past it (back to one, going backwards), so an edit is made on what is drawn.
+   */
+  | { type: 'run'; generation: number; control: number; rate: number; paused: boolean; landAt?: number }
+  /**
+   * Go to simulated time `t` (s since the epoch, at least 0): back through the checkpoints, then on a few steps a
+   * tick, to the first whole step at or past it, but never out of `within` (a date's day: ./goto) when it holds
+   * `t`; the clock then runs (or not) as `run` last said.
+   */
+  | { type: 'goto'; generation: number; control: number; t: number; within?: Within }
+  /** `atStep`: the step of the view the edit was made on (the run goes back to it: Engine.applyAt; `exact`: made there or refused); `editSeq` numbers it, and the worker's 'ack' answers with it. */
+  | { type: 'command'; generation: number; command: Command; atStep?: number; exact?: boolean; editSeq?: number }
+  /** A throw worked out (./aim) from the run as it stands, not yet made: answered with 'aimed'. */
+  | { type: 'aim'; generation: number; requestId: number; request: ThrowRequest }
   | { type: 'predict'; generation: number; id: string | null; horizonS: number; accuracy: number }
   | { type: 'undo'; generation: number }
   | { type: 'redo'; generation: number }
@@ -32,13 +53,29 @@ export interface LabSnapshot {
   t: number;
   step: number;
   dt: number;
+  /**
+   * Simulated time asked for and not yet stepped (s, in the direction of travel: the page's drawn clock
+   * aims at t + owed, or t - owed going back); counts discontinuities of the run (a load, seek, replay,
+   * undo, redo, a goto going back, an edit made on an earlier view), which alone may move the drawn
+   * clock against its direction; the latest run or goto request it had (LabRequest `control`).
+   */
+  owed: number;
+  timeline: number;
+  control: number;
+  /** Back at the scenario's start while going backwards (the worker has paused there), or null. */
+  edge: 'start' | null;
+  /** A goto under way: the time it is going to (s), or null. */
+  seekingS: number | null;
+  /** The worker's step budget was spent before the time asked for was reached (the achieved rate is then the most possible here). */
+  budgetBound: boolean;
   ids: string[];
   names: string[];
   gm: Float64Array;
   radius: Float64Array;
-  /** Positions (km) and velocities (km/s), three per body, in the scenario's frame. */
+  /** Positions (km), velocities (km/s) and accelerations (km/s^2), three per body, in the scenario's frame (the page draws between snapshots with them). */
   pos: Float64Array;
   vel: Float64Array;
+  acc: Float64Array;
   /** Spin angular momenta (G units, three per body), J2s and moment of inertia factors; the bodies held in place. */
   spin: Float64Array;
   j2: Float64Array;
@@ -49,7 +86,7 @@ export interface LabSnapshot {
   redoable: number;
   /** Drift since the last intervention (relative), and the closed model's totals now. */
   drift: { energy: number; momentum: number; angularMomentum: number };
-  /** Requested and achieved simulated seconds per real second (achieved: over the last second). */
+  /** Requested and achieved simulated seconds per real second (achieved: since the rate was set, over at least a second and two steps). */
   requestedRate: number;
   achievedRate: number;
   paused: boolean;
@@ -60,8 +97,14 @@ export interface LabSnapshot {
   /** Each solid world's climate (./climate): its bands' temperatures (K, south to north) and what it is set to; every star's luminosity now (W). */
   climate: Array<{ id: string; t: number[]; spec: ClimateSpec }>;
   light: Record<string, number>;
-  /** Rings and belts: their particles' places relative to each one's primary (km, three per particle; single precision is ample to draw). */
-  swarms: Array<{ id: string; name: string; primary: string; lost: number; rel: Float32Array }>;
+  /** Rings and belts: their particles' places relative to each one's primary (km, three per particle; single precision is ample to draw), what each is and looks like (./rewind SwarmPlaces). */
+  swarms: SwarmPlaces;
+  /** Each body's look (./looks), and where a body a collision or the tides made came from (null for the rest); pieces of torn bodies. Drawing only. */
+  looks: Look[];
+  origin: Array<BodyOrigin | null>;
+  rubble: string[];
+  /** The next impact or tidal disruption within four seconds at the rate asked for (./approach), or null. */
+  upcoming: (Approach & { t: number }) | null;
   logLength: number;
   discarded: number;
   /** Ships (./ships): their rocket, propellant now and burns to come. */
@@ -70,6 +113,11 @@ export interface LabSnapshot {
 
 export type LabReply =
   | LabSnapshot
-  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; encounters: Encounter[] }
+  /** A body's path integrated ahead from simulated time `fromT` (its times, the merger's and the encounters', are from then). */
+  | { type: 'prediction'; generation: number; revision: number; id: string; horizonS: number; fromT: number; path: Float64Array; merged: { t: number; with: string; pos: [number, number, number] } | null; frame: string | null; framePath: Float64Array; encounters: Encounter[] }
   | { type: 'saved'; generation: number; requestId: number; scenario: Scenario }
+  /** An edit's answer: applied, or refused with the reason (Engine.refusal); the bodies it made. */
+  | { type: 'ack'; generation: number; editSeq: number; ok: boolean; reason: string | null; created: string[] }
+  /** A throw worked out, from the run with `logLength` edits logged (an edit since makes it stale). */
+  | { type: 'aimed'; generation: number; requestId: number; logLength: number; plan: ThrowPlan }
   | { type: 'error'; generation: number; message: string };

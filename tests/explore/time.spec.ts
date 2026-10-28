@@ -47,14 +47,17 @@ test('the time machine: faster, paused, backwards, a date, the end of the data a
   await page.getByTestId('universe-time-date').fill('2030-06-15');
   await expect.poll(async () => new Date(await shown(page)).toISOString().slice(0, 10), LIVE).toBe('2030-06-15');
 
-  // At thirty days a second the Moon's table runs out: the clock stops there and says why.
-  await page.getByTestId('universe-time-date').fill('2035-12-01');
+  // At thirty days a second the explorer's dates run out (in 2400, by the published theories beyond JPL's
+  // tables, which come a few seconds in): the clock stops there and says why.
+  await expect.poll(async () => (await view(page))?.time.endMs ?? 0, LIVE).toBeGreaterThan(Date.UTC(2399, 0, 1));
+  await page.getByTestId('universe-time-date').fill('2399-12-01');
   await page.getByTestId('universe-time-faster').click();
   for (let i = 0; i < 9; i += 1) await page.keyboard.press(']');
   await expect(page.getByTestId('universe-time-reverse')).toHaveAttribute('aria-pressed', 'true');
   await page.getByTestId('universe-time-reverse').click();
-  await expect(rate).toHaveText('Time stops here: the Moon’s table ends', LIVE);
+  await expect(rate).toHaveText('Time stops here: the end of the explorer’s dates', LIVE);
   expect((await view(page))?.time).toMatchObject({ edge: 'end', paused: true });
+  await expect(page.getByTestId('universe-time-note')).toHaveText('Play runs it backwards from here.');
 
   await page.getByTestId('universe-time-now').click();
   await expect(rate).toHaveText('Real time');

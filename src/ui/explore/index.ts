@@ -1,4 +1,4 @@
-import { BODY_IDS, type App, type BodyId, type ChapterId, type UniverseView } from '../../core/types';
+import { BODY_IDS, type App, type BodyId, type ChapterId, type FocusId, type UniverseView } from '../../core/types';
 import exploreMessages from '../../i18n/en.explore.json';
 import { focusLost, h } from '../dom';
 import { icon } from '../icons';
@@ -7,11 +7,12 @@ import { createFlightHud } from './flight-hud';
 import { formatters } from './format';
 import { createNavigator } from './navigator';
 import { createDescentHud } from './descent-hud';
-import { createWalkHud } from './walk-hud';
+import type { WalkHud } from './walk-hud';
 import { createNotes } from './notes';
 import { storedDetailChoice } from './quality-menu';
 import { createTimeControl } from './time-control';
 import { createToast } from './toast';
+import { TOAST_EVENT } from './help';
 import type { PhotoBar } from './photo-bar';
 
 /**
@@ -74,8 +75,20 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
 
   // A quiet toast marks what joins the log of what was seen, and a detail level applied.
   const toast = createToast('universe-toast');
-  const hud = createFlightHud(app, f, (id) => SURFACE_KEYS[id], () => element);
-  const walkHud = createWalkHud(app, f, () => element);
+  // A part that did not load says so here too (an explanation's "?": ./help).
+  window.addEventListener(TOAST_EVENT, (event) => {
+    const line = (event as CustomEvent<unknown>).detail;
+    if (typeof line === 'string') toast.show(line);
+  });
+  const hud = createFlightHud(app, f, (id) => (id.startsWith('w:') ? 'ui.universe.surface' : SURFACE_KEYS[id as BodyId]), () => element);
+  // The suit's readout comes with its own chunk, the first time a walk is asked for (or refused).
+  const walkSlot = h('div', { hidden: true });
+  let walkHud: WalkHud | null = null;
+  let walkHudLoading = false;
+  let walkHudFailed = false;
+  /** On foot last frame, and whether the navigator was open before the walk landed (it folds, and opens again after). */
+  let wasOnFoot = false;
+  let navBeforeWalk = false;
   const descentHud = createDescentHud(app, f, () => element);
   // The time machine heads the navigator, with photo mode's button at the end of its line.
   const time = createTimeControl(app, announce);
@@ -131,6 +144,9 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
       toast.show(title, line);
     },
     timeRow,
+    (slot) => {
+      time.placeDay(slot);
+    },
   );
   const hint = h('p', { class: 'kf-universe-hint' });
   const loading = h('p', { class: 'kf-universe-loading', role: 'status' }, i18n.t('ui.universe.loading'));
@@ -146,7 +162,7 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     hud.trip,
     notes.element,
     hud.readout,
-    walkHud.element,
+    walkSlot,
     descentHud.element,
     toast.element,
     navigator.element,
@@ -181,18 +197,20 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   );
 
   // The time machine's keys ([ slower, ] faster, \ backwards; Space is the page's play key) and photo mode's (H; Esc leaves it).
+  // They pass the date field too, which cannot type them: after choosing a date the keys still work.
   window.addEventListener('keydown', (event) => {
     if (!visible || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
     const target = event.target;
-    if (target instanceof HTMLElement && (target.closest('input, textarea, select, [contenteditable="true"], [data-kf-keys="own"], dialog') !== null)) return;
+    const command = event.key === '[' ? 'slower' : event.key === ']' ? 'faster' : event.key === '\\' ? 'reverse' : null;
+    const dateField = target instanceof HTMLInputElement && target.type === 'date';
+    if (target instanceof HTMLElement && !(command && dateField) && target.closest('input, textarea, select, [contenteditable="true"], [data-kf-keys="own"], dialog') !== null) return;
     if (event.key === 'Escape' && photoOn()) {
       setPhoto(false);
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
     }
-    const command = event.key === '[' ? 'slower' : event.key === ']' ? 'faster' : event.key === '\\' ? 'reverse' : null;
-    if (command) app.universeTime({ kind: command });
+    if (command) time.press(command);
     else if (event.key === 'h' || event.key === 'H') setPhoto(!photoOn());
     else return;
     event.preventDefault();
@@ -207,18 +225,25 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   /**
    * What the interface covers: the header at the top (and the readout where it runs across a
    * phone's top), the side panel at the right, the sheet at the bottom (pulled up on a phone held
-   * sideways, at the right). The view frames bodies in the rest.
+   * sideways, at the right), and the assistant's column at the left while it is open (src/ai/ui,
+   * which publishes its edge as --kf-ai-inset and says when it moves). The view frames bodies in the rest.
    */
   const reportInsets = (): void => {
     if (!visible) return;
     const height = window.innerHeight || 1;
     const width = window.innerWidth || 1;
-    const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kf-header-h')) || 0;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const header = parseFloat(rootStyle.getPropertyValue('--kf-header-h')) || 0;
+    const left = parseFloat(rootStyle.getPropertyValue('--kf-ai-inset')) || 0;
     const nav = navigator.element.getBoundingClientRect();
     const readout = hud.readout.getBoundingClientRect();
     let top = header;
     // A readout across the top middle (as on a phone) is covered space too.
-    if (readout.height > 0 && readout.top < height / 2 && readout.left < width / 3 && readout.right > width / 3) top = Math.max(top, readout.bottom);
+    const across = readout.height > 0 && readout.top < height / 2 && readout.left < width / 3 && readout.right > width / 3;
+    if (across) top = Math.max(top, readout.bottom);
+    // Inside the clear view the way back stands over it, and on a wide screen the readout's card: the names beside the worlds keep clear of them.
+    const avoid = (across ? [back] : [back, hud.readout]).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    window.dispatchEvent(new CustomEvent('kf-universe-avoid', { detail: avoid.map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })) }));
     const isSheet = navigator.layout === 'sheet' && nav.height > 0;
     // A sheet pulled up beside the view (a phone held sideways: tall, at the right) covers the right, not the bottom.
     const beside = isSheet && nav.left > width / 4 && nav.height > height / 2;
@@ -236,15 +261,18 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
     element.style.setProperty('--kf-readout-h', `${hud.readout.offsetHeight}px`);
     element.style.setProperty('--kf-sheet-h', `${sheet}px`);
     element.classList.toggle('is-sheet-open', navigator.layout === 'sheet' && navigator.expanded);
-    app.setViewInsets({ top, bottom, left: 0, right });
+    app.setViewInsets({ top, bottom, left, right });
   };
   navigator.onResize(reportInsets);
-  new ResizeObserver(reportInsets).observe(hud.readout);
+  const sized = new ResizeObserver(reportInsets);
+  sized.observe(hud.readout);
+  sized.observe(back);
   window.addEventListener('resize', reportInsets);
+  window.addEventListener('kf-ai-inset', reportInsets);
 
   let visible = false;
   let ready = false;
-  let shownFocus: BodyId | null = null;
+  let shownFocus: FocusId | null = null;
   let wasTravelling = false;
   let hintTimer = 0;
   let lastSlow = 0;
@@ -255,11 +283,46 @@ export function mountUniverse(app: App, announce: (text: string) => void): Unive
   let toasted = 0;
   /** The film's compressed view was stretching out last frame (the way in from Chapter 7). */
   let wasStretching = false;
+  /** The readout's illustrative notes as last written. */
+  let shownNotes = '';
 
   const render = (view: UniverseView, now: number): void => {
     f.auKm = view.auKm;
     hud.update(view);
-    walkHud.update(view);
+    // The readout's notes changed (a line more or less across a phone's top): what covers the view is
+    // measured again at once, so no name is laid out a frame under it.
+    const illustrated = view.illustrative?.join() ?? '';
+    if (illustrated !== shownNotes) {
+      shownNotes = illustrated;
+      reportInsets();
+    }
+    if (!walkHud && !walkHudLoading && (view.walk !== null || view.walkRefused || view.walkWaiting)) {
+      walkHudLoading = true;
+      // Its code not arriving leaves the walk without its readout (Esc still goes back); the next walk asks again.
+      void import('./walk-hud')
+        .then(({ createWalkHud }) => {
+          if (walkHud) return;
+          walkHud = createWalkHud(app, f, () => element, announce);
+          walkSlot.replaceWith(walkHud.element);
+        })
+        .catch(() => {
+          walkHudFailed = true;
+        });
+    }
+    if (walkHudFailed && view.walk === null && !view.walkRefused && !view.walkWaiting) walkHudFailed = walkHudLoading = false;
+    walkHud?.update(view);
+    // Landed: the navigator folds, leaving the view to the world, and focus is the explorer's (so the
+    // keys walk); back in orbit it opens again if it was open.
+    const onFoot = view.walk?.state === 'walking';
+    if (onFoot !== wasOnFoot) {
+      wasOnFoot = onFoot;
+      if (onFoot) {
+        navBeforeWalk = navigator.expanded;
+        navigator.setExpanded(false);
+        if (focusLost() || navigator.element.contains(document.activeElement)) element.focus({ preventScroll: true });
+      } else if (navBeforeWalk) navigator.setExpanded(true);
+      requestAnimationFrame(reportInsets);
+    }
     descentHud.update(view);
     // Among the stars the solar system's readout and notes step aside.
     element.classList.toggle('is-among-stars', view.neighbourhood !== null);
