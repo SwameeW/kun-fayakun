@@ -168,9 +168,11 @@ test('the explorer: the Earth at several lights and heights, and the other world
 });
 
 /**
- * A walk asked for from 45,000 km (the explorer's own command): frames every fifth of a second of the way
- * down, and the ground once on foot. By day below Everest at local noon, looking at it; at dusk in the
- * Hooker Valley under Aoraki, the Sun about 15 degrees up in the west, looking toward it.
+ * A walk asked for from 45,000 km (the explorer's own command): frames every fifth of a second of the
+ * glide down to the lowest orbit; from there (the dip into the walk, and with motion the way down
+ * through the air to the walker's eye) every half second, as <name>-approach-NN; and the ground once on
+ * foot. By day below Everest at local noon, looking at it; at dusk in the Hooker Valley under Aoraki,
+ * the Sun about 15 degrees up in the west, looking toward it.
  */
 for (const [name, walk] of [
   ['descent-day', { lat: 27.98, lon: 86.83, headingDeg: 80, pitchDeg: 8 }],
@@ -184,16 +186,23 @@ for (const [name, walk] of [
     await page.evaluate((w) => {
       (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', world: 'earth', ...w });
     }, walk);
-    for (let k = 0; k < 60; k += 1) {
-      const state = await page.evaluate(() => {
+    // The glide's frames, then from the lowest orbit (150 km; on the way down from there, lower) the approach's.
+    let approach = 0;
+    for (let k = 0; k < 80; k += 1) {
+      const low = approach > 0;
+      const state = await page.evaluate((frames) => {
         const kfHook = (window as unknown as KfHook).__kf;
-        kfHook.step(12, 1 / 60);
+        kfHook.step(frames, 1 / 60);
         const v = kfHook.universe.state();
         return { walk: v?.walk?.state ?? null, km: v?.altitudeKm ?? 0 };
-      });
+      }, low ? 30 : 12);
       // Low down the ground's own tiles arrive: give them time.
       await page.waitForTimeout(state.km < 50 ? 2500 : 600);
-      await shoot(page, `${name}-${String(k).padStart(2, '0')}`, `${state.walk ?? 'descending'}, ${state.km.toFixed(state.km < 10 ? 3 : 0)} km`);
+      const note = `${state.walk ?? 'descending'}, ${state.km.toFixed(state.km < 10 ? 3 : 0)} km`;
+      if (state.walk !== null && state.km < 151) {
+        await shoot(page, `${name}-approach-${String(approach).padStart(2, '0')}`, note);
+        approach += 1;
+      } else await shoot(page, `${name}-${String(k).padStart(2, '0')}`, note);
       if (state.walk === 'walking') break;
     }
     // On foot: five seconds for the eye to adapt to the ground's light and for its finer heights and imagery.
