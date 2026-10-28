@@ -17,7 +17,7 @@ import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { frames, spam } from '../support/layout';
 import { JD, place, recordToasts, settled, step, toasts, view, waitForUniverse } from '../support/universe';
-import { SLOW } from '../support/env';
+import { NEEDS_GPU, NO_GPU, SLOW } from '../support/env';
 
 const LIVE = { timeout: 60_000 * SLOW };
 /** The navigator's box, and its scrolling body's. */
@@ -381,6 +381,7 @@ test('entered from the foot of the navigator, the laboratory and the stars show 
 });
 
 test('narrowed to a phone’s width in an experiment the sheet folds small, and widened the panel comes back', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(120_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -451,6 +452,7 @@ async function namesClear(page: Page, at: string): Promise<void> {
 }
 
 test('names beside the worlds, and their pointers at the edge, keep clear of the way back, the readout and the navigator', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(180_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -471,6 +473,7 @@ test.describe('on a touch phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test('names and their pointers keep clear of the readout and the sheet, held upright and sideways (folded and pulled up)', async ({ page, kf, pageErrors }) => {
+    test.skip(NO_GPU, NEEDS_GPU);
     test.setTimeout(240_000 * SLOW);
     await kf.open('/universe/earth', { query: { jd: JD } });
     await waitForUniverse(page);
@@ -549,6 +552,7 @@ test('the laboratory’s names and marks, the chosen body’s too, keep off the 
 });
 
 test('sections opened and closed while their code is on its way get one body each', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(120_000 * SLOW);
   // The sections' chunks come slowly (a phone's network, a static host far away).
   await page.route(/\/assets\/(islamic-panel|living-earth|sections)-[\w-]+\.js$/u, async (route) => {

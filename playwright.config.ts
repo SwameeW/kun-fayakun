@@ -38,6 +38,16 @@ const HAS_BRAVE = existsSync(BRAVE_PATH);
 const MOBILE_SPECS = /explore\/mobile\.spec\.ts|ai-panel-mobile\.spec\.ts/u;
 
 /**
+ * Specs that are GPU-heavy throughout (the laboratory and its effects, walks, the small worlds, the
+ * stars and black holes, the time machine's and the layout's stress runs): left out of CI, where every
+ * frame is drawn in software. On CI (2026-10-28) a frame there took seconds and a screenshot about 20 s,
+ * so 14 of the 20 shards ran past two hours and the rest failed on their time limits or on counts of
+ * frames a GPU draws. They run on GPU machines before every release (README, "Review process"), as
+ * do single tests elsewhere skipped on CI with NEEDS_GPU or NEEDS_REAL_FRAMES (tests/support/env.ts).
+ */
+const GPU_SPECS = /explore\/(?:black-holes|lab|lab-effects|lab-throw|layout-stress|small-worlds|time-stress|walk-light|walk-stress)\.spec\.ts/u;
+
+/**
  * The real-model evaluation (tests/ai-eval, docs/AI-INTELLIGENCE.md §9): local only, never CI, and
  * never part of a normal run. Its project exists only with KF_AI_EVAL=1, and every other project
  * ignores its folder. It downloads nothing: the model hosts resolve to nothing in Chromium, and the
@@ -89,12 +99,12 @@ export default defineConfig<KfOptions>({
     { name: 'unit', testMatch: /unit\//u },
     {
       name: 'webgpu',
-      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS],
+      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS, ...(CI ? [GPU_SPECS] : [])],
       use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS } },
     },
     {
       name: 'webgl2',
-      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS],
+      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS, ...(CI ? [GPU_SPECS] : [])],
       use: { ...desktopChromium, forceWebGL: true },
     },
     // A phone (Pixel 7: 412 x 839 CSS px at DPR 2.625, touch, Android Chrome's user agent) for the

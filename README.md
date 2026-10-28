@@ -253,7 +253,10 @@ The Core Principles in [docs/SPEC.md](docs/SPEC.md) are non-negotiable. In short
 ## Review process
 
 Code changes go through CI: validation, strict typecheck, lint, build, loading budget,
-and the Playwright suite on both backends. Changes to `data/` follow the pipeline above;
+and the Playwright suite on both backends. CI has no GPU, so the specs that are GPU-heavy
+throughout (`GPU_SPECS` in `playwright.config.ts`) and single tests skipped with `NEEDS_GPU`
+or `NEEDS_REAL_FRAMES` run on a machine with a GPU before every merge to `main`: the whole
+suite on every project, then the `@perf` specs alone (`PERF=1 npx playwright test --workers=1`). Changes to `data/` follow the pipeline above;
 never hand-edit `data/quran.json`.
 
 Before public release (SPEC section 9):

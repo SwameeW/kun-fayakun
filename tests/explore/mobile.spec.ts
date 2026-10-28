@@ -11,7 +11,7 @@ import type { CDPSession, Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
 import { fits } from '../support/layout';
 import { JD, overflow, place, settled, view, waitForUniverse } from '../support/universe';
-import { NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
+import { NEEDS_GPU, NEEDS_REAL_FRAMES, NO_GPU, SLOW } from '../support/env';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 
@@ -419,6 +419,7 @@ test('the orbital laboratory on a phone: opened from the sheet, every control a 
 });
 
 test('the orbital laboratory on a phone: entered, its panel shows from its top after the list of worlds; folded, the sheet is as small as outside it', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
@@ -608,6 +609,7 @@ test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, 
 });
 
 test('on foot on a phone upright and sideways (390 x 844, 844 x 390): the way back always on screen, the sheet folded or pulled up and the figures open or not; every control a 44 px target inside the screen, none over another; Step right and Run on the pad; turned ten times, Back to orbit still ends the walk', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(450_000 * SLOW);
   await page.setViewportSize({ width: 390, height: 844 });
   await kf.open('/universe/earth', { query: { jd: JD } });
@@ -674,6 +676,7 @@ test('on foot on a phone upright and sideways (390 x 844, 844 x 390): the way ba
 });
 
 test('the time machine stays in reach on the sheet: its buttons above the list folded or pulled up, its date under the list, every tap answered', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(150_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);

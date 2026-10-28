@@ -16,7 +16,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test, type KfHook } from '../support/fixtures';
-import { SLOW } from '../support/env';
+import { NEEDS_GPU, NO_GPU, SLOW } from '../support/env';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 import type { WalkableWorld } from '../../src/core/types';
 
@@ -138,6 +138,7 @@ async function walk(page: Page, world: WalkableWorld, lat: number, lon: number):
 test.use({ reducedMotion: 'reduce' });
 
 test('every pipeline within 16 sampled textures and 16 samplers a stage, each material at its largest, on WebGPU’s default limits', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(360_000 * SLOW);
   await page.addInitScript(record);
   await kf.open('/universe/earth', { query: { jd: JD } });
