@@ -1,6 +1,6 @@
 import { DataTexture, FloatType, NearestFilter, RGBAFormat, type WebGPURenderer } from 'three/webgpu';
 import { createAtlas, type TileAtlas } from './atlas';
-import { matrixSize, texelAngle, tileCoord, tileExists, wrapColumns, type TileCoord } from './grid';
+import { matrixSize, spanDeg, texelAngle, tileCoord, tileExists, wrapColumns, type TileCoord } from './grid';
 import type { TileSource } from './sources';
 
 /**
@@ -65,6 +65,15 @@ export interface RankState {
   originModX: number;
   originModY: number;
   texel: number;
+  /**
+   * Where the aim falls in the window (tiles from its top-left, worked out in double precision) and
+   * the tiles once round the globe at this zoom (the wrap where the grid wraps): the shader places a
+   * pixel by its angle from the aim, so its tile coordinate is a small number, exact in single
+   * precision at every longitude (./sample says why).
+   */
+  aimX: number;
+  aimY: number;
+  around: number;
 }
 
 export interface ClipmapStats {
@@ -105,6 +114,8 @@ export interface Clipmap {
   readonly options: ClipmapOptions;
   /** Ranks, coarse to fine (length options.levels), rewritten by update(). */
   readonly ranks: readonly RankState[];
+  /** The place the clipmap was last aimed at (radians): every rank's aimX and aimY are this place's. */
+  readonly aim: { readonly lat: number; readonly lon: number };
   /** Every level's tiles (a layer each) and the index of what each slot holds (k rows a level); null until first aimed close enough. */
   readonly atlas: TileAtlas | null;
   readonly index: DataTexture | null;
@@ -153,7 +164,11 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
     originModX: 0,
     originModY: 0,
     texel: 1,
+    aimX: 0,
+    aimY: 0,
+    around: 1,
   }));
+  const aimed = { lat: 0, lon: 0 };
 
   const stats: ClipmapStats = { zoom: -1, requested: 0, loaded: 0, failed: 0, pending: 0 };
   const cache = new Map<string, ImageBitmap>();
@@ -295,6 +310,8 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
       for (const r of ranks) r.on = false;
       return;
     }
+    aimed.lat = aim.lat;
+    aimed.lon = aim.lon;
 
     wanted.clear();
     const next: Pending[] = [];
@@ -313,8 +330,12 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
       let originX = Math.floor(aimAt.x) - Math.floor(k / 2);
       let originY = Math.floor(aimAt.y) - Math.floor(k / 2);
       originY = rows > k ? Math.max(0, Math.min(rows - k, originY)) : 0;
+      if (wrap <= 0) originX = cols > k ? Math.max(0, Math.min(cols - k, originX)) : 0;
+      // The aim within the window, from the origin before it is brought into the wrap (so a window
+      // across the antimeridian still has the aim a few tiles in).
+      const aimX = aimAt.x - originX;
+      const aimY = aimAt.y - originY;
       if (wrap > 0) originX = ((originX % wrap) + wrap) % wrap;
-      else originX = cols > k ? Math.max(0, Math.min(cols - k, originX)) : 0;
       if (level.zoom !== z || level.originX !== originX || level.originY !== originY) retarget(level, z, originX, originY);
 
       Object.assign(state, {
@@ -328,6 +349,9 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
         originModX: originX % k,
         originModY: originY % k,
         texel: texelAngle(grid, z),
+        aimX,
+        aimY,
+        around: wrap > 0 ? wrap : grid.projection === 'mercator' ? 2 ** z : 360 / spanDeg(grid, z),
       } satisfies RankState);
 
       // Every tile of the window not already written, nearest the aim first, coarser ranks first.
@@ -388,6 +412,7 @@ export function createClipmap(renderer: WebGPURenderer, source: TileSource, opti
     source,
     options,
     ranks,
+    aim: aimed,
     get atlas() {
       return atlas;
     },
