@@ -12,12 +12,16 @@
  *   XGrammar (without string lengths or the patterns it cannot read: grammarSchema). Each piece is pulled: the worker decodes the
  *   next one only when the page asks, and the page asks through the pacer, so decoding yields to
  *   the scene.
+ * - One generation at a time (docs/AI-INTELLIGENCE.md §3): each waits for the one before it to end,
+ *   so the worker never has two (it ends a stopped one at its next token: ./generations.ts), and the
+ *   worker is watched while a generation waits on it (Watch, below).
  * - Crash markers before device creation, weight upload and the first prefill (detect.ts).
  * - How the prompt is read (prefill.ts): the worker sets the loaded pipeline's prompt chunk after
  *   every load and reports what happened, which each generation's engine usage carries.
  * - The render budget (pacing.ts) is held from the weights' upload to the end of the load (the
- *   upload syncs the device for every tensor, then the shaders compile), and for each generation, so
- *   the scene's governors never read the model's work as the scene's.
+ *   upload syncs the device for every tensor, then the shaders compile), and for each generation
+ *   from when it is asked for to its end, whichever way it ends, so the scene's governors never read
+ *   the model's work as the scene's.
  */
 import type { ChatCompletionMessageParam, ChatCompletionRequestStreaming, InitProgressReport } from '@mlc-ai/web-llm';
 import type { EngineError, GenerateRequest, GenerateResult, JsonSchema, LanguageEngine, LoadProgress, ModelSpec, PrefillReport } from '../types';
@@ -182,15 +186,22 @@ type Answer = Exclude<FromModelWorker, { type: 'progress' } | { type: 'error' }>
 export interface ModelWorker {
   /** Sends a request; resolves with its answer, rejects with an EngineError (the worker's, or its failure to run). */
   call(request: Request, onProgress?: (report: { progress: number; text: string }) => void): Promise<Answer>;
-  /** Ends the generation in progress at its next token. */
-  interrupt(): void;
-  /** Ends the worker at once; requests still waiting reject as aborted. */
+  /** Ends generation `stream` (without one, the one in progress) at its next token. */
+  interrupt(stream?: number): void;
+  /** Ends the worker at once; requests still waiting reject as aborted (or with `error`, when given). */
+  terminate(error?: EngineFailure): void;
+}
+
+/** What the client needs of a worker: the browser's Worker, or a test's stand-in for one. */
+export interface WorkerPort {
+  post(message: ToModelWorker): void;
+  /** Sets what receives the worker's messages, and its failure to run. */
+  listen(onMessage: (message: FromModelWorker) => void, onError: (text: string) => void): void;
   terminate(): void;
 }
 
-/** Starts the model's worker (its script, with WebLLM in it, is fetched now). */
-export function startModelWorker(): ModelWorker {
-  const worker = new Worker(new URL('./webllm-worker.ts', import.meta.url), { type: 'module', name: 'kf-ai-webllm' });
+/** The client for a worker: numbers each request and settles it with the worker's answer. */
+export function connectModelWorker(port: WorkerPort): ModelWorker {
   const waiting = new Map<number, { resolve: (a: Answer) => void; reject: (e: EngineFailure) => void; onProgress?: (report: { progress: number; text: string }) => void }>();
   let nextId = 1;
   let ended = false;
@@ -198,26 +209,26 @@ export function startModelWorker(): ModelWorker {
     for (const w of waiting.values()) w.reject(error);
     waiting.clear();
   };
-  worker.onmessage = (event: MessageEvent<FromModelWorker>) => {
-    const m = event.data;
-    const w = waiting.get(m.id);
-    if (!w) return;
-    if (m.type === 'progress') {
-      try {
-        w.onProgress?.({ progress: m.progress, text: m.text });
-      } catch {
-        // A listener's failure must not stop the load.
+  port.listen(
+    (m) => {
+      const w = waiting.get(m.id);
+      if (!w) return;
+      if (m.type === 'progress') {
+        try {
+          w.onProgress?.({ progress: m.progress, text: m.text });
+        } catch {
+          // A listener's failure must not stop the load.
+        }
+        return;
       }
-      return;
-    }
-    waiting.delete(m.id);
-    if (m.type === 'error') w.reject(engineError(m.code, m.detail));
-    else w.resolve(m);
-  };
-  worker.onerror = (event: ErrorEvent) => {
-    event.preventDefault();
-    rejectAll(toEngineError(event.message || 'The model worker failed to start'));
-  };
+      waiting.delete(m.id);
+      if (m.type === 'error') w.reject(engineError(m.code, m.detail));
+      else w.resolve(m);
+    },
+    (text) => {
+      rejectAll(toEngineError(text || 'The model worker failed to start'));
+    },
+  );
   return {
     call(request, onProgress) {
       if (ended) return Promise.reject(engineError('aborted'));
@@ -225,19 +236,41 @@ export function startModelWorker(): ModelWorker {
       nextId += 1;
       return new Promise<Answer>((resolve, reject) => {
         waiting.set(id, { resolve, reject, ...(onProgress ? { onProgress } : {}) });
-        worker.postMessage({ ...request, id });
+        port.post({ ...request, id });
       });
     },
-    interrupt() {
-      if (!ended) worker.postMessage({ type: 'interrupt' } satisfies ToModelWorker);
+    interrupt(stream) {
+      if (!ended) port.post({ type: 'interrupt', ...(stream !== undefined ? { stream } : {}) });
     },
-    terminate() {
+    terminate(error) {
       if (ended) return;
       ended = true;
-      worker.terminate();
-      rejectAll(engineError('aborted'));
+      port.terminate();
+      rejectAll(error ?? engineError('aborted'));
     },
   };
+}
+
+/** Starts the model's worker (its script, with WebLLM in it, is fetched now). */
+export function startModelWorker(): ModelWorker {
+  const worker = new Worker(new URL('./webllm-worker.ts', import.meta.url), { type: 'module', name: 'kf-ai-webllm' });
+  return connectModelWorker({
+    post(message) {
+      worker.postMessage(message);
+    },
+    listen(onMessage, onError) {
+      worker.onmessage = (event: MessageEvent<FromModelWorker>) => {
+        onMessage(event.data);
+      };
+      worker.onerror = (event: ErrorEvent) => {
+        event.preventDefault();
+        onError(event.message);
+      };
+    },
+    terminate() {
+      worker.terminate();
+    },
+  });
 }
 
 /** Rejects as soon as the signal aborts; otherwise settles with `work`, its failure as an EngineError. */
@@ -284,13 +317,49 @@ export async function deleteModelInWorker(model: ModelSpec): Promise<void> {
   await inShortWorker('deleteModelAllInfoInCache', model);
 }
 
+/** A generation as the engine follows it: whether it was stopped, the worker's stream once started, and a wake for its waits. */
+interface Run {
+  interrupted: boolean;
+  stream: number | null;
+  /** Ends its waits (for the generation before it, or for the tab to show) at once. */
+  wake(): void;
+  woken: Promise<void>;
+}
+
+function newRun(): Run {
+  let wake = (): void => undefined;
+  const woken = new Promise<void>((resolve) => {
+    wake = resolve;
+  });
+  return { interrupted: false, stream: null, wake, woken };
+}
+
+/**
+ * How the page watches the worker while it waits on a generation's start or its next piece. A step
+ * can take long (a prompt of thousands of tokens is read in one: Qwen3.5 4B read 3,618 tokens in 7.6 s
+ * on this Mac), but WebLLM waits for the GPU without holding the worker's thread, so the worker
+ * answers a ping at once while a step runs. Neither limit can cut a step that is making its way:
+ * - `silentMs`: a ping unanswered this long means the worker has stopped (its thread ended or stuck);
+ * - `stepMs`: no step takes this long (the whole context window, 4,096 tokens, read at under 14 tokens
+ *   a second; the slowest model measured here, Qwen3.5 9B, read 266–330 a second).
+ * Either ends the worker (the only way to stop a GPU device's work), and the generation ends with
+ * finish 'error' and an EngineError that says which (lastError), and a warning in the console.
+ */
+export interface Watch {
+  pingMs: number;
+  silentMs: number;
+  stepMs: number;
+}
+
+export const WATCH: Watch = { pingMs: 5000, silentMs: 30_000, stepMs: 300_000 };
+
 /**
  * Downloads (if needed), compiles and readies `model` in its worker. Rejects with an EngineError:
  * aborted, network, quota, integrity, device-lost, out-of-memory, unsupported, no-webgpu or unknown.
  * `start` makes the worker (a test gives its own); `prefill` is how it reads its prompt (the model's
- * own setting unless the evaluation gives another).
+ * own setting unless the evaluation gives another); `watch` how the worker is watched (a test's own).
  */
-export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress) => void, signal: AbortSignal, pacer: Pacer, start: () => ModelWorker = startModelWorker, prefill: PrefillSetting = prefillFor(model)): Promise<WebLlmEngine> {
+export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress) => void, signal: AbortSignal, pacer: Pacer, start: () => ModelWorker = startModelWorker, prefill: PrefillSetting = prefillFor(model), watch: Watch = WATCH): Promise<WebLlmEngine> {
   throwIfAborted(signal);
   // A hidden tab starts nothing (§6).
   await pacer.visible();
@@ -312,13 +381,26 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     }
   };
 
+  /** Generations not yet ended (under way, or waiting for the one before them): a stop or an unload reaches each. */
+  const runs = new Set<Run>();
   let stopped = false;
-  /** The worker's unload (which aborts a reload in flight and frees its device), then the worker ends. */
+  /** Why the worker was ended by the watch (watched, below), or null. */
+  let lost: EngineFailure | null = null;
+  /** The worker's unload (which ends the generation under way, aborts a reload in flight and frees its device), then the worker ends. */
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    // An unload stops the generations it finds: they end as stopped, their budget let go.
+    for (const run of runs) endRun(run);
     await Promise.race([worker.call({ type: 'unload' }).catch(() => undefined), delay(1500)]);
     worker.terminate();
+  };
+  /** Marks a generation stopped and wakes it if it waits; one under way is interrupted in the worker at its next token. */
+  const endRun = (run: Run): void => {
+    if (run.interrupted) return;
+    run.interrupted = true;
+    run.wake();
+    if (run.stream !== null && !stopped) worker.interrupt(run.stream);
   };
 
   progress({ phase: 'download', loadedBytes: 0, totalBytes: model.downloadBytes, fraction: 0 });
@@ -354,11 +436,76 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
   progress({ phase: 'ready', loadedBytes: model.downloadBytes, totalBytes: model.downloadBytes, fraction: 1 });
 
   let prefilled = false;
-  let interrupted = false;
   let lastError: EngineError | null = null;
   /** Read through functions: the flags change in callbacks while a generation awaits. */
-  const wasStopped = (): boolean => stopped;
-  const wasInterrupted = (request: GenerateRequest): boolean => interrupted || request.signal?.aborted === true;
+  const isUnloaded = (): boolean => stopped;
+  const wasStopped = (run: Run): boolean => run.interrupted;
+  /** Settles when the last generation asked for has ended: each waits for the one before it, so the worker never has two. */
+  let tail: Promise<void> = Promise.resolve();
+
+  /**
+   * Settles with `work` (a request to the worker during a generation), unless the worker stops answering
+   * pings (`watch.silentMs`) or the step outlasts `watch.stepMs`: then the worker is ended and this rejects.
+   */
+  const watched = <T>(work: Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const began = performance.now();
+      /** When the ping still unanswered was sent, or null. */
+      let pinged: number | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let settled = false;
+      const done = (): void => {
+        settled = true;
+        if (timer !== null) clearTimeout(timer);
+      };
+      const lose = (detail: string): void => {
+        done();
+        const error = engineError('unknown', detail);
+        console.warn(`ai: ${detail}`);
+        lost = error;
+        stopped = true;
+        for (const run of runs) run.wake();
+        worker.terminate(error);
+        reject(error);
+      };
+      const check = (): void => {
+        if (settled) return;
+        const t = performance.now();
+        // Timers run late in a hidden tab; the worker's answers do not, so only a ping sent this long ago counts.
+        if (pinged !== null && t - pinged > watch.silentMs) {
+          lose(`The model's worker did not answer for ${Math.round(watch.silentMs / 1000)} s; it was ended`);
+          return;
+        }
+        if (t - began > watch.stepMs) {
+          lose(`One step of the model's reply took over ${Math.round(watch.stepMs / 1000)} s; its worker was ended`);
+          return;
+        }
+        if (pinged === null) {
+          const sent = t;
+          pinged = sent;
+          worker.call({ type: 'ping' }).then(
+            () => {
+              if (pinged === sent) pinged = null;
+            },
+            () => undefined,
+          );
+        }
+        timer = setTimeout(check, watch.pingMs);
+      };
+      timer = setTimeout(check, watch.pingMs);
+      work.then(
+        (value) => {
+          if (settled) return;
+          done();
+          resolve(value);
+        },
+        (err: unknown) => {
+          if (settled) return;
+          done();
+          reject(toEngineError(err));
+        },
+      );
+    });
 
   const generate = async (request: GenerateRequest): Promise<GenerateResult> => {
     const started = performance.now();
@@ -367,26 +514,42 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     let finish: GenerateResult['finish'] = 'stop';
     let usage: ModelPiece['usage'] = null;
     const reply = thinkFilter();
-    interrupted = false;
-    lastError = null;
+    const run = newRun();
+    runs.add(run);
+    // One at a time: this one starts once the one before it has ended (a stopped one ends at its next
+    // token; a prompt being read is finished first).
+    const before = tail;
+    let ended = (): void => undefined;
+    const mine = new Promise<void>((resolve) => {
+      ended = resolve;
+    });
+    tail = before.then(() => mine);
     const onAbort = (): void => {
-      interrupted = true;
-      worker.interrupt();
+      endRun(run);
     };
-    const firstPrefill = !prefilled;
-    // The budget is taken before prefill (§6) and kept until the last piece.
+    if (request.signal?.aborted === true) endRun(run);
+    request.signal?.addEventListener('abort', onAbort, { once: true });
+    let firstPrefill = false;
+    // The budget is taken before prefill (§6), and before waiting for the generation before, so it is
+    // held throughout; it is let go on every way out below.
     const release = pacer.hold();
     try {
-      await pacer.visible();
-      if (wasStopped()) throw engineError('unknown', 'The model was unloaded');
-      if (wasInterrupted(request)) return { text, finish: 'abort', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
-      request.signal?.addEventListener('abort', onAbort, { once: true });
+      await Promise.race([before, run.woken]);
+      await Promise.race([pacer.visible(), run.woken]);
+      if (wasStopped(run)) return { text, finish: 'abort', promptTokens: 0, outputTokens: 0, prefillMs: 0, decodeMs: 0 };
+      if (isUnloaded()) throw lost ?? engineError('unknown', 'The model was unloaded');
+      lastError = null;
+      firstPrefill = !prefilled;
       if (firstPrefill) markStage('prefill', model.id);
-      const begun = await worker.call({ type: 'generate', request: toCompletionRequest(request) });
+      const begun = await watched(worker.call({ type: 'generate', request: toCompletionRequest(request) }));
       if (begun.type !== 'started') throw engineError('unknown', `Unexpected answer: ${begun.type}`);
+      run.stream = begun.id;
+      // A stop that came while it was starting reaches the worker now.
+      if (wasStopped(run) && !isUnloaded()) worker.interrupt(begun.id);
       for (;;) {
-        // The worker decodes the next piece only now: this is where the scene gets its frames.
-        const answer = await worker.call({ type: 'pull', stream: begun.id });
+        // The worker decodes the next piece only now: this is where the scene gets its frames. A stopped
+        // generation is still pulled to its end (the worker sends the pieces up to the stop and its usage).
+        const answer = await watched(worker.call({ type: 'pull', stream: begun.id }));
         if (answer.type !== 'piece' || answer.done || !answer.piece) break;
         const piece = answer.piece;
         if (firstAt === null) {
@@ -399,20 +562,20 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
         const shown = piece.delta ? reply.push(piece.delta) : '';
         if (shown) {
           text += shown;
-          if (request.format.kind === 'text') request.onText?.(shown);
+          if (request.format.kind === 'text' && !wasStopped(run)) request.onText?.(shown);
         }
         if (piece.finish) finish = FINISH[piece.finish] ?? 'stop';
         if (piece.usage) usage = piece.usage;
-        await pacer.gate();
+        if (!wasStopped(run)) await pacer.gate();
       }
       const rest = reply.end();
       if (rest) {
         text += rest;
-        if (request.format.kind === 'text') request.onText?.(rest);
+        if (request.format.kind === 'text' && !wasStopped(run)) request.onText?.(rest);
       }
-      if (wasInterrupted(request)) finish = 'abort';
+      if (wasStopped(run)) finish = 'abort';
     } catch (err) {
-      if (wasInterrupted(request)) finish = 'abort';
+      if (wasStopped(run)) finish = 'abort';
       else {
         finish = 'error';
         lastError = toEngineError(err);
@@ -420,11 +583,13 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     } finally {
       request.signal?.removeEventListener('abort', onAbort);
       if (firstPrefill) clearStage();
+      runs.delete(run);
+      ended();
       release();
     }
-    const ended = performance.now();
-    const ttft = usage ? usage.ttftMs : firstAt !== null ? firstAt - started : ended - started;
-    const total = usage ? usage.e2eMs : ended - started;
+    const endedAt = performance.now();
+    const ttft = usage ? usage.ttftMs : firstAt !== null ? firstAt - started : endedAt - started;
+    const total = usage ? usage.e2eMs : endedAt - started;
     return {
       text,
       finish,
@@ -456,8 +621,8 @@ export async function loadWebLLM(model: ModelSpec, onProgress: (p: LoadProgress)
     prefill: prefillReport,
     generate,
     interrupt() {
-      interrupted = true;
-      if (!stopped) worker.interrupt();
+      // Every generation asked for so far: the one under way, and any waiting for it.
+      for (const run of runs) endRun(run);
     },
     unload: stop,
   };

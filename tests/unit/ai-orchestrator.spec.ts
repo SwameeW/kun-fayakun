@@ -201,10 +201,10 @@ interface Harness {
   remembered: MemoryEntry[];
 }
 
-function harness(script: ScriptedReply[] = [], options: { delayMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[]; evaluation?: { options: () => EvaluationOptions | null; record: (entry: GenerationRecord) => void } } & ToolOptions = {}): Harness {
+function harness(script: ScriptedReply[] = [], options: { delayMs?: number; stopMs?: number; where?: AiContext; idleUnloadMs?: number; memoryOn?: boolean; kept?: MemoryEntry[]; offered?: readonly string[]; evaluation?: { options: () => EvaluationOptions | null; record: (entry: GenerationRecord) => void } } & ToolOptions = {}): Harness {
   const log: Log = { runs: [], undone: [] };
   const where = { ctx: options.where ?? CTX.home };
-  const engine = createScriptedEngine(script, { delayMs: options.delayMs ?? 0 });
+  const engine = createScriptedEngine(script, { delayMs: options.delayMs ?? 0, stopMs: options.stopMs ?? 0 });
   const remembered: MemoryEntry[] = [...(options.kept ?? [])];
   const memory: AiMemory = {
     enabled: () => options.memoryOn === true,
@@ -607,6 +607,41 @@ test.describe('with a model', () => {
     expect((await first).state).toBe('cancelled');
     expect(second.state).toBe('done');
     expect(h.ai.turns().map((t) => t.state)).toEqual(['cancelled', 'done']);
+  });
+
+  test('a question asked over one being stopped waits for its generation to end: the engine never has two, and reads busy until the last has ended', async () => {
+    const long = Array.from({ length: 80 }, (_, i) => `w${i}`).join(' ');
+    // A stopped reply takes 300 ms to end, as a model finishes the token or the prompt under way.
+    const h = harness(
+      [
+        { format: 'json', match: 'question', reply: plan({ intent: 'answer', query: 'stars', calls: [] }) },
+        { format: 'text', match: 'question', reply: long },
+      ],
+      { delayMs: 10, stopMs: 300 },
+    );
+    h.ai.attach(h.engine);
+    await expect.poll(() => h.ai.engine().state).toBe('ready');
+    // What the engine was doing each time the assistant said what state it is in.
+    const said: { state: string; running: number }[] = [];
+    h.ai.events.on('engine', (e) => said.push({ state: e.state, running: h.engine.running }));
+    const asked: Promise<Turn>[] = [];
+    // Stop then ask again; ask over one answering; ask over one planning; a fourth left to finish.
+    asked.push(h.ai.ask('first question about stars'));
+    await expect.poll(() => h.turnEvents.some((t) => t.state === 'answering')).toBe(true);
+    h.ai.cancel();
+    asked.push(h.ai.ask('second question about stars'));
+    await expect.poll(() => h.turnEvents.filter((t) => t.state === 'answering').map((t) => t.id).includes('turn-2')).toBe(true);
+    asked.push(h.ai.ask('third question about stars'));
+    await sleep(5);
+    asked.push(h.ai.ask('fourth question about stars'));
+    const turns = await Promise.all(asked);
+    expect(turns.map((t) => t.state)).toEqual(['cancelled', 'cancelled', 'cancelled', 'done']);
+    expect(ofType(turns[3] as Turn, 'text')[0]?.text).toBe(long);
+    expect(h.engine.mostAtOnce).toBe(1);
+    expect(h.engine.running).toBe(0);
+    // Never ready while a generation was under way (a stopped one ending as the next began once read so).
+    expect(said.filter((e) => e.state === 'ready' && e.running > 0)).toEqual([]);
+    expect(said.at(-1)?.state).toBe('ready');
   });
 
   test('while it streams, words presented as the Quran are never on screen, not even before their closing mark', async () => {

@@ -65,6 +65,7 @@ interface BuiltChunk {
 interface ClientModule {
   startModelWorker(): {
     call(request: Record<string, unknown>): Promise<{ type: string; value?: boolean; done?: boolean }>;
+    interrupt(stream?: number): void;
     terminate(): void;
   };
 }
@@ -274,7 +275,7 @@ test('a load against the mocked model hosts fails cleanly as a network error; an
   expect(unexpected(pageErrors)).toEqual([]);
 });
 
-test('the model worker answers our protocol: failures as EngineError data, a pull of no stream is done, nothing downloaded to read or clear the cache', async ({ page, kf, pageErrors }) => {
+test('the model worker answers our protocol: failures as EngineError data, a pull of no stream is done, a ping at once, nothing downloaded to read or clear the cache', async ({ page, kf, pageErrors }) => {
   const { modelUrls } = await prepare(page);
   await kf.open('/', { query: { tier: 'high' } });
   await expect(page.locator('html')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 * SLOW });
@@ -291,18 +292,22 @@ test('the model worker answers our protocol: failures as EngineError data, a pul
       };
       const generate = await worker.call({ type: 'generate', request: { messages: [{ role: 'user', content: 'Hello' }], stream: true } }).then((a) => a, failure);
       const pull = await worker.call({ type: 'pull', stream: 12_345 });
+      // The watch's check that the worker is there; an interrupt for a stream it does not have changes nothing.
+      const ping = await worker.call({ type: 'ping' });
+      worker.interrupt(12_345);
       const has = await worker.call({ type: 'hasModelInCache', appConfig, model: pocket.id });
       const removed = await worker.call({ type: 'deleteModelAllInfoInCache', appConfig, model: pocket.id });
       const unloaded = await worker.call({ type: 'unload' });
       worker.terminate();
       const afterEnd = await worker.call({ type: 'unload' }).then((a) => a, failure);
-      return { generate, pull, has, removed, unloaded, afterEnd };
+      return { generate, pull, ping, has, removed, unloaded, afterEnd };
     },
     { clientUrl: `${PREFIX}${clientEntry}`, engineUrl: `${PREFIX}${entry}` },
   );
   // Asked to generate with no model: the worker's failure arrives as data, read as an EngineError.
   expect(result.generate).toEqual({ name: 'EngineError', code: 'unknown', messageKey: 'ai.engine.error.unknown' });
   expect(result.pull).toMatchObject({ type: 'piece', done: true });
+  expect(result.ping).toMatchObject({ type: 'result', value: true });
   expect(result.has).toMatchObject({ type: 'result', value: false });
   // Nothing stored: WebLLM is not asked to delete (it would download the manifest to find the files).
   expect(result.removed).toMatchObject({ type: 'result', value: false });

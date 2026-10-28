@@ -11,7 +11,8 @@
  * back. There is one assistant per page: later calls return the same one.
  *
  * It also gives the test hook its assistant part (window.__kf.ai): start(); useScripted(), which
- * switches the running assistant to the scripted test engine (labelled as such on screen);
+ * switches the running assistant to the scripted test engine (labelled as such on screen) and
+ * resolves to its counts of generations under way;
  * useReport(), which makes detection answer with a canned device (CI has no GPU to find); and, for
  * the real-model evaluation alone (tests/ai-eval), evaluate(), which records every generation
  * (taken with generations()), can skip the router so a model plans every question, and can set how
@@ -93,7 +94,9 @@ export function startIntelligence(app: App, announce: (text: string) => void): P
     ai: {
       start,
       async useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions) {
-        (await start()).attach(createScriptedEngine(script, options));
+        const engine = createScriptedEngine(script, options);
+        (await start()).attach(engine);
+        return engine;
       },
       async useReport(report: CapabilityReport) {
         await start();

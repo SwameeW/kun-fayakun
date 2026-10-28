@@ -318,6 +318,21 @@ function jsonObject(text: string): unknown {
   return JSON.parse(text.slice(start, end + 1)) as unknown;
 }
 
+/** Resolves once `work` has settled, or at once when `signal` aborts (a stopped turn does not wait). */
+function endedOrStopped(work: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = (): void => {
+      resolve();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    void work.then(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    });
+  });
+}
+
 export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestrator {
   const { i18n } = app;
   i18n.extend('en.ai.mind.json', messages);
@@ -345,6 +360,10 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
   let loading: AbortController | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let retrieverPromise: Promise<Retriever> | null = null;
+  /** Generations under way, or waiting for the one before them (generate, below). */
+  let generating = 0;
+  /** Settles once the last generation asked for has ended. */
+  let lastGeneration: Promise<void> = Promise.resolve();
   let explanationLevel: ExplanationLevel = 'standard';
   /** Memory has been read back (restore() runs once). */
   let restored = false;
@@ -788,15 +807,32 @@ export function createIntelligence(app: App, deps: IntelligenceDeps): AiOrchestr
     return out;
   }
 
+  /**
+   * One generation at a time, whichever turn asks: a turn's generation begins once the one before it
+   * has ended. The turn that asked before was stopped first (ask, confirm and use stop it), so its
+   * generation ends at its next token (a prompt being read is finished first); the engine never has
+   * two, and the engine reads as busy until the last has ended.
+   */
   async function generate(rec: TurnRecord, e: LanguageEngine, request: Parameters<LanguageEngine['generate']>[0]): Promise<GenerateResult> {
+    const before = lastGeneration;
+    let ended = (): void => undefined;
+    const mine = new Promise<void>((resolve) => {
+      ended = resolve;
+    });
+    lastGeneration = before.then(() => mine);
+    generating += 1;
     setEngine({ ...engineState, state: 'busy' });
     try {
+      await endedOrStopped(before, rec.controller.signal);
+      checkpoint(rec);
       const result = await e.generate(request);
       rec.turn.timings.tokens += result.promptTokens + result.outputTokens;
       if (result.finish === 'abort' || rec.controller.signal.aborted) throw new Cancelled();
       return result;
     } finally {
-      if (engine === e) setEngine({ ...engineState, state: 'ready' });
+      ended();
+      generating -= 1;
+      if (generating === 0 && engine === e) setEngine({ ...engineState, state: 'ready' });
       touch();
     }
   }

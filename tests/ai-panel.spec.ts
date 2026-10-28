@@ -157,6 +157,81 @@ test('spam: 25 opens and closes by click and by / and Esc, a question over a run
   expect(realErrors(pageErrors)).toEqual([]);
 });
 
+test('a question over one being stopped, through the panel: Stop then ask, Enter twice, a suggestion, closed and opened, the guide chosen: the next answer always comes and the engine never has two', async ({ page, kf, pageErrors }) => {
+  await kf.open('/');
+  await ready(page);
+  await openPanel(page);
+  // A stopped reply takes 400 ms to end, as a model finishes the token or the prompt it is reading.
+  const story = Array.from({ length: 120 }, (_, i) => `word${i}`).join(' ');
+  await page.evaluate(
+    async ({ text, report }) => {
+      const w = window as unknown as KfHook & { __scripted?: unknown };
+      await w.__kf.ai.start();
+      await (window as unknown as KfHook).__kf.ai.useReport(report);
+      // Stories are long; anything else is answered at once (the replies are made here: a match by function does not cross into the page).
+      w.__scripted = await (window as unknown as KfHook).__kf.ai.useScripted(
+        [
+          { format: 'json', match: 'story', reply: JSON.stringify({ intent: 'answer', query: 'stars', calls: [] }) },
+          { format: 'text', match: 'story', reply: text },
+          { format: 'json', match: () => true, reply: JSON.stringify({ intent: 'answer', query: 'mars', calls: [] }) },
+          { format: 'text', match: () => true, reply: 'A short answer.' },
+        ],
+        { delayMs: 30, stopMs: 400 },
+      );
+    },
+    { text: story, report: REPORT },
+  );
+  await expect(page.getByTestId('ai-engine')).toHaveText(s('ai.ui.engine.scripted'));
+  const mostAtOnce = (): Promise<number> => page.evaluate(() => (window as unknown as { __scripted: { mostAtOnce: number } }).__scripted.mostAtOnce);
+  const running = (): Promise<number> => page.evaluate(() => (window as unknown as { __scripted: { running: number } }).__scripted.running);
+
+  // Stop, then a new question at once.
+  const first = await ask(page, 'Tell me a long story about the stars', 'answering');
+  await page.getByTestId('ai-stop').click();
+  const second = await ask(page, 'Why is Mars red?');
+  await expect(first).toHaveAttribute('data-state', 'cancelled');
+  await expect(second.locator('.kf-ai-prose')).toHaveText('A short answer.');
+
+  // A second question sent over the first (Enter twice).
+  const third = await ask(page, 'Another long story, please', 'answering');
+  const fourth = await ask(page, 'Why is Venus hot?');
+  await expect(third).toHaveAttribute('data-state', 'cancelled');
+  await expect(fourth.locator('.kf-ai-prose')).toHaveText('A short answer.');
+
+  // A suggested question pressed while it answers.
+  const fifth = await ask(page, 'One more long story', 'answering');
+  const before = await turns(page).count();
+  await page.getByTestId('ai-suggestion').first().click();
+  const chip = turns(page).nth(before);
+  await expect(chip).toHaveAttribute('data-state', 'done', LIVE);
+  await expect(fifth).toHaveAttribute('data-state', 'cancelled');
+
+  // Closed and opened while it answers: nothing is stopped, and the story is written to its end.
+  const sixth = await ask(page, 'A last long story', 'answering');
+  await page.getByTestId('ai-close').click();
+  await expect(panel(page)).toHaveCount(0);
+  await openPanel(page);
+  await expect(sixth).toHaveAttribute('data-state', 'done', LIVE);
+  await expect(sixth.locator('.kf-ai-prose')).toHaveText(story);
+
+  // The guide chosen (the model section's own button) while a story is written; then the guide answers.
+  const seventh = await ask(page, 'Yet another long story', 'answering');
+  const section = page.getByTestId('ai-model');
+  if (!(await section.evaluate((d) => (d as HTMLDetailsElement).open))) await section.locator('summary').click();
+  await section.getByTestId('ai-use-guide').click();
+  await expect(seventh).toHaveAttribute('data-state', 'cancelled');
+  await expect(page.getByTestId('ai-engine')).toHaveText(s('ai.ui.engine.guide'));
+  const eighth = await ask(page, 'Escape speed of Mars');
+  await expect(eighth).toHaveAttribute('data-state', 'done');
+
+  // Never two generations at once, none left running, and the turn hook on the last turn.
+  expect(await mostAtOnce()).toBe(1);
+  await expect.poll(running).toBe(0);
+  await expect(page.locator('html')).toHaveAttribute('data-ai-turn', 'done');
+  await expect(page.getByTestId('ai-stop')).toBeHidden();
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
 /* ------------------------------------------------------------------ */
 /* The guide, through the interface                                     */
 /* ------------------------------------------------------------------ */

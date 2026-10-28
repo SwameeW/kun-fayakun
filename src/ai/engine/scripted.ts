@@ -8,7 +8,9 @@
  * Replies are tried in order; a reply marked `once` is used up after it answers. A free-text reply
  * streams word by word through onText, with an optional delay between words; a request no reply
  * matches ends with finish 'error'. Token counts are estimated (characters / 3.5) so timings and
- * budgets behave plausibly.
+ * budgets behave plausibly. A stopped reply can be made to take a while to end, as a model's does
+ * (the token or the prompt under way is finished first), and the engine counts the generations
+ * under way, and the most it has had at once, so a test can see that the assistant never asks for two.
  */
 import type { GenerateRequest, GenerateResult, LanguageEngine } from '../types';
 
@@ -28,12 +30,18 @@ export interface ScriptedReply {
 export interface ScriptedOptions {
   /** Milliseconds between streamed words (default 0: as fast as the event loop allows). */
   delayMs?: number;
+  /** Milliseconds a stopped reply takes to end, as a model finishes the step under way (default 0). */
+  stopMs?: number;
 }
 
 /** The scripted engine, with the requests it was given (for tests to inspect). */
 export interface ScriptedEngine extends LanguageEngine {
   readonly kind: 'scripted';
   readonly requests: readonly GenerateRequest[];
+  /** Generations under way now (started, not yet ended). */
+  readonly running: number;
+  /** The most generations it has had under way at once. */
+  readonly mostAtOnce: number;
   /** Adds replies after creation. */
   add(...replies: ScriptedReply[]): void;
 }
@@ -78,8 +86,28 @@ export function createScriptedEngine(script: readonly ScriptedReply[] = [], opti
   const requests: GenerateRequest[] = [];
   let interrupter: AbortController | null = null;
   const delay = Math.max(0, options.delayMs ?? 0);
+  const stopMs = Math.max(0, options.stopMs ?? 0);
+  let running = 0;
+  let mostAtOnce = 0;
 
   async function generate(request: GenerateRequest): Promise<GenerateResult> {
+    running += 1;
+    mostAtOnce = Math.max(mostAtOnce, running);
+    try {
+      const result = await answer(request);
+      // A stopped reply ends only once the step under way would have (a model's token, or its prompt).
+      if (result.finish === 'abort' && stopMs > 0) {
+        await new Promise((r) => {
+          setTimeout(r, stopMs);
+        });
+      }
+      return result;
+    } finally {
+      running -= 1;
+    }
+  }
+
+  async function answer(request: GenerateRequest): Promise<GenerateResult> {
     requests.push(request);
     const started = Date.now();
     const promptTokens = request.messages.reduce((n, m) => n + estimate(m.content) + 4, 0);
@@ -123,6 +151,12 @@ export function createScriptedEngine(script: readonly ScriptedReply[] = [], opti
     kind: 'scripted',
     model: 'scripted',
     requests,
+    get running() {
+      return running;
+    },
+    get mostAtOnce() {
+      return mostAtOnce;
+    },
     generate,
     interrupt(): void {
       interrupter?.abort();

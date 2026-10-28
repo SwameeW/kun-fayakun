@@ -187,7 +187,7 @@ export interface LanguageEngine {
   /** Model id, "browser", or "scripted". */
   readonly model: string;
   generate(request: GenerateRequest): Promise<GenerateResult>;
-  /** Stops a generation at its next token. */
+  /** Stops the generation under way at its next token (and, for the local model, any waiting for it to end). */
   interrupt(): void;
   unload(): Promise<void>;
 }

@@ -51,12 +51,13 @@ export interface KfHook {
     };
     /**
      * The assistant (src/ai/boot.ts): start() loads it and resolves to the page's one Intelligence;
-     * useScripted() (there once start() has run) switches it to the scripted test engine;
+     * useScripted() (there once start() has run) switches it to the scripted test engine and resolves
+     * to its counts of generations (under way now, and the most at once);
      * useReport() makes detection answer with a canned device.
      */
     ai: {
       start(): Promise<Intelligence>;
-      useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<void>;
+      useScripted(script: readonly ScriptedReply[], options?: ScriptedOptions): Promise<{ readonly running: number; readonly mostAtOnce: number }>;
       useReport(report: CapabilityReport): Promise<void>;
     };
     /** The explorer's more worlds, once come (src/explore/worlds): the GPU's own places of the first asteroids, read back, and their date. */

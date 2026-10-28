@@ -7,8 +7,10 @@
  * Every request carries an id, and the worker answers it once (a load also sends progress under
  * its id first). Streaming is pulled: after `generate` the page asks for each next piece with
  * `pull`, and the worker decodes only when asked, so the page's pacer (./pacing.ts) decides how
- * fast the model runs beside the scene. Failures are sent as data: an EngineError code and the
- * text it was read from (./errors.ts), never an Error object.
+ * fast the model runs beside the scene. One generation at a time: the worker ends the one under way
+ * before it starts the next (./generations.ts), and the page waits for each to end before it asks
+ * for the next (./webllm.ts). Failures are sent as data: an EngineError code and the text it was
+ * read from (./errors.ts), never an Error object.
  */
 import type { ChatCompletionRequestStreaming } from '@mlc-ai/web-llm';
 import type { EngineError, PrefillReport } from '../types';
@@ -22,12 +24,20 @@ export type ToModelWorker =
    * (./prefill.ts); progress follows under the same id.
    */
   | { type: 'load'; id: number; appConfig: WebLlmAppConfig; model: string; prefill: PrefillSetting }
-  /** Starts a streamed completion; the worker answers `started`, then a piece per `pull`. */
+  /**
+   * Starts a streamed completion, once the generation under way (if any) has ended: interrupted, its
+   * step under way finished and its iterator returned. The worker answers `started`, then a piece per `pull`.
+   */
   | { type: 'generate'; id: number; request: ChatCompletionRequestStreaming }
   /** The next piece of the generation started by request `stream` (decoded only now). */
   | { type: 'pull'; id: number; stream: number }
-  /** Ends the generation in progress at its next token (no answer). */
-  | { type: 'interrupt' }
+  /**
+   * Ends generation `stream` (without one, the one under way) at its next token; its pieces up to
+   * the stop, and its usage, still come to the pulls that follow. No answer.
+   */
+  | { type: 'interrupt'; stream?: number }
+  /** Answered at once (`result`, true): the page's check that the worker is still there while a step takes long. */
+  | { type: 'ping'; id: number }
   /** Frees the model and its GPU device; aborts a load in flight. */
   | { type: 'unload'; id: number }
   /** Whether every file of a model is in this browser's cache. */
@@ -69,6 +79,6 @@ export type FromModelWorker =
   | { type: 'started'; id: number }
   /** The answer to a pull: the next piece, or done when the stream has ended (or is not the one in progress). */
   | { type: 'piece'; id: number; piece: ModelPiece | null; done: boolean }
-  /** The answer to unload, hasModelInCache (value) and deleteModelAllInfoInCache. */
+  /** The answer to unload, ping, hasModelInCache (value) and deleteModelAllInfoInCache. */
   | { type: 'result'; id: number; value: boolean }
   | { type: 'error'; id: number; code: EngineError['code']; detail: string };
