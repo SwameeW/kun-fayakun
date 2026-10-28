@@ -548,7 +548,8 @@ async function checkLayout(page: Page, label: string, except: readonly ChromeNam
         const { box } = await boxes(page, { box: '[data-testid="ai-panel"]' });
         return box ? chromeCovered(page, box, except) : ['no panel'];
       },
-      { message: `${label}: the panel covers no chrome`, timeout: 10_000 },
+      // Each poll measures twice; in software rendering at 1920×1080 one measure took 7 s.
+      { message: `${label}: the panel covers no chrome`, timeout: LIVE.timeout },
     )
     .toEqual([]);
   expect(await sidewaysOverflow(page), `${label}: the page scrolls sideways`).toBe(0);

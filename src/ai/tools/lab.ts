@@ -22,6 +22,12 @@ import { done, ensureExplorer, ensureMessages, fact, failed, LAB_BODY, notConfir
  */
 
 const QUICK_MS = 5000;
+/**
+ * How long a comparison or a search waits for the laboratory's copy of itself, ms. It is a read in the
+ * background, not a change to confirm on screen: a busy worker answers between its slices, which took
+ * more than QUICK_MS in software rendering. Stopping the turn ends the wait at once.
+ */
+const COPY_MS = 30_000;
 
 const inLab = (ctx: AiContext): boolean => ctx.where === 'lab';
 /** The laboratory as the assistant reads it: a body the visitor renamed by its own name (../context.ts labForAssistant). */
@@ -399,7 +405,7 @@ async function baseline(env: ToolEnv): Promise<{ baseline: Baseline; world: Plan
     const made = await waitFor(env, () => {
       const c = labView(env)?.copy ?? null;
       return c !== null && c !== prior;
-    }, QUICK_MS);
+    }, COPY_MS);
     const now = labView(env);
     const copy = now?.copy ?? null;
     if (!made || !now || !copy) return { problem: problem('', 'ai.tool.lab.compare.noShare') };

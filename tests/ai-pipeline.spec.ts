@@ -360,6 +360,25 @@ test('a comparison in the laboratory changes nothing on screen: no share link, n
   expect(realErrors(pageErrors)).toEqual([]);
 });
 
+test('a copy asked for as the laboratory resets is of the new run, not lost with the old one', async ({ page, kf, pageErrors }) => {
+  await kf.open('/universe/earth');
+  await waitForUniverse(page);
+  await openLab(page);
+  // The copy's request reaches the worker before the reset's scenario, so the worker answers it for the old run, whose answers are dropped.
+  await page.evaluate(() => {
+    const app = (window as unknown as KfHook).__kf.app;
+    app.universeLab({ kind: 'copy' });
+    app.universeLab({ kind: 'reset' });
+  });
+  const copied = (): Promise<string | null> =>
+    page.evaluate(() => {
+      const copy = (window as unknown as KfHook).__kf.app.universe()?.lab?.copy ?? null;
+      return copy === null ? null : 'data' in copy ? 'data' : 'error';
+    });
+  await expect.poll(copied, { timeout: 60_000 * SLOW }).toBe('data');
+  expect(realErrors(pageErrors)).toEqual([]);
+});
+
 test('a background comparison runs in the real batch worker and returns rows with energy errors', async ({ page, kf, pageErrors }) => {
   const w = watch(page);
   const workers: string[] = [];

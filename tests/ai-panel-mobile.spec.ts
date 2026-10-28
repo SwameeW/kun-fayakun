@@ -41,7 +41,8 @@ async function checkSheet(page: Page, label: string, except: readonly ChromeName
         const { box } = await boxes(page, { box: '[data-testid="ai-panel"]' });
         return box ? chromeCovered(page, box, except) : ['no panel'];
       },
-      { message: `${label}: the sheet covers no chrome`, timeout: 10_000 },
+      // Each poll measures twice; in software rendering one measure can take seconds.
+      { message: `${label}: the sheet covers no chrome`, timeout: LIVE.timeout },
     )
     .toEqual([]);
   expect(await sidewaysOverflow(page), `${label}: the page scrolls sideways`).toBe(0);
