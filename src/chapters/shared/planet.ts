@@ -40,9 +40,9 @@ import {
   uniform,
   vec3,
 } from 'three/tsl';
-import { createAir, type AirUniforms, type ExploreAir } from '../../explore/bodies/atmosphere';
+import type { AirUniforms, createAir, ExploreAir } from '../../explore/bodies/atmosphere';
 import { litCosine, sunlit } from '../../explore/bodies/shading';
-import { sunTransmittance, transmittanceToTop, type AirModel } from '../../explore/render/air';
+import type { AirModel, sunTransmittance, transmittanceToTop } from '../../explore/render/air';
 import { blendPremultiplied } from '../../explore/render/blending';
 
 /**
@@ -68,6 +68,9 @@ import { blendPremultiplied } from '../../explore/render/blending';
  * exaggerated so their shadows read). How a hazier early air looked is a hypothesis; its warmer
  * tint here is illustrative. Without the air (the orrery's small Earth) the simpler shading below
  * stands, with the atmosphere as a glow at the limb.
+ *
+ * This file only names the air's types: its builders come from ./film-air (provideAirBuilders),
+ * so a chapter that draws the Earth without the air, Chapter 7, loads without them.
  */
 
 export interface EarthEpoch {
@@ -98,6 +101,25 @@ export interface PlanetState {
   /** Spin angle about the planet's axis, radians. */
   spin: number;
   light: number;
+}
+
+/** The explorer's air's builders (../../explore/render/air, ../../explore/bodies/atmosphere), handed over by ./film-air. */
+export interface AirBuilders {
+  readonly createAir: typeof createAir;
+  readonly sunTransmittance: typeof sunTransmittance;
+  readonly transmittanceToTop: typeof transmittanceToTop;
+}
+
+let airBuilders: AirBuilders | null = null;
+
+/** Called by ./film-air as it makes the air, before any Earth is drawn under it. */
+export function provideAirBuilders(builders: AirBuilders): void {
+  airBuilders = builders;
+}
+
+function givenBuilders(): AirBuilders {
+  if (!airBuilders) throw new Error('createEarth: the air comes from ./film-air (createFilmAir), which hands over its builders');
+  return airBuilders;
 }
 
 /** The Earth's air for createEarth (./film-air). */
@@ -147,6 +169,8 @@ const EARLY_AIR_TINT = [1, 0.8, 0.6] as const;
 const DEGREES = 180 / Math.PI;
 
 export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir): Earth {
+  // The air with its builders, which ./film-air hands over as it makes the air.
+  const withAir = air ? { ...air, ...givenBuilders() } : null;
   const object = new Group();
   object.name = 'earth';
   const uTime = uniform(0);
@@ -180,6 +204,8 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
   const crust = smoothstep(u.molten.sub(0.08), u.molten.add(0.08), crustNoise);
   const cracks = float(1).sub(smoothstep(0, 0.035, abs(texture3D(noise, n.mul(5.3).add(0.11)).r.sub(0.5))));
   const lava = LAVA.mul(float(1).sub(crust).mul(0.55).add(crust.mul(cracks).mul(u.molten).mul(1.4))).mul(1.15);
+  // Lava glows only while there is molten rock (the crust's noise would otherwise leave sparks on a cooled world).
+  const emissive = lava.mul(float(1).sub(u.steam.mul(0.4))).mul(smoothstep(0, 0.04, u.molten));
 
   // Day-side colour: crust, land rising out of it, seas in the low ground.
   const latitude = abs(n.y);
@@ -208,7 +234,7 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
   const uCentre = uniform(new Vector3());
   const uRadius = uniform(radius);
 
-  if (!air) {
+  if (!withAir) {
     // Clouds: swirled bands, thicker at mid-latitudes and the equator, with soft edges.
     const swirl = rotateY(raw.add(warp.mul(0.8)), uTime.mul(0.012));
     const cloudNoise = texture3D(noise, swirl.mul(2.4).add(0.9)).r.mul(0.7).add(texture3D(noise, swirl.mul(6.1).add(0.4)).r.mul(0.3));
@@ -223,7 +249,6 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
     const view = normalize(cameraPosition.sub(positionWorld));
     const half = normalize(view.add(uSun));
     const glint = pow(max(dot(normalWorld, half), 0), 90).mul(water).mul(float(1).sub(cloud)).mul(smoothstep(0, 0.2, nDotL)).mul(0.9);
-    const emissive = lava.mul(float(1).sub(u.steam.mul(0.4)));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     material.colorNode = surface.mul(lit).add(vec3(glint)).mul(uLight).add(emissive.mul(uLight));
     const body = new Mesh(geometry, material);
@@ -244,7 +269,7 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
     object.add(spinner, glow);
     disposables.push(material, airMaterial);
   } else {
-    const { model, table } = air;
+    const { model, table, sunTransmittance, transmittanceToTop } = withAir;
     const [tr, tg, tb] = model.verticalDepth;
     const tau = vec3(tr, tg, tb);
     /** The sky's diffuse light on a surface (half the air's scattered sunlight comes down), bluish: the explorer's Earth's. */
@@ -294,8 +319,6 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
     const visibility = nv.div(nv.mul(1 - k).add(k)).mul(nl.div(nl.mul(1 - k).add(k)));
     const specular = distribution.mul(fresnel).mul(visibility).div(nv.mul(4)).mul(nl).mul(Math.PI);
     const glint = min(specular, GLINT.ceiling).mul(water).mul(float(1).sub(ice)).mul(shade);
-    // Lava glows only while there is molten rock (the crust's noise would otherwise leave sparks on a cooled world).
-    const emissive = lava.mul(float(1).sub(u.steam.mul(0.4))).mul(smoothstep(0, 0.04, u.molten));
     const material = new MeshBasicNodeMaterial({ side: FrontSide, fog: false });
     const lit = sunColour.mul(litCosine(nDotL)).mul(shade).add(skyFill(nDotL));
     material.colorNode = surface.mul(lit).add(sunColour.mul(glint)).mul(uLight).add(emissive.mul(uLight));
@@ -345,12 +368,12 @@ export function createEarth(noise: Data3DTexture, radius: number, air?: EarthAir
   let shell: ExploreAir | null = null;
   let shellSteps = -1;
   const setAirSteps = (steps: number): void => {
-    if (!air || steps === shellSteps) return;
+    if (!withAir || steps === shellSteps) return;
     shellSteps = steps;
     let next = airs.get(steps);
     if (!next) {
       const airUniforms: AirUniforms = { eye: uEye, sun: uAirSun, light: uLight };
-      next = createAir(air.model, steps > 0 ? 'scatter' : 'chord', steps, air.table.texture, airUniforms, 128);
+      next = withAir.createAir(withAir.model, steps > 0 ? 'scatter' : 'chord', steps, withAir.table.texture, airUniforms, 128);
       for (const mesh of next.meshes) {
         // Its scattered light tinted while the air is young and dimmed over a molten world.
         if (mesh.name === 'explore-earth-air-glow' || mesh.name === 'explore-earth-air-chord') {

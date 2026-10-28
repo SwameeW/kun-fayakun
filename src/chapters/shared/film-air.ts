@@ -1,7 +1,9 @@
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ChapterContext, QualityTier } from '../../core/types';
-import { createTransmittanceTable, earthAir, type AirModel, type TransmittanceTable } from '../../explore/render/air';
+import { createAir } from '../../explore/bodies/atmosphere';
+import { createTransmittanceTable, earthAir, sunTransmittance, transmittanceToTop, type AirModel, type TransmittanceTable } from '../../explore/render/air';
 import { clearDayAir } from '../../explore/walk/light';
+import { provideAirBuilders } from './planet';
 
 /**
  * The Earth's air for the film's Earth chapters: the explorer's own (../../explore/render/air:
@@ -11,6 +13,9 @@ import { clearDayAir } from '../../explore/walk/light';
  *
  * The film's quality tiers pick the shell's model: single scattering marched in SCATTER_STEPS steps
  * on High and Mid, the analytic 'chord' column on Low (../../explore/bodies/atmosphere).
+ *
+ * The air's builders are imported here and handed to ./planet, which only names their types, so
+ * only the chapters that draw the Earth under its air (8 and 9) need them to load.
  */
 
 /** IAU 2015 nominal values: the Earth's mean radius, the Sun's radius and the astronomical unit, km. */
@@ -29,6 +34,7 @@ export interface FilmAir {
 }
 
 export function createFilmAir(ctx: Pick<ChapterContext, 'data'>): FilmAir {
+  provideAirBuilders({ createAir, sunTransmittance, transmittanceToTop });
   const model = clearDayAir(earthAir(ctx.data, EARTH_RADIUS_KM, Math.asin(SUN_RADIUS_KM / AU_KM)));
   const table = createTransmittanceTable(model);
   return {
