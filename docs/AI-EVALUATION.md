@@ -63,8 +63,8 @@ KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_OUT=.work/ai-eval/results/p
 KF_AI_EVAL=1 KF_SKIP_BUILD=1 KF_PORT=4271 KF_AI_EVAL_OUT=.work/ai-eval/results/prefill-default KF_AI_EVAL_MODEL=<id> KF_AI_EVAL_MODE=model KF_AI_EVAL_TAG=default-r1 \
   KF_AI_EVAL_CASES=<the 10 cases above> npx playwright test --project=ai-eval tests/ai-eval/eval.spec.ts
 # the chunk on real models: chunked against compiled replies, a stop while the prompt is read, a switch, a reload
-# (the first model's own setting, given to the model switched to as well; the runs below were at 128 with the wait, for Qwen3 1.7B
-# now KF_AI_EVAL_PREFILL_CHUNK=128 KF_AI_EVAL_PREFILL_YIELD=1)
+# (each model's own setting, the model switched to as well; a chunk given is given to both. The runs below were at 128 with
+# the wait for every tier, for Qwen3 1.7B now KF_AI_EVAL_PREFILL_CHUNK=128 KF_AI_EVAL_PREFILL_YIELD=1)
 KF_AI_EVAL=1 KF_AI_EVAL_PREFILL=1 KF_SKIP_BUILD=1 KF_PORT=4271 npx playwright test --project=ai-eval tests/ai-eval/prefill.spec.ts
 
 # XGrammar's start-up per schema shape, and what it does to number ranges
@@ -539,7 +539,7 @@ Runs: Qwen3-1.7B-q4f16_1-MLC-model-rv-base-p1.json (2026-10-27T22:06Z); Qwen3-1.
   | Compact, Qwen3 1.7B | 128 + wait | 17 (17) | 0 | +8% / −3% (+9–11% / +7–12%) | `film-moment-redshift` lost, and `lab-state` on some prompts |
   | | 256 + wait, as shipped | 67, 50–83 (67) | 3 (0–7), 193 ms in all | 0% / +2% (+1–2% / +2–4%) | none: the full set gave the same result as the second run as compiled in all 144 cases |
 
-  - **Pocket:** 256 gives the same frames as 128 at no cost to the first token. The case 128 loses is a plan's, and the app never asks the pocket tier to plan (it writes explanations only, `ModelSpec.plans: false`), so a visitor would not meet that loss as the tiers stand, and 256 does not have it.
+  - **Pocket:** 256 gives the same frames as 128, and a first token within a few per cent of before (−5% for the plan, +4% for the answer, where 128 cost +12% and +15%). The case 128 loses is a plan's, and the app never asks the pocket tier to plan (it writes explanations only, `ModelSpec.plans: false`), so a visitor would not meet that loss as the tiers stand, and 256 does not have it.
   - **Compact:** 256 leaves the longest frame at about 67 ms, where 128 gave 17 ms, and about 3 frames over 50 ms a turn in the speed passes (1 in the full run), where 128 left none; 67 ms is still less than a fifth of the 350–367 ms before the change. It keeps two cases that pass as compiled and fail at 128: asked to show the film's redshift moment, at 128 the model asks what is meant instead (`film-moment-redshift`); asked what is in the laboratory, at 128 on some prompts it calls nothing and answers without the laboratory's state (`lab-state`).
   - The setting is one line in `BY_TIER`, and this section's tables hold both sizes' frames and times.
 

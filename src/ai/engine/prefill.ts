@@ -53,8 +53,9 @@ export const PREFILL_CHUNK_TOKENS = 128;
  * the other way on a few prompts, each time from a passed case to a failed one (Qwen3 1.7B:
  * film-moment-redshift, lab-state; Qwen3 0.6B, which plans only in the evaluation: isl-iron); at 256
  * with the wait no result changed. There the longest frame while Qwen3 0.6B wrote was 17 ms, as at
- * 128, with no cost to the first token; for Qwen3 1.7B it was 67 ms (50–83), against 17 ms at 128
- * and 350–367 ms as compiled (the same document, "The setting").
+ * 128, and its first token −5% / +4% (plan / answer) against before, where 128 cost +12% / +15%; for
+ * Qwen3 1.7B it was 67 ms (50–83), against 17 ms at 128 and 350–367 ms as compiled (the same
+ * document, "The setting").
  */
 export const SMALL_TIER_CHUNK_TOKENS = 256;
 
