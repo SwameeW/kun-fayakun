@@ -25,9 +25,10 @@ import { blackbodyRgb } from './blackbody';
  * at a level the tone curve compresses only a little (its limb darkening then reads). Between the
  * sizes (CSS px on a view whose shorter side is `refPx`, in proportion on any other) it passes from
  * one to the other; the glare fades by `filtered` of its strength over the same sizes. The glare is
- * shown at `glare` of the explorer's, so the orrery's inner orbits stay legible beside the Sun.
+ * shown at `glare` of the explorer's, so the orrery's inner orbits and a planet just beside the Sun
+ * stay legible, not veiled in its halo.
  */
-const BRIGHTNESS = { small: 5, large: 1.6, fromPx: 12, toPx: 110, refPx: 800, filtered: 0.85, glare: 0.8 } as const;
+const BRIGHTNESS = { small: 3, large: 1.6, fromPx: 12, toPx: 110, refPx: 800, filtered: 0.85, glare: 0.5 } as const;
 /** The film's tiers onto the explorer's detail: its Medium (the disc's grain) on High and Mid, Low without. */
 const DETAIL_FOR: Readonly<Record<QualityTier, ExploreDetail>> = { high: DETAIL.medium, mid: DETAIL.medium, low: DETAIL.low };
 const MAIN_SEQUENCE_KELVIN = 5772;
