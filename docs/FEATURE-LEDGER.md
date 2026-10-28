@@ -202,7 +202,7 @@ tests and what remains open (the translation's licence above all): docs/REFINEME
 | The qibla and the new moon (lazy) | 40,000 B gzipped | 18,492 |
 | Walking (lazy) | 30,000 B gzipped | 11,328 |
 | Photo mode's controls (lazy) | 10,000 B gzipped | 2,826 |
-| The film's sound (lazy: voices and score) | 12,000 B gzipped | 5,598 |
+| The film's sound (lazy: voices and score; its recordings, about 2.7 MB of AAC, are fetched per chapter and not counted) | 12,000 B gzipped | 8,804 (2026-10-28) |
 | Explore Mode's dock (lazy: dock, styles, strings) | 20,000 B gzipped | 10,919 |
 | More worlds (lazy: the small worlds' engine, the Small worlds panel, its strings) | 30,000 B gzipped | 19,800 |
 | Worker | 8 ms of steps and 3 ms of prediction per 16 ms tick | solar fork: about 130,000 steps a second in Node |

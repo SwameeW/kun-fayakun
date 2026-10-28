@@ -1,10 +1,11 @@
-import type { FilmScore, FilmScoreState } from '../core/film-score';
+import type { FilmRecordingCheck, FilmScore, FilmScoreState } from '../core/film-score';
 import type { App, ChapterContent, ChapterId } from '../core/types';
 import { sound } from './sound-preference';
 
 /**
  * When the film's sound plays (the sound itself is ../core/film-score, its own chunk, loaded the
- * first time a chapter plays with sound on). It plays while a chapter plays, softer while the visitor
+ * first time a chapter plays with sound on; a chapter's recordings are fetched when it first plays
+ * with sound on). It plays while a chapter plays, softer while the visitor
  * explores the chapter's scene, and not at all on the loading, title and closing screens or while the
  * solar-system explorer is open (that has its own wind). Browsers let sound begin only once the
  * visitor has touched the page, so it waits for that. A pause suspends it with the film
@@ -15,6 +16,8 @@ export interface FilmSound {
   state(): FilmScoreState | null;
   /** Renders a stretch of a chapter's sound offline, for the tests: per second, RMS and peak. */
   render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
+  /** Every recording the score plays, fetched and decoded as the film does, for the tests. */
+  recordings(): Promise<FilmRecordingCheck[]>;
 }
 
 /** Seconds a silent score keeps its voices before letting them go (so a quick toggle does not rebuild them). */
@@ -110,5 +113,6 @@ export function createFilmSound(app: App): FilmSound {
   return {
     state: () => score?.state() ?? null,
     render: async (chapter, content, from, to) => (await import('../core/film-score')).renderFilmSound(chapter, content, from, to),
+    recordings: async () => (await import('../core/film-score')).checkFilmRecordings(),
   };
 }

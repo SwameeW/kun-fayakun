@@ -50,6 +50,7 @@ export interface KfTestHandle {
   filmSound?: {
     state(): unknown;
     render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
+    recordings(): Promise<unknown[]>;
   };
   /**
    * The assistant (src/ai/boot.ts). start() loads it and resolves to the page's one Intelligence;

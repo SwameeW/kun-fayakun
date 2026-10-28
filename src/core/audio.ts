@@ -1,8 +1,9 @@
 /**
  * Audio policy (spec §6): no music, no instrument, no voice. The film's sounds come from what it
- * shows (src/core/film-score.ts); the explorer's are the wind where there is air, or a suit's fans
- * where there is none (src/explore/sound.ts). All made in Web Audio, no audio assets; one Sound
- * choice turns both off (the film's speaker, the navigator's foot).
+ * shows (src/core/film-score.ts: made in Web Audio, with public-domain and CC0 nature recordings
+ * from public/assets/sound); the explorer's are the wind where there is air, or a suit's fans where
+ * there is none (src/explore/sound.ts, all made in Web Audio). One Sound choice turns both off (the
+ * film's speaker, the navigator's foot).
  *
  * Two buses (ambient, scene) feed the output through gains the engine controls.
  * Recitation (M4) never goes through Web Audio: it plays on its own media

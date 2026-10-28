@@ -134,14 +134,18 @@ the on-screen disclaimer.
 
 ## Sound
 
-No music, no instrument, no voice (spec section 6): the film's sounds come from what it shows, made
-in Web Audio with nothing recorded (src/core/film-score.ts). Where there was sound to hear, it is that
-sound. The young universe rang with sound waves in its plasma; Chapters 1 and 2 sound their acoustic
-peaks (the multipoles of the Planck sky's peaks, raised into hearing), falling in pitch as space
-stretches, until recombination ends them in one exhaled breath. A star churns; the Sun rings with
-acoustic modes about 135 microhertz apart near 3 mHz, sped up some 42,000 times in Chapter 7. The young
-Earth has lava, a giant impact felt as a low swell, rain and the first seas, wind over new land, and
-Chapter 9 begins under water. Out in space, where nothing carries sound, only a low hush. Silence
+No music, no instrument, no voice (spec section 6): the film's sounds come from what it shows
+(src/core/film-score.ts). Where there was sound to hear, it is that sound, recorded where a real
+recording is better (public domain and CC0, credited on the Sources page). The young universe rang
+with sound waves in its plasma; Chapters 1 and 2 sound their acoustic peaks (the multipoles of the
+Planck sky's peaks, raised into hearing as resonances of a roaring noise), falling as space
+stretches, until recombination ends them in one exhaled breath. A star churns (a roiling Yellowstone
+mud pool, slowed); the Sun rings with acoustic modes about 135 microhertz apart near 3 mHz, sped up
+some 165,000 times in Chapter 7. The young Earth has lava (Kilauea's lava lake, mud plops slowed into
+thick lava's, and the distant thuds of a bombardment from a real meteor's airburst), a giant impact
+felt as a low swell (slowed thunder, never heard as a storm), rain and the first seas, wind over new
+land, and Chapter 9 begins under water among rising bubbles. Out in space, where nothing carries
+sound, only a low hush. Silence
 where the film asks for it: the four seconds before the word, the verses of the end, the close. Under
 every verse the sound sinks to near silence (7:204), and lower under a hadith card; nothing startles.
 The speaker at the top turns it off, with the explorer's wind.

@@ -1,12 +1,13 @@
 /**
- * The film's sound (src/core/film-score.ts, src/ui/film-sound.ts). Rendered offline, every chapter
- * stays well clear of clipping, sinks to near silence under each verse, keeps its silences (before the
- * word forms, after the plasma's sound ends at recombination, at the end of the end) and sounds where
- * the picture has sound to give. Live, it follows the film: one speaker in the header (shared with the
- * explorer's Sound), the duck under a verse, one-shots only when the film plays across them, and the
- * audio suspended while the film is paused.
+ * The film's sound (src/core/film-score.ts, src/ui/film-sound.ts). Its recordings (public/assets/sound)
+ * are all there and decode, each the length its loop needs. Rendered offline, every chapter stays well
+ * clear of clipping, sinks to near silence under each verse and comes back slowly after it, keeps its
+ * silences (before the word forms, after the plasma's sound ends at recombination, at the end of the
+ * end) and sounds where the picture has sound to give, the recorded sounds among them. Live, it follows
+ * the film: one speaker in the header (shared with the explorer's Sound), the duck under a verse,
+ * one-shots only when the film plays across them, and the audio suspended while the film is paused.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import type { ChapterContent, ChapterId } from '../src/core/types';
@@ -38,6 +39,29 @@ async function render(page: Page, chapter: ChapterId): Promise<{ rms: number[]; 
 
 const state = (page: Page): Promise<FilmSoundState | null> => page.evaluate(() => (window as unknown as KfHook).__kf.filmSound?.state() ?? null);
 
+test('every recording the score plays is there and decodes, each the length its loop needs', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(120_000 * SLOW);
+  await kf.open('/');
+  const recordings = await page.evaluate(async () => {
+    const sound = (window as unknown as KfHook).__kf.filmSound;
+    if (!sound) throw new Error('no film sound hook');
+    return sound.recordings();
+  });
+  expect(recordings.length).toBeGreaterThan(0);
+  for (const r of recordings) {
+    expect(r.ok, `${r.name}: ${r.url} is there and decodes`).toBe(true);
+    expect(r.channels, r.name).toBeGreaterThan(0);
+    // Not silent: every recording is set to a common loudness when it is made (scripts/sound/build.py).
+    expect(r.rms, `${r.name}: its level`).toBeGreaterThan(0.005);
+    if (r.expected === null) expect(r.seconds, `${r.name}: a one-shot`).toBeGreaterThan(1);
+    else expect(Math.abs(r.seconds - r.expected), `${r.name}: ${r.seconds.toFixed(3)} s against ${r.expected} s`).toBeLessThan(0.1);
+  }
+  // And nothing in public/assets/sound that the score does not play.
+  const files = readdirSync(new URL('../public/assets/sound/', import.meta.url)).filter((f) => f.endsWith('.m4a')).map((f) => f.slice(0, -4));
+  expect(files.sort()).toEqual(recordings.map((r) => r.name).sort());
+  expect(pageErrors).toEqual([]);
+});
+
 test('rendered, every chapter is clear of clipping and near silent under its verses, its silences kept', async ({ page, kf, pageErrors }) => {
   test.setTimeout(240_000 * SLOW);
   await kf.open('/');
@@ -61,6 +85,15 @@ test('rendered, every chapter is clear of clipping and near silent under its ver
     }
     // Never louder than a quiet room's worth of sound for long: the beds sit at -26 dB or under.
     expect(median(outside), `${chapter}: its usual level`).toBeLessThan(-26);
+    // After a verse or a hadith card the sound comes back over seconds, never with a jump (where it was not silent).
+    for (const cue of content.cues) {
+      if (cue.type !== 'verse' && cue.type !== 'hadith') continue;
+      const end = Math.ceil(cue.t + cue.duration);
+      for (let s = end - 1; s < Math.min(rms.length - 1, end + 8); s += 1) {
+        if (db(rms[s] ?? 0) < -60) continue;
+        expect(db(rms[s + 1] ?? 0) - db(rms[s] ?? 0), `${chapter}: second ${s + 1}, after the card at ${cue.t}`).toBeLessThan(12);
+      }
+    }
   }
   expect(pageErrors).toEqual([]);
 });
@@ -79,14 +112,21 @@ test('the silences and the sounds the picture asks for are where the screenplay 
   const recombination = eventAt(ch02.content, 'recombination');
   expect(Math.min(...dbAt(ch02.rms, 1, recombination - 1))).toBeGreaterThan(-45);
   expect(Math.max(...dbAt(ch02.rms, recombination + 8, eventAt(ch02.content, 'cmb-reveal') + 2))).toBeLessThan(-70);
+  // Chapter 6: the churning of convection (a recording, slowed) from the start.
+  const ch06 = await render(page, 'ch06');
+  expect(Math.min(...dbAt(ch06.rms, 2, eventAt(ch06.content, 'collapse')))).toBeGreaterThan(-42);
   // Chapter 7: the Sun's own modes when it is seen close (before the verse).
   const ch07 = await render(page, 'ch07');
   const clear = eventAt(ch07.content, 'clear');
   expect(Math.min(...dbAt(ch07.rms, clear + 6, clear + 12))).toBeGreaterThan(-42);
-  // Chapter 8: rain once the oceans begin.
+  // Chapter 8: lava from the start, then rain once the oceans begin (both recordings).
   const ch08 = await render(page, 'ch08');
   const oceans = eventAt(ch08.content, 'oceans');
+  expect(Math.min(...dbAt(ch08.rms, 2, eventAt(ch08.content, 'impact')))).toBeGreaterThan(-42);
   expect(Math.min(...dbAt(ch08.rms, oceans + 6, oceans + 10))).toBeGreaterThan(-42);
+  // Chapter 9: under the sea, among rising bubbles, before its verse.
+  const ch09 = await render(page, 'ch09');
+  expect(Math.min(...dbAt(ch09.rms, 2, (ch09.content.cues.find((c) => c.type === 'verse')?.t ?? 30) - 2))).toBeGreaterThan(-42);
   // Chapter 10: silence for the verses of the end, and silence to close.
   const ch10 = await render(page, 'ch10');
   const still = eventAt(ch10.content, 'still');
