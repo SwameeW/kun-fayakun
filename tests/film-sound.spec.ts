@@ -119,7 +119,8 @@ test('a recording slow to come silences only its own layer: the made sound and t
   expect(Math.min(...bed), 'Chapter 6 before the collapse, without its recording').toBeGreaterThan(-50);
   expect(Math.max(...ch06.rms.slice(Math.ceil(collapse) + 1, Math.ceil(collapse) + 10).map(db)), 'the collapse swell').toBeGreaterThan(median(bed) + 6);
   await Promise.all(held.map((route) => route.abort().catch(() => undefined)));
-  expect(pageErrors).toEqual([]);
+  // The downloads this test aborts may be reported as failed loads; nothing else may be.
+  expect(pageErrors.filter((e) => !/Failed to load resource: net::ERR_FAILED .*assets\/sound\//u.test(e))).toEqual([]);
 });
 
 test('a chapter’s recordings are kept with the next chapter’s, fetched while it plays, and all let go when the explorer opens', async ({ page, kf, pageErrors }) => {
