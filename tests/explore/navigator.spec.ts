@@ -226,6 +226,7 @@ test('axe finds nothing to fix on the navigator and the heads-up readout', async
 });
 
 test('folded in an experiment or among the stars, the rail holds only their worlds, fits the window, and unfolds as it was', async ({ page, kf, pageErrors }) => {
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(240_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);
