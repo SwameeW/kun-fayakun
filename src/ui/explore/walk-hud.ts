@@ -16,7 +16,9 @@ import { withHelp } from './help';
  *   above the world's datum, its gravity, the air's pressure at the feet from the cited surface pressure
  *   and scale height and the world's mean temperature, named as a mean, or on an airless world the
  *   vacuum and its ground's range, the Sun's height and the local solar time, the qibla on the Earth),
- *   the keys, and where the ground comes from.
+ *   the keys, and where the ground comes from. While landing it says the ground is loading, and once
+ *   it has, until the camera is at the eye, the place it is coming down over and its height above
+ *   the ground there.
  * - **The controls' card**, for a few seconds after landing (and said to a screen reader once): the
  *   keys, or on a touch screen the pad and the look.
  * - **The pad** (on every screen: a mouse or a keyboard can walk with it too): walk forward and back,
@@ -210,6 +212,13 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
     if (w.dayRangeC) return i18n.t(w.world === 'mercury' ? 'ui.universe.walk.vacuumMercury' : 'ui.universe.walk.vacuum', { min: degrees(w.dayRangeC.min), max: degrees(w.dayRangeC.max), mean });
     return '';
   };
+  /** The camera's height above the ground on the way down: whole kilometres, tenths in the last ten, then metres. */
+  const height = (km: number): string => {
+    if (km >= 10) return f.keep(i18n.t('ui.hud.unit.km', { value: f.number(km, 0) }));
+    if (km >= 1) return f.keep(i18n.t('ui.hud.unit.km', { value: f.number(km, 1) }));
+    const m = km * 1000;
+    return f.keep(i18n.t('ui.hud.unit.m', { value: f.number(m >= 100 ? Math.round(m / 10) * 10 : m, 0) }));
+  };
   const clock = (hours: number): string => {
     const m = Math.floor(hours * 60) % 1440;
     return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -258,8 +267,10 @@ export function createWalkHud(app: App, f: Formatters, host: () => HTMLElement, 
       const walking = w.state === 'walking';
       for (const el of [pad, ...figures, credit]) el.hidden = !walking;
       const on = WORLD[w.world];
-      write(titleText, i18n.t(w.state === 'landing' ? 'ui.universe.walk.landing' : w.state === 'unavailable' ? 'ui.universe.walk.unavailableTitle' : on.title));
-      write(brief, walking ? i18n.t('ui.universe.walk.brief', { metres: degrees(w.groundM), sun: degrees(w.sunElevationDeg), time: clock(w.solarTimeH) }) : '');
+      // Landing: the ground loading, or (once it has, until the camera is at the eye) coming down to it.
+      const down = w.state === 'landing' ? w.comingDownKm : null;
+      write(titleText, down !== null ? i18n.t('ui.universe.walk.comingDown', { place: f.coordinates(w.lat, w.lon, 2) }) : i18n.t(w.state === 'landing' ? 'ui.universe.walk.landing' : w.state === 'unavailable' ? 'ui.universe.walk.unavailableTitle' : on.title));
+      write(brief, walking ? i18n.t('ui.universe.walk.brief', { metres: degrees(w.groundM), sun: degrees(w.sunElevationDeg), time: clock(w.solarTimeH) }) : down !== null ? i18n.t('ui.universe.walk.comingDownHeight', { height: height(down) }) : '');
       write(place, coords(w.lat, w.lon));
       write(ground, i18n.t(on.ground, { metres: f.number(Math.abs(w.groundM), 0), side: w.groundM < 0 ? 'below' : 'above', walked: f.number(w.walkedM, 0) }));
       write(gravity, i18n.t('ui.universe.walk.gravity', { g: f.number(w.gravity, 2) }));

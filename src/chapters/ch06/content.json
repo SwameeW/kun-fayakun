@@ -358,6 +358,24 @@
         }
       },
       {
+        "id": "remnant",
+        "t": 38,
+        "kind": "illustration",
+        "titleKey": "discover.ch06.remnant.title",
+        "text": {
+          "key": "discover.ch06.remnant.text",
+          "cite": [
+            "hughes-2000-cas-a",
+            "hwang-2004-cas-a",
+            "milisavljevic-fesen-2015-cas-a",
+            "gotthelf-2001-cas-a",
+            "ho-heinke-2009-cas-a",
+            "pavlov-luna-2009-cas-a",
+            "hester-2008-crab"
+          ]
+        }
+      },
+      {
         "id": "white-dwarf",
         "t": 93,
         "kind": "illustration",

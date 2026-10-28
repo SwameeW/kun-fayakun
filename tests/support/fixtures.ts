@@ -44,10 +44,11 @@ export interface KfHook {
     step(frames?: number, dt?: number): void;
     camera(): { position: [number, number, number]; fov: number };
     universe: { state(): UniverseView | null; place(pose: UniversePose): void; lab?(command: LabCommand): Promise<LabEditResult>; labDraw?(): unknown; labEffects?(parts: Partial<Record<'rocks' | 'dust' | 'fire' | 'bands', boolean>>): Record<'rocks' | 'dust' | 'fire' | 'bands', boolean> | null };
-    /** The film's sound (src/ui/film-sound.ts): what plays now, and an offline render of a chapter's stretch. */
+    /** The film's sound (src/ui/film-sound.ts): what plays now, an offline render of a chapter's stretch, and its recordings decoded. */
     filmSound?: {
       state(): FilmSoundState | null;
       render(chapter: ChapterId, content: ChapterContent, from: number, to: number): Promise<{ rms: number[]; peak: number[] }>;
+      recordings(): Promise<FilmRecordingCheck[]>;
     };
     /**
      * The assistant (src/ai/boot.ts): start() loads it and resolves to the page's one Intelligence;
@@ -67,6 +68,17 @@ export interface KfHook {
   };
 }
 
+/** A recording of the film's sound as its test hook reports it (src/core/film-score.ts FilmRecordingCheck). */
+export interface FilmRecordingCheck {
+  name: string;
+  url: string;
+  ok: boolean;
+  seconds: number;
+  expected: number | null;
+  channels: number;
+  rms: number;
+}
+
 /** The film's sound as its test hook reports it (src/core/film-score.ts FilmScoreState). */
 export interface FilmSoundState {
   chapter: ChapterId | null;
@@ -74,6 +86,8 @@ export interface FilmSoundState {
   voices: Record<string, number>;
   duck: number;
   shots: string[];
+  /** The recordings in hand (the chapter playing and the next). */
+  recordings: string[];
 }
 
 export interface OpenOptions {

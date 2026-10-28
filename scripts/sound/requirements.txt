@@ -1,0 +1,5 @@
+# Python packages for scripts/sound/build.sh, pinned to the versions the published sounds were
+# built with (Python 3.9 or later). Installed into .cache/venv-sound.
+numpy==2.0.2
+scipy==1.13.1
+soundfile==0.13.1

@@ -96,7 +96,6 @@ PACIFIC = Place("equatorial Pacific", 0.0, -150.0, 3.0)
 INDIAN = Place("south Indian Ocean", -20.0, 80.0, 3.0)
 TOKYO = Place("Greater Tokyo", 35.75, 139.7, 0.6)
 NILE_DELTA = Place("Cairo and the Nile delta", 30.4, 31.1, 0.6)
-SOUTHERN_OCEAN = Place("Southern Ocean storm track", -55.0, 90.0, 4.0)
 TIBET = Place("Tibetan Plateau", 32.0, 88.0, 2.0)
 MARIANA = Place("Mariana Trench (Challenger Deep)", 11.35, 142.2, 0.4)
 ANTARCTIC_PLATEAU = Place("East Antarctic plateau (Dome A)", -80.4, 77.4, 1.5)
@@ -136,9 +135,16 @@ def earth_night(grey: NDArray[np.uint8], label: str) -> list[dict[str, object]]:
 
 
 def earth_clouds(grey: NDArray[np.uint8], label: str) -> list[dict[str, object]]:
+    """One day's clouds: the stormiest latitudes are cloudy on any day, the Sahara clear, and the poles
+    differ (pack ice fills the central Arctic; none is drawn over the Antarctic ice sheet)."""
     c = Checks(label, "earth")
-    c.expect("Southern Ocean storm track", c.value(grey, SOUTHERN_OCEAN), ">", 90, "persistently overcast")
-    c.expect("Sahara", c.value(grey, SAHARA), "<", 60, "mostly clear")
+    h = grey.shape[0]
+    lat = 90.0 - (np.arange(h) + 0.5) * 180.0 / h
+    band = np.asarray(grey[(lat > -60.0) & (lat < -50.0)], dtype=np.float64)
+    c.expect("Southern Ocean, 50-60 S, all longitudes", float(band.mean()), ">", 90, "the cloudiest latitudes on Earth")
+    c.expect("Sahara", c.value(grey, SAHARA), "<", 30, "clear desert, not cloud")
+    c.expect("central Arctic", c.value(grey, Place("central Arctic", 87.0, 0.0, 3.0)), ">", 150, "pack ice; a flip lands on Antarctica")
+    c.expect("East Antarctic plateau", c.value(grey, ANTARCTIC_PLATEAU), "<", 10, "the ice sheet, drawn by the day map")
     return c.report()
 
 

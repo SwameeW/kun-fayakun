@@ -79,14 +79,14 @@ import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes
 import { centralAngle, loadPlaces, type Place } from './field-notes/places';
 import { createQuakeLayer, type QuakeLayer } from './living/quakes';
 import { createSatelliteLayer, type SatelliteLayer } from './living/satellites';
-import { fineDetailShown } from './bodies/earth';
+import { darkAdaptation, fineDetailShown, litShare } from './bodies/earth';
 import { craterDetailShown } from './bodies/moon';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
 import type { SurfaceMark } from './bodies/marks';
 import { DETAIL, EXPLORE_TIERS, type ExploreDetail, type ExploreTier } from './detail';
 import { deriveFacts, Discoveries, type Discovery, type DiscoveryInput } from './discoveries';
-import { createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
+import { clearDayAir, createTransmittanceTable, earthAir, limbTransmittance, type AirModel, type TransmittanceTable } from './render/air';
 import { createInput, type ExploreInput } from './input';
 import { isLabBody, LENS as ZOOM_LENS, Navigator, navOutput, type NavBody, type NavWorld } from './navigation';
 import { createOrbits, moonOrbit, planetOrbit, type Orbits, type OrbitPath } from './orbits';
@@ -134,6 +134,18 @@ type DescentWorld = 'venus' | 'jupiter';
 const DESCENT_IDS: readonly DescentWorld[] = ['venus', 'jupiter'];
 /** The dip into or out of a walk: seconds to dark, and back to light. */
 const WALK_DIP = { downS: 0.25, upS: 0.4 } as const;
+/**
+ * The way down on the Earth (motion allowed): after the dip into the walk at the lowest orbit, the
+ * camera falls down the walker's vertical through the air to its eye over `seconds`, its height above
+ * the eye easing in log terms (so it falls as fast as it seems to: the ground's flow keeps its pace),
+ * offset by `nearKm` so the last few hundred metres settle rather than crawl; it looks straight down
+ * at first and lifts to the walker's own look as it comes down, by (1 - progress)^`lift`, so the
+ * horizon and the blue limb come into view in its upper half from about 40 km. The rings and the sky
+ * drawn on the way are the walk's own (./walk), with no cut between.
+ */
+const APPROACH = { seconds: 7, nearKm: 0.5, lift: 2.7 } as const;
+/** No input: the walker stands still while the camera comes down to it. */
+const STANDING: WalkInput = { forward: 0, right: 0, run: false, jump: false, turn: 0, tip: 0 };
 /** The worlds there is ground to walk on. */
 type WalkWorld = WalkableWorld;
 const WALKABLE: readonly BodyId[] = ['earth', 'moon', 'mars', 'mercury', 'venus'];
@@ -184,6 +196,15 @@ const SUN_FILTER = { fromPx: 12, toPx: 110, refPx: 800, color: [1, 0.5, 0.12], w
 const MOON_EXPOSURE = 1.1;
 /** The sky's starlight, and how much of the exposure's adaptation it shows (0 none, 1 all of it). */
 const STARS = { light: 0.85, follow: 0.2 } as const;
+/**
+ * The night sky's glows (./worlds/glow: the Milky Way and the zodiacal light) show only to an eye
+ * adapted to the dark: a camera exposed for a sunlit world records neither. So they follow the
+ * world looked at as the Earth's night side does (./bodies/earth darkAdaptation of litShare: gone once
+ * a few percent of its visible disc is sunlit), for any of the worlds, while its disc is large enough
+ * in view to set the exposure (its radius in CSS pixels: below `points` a point among the stars, from
+ * `disc` a disc: illustrative), eased over `seconds` (a cut is followed at once).
+ */
+const NIGHT_SKY = { points: 4, disc: 16, seconds: 1 } as const;
 
 /** Points of light for distant bodies: colour (display terms) and size. Visual constants, not measurements. */
 const DOT: Readonly<Record<BodyId, { tint: readonly [number, number, number]; albedo: number; sizePx: number }>> = {
@@ -262,6 +283,35 @@ const smootherstep = (a: number, b: number, x: number): number => {
   const u = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return u * u * u * (u * (u * 6 - 15) + 10);
 };
+
+/**
+ * The camera on the way down to the walker's eye (APPROACH), `a.t` seconds in, from `a.fromKm` above
+ * the eye: on the eye's vertical, looking along the walker's heading, tipped from straight down up to
+ * the walker's own pitch; the walker's eye pose itself once it is over. Sets `a`'s progress and height.
+ */
+function approachPose(pose: { position: readonly number[]; forward: readonly number[]; up: readonly number[] }, a: { t: number; fromKm: number; progress: number; km: number }): { position: number[]; forward: number[]; up: number[] } {
+  const p = [pose.position[0] ?? 0, pose.position[1] ?? 0, pose.position[2] ?? 1];
+  const f = [pose.forward[0] ?? 0, pose.forward[1] ?? 0, pose.forward[2] ?? 1];
+  const r = Math.hypot(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0) || 1;
+  const u = p.map((x) => x / r);
+  // The walker's heading (its look made level) and its pitch.
+  const along = f.reduce((sum, x, k) => sum + x * (u[k] ?? 0), 0);
+  const level = f.map((x, k) => x - along * (u[k] ?? 0));
+  const l = Math.hypot(level[0] ?? 0, level[1] ?? 0, level[2] ?? 0) || 1;
+  const h = level.map((x) => x / l);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, along)));
+  const q = smootherstep(0, 1, a.t / APPROACH.seconds);
+  const c = APPROACH.nearKm;
+  const km = Math.max(0, (a.fromKm + c) * (c / (a.fromKm + c)) ** q - c);
+  const tilt = pitch + (-Math.PI / 2 - pitch) * (1 - q) ** APPROACH.lift;
+  a.progress = q;
+  a.km = km;
+  return {
+    position: p.map((x, k) => x + (u[k] ?? 0) * km),
+    forward: h.map((x, k) => x * Math.cos(tilt) + (u[k] ?? 0) * Math.sin(tilt)),
+    up: h.map((x, k) => -x * Math.sin(tilt) + (u[k] ?? 0) * Math.cos(tilt)),
+  };
+}
 
 /** Lambert sphere's phase function: the share of light a sphere sends back at phase angle alpha. */
 function lambertPhase(alpha: number): number {
@@ -364,6 +414,11 @@ export default function create(): UniverseModule {
    */
   let frameTarget: RenderTarget | null = null;
   let compileTarget: RenderTarget | null = null;
+  /**
+   * How deep in the renderer's nested renders the frames draw the explorer (the post pipeline renders
+   * the scene pass inside its own render: 1), seen while the stars draw (compileForFrames).
+   */
+  let frameDepth = 1;
   /** compileForFrames calls still waiting on their pipelines. */
   let compilesPending = 0;
   /** The worker that inflates the raw planet files. */
@@ -437,6 +492,11 @@ export default function create(): UniverseModule {
    */
   let walkShown = false;
   let walkDip: { into: boolean; t: number; switched: boolean } | null = null;
+  /**
+   * The way down to the walker's eye (APPROACH), while it runs: seconds into it, the height above the
+   * eye it began at (km, NaN until its first frame), and this frame's progress (0 to 1) and height.
+   */
+  let approach: { t: number; fromKm: number; progress: number; km: number } | null = null;
   /**
    * Down through an atmosphere (./descent, its own chunk): each world's made the first time, `descent`
    * the one under way, shown once the picture has dipped into it; the on-screen pad's climb (-1 hurry
@@ -602,8 +662,10 @@ export default function create(): UniverseModule {
   let shownFor = 0;
   /** The camera's height above the nearest surface (rings included), km: the depth range and the turn rate follow it. */
   let nearestKm = Infinity;
-  /** The Earth's air model (its limb reddens the Sun seen through it). */
+  /** The Earth's air model, a clear day's (its limb reddens the Sun seen through it; the walk is drawn with it too). */
   let earthAirModel: AirModel | null = null;
+  /** How far the eye is adapted to the night sky now (NIGHT_SKY), 0 to 1, eased. */
+  let nightSky = 1;
 
   const placed = Object.fromEntries(
     BODY_IDS.map((id) => [id, { rel: km(), drawn: km(), distance: 0, k: 1, radiusPx: 0, screenX: 0, screenY: 0, inView: false }]),
@@ -770,7 +832,7 @@ export default function create(): UniverseModule {
           o.visible = true;
           o.frustumCulled = false;
         });
-        const compiled = compileForFrames([w.object]);
+        const compiled = compileForFrames([w.object], true);
         for (const [o, [visible, culled]] of was) {
           o.visible = visible;
           o.frustumCulled = culled;
@@ -855,9 +917,14 @@ export default function create(): UniverseModule {
    * it goes. A reduced-motion cut keeps the old body's until it cuts (then the exposure jumps).
    */
   const exposureTarget = (): number => {
-    // On foot the eye adapts to the light where it stands (./walk/light), not to the distance from the Sun.
+    // On foot the eye adapts to the light where it stands (./walk/light), not to the distance from the Sun;
+    // on the way down to it, from the orbit's exposure to that as it comes down.
     const metered = walking ? walk?.exposure() : null;
-    if (metered) return metered;
+    if (metered) {
+      if (!approach) return metered;
+      const orbit = exposureFor(walkWorld);
+      return Math.exp(Math.log(orbit) + (Math.log(metered) - Math.log(orbit)) * approach.progress);
+    }
     const to = exposureFor(nav.focus);
     if (!navOut.from) return to;
     const from = exposureFor(navOut.from);
@@ -932,7 +999,9 @@ export default function create(): UniverseModule {
     if (walkShown && w) {
       const molar = airMolar[w.world];
       if (w.pressureKpa === null || molar === undefined) return { air: null, suit: true };
-      const densityKgM3 = (w.pressureKpa * 1000 * molar) / (8.314462618 * ((w.meanTempC ?? 15) + 273.15));
+      // On the way down to the walker, the air's density where the camera is (thinning by e every scale height above the feet).
+      const thin = approach ? Math.exp(-approach.km / (walkAir.scaleHeightKm ?? 8.5)) : 1;
+      const densityKgM3 = ((w.pressureKpa * 1000 * molar) / (8.314462618 * ((w.meanTempC ?? 15) + 273.15))) * thin;
       return { air: { densityKgM3, windMs: SOUND_BREEZE[w.world] ?? 5, brightHz: SOUND_BRIGHT[w.world] ?? 1500 }, suit: false };
     }
     const d = viewState.descent;
@@ -984,8 +1053,8 @@ export default function create(): UniverseModule {
     v.time.hijri = lab?.active ? null : hijri;
     v.islamic = lab?.active ? null : (islamic?.view() ?? null);
     const walkView = walk?.view() ?? null;
-    // Landed but not yet shown (the glide down, the dip): still landing, as far as anyone looking can tell.
-    if (walkView?.state === 'walking' && !walkShown) walkView.state = 'landing';
+    // Landed but not yet shown (the glide down, the dip, the way down to the eye): still landing, as far as anyone looking can tell.
+    if (walkView?.state === 'walking' && (!walkShown || approach)) walkView.state = 'landing';
     if (walkView) {
       walkView.fovDeg = navOut.fov;
       walkView.timeCapped = !timePaused && Math.abs(timeRate) > FOOT_MAX_RATE;
@@ -1365,6 +1434,7 @@ export default function create(): UniverseModule {
     // Asked for again while dipping out of a walk on this world, before the dark: the dip turns back in.
     if (walkDip && !walkDip.into && !walkDip.switched && walkWorld === on) walkDip.into = true;
     walkAsked = { on, lat, lon, headingDeg, pitchDeg };
+    approach = null;
     // The descent: with the world in view, the camera glides down over the place to the lowest orbit
     // while the ground loads (at once with reduced motion); the walk is dipped into once both are done.
     if (world && nav.focus === on && !walkShown && !descentShown) {
@@ -1560,6 +1630,7 @@ export default function create(): UniverseModule {
     walkShown = false;
     walkDip = null;
     walkReturn = null;
+    approach = null;
   };
 
   /**
@@ -1913,9 +1984,12 @@ export default function create(): UniverseModule {
           walkShown = true;
           // Landed from a descent (Venus's): the descent ends as the walk shows.
           if (descent) endDescent(true);
+          // On the Earth, with motion: down through the air to the eye from here (reduced motion: at once).
+          if (walkWorld === 'earth' && !c.reducedMotion) approach = { t: 0, fromKm: Number.NaN, progress: 0, km: 0 };
         } else {
           walk?.stop();
           walkShown = false;
+          approach = null;
           // Back up to the orbit the descent left (unless a trip has taken the camera elsewhere).
           const back = walkReturn;
           walkReturn = null;
@@ -1938,7 +2012,8 @@ export default function create(): UniverseModule {
       walkStep.jump = walkInput.jump || walkPad.jump;
       // On foot, Esc is the walk's: the climb back to orbit counts as on foot.
       escapeHeld = performance.now() + 1000;
-      const pose = walk.step(dt, walkStep);
+      // On the way down the walker stands still.
+      const pose = walk.step(dt, approach ? STANDING : walkStep);
       // Landed: once any glide down has ended, the picture dips into the walk.
       if (pose && !walkShown && !walkDip && !nav.gliding) walkDip = { into: true, t: 0, switched: false };
       if (pose && walkShown) {
@@ -1947,7 +2022,18 @@ export default function create(): UniverseModule {
         const at = walkWorld === 'earth' ? walk.where() : null;
         const makkah = at ? site('mecca') : undefined;
         const kaabaKm = at && makkah ? centralAngle(at.lat, at.lon, makkah.lat, makkah.lon) * sys.specs.earth.radiusKm : Infinity;
-        eyeAt(pose, walkWorld, Math.max(walkFov, MathUtils.radToDeg(2 * Math.atan(MAKKAH_FRAME.minWidthKm / 2 / kaabaKm))));
+        const fov = Math.max(walkFov, MathUtils.radToDeg(2 * Math.atan(MAKKAH_FRAME.minWidthKm / 2 / kaabaKm)));
+        const a = approach;
+        if (a) {
+          // Down through the air to the eye (held where it is while the picture dips back out).
+          if (Number.isNaN(a.fromKm)) {
+            const e = sys.bodies[walkWorld].position;
+            a.fromKm = Math.max(1, Math.hypot(navOut.position.x - e.x, navOut.position.y - e.y, navOut.position.z - e.z) - Math.hypot(...pose.position));
+          }
+          if (!walkDip) a.t += dt;
+          eyeAt(approachPose(pose, a), walkWorld, fov);
+          if (a.t >= APPROACH.seconds) approach = null;
+        } else eyeAt(pose, walkWorld, fov);
       }
     }
     // Down through an atmosphere: its dip, then its eye in place of the navigator's.
@@ -1981,8 +2067,8 @@ export default function create(): UniverseModule {
         if (v?.atBottom && descent.world === 'venus' && !walk?.active && !walkAsked) startWalk('venus', v.hereLatDeg, v.hereLonDeg);
       }
     }
-    // Mouse-look lasts only while an eye is shown on foot or on the way down.
-    if (!walking && !descending && document.pointerLockElement === c.renderer.domElement) document.exitPointerLock();
+    // Mouse-look lasts only while an eye is shown on foot (not on its way down to it) or on the way down through a probe's air.
+    if ((!walking || approach) && !descending && document.pointerLockElement === c.renderer.domElement) document.exitPointerLock();
     origin.setCamera(navOut.position);
     BODY_IDS.forEach((id, i) => {
       const p = placed[id];
@@ -2132,7 +2218,8 @@ export default function create(): UniverseModule {
         entering || stretch.amount < 1 || hiddenBodies.has('earth')
           ? null
           : standing
-            ? { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: WALK_FOOTPRINT_KM / sys.specs.earth.radiusKm }
+            ? // On the way down, a pixel's span there from the camera's height (as from orbit), down to the walker's.
+              { lat: MathUtils.degToRad(standing.lat), lon: MathUtils.degToRad(standing.lon), footprint: Math.max(WALK_FOOTPRINT_KM, approach ? approach.km / scenePxPerTan : 0) / sys.specs.earth.radiusKm }
             : earthAim(sys, scenePxPerTan);
       earthTiles.update(aim, dt, c.reducedMotion);
       // How far the lens may narrow: the day mosaic stops at 250 m per pixel, and over Makkah the
@@ -2322,7 +2409,7 @@ export default function create(): UniverseModule {
       unit(scratch, sys.bodies[walkWorld].position, sys.bodies.sun.position);
       const sunWorld: [number, number, number] = [scratch.x * (m[0] ?? 1) + scratch.y * (m[1] ?? 0) + scratch.z * (m[2] ?? 0), scratch.x * (m[3] ?? 0) + scratch.y * (m[4] ?? 1) + scratch.z * (m[5] ?? 0), scratch.x * (m[6] ?? 0) + scratch.y * (m[7] ?? 0) + scratch.z * (m[8] ?? 1)];
       const subSolarLon = MathUtils.radToDeg(Math.atan2(-sunWorld[2], sunWorld[0]));
-      walk.place({ centre: placed[walkWorld].rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt(walkWorld), subSolarLon, near: lens.near, far: lens.far, exposure: adapted, renderer: c.renderer, camera, eye: walking });
+      walk.place({ centre: placed[walkWorld].rel, basis: m, sun: { x: scratch.x, y: scratch.y, z: scratch.z }, sunWorld, light: lightAt(walkWorld), subSolarLon, near: lens.near, far: lens.far, exposure: adapted, renderer: c.renderer, camera, shown: walking, eye: walking && !approach });
     }
 
     // The Living Earth's live layers, placed with the Earth (only near it: drawn at true scale).
@@ -2393,7 +2480,9 @@ export default function create(): UniverseModule {
       dot.marker = id === 'sun' ? 0 : (labelOpacity.get(id) ?? 0) * smoothstep(LABEL.markerPx, LABEL.markerPx / 2, p.radiusPx) * (1 - filterAmount);
     });
     dots.update(dotList, adapted);
-    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, filter: filterAmount, shown: !lab?.active && !walking && !descending && stretch.amount >= 1, focus: nav.focus, span: focusKm, dt, days, running, reduced: c.reducedMotion, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : 1, placed });
+    const darkSky = nightSkyAdaptation(camera);
+    nightSky = entering || navOut.cut || walkCut || !(dt > 0 && dt <= 1) ? darkSky : nightSky + (darkSky - nightSky) * (1 - Math.exp(-dt / NIGHT_SKY.seconds));
+    worlds?.update({ jdTdb, camera: origin.camera, view: camera, far: lens.far, pxPerTan, widthPx, heightPx: viewportPx, compensation: adapted, filter: filterAmount, shown: !lab?.active && !walking && !descending && stretch.amount >= 1, focus: nav.focus, span: focusKm, dt, days, running, reduced: c.reducedMotion, dpr: c.renderer.getPixelRatio(), sky: walking || descending ? 0 : nightSky, placed });
 
     const sunPlaced = placed.sun;
     // From orbit, the Sun through the Earth's limb (on foot, through the air the walker looks through).
@@ -2449,13 +2538,24 @@ export default function create(): UniverseModule {
    * called, so it is bound only for the call, never across a frame. Before the first frame a stand-in
    * of the same formats is used, and released (two GPU textures) once the frames' own target is
    * known and no compile still uses it.
+   *
+   * three (r186) also keys what it builds by the render context, and a render context by how deep in
+   * nested renders it is drawn: compileAsync takes the top level's, the frames are drawn one level
+   * down (the post pipeline's scene pass), so what it built was never used and each part built again
+   * as it was first drawn (a night side's airglow, the sky's glow, a ring, the Sun's limb: 1 to 4 ms of
+   * the main thread each on an M5, several times that on a phone). With `framesContext` the frames'
+   * depth is asked for during the call (frameDepth; without that internal hook, compileAsync as it is):
+   * on opening (warmHidden) and for the worlds' parts. A detail level's new materials keep the top
+   * level's: compiled in the frames' context while that level's maps stream in, three wrote maps the
+   * streaming had already written and let go (WebGPU: zero-byte texture writes), so they still build
+   * as they are first drawn, as before.
    */
   const releaseStandIn = (): void => {
     if (!frameTarget || !compileTarget || compilesPending > 0) return;
     compileTarget.dispose();
     compileTarget = null;
   };
-  const compileForFrames = async (objects: Object3D[]): Promise<void> => {
+  const compileForFrames = async (objects: Object3D[], framesContext = false): Promise<void> => {
     const c = ctx;
     if (!c) return;
     const renderer = c.renderer;
@@ -2467,10 +2567,14 @@ export default function create(): UniverseModule {
     }
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(frameTarget ?? compileTarget);
+    const contexts = (renderer as unknown as { _renderContexts?: { get?: (target: unknown, mrt?: unknown, depth?: number) => unknown } })._renderContexts;
+    const context = contexts?.get;
     const compiling = (): Array<Promise<void>> => {
       try {
+        if (framesContext && contexts && context) contexts.get = (target, mrt, depth) => context.call(contexts, target, mrt, depth ?? frameDepth);
         return objects.map((o) => renderer.compileAsync(o, c.camera, c.scene));
       } finally {
+        if (framesContext && contexts && context) contexts.get = context;
         renderer.setRenderTarget(previous);
       }
     };
@@ -2484,6 +2588,50 @@ export default function create(): UniverseModule {
       compilesPending -= 1;
       releaseStandIn();
     }
+  };
+
+  /**
+   * The eye's adaptation to the night sky for this frame's view (NIGHT_SKY): 1 unless the world
+   * looked at (one of the ten, not the Sun) is in view, large enough to set the exposure, with some of
+   * its day side showing. In view: its disc reaches into the view's corners' cone.
+   */
+  const nightSkyAdaptation = (view: PerspectiveCamera): number => {
+    const id = nav.focus;
+    if (id === 'sun' || !system || !(BODY_IDS as readonly string[]).includes(id)) return 1;
+    const p = placed[id as BodyId];
+    const presence = smoothstep(NIGHT_SKY.points, NIGHT_SKY.disc, p.radiusPx);
+    if (presence <= 0 || p.distance <= 0) return 1;
+    const radius = system.specs[id as BodyId].radiusKm;
+    const halfDiagonal = Math.atan(Math.tan(MathUtils.degToRad(view.fov / 2)) * Math.hypot(1, view.aspect));
+    const off = Math.acos(Math.min(1, Math.max(-1, (forward.x * p.rel.x + forward.y * p.rel.y + forward.z * p.rel.z) / p.distance)));
+    if (off > halfDiagonal + Math.asin(Math.min(1, radius / p.distance))) return 1;
+    const s = placed.sun;
+    const sunward = { x: s.rel.x - p.rel.x, y: s.rel.y - p.rel.y, z: s.rel.z - p.rel.z };
+    const length = Math.max(1e-9, Math.hypot(sunward.x, sunward.y, sunward.z));
+    const eye = { x: -p.rel.x / radius, y: -p.rel.y / radius, z: -p.rel.z / radius };
+    return 1 - presence * (1 - darkAdaptation(litShare(eye, { x: sunward.x / length, y: sunward.y / length, z: sunward.z / length })));
+  };
+
+  /**
+   * Compiles what the warm-up frame does not draw because it is hidden now and shown later (the night
+   * side's airglow, Venus's haze, the Sun's limb close up, the parts of a detail level or a view not
+   * yet seen), as the worlds' parts are when they come: shown, and in view, only for the call, which
+   * reads what to build as it is called; the pipelines then build over the next frames, one part a
+   * frame, while the picture is still coming up.
+   */
+  const warmHidden = (): void => {
+    const was = new Map<Object3D, readonly [boolean, boolean]>();
+    root.traverse((o) => {
+      was.set(o, [o.visible, o.frustumCulled]);
+      o.visible = true;
+      o.frustumCulled = false;
+    });
+    const compiled = compileForFrames([root], true);
+    for (const [o, [visible, culled]] of was) {
+      o.visible = visible;
+      o.frustumCulled = culled;
+    }
+    void compiled;
   };
 
   /** What the view draws now that is illustrative, for the readout to say. */
@@ -2501,12 +2649,15 @@ export default function create(): UniverseModule {
         const pxPerRadian = viewportPx / (2 * Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)));
         if (fineDetailShown(bodies.detail, altitude / system.specs.earth.radiusKm, pxPerRadian)) notes.push('fine-detail');
         notes.push('cloud-drift');
-        // The night side only when some of it is in view (the camera not straight over the noon side).
+        // The night side is brightened only while the night fills the view (the eye adapted to the dark,
+        // as the Earth draws it); with daylight in view it is black, as a camera exposed for the day sees it.
         const e = placed.earth;
         const s = placed.sun;
-        const toCamera = -(e.rel.x * (s.rel.x - e.rel.x) + e.rel.y * (s.rel.y - e.rel.y) + e.rel.z * (s.rel.z - e.rel.z));
-        const cos = toCamera / Math.max(1e-9, e.distance * Math.hypot(s.rel.x - e.rel.x, s.rel.y - e.rel.y, s.rel.z - e.rel.z));
-        if (cos < 0.85) notes.push('night-side');
+        const radius = system.specs.earth.radiusKm;
+        const eye = { x: -e.rel.x / radius, y: -e.rel.y / radius, z: -e.rel.z / radius };
+        const sunward = { x: s.rel.x - e.rel.x, y: s.rel.y - e.rel.y, z: s.rel.z - e.rel.z };
+        const length = Math.max(1e-9, Math.hypot(sunward.x, sunward.y, sunward.z));
+        if (darkAdaptation(litShare(eye, { x: sunward.x / length, y: sunward.y / length, z: sunward.z / length })) > 0.05) notes.push('night-side');
         return notes;
       }
       case 'moon': {
@@ -3065,7 +3216,9 @@ export default function create(): UniverseModule {
       });
       textures.setRingPlaceholder(ringTransmission(physical.saturnRings), physical.saturnRings.innerKm, physical.saturnRings.outerKm);
       const sunKm = system.specs.sun.radiusKm;
-      const air = earthAir(c.data, system.specs.earth.radiusKm, Math.asin(sunKm / physical.auKm));
+      // On a clear day, from orbit as on foot (./render/air clearDayAir): one air for the globe, its
+      // limb's reddening of the Sun and the walk, so the way down meets no change of air.
+      const air = clearDayAir(earthAir(c.data, system.specs.earth.radiusKm, Math.asin(sunKm / physical.auKm)));
       earthAirModel = air;
       airTable = createTransmittanceTable(air);
       const strip = findPlanetTexture(manifest, 'saturn', 'rings', 'low')?.radiusKm ?? [physical.saturnRings.innerKm, physical.saturnRings.outerKm];
@@ -3093,6 +3246,8 @@ export default function create(): UniverseModule {
           frameTarget = target;
           releaseStandIn();
         }
+        const depth = (r as { _callDepth?: unknown })._callDepth;
+        if (typeof depth === 'number' && depth >= 0) frameDepth = depth;
       };
       const body = (name: string): PlanetsFile['bodies'][number] => {
         const found = planets.bodies.find((b) => b.name === name);
@@ -3180,9 +3335,9 @@ export default function create(): UniverseModule {
             return;
           }
           if (walk?.active) {
-            // A drag moves the scene with it if the visitor chose so (mouse-look never does).
+            // A drag moves the scene with it if the visitor chose so (mouse-look never does); on the way down it waits.
             const sense = walkScene && document.pointerLockElement !== c.renderer.domElement ? -1 : 1;
-            walk.look(dx * sense, dy * sense);
+            if (!approach) walk.look(dx * sense, dy * sense);
             return;
           }
           if (descent?.active) {
@@ -3198,7 +3353,7 @@ export default function create(): UniverseModule {
             return;
           }
           if (walk?.active) {
-            walk.look(walkScene ? -dx : dx, walkScene ? -dy : dy);
+            if (!approach) walk.look(walkScene ? -dx : dx, walkScene ? -dy : dy);
             return;
           }
           if (descent?.active) {
@@ -3214,7 +3369,7 @@ export default function create(): UniverseModule {
             return;
           }
           // On foot the view narrows and widens (binoculars to a wide lens).
-          if (walk?.active) walkFov = Math.min(WALK_ZOOM.max, Math.max(WALK_ZOOM.min, walkFov * Math.exp(Number.isFinite(dLn) ? dLn : 0)));
+          if (walk?.active && !approach) walkFov = Math.min(WALK_ZOOM.max, Math.max(WALK_ZOOM.min, walkFov * Math.exp(Number.isFinite(dLn) ? dLn : 0)));
           if (walk?.active || descent?.active) return;
           stretch.steered = true;
           nav.zoom(w, dLn);
@@ -3301,8 +3456,8 @@ export default function create(): UniverseModule {
           }
           return false;
         },
-        // What is shown, not what is asked for: landing, the camera still waits in orbit.
-        onFoot: () => (walking ? 'ground' : descending ? 'air' : null),
+        // What is shown, not what is asked for: landing, the camera still waits in orbit or comes down to the eye.
+        onFoot: () => (walking && !approach ? 'ground' : descending ? 'air' : null),
         orbit: () => {
           if (hoodShown) {
             hood?.toggleMode();
@@ -3437,6 +3592,7 @@ export default function create(): UniverseModule {
       if (glare) glare.object.visible = true;
       if (dots) dots.object.visible = true;
       warming = 2;
+      warmHidden();
     },
 
     update(dt) {

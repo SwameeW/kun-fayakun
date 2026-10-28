@@ -26,6 +26,7 @@
     "preprocess:analysis": "tsx scripts/build-analysis.ts",
     "preprocess:places": "python3 -I scripts/places/build.py",
     "preprocess:sky": "python3 -I scripts/sky/build.py",
+    "preprocess:sound": "bash scripts/sound/build.sh",
     "preprocess:ai": "tsx scripts/build-ai-index.ts"
   },
   "dependencies": {

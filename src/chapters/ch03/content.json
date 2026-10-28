@@ -281,6 +281,49 @@
             }
           }
         }
+      },
+      {
+        "id": "reionisation",
+        "t": 80,
+        "kind": "illustration",
+        "titleKey": "discover.ch03.reionisation.title",
+        "text": {
+          "key": "discover.ch03.reionisation.text",
+          "values": {
+            "tau": {
+              "constant": "reionisation.opticalDepth",
+              "field": "value",
+              "digits": 3
+            },
+            "zMid": {
+              "constant": "reionisation.midpoint.redshift",
+              "field": "value",
+              "digits": 1
+            },
+            "ageMid": {
+              "constant": "reionisation.midpoint.age",
+              "field": "value",
+              "digits": 0
+            },
+            "zEnd": {
+              "constant": "reionisation.end.redshift",
+              "field": "value",
+              "digits": 1
+            },
+            "ageEnd": {
+              "constant": "reionisation.end.age",
+              "field": "value",
+              "scale": 1000,
+              "digits": 1
+            }
+          },
+          "cite": [
+            "reionisation.midpoint.redshift",
+            "reionisation.end.redshift",
+            "stromgren-1939",
+            "furlanetto-2004"
+          ]
+        }
       }
     ],
     "process": {

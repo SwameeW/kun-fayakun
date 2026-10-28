@@ -134,7 +134,7 @@ export interface ConstantsFile {
 
 export type SourceKind =
   | 'scripture-text' | 'translation' | 'transliteration' | 'hadith-collection'
-  | 'font' | 'dataset' | 'paper' | 'software' | 'api';
+  | 'font' | 'dataset' | 'paper' | 'software' | 'api' | 'recording';
 
 /** One entry in data/sources.json. The Sources page is generated from this file. */
 export interface SourceEntry {
@@ -366,6 +366,17 @@ export interface ChapterContext {
   assets: AssetLoader;
   data: DataStore;
   exposure: ExposureControl;
+  /**
+   * Seconds since the previous frame on the app's clock, whether or not the film is paused (the
+   * update's dt stops while paused): real time in playback, the step's dt under __kf.step. Absent in
+   * tests that build a context by hand.
+   */
+  readonly frameSeconds?: number;
+  /**
+   * The app's messages, for a chapter to add its own with its chunk (i18n.extend) rather than the
+   * shell's: its tags' textKeys then resolve. Absent in tests that build a context by hand.
+   */
+  readonly i18n?: I18n;
   /** The app's sound (src/core/audio.ts): its ambient bus is silenced under a recitation. Absent in tests that build a context by hand. */
   audio?: AudioBuses;
 }
@@ -1110,6 +1121,13 @@ export interface UniverseWalk {
    * back-off: the walk lands as soon as some arrive).
    */
   state: 'landing' | 'walking' | 'unavailable';
+  /**
+   * Once the ground under the walker has loaded and until the camera is the walker's eye (the glide
+   * down to the lowest orbit, the dip, and with motion the way down through the air), how far the
+   * camera is above that ground (km); null before the ground has loaded, and on foot. The state reads
+   * 'landing' all that while.
+   */
+  comingDownKm: number | null;
   /** Landed on coarser heights than the walk asks for (the finer ones did not load in time; they still may). */
   coarse: boolean;
   world: WalkableWorld;

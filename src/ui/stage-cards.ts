@@ -103,7 +103,7 @@ export function createStageCards(app: App): StageCards {
     if (!next && index >= 0) outro.prepend(credits());
   }
 
-  /** End credits: the app's name, then every source and licence, the review status and the disclaimer. */
+  /** End credits: the app's name, then every source and licence, any recorded review and the disclaimer. */
   function credits(): HTMLElement {
     const file = app.data.sources();
     const roll = h(
@@ -112,10 +112,7 @@ export function createStageCards(app: App): StageCards {
       h('p', { class: 'kf-credits-made' }, i18n.t('ui.credits.app')),
       h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.sources')),
       h('ul', { class: 'kf-credits-list' }, ...file.sources.map((s) => h('li', {}, h('span', { class: 'kf-credits-title' }, s.title), h('span', { class: 'kf-credits-credit' }, s.credit), h('span', { class: 'kf-credits-license' }, s.license)))),
-      h('h3', { class: 'kf-credits-heading' }, i18n.t('ui.credits.reviews')),
-      file.reviews.length > 0
-        ? h('ul', { class: 'kf-credits-list' }, ...file.reviews.map((r) => h('li', {}, `${r.reviewer}, ${r.role} (${r.area}, ${r.date})`)))
-        : h('p', { class: 'kf-credits-note' }, i18n.t('ui.credits.reviewsPending')),
+      file.reviews.length > 0 ? h('ul', { class: 'kf-credits-list' }, ...file.reviews.map((r) => h('li', {}, `${r.reviewer}, ${r.role} (${r.area}, ${r.date})`))) : null,
       h('p', { class: 'kf-credits-disclaimer' }, i18n.t('ui.disclaimer')),
     );
     return h('section', { class: 'kf-credits', 'aria-label': i18n.t('ui.credits.title'), 'data-testid': 'credits' }, roll);
@@ -141,18 +138,29 @@ export function createStageCards(app: App): StageCards {
   cmbOverlay.classList.add('kf-overlay-figure');
   const showCmb = fader(cmbOverlay, 800);
 
-  /* Other overlay figures, also driven by 'overlay' cues (built once, shown and hidden by fading). */
+  /*
+   * Other overlay figures, also driven by 'overlay' cues (shown and hidden by fading). They read the
+   * constants, which on a first visit arrive after the interface is built: each is built again with
+   * them once they have loaded, so none is left saying its values are not available.
+   */
   const overlayFigures = new Map<FigureId, { el: HTMLElement; show: (visible: boolean) => void }>();
-  for (const [id, build] of [
+  const figureBuilds = [
     ['hubble-tension', () => hubbleTension(app)],
     ['decay-chain', () => decayChain(app)],
     ['cosmic-futures', () => cosmicFutures(app)],
-  ] as const) {
+  ] as const;
+  for (const [id, build] of figureBuilds) {
     const el = build();
     el.classList.add('kf-overlay-figure');
     el.dataset.testid = `overlay-${id}`;
     overlayFigures.set(id, { el, show: fader(el, 800) });
   }
+  void app.data.ready.then(
+    () => {
+      for (const [id, build] of figureBuilds) overlayFigures.get(id)?.el.replaceChildren(...build().childNodes);
+    },
+    () => undefined,
+  );
 
   function sync(): void {
     const active = onChapterRoute && chapter !== null && state !== 'loading' && state !== 'idle';

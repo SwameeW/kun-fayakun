@@ -215,6 +215,18 @@ test('while verse 21:33 plays, an invitation under it opens the analysis; so doe
   await expect(region).toHaveClass(/is-open/);
 });
 
+test('the invitation is hidden in a chapter without the analysis and in the explorer, where its code never loads', async ({ page, kf }) => {
+  test.setTimeout(180_000 * SLOW);
+  const invite = page.getByTestId('discovery-invite');
+  const seen = (): Promise<{ opacity: string; visibility: string }> => invite.evaluate((el) => ({ opacity: getComputedStyle(el).opacity, visibility: getComputedStyle(el).visibility }));
+  await kf.openChapter('ch08', { autoplay: true, t: 130 });
+  await page.waitForTimeout(1000);
+  expect(await seen()).toEqual({ opacity: '0', visibility: 'hidden' });
+  await kf.open('/universe/earth');
+  await expect(page.locator('html')).toHaveAttribute('data-universe-ready', 'true', { timeout: 90_000 * SLOW });
+  expect(await seen()).toEqual({ opacity: '0', visibility: 'hidden' });
+});
+
 test('the letter analysis has no accessibility violations', async ({ page, kf }) => {
   await openAnalysis(page, kf, 150);
   const results = await new AxeBuilder({ page }).include('[data-testid="discovery"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();

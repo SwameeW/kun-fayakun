@@ -275,6 +275,7 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 - Default: no music. While a verse is recited, ambient sound and scene effects fade to silence (Quran 7:204: listen and pay attention).
 - Between verses: optional ambient track of voice and nature sounds only; instruments off by default.
   - Owner, 2026-10-26 (“add high quality sounds to the cinematic parts … make sure they make sense”): the film has a sound score of nature and physics only, made in Web Audio (no recordings, nothing to license), on by default with one speaker in the header shared with the explorer’s Sound. Where there was sound it is that sound (the plasma’s acoustic peaks until recombination; the Sun’s acoustic modes; lava, rain, sea, wind); in space, only a low hush. Levels follow each chapter’s scene events, near silence under every verse and lower under hadith cards, silence where the screenplay keeps it, no one-shot on a seek, a fade before a pause. film/screenplay.md “Sound” and the shot list’s sound column describe it; tests/film-sound.spec.ts measures it (headroom, the duck, the silences).
+  - Owner, 2026-10-28 (“fix the sounds in the cinematic, it’s awful … if you wanna add anything cool in the cinematics please go ahead”): still nature and physics only (no music, instrument, melody, chord or voice; no oscillator anywhere, so nothing can form a note, and no breath with a mouth’s resonances), but real recordings where they are better than anything made: public domain or CC0 only, from a page that says so, never anything in doubt (USGS, the NPS Sound Gallery, Wikimedia Commons; not Freesound behind an account, nothing CC BY or NC). They are credited on the Sources page (sources.json kind “recording”) and in LICENSES, cut from their pinned originals by scripts/sound/build.py into public/assets/sound (AAC, about 2.7 MB in all), and fetched only when their chapter plays with sound on (the next chapter’s while it plays; a slow or missing one silences only its own layer, and all are let go when the sound stops or the explorer opens). The plasma’s acoustic peaks and the Sun’s modes stay made in Web Audio from the physics, as resonances of noise. The mix has a measured target: -27 LUFS per chapter outside verses and silences, within 1.5 LU (Chapter 0 about -39, its breath out of silence rising over three seconds to about -36 momentary; beds -28 to -24 short-term, swells a few LU above, true peaks under -3 dBFS), -52 to -61 under a verse, on a laptop’s speakers within about 3 dB of that and on a phone’s within about 6; the duck eases down before a card and back up over five seconds after it.
 - Recitation: live via the Quran Foundation proxy, reciter selectable. No effects on recitation (no pitch, speed, or reverb changes). Confirm the audio license.
 
 ## 7. UI AND ACCESSIBILITY
@@ -298,12 +299,11 @@ Optional across chapters (verified references): 86:11 (the sky which returns), 5
 - All chapters work with forceWebGL: true.
 - Strict TypeScript with zero errors, ESLint clean, Playwright smoke test per chapter.
 
-## 9. REVIEW (required before public release)
+## 9. REVIEW (before each release)
 
-1. Automated: all Arabic checked against Tanzil.
-2. A qualified Islamic scholar signs off on translations, tafsir summaries, honorifics, hadith gradings, and the range-of-views statements (seven heavens, six days, evolution).
-3. An astrophysicist reviews the science layer.
-4. Record names and dates in REVIEW.md and on the Sources page.
+1. Automated: all Arabic checked against Tanzil (`npm run validate`, and `-- --online` before a release).
+2. Everything else is checked within the project, with no outside sign-off (the owner's decision, 2026-10-28: no Islamic scholar's or astrophysicist's sign-off is sought): the commentary only summarises the classical works it cites and labels modern readings as modern; the hadith carry their collection, number and grading; every number in the science is cited; the data pipelines check themselves; and each change is tested and independently reviewed.
+3. REVIEW.md records what those checks cover; the Sources page says how the content is checked.
 
 ## 10. DELIVERABLE (milestones)
 

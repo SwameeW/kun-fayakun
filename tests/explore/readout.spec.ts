@@ -41,6 +41,24 @@ const readoutLines = (page: Page): Promise<number> =>
     return (el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) / line;
   });
 
+test('the Earth’s night side is said to be brightened only while it fills the view: with daylight in view it is drawn black', async ({ page, kf, pageErrors }) => {
+  await openOn(page, kf, 'earth');
+  const illustrative = page.getByTestId('universe-illustrative');
+  const place = (azimuthDeg: number): Promise<void> =>
+    page.evaluate((az) => {
+      (window as unknown as KfHook).__kf.universe.place({ body: 'earth', distanceKm: 30_000, azimuthDeg: az, elevationDeg: 10 });
+    }, azimuthDeg);
+  // The day side, then a half-lit quarter: daylight in view, so no brightened night.
+  for (const azimuthDeg of [0, 75]) {
+    await place(azimuthDeg);
+    await expect(illustrative).not.toContainText('night side brightened', { timeout: 15_000 * SLOW });
+  }
+  // The night side alone: the eye adapted to the dark, and the readout says so.
+  await place(180);
+  await expect(illustrative).toContainText('night side brightened', { timeout: 15_000 * SLOW });
+  expect(pageErrors).toEqual([]);
+});
+
 for (const [label, viewport] of [
   ['wide screen', { width: 1280, height: 800 }],
   ['phone', { width: 390, height: 844 }],
@@ -62,8 +80,8 @@ for (const [label, viewport] of [
       await expect(credits).toContainText(/Blue Marble: Next Generation/);
       await expect(credits).toContainText(/Made with Natural Earth/);
       await expectUnclipped(credits.locator('.kf-universe-credits-panel'), page);
-      // A few lines, never a wall of credits.
-      expect(await readoutLines(page)).toBeLessThanOrEqual(label === 'phone' ? 6 : 10);
+      // A few lines, never a wall of credits (on a wide screen the Earth's four sources may wrap the imagery line once).
+      expect(await readoutLines(page)).toBeLessThanOrEqual(label === 'phone' ? 6 : 11);
       expect(pageErrors).toEqual([]);
     });
 

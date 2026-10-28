@@ -22,6 +22,13 @@ export interface WebField {
   readonly box: number;
   /** RMS displacement at D = 1, in world units. */
   readonly rmsDisplacement: number;
+  /** Grid cells per side. */
+  readonly size: number;
+  /**
+   * The displacement psi at D = 1 per cell (world units, xyz, x fastest), exactly as the texture holds it
+   * (half floats), for work on the CPU at load: where a star or a particle lands, as the GPU puts it.
+   */
+  readonly displacement: Float32Array;
 }
 
 interface Options {
@@ -42,7 +49,7 @@ interface Options {
 }
 
 /** Small seeded PRNG (mulberry32), so the web is the same on every visit. */
-function prng(seed: number): () => number {
+export function prng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -197,10 +204,14 @@ export async function createWebField(options: Options): Promise<WebField> {
   const sigma = Math.sqrt(sumDelta / n3);
 
   const data = new Uint16Array(n3 * 4);
+  const displacement = new Float32Array(n3 * 3);
   for (let i = 0; i < n3; i += 1) {
-    data[i * 4] = DataUtils.toHalfFloat((psiX[i] ?? 0) * psiScale);
-    data[i * 4 + 1] = DataUtils.toHalfFloat((psiY[i] ?? 0) * psiScale);
-    data[i * 4 + 2] = DataUtils.toHalfFloat((psiZ[i] ?? 0) * psiScale);
+    const components = [psiX[i] ?? 0, psiY[i] ?? 0, psiZ[i] ?? 0];
+    for (let axis = 0; axis < 3; axis += 1) {
+      const half = DataUtils.toHalfFloat((components[axis] ?? 0) * psiScale);
+      data[i * 4 + axis] = half;
+      displacement[i * 3 + axis] = DataUtils.fromHalfFloat(half);
+    }
     data[i * 4 + 3] = DataUtils.toHalfFloat((delta[i] ?? 0) / sigma);
   }
   const texture = new Data3DTexture(data, n, n, n);
@@ -239,5 +250,5 @@ export async function createWebField(options: Options): Promise<WebField> {
     }
   }
   peaks.sort((a, b) => b.height - a.height);
-  return { texture, peaks: peaks.slice(0, options.maxPeaks), box, rmsDisplacement: options.rmsDisplacement };
+  return { texture, peaks: peaks.slice(0, options.maxPeaks), box, rmsDisplacement: options.rmsDisplacement, size: n, displacement };
 }

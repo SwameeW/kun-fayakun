@@ -407,6 +407,15 @@
         }
       },
       {
+        "id": "jets",
+        "t": 12,
+        "kind": "illustration",
+        "titleKey": "discover.ch07.jets.title",
+        "text": {
+          "key": "discover.ch07.jets.text"
+        }
+      },
+      {
         "id": "sun",
         "t": 50,
         "kind": "illustration",

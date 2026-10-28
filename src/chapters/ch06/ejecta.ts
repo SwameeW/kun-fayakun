@@ -9,7 +9,7 @@ import {
   type Data3DTexture,
   type Node,
 } from 'three/webgpu';
-import { dot, exp, float, hash, instancedBufferAttribute, instanceIndex, max, mix, select, smoothstep, texture3D, uniform, uv, varying, vec3 } from 'three/tsl';
+import { dot, exp, float, Fn, hash, If, instancedBufferAttribute, instanceIndex, length, max, mix, select, smoothstep, texture3D, uniform, uv, varying, vec3 } from 'three/tsl';
 import { HOT, layerAt, type Layer, type Rgb } from './layers';
 
 /**
@@ -21,7 +21,39 @@ import { HOT, layerAt, type Layer, type Rgb } from './layers';
  * elements' false colours; later the outer shell glows brightest, where the debris meets
  * the gas around it. Positions are computed in the vertex stage from chapter-driven
  * uniforms, so the picture is a function of time.
+ *
+ * A core-collapse remnant can also be given the structure seen in young remnants such as
+ * Cassiopeia A (`structure`): the iron mixed out from the core travels in a few plumes that
+ * overtake the silicon outside it, much of the silicon mixed out runs in a pair of narrow
+ * opposite jets, and cavities open in the inner debris. The plumes and jets are only where
+ * those points are sent at the start, so they cost nothing to draw; the cavities are a few
+ * spheres the vertex stage pushes points out of, as they inflate.
  */
+
+/** A clumpy plume of the innermost layer (iron), launched faster than the layer outside it. */
+export interface Plume {
+  /** Its direction from the centre (normalised here). */
+  dir: readonly [number, number, number];
+  /** Its share of the inner matter mixed outward (the plumes' shares sum to at most 1). */
+  share: number;
+  /** Speed of its head, as a fraction of the fastest debris' (1). */
+  speed: number;
+  /** Angular spread of its knots, radians. */
+  spread: number;
+}
+
+export interface RemnantStructure {
+  plumes: readonly Plume[];
+  /** A pair of narrow jets of the second layer (silicon), opposite each other along `axis`. */
+  jets: { axis: readonly [number, number, number]; share: number; speed: number; spread: number };
+  /** Cavities in the inner debris: the direction and distance of each centre, and its radius, as fractions of the debris' extent. */
+  bubbles: ReadonlyArray<{ dir: readonly [number, number, number]; at: number; radius: number }>;
+  /**
+   * Each cooled point of iron's light relative to the rest's: iron's false colour is the palest, and
+   * the plumes are dense, so at full light they would add up to plain white, as the hot debris is.
+   */
+  ironLight: number;
+}
 
 export interface EjectaOptions {
   name: string;
@@ -35,6 +67,7 @@ export interface EjectaOptions {
   /** Chance that a point of inner matter is carried out among the outer layers. */
   mixing: number;
   seed: number;
+  structure?: RemnantStructure;
 }
 
 export interface EjectaState {
@@ -48,6 +81,8 @@ export interface EjectaState {
   shell: number;
   light: number;
   sizePx: number;
+  /** How far the cavities have opened, 0 to 1 (with `structure`; 0 skips them). */
+  cavities?: number;
 }
 
 export interface Ejecta {
@@ -59,6 +94,9 @@ export interface Ejecta {
   pointAt(direction: Vector3, fraction: number, out: Vector3): Vector3;
   dispose(): void;
 }
+
+/** Knots per plume. */
+const PLUME_KNOTS = 12;
 
 function prng(seed: number): () => number {
   let a = seed >>> 0;
@@ -94,6 +132,19 @@ export function createEjecta(noise: Data3DTexture, options: EjectaOptions): Ejec
     spread: 0.04 + random() * 0.07,
     reach: 0.12 + random() * 0.3,
   }));
+  /** `out` set to `axis` (times `sign`) turned by a random angle of about `spread` radians. */
+  const scatter = (out: Vector3, axis: Vector3, spread: number, sign = 1): Vector3 =>
+    out.set(axis.x * sign + gauss() * spread, axis.y * sign + gauss() * spread, axis.z * sign + gauss() * spread).normalize();
+
+  const { structure } = options;
+  const innerOuter = layers[0]?.outer ?? 0.1;
+  const secondOuter = layers[1]?.outer ?? 0.3;
+  // Each plume is a cluster of knots about its axis: clumpy, as real ones are.
+  const plumes = (structure?.plumes ?? []).map((plume) => {
+    const axis = new Vector3(...plume.dir).normalize();
+    return { plume, knots: Array.from({ length: PLUME_KNOTS }, () => scatter(new Vector3(), axis, plume.spread)) };
+  });
+  const jetAxis = structure ? new Vector3(...structure.jets.axis).normalize() : null;
 
   const motion = new Float32Array(count * 4);
   const look = new Float32Array(count * 4);
@@ -110,19 +161,41 @@ export function createEjecta(noise: Data3DTexture, options: EjectaOptions): Ejec
       onSphere(dir);
     }
     // More of the matter (and the light) lies in the outer layers.
-    const r0 = Math.pow(random(), 0.75);
+    let r0 = Math.pow(random(), 0.75);
     let layer = layerAt(layers, r0);
     let speed = 0.1 + 0.9 * r0;
     if (finger) speed *= 1 + finger.reach * (0.4 + 0.6 * random());
     if (random() < options.mixing) {
       // Inner matter carried out among the outer layers.
-      layer = layerAt(layers, random() * (layers[1]?.outer ?? 0.3));
+      layer = layerAt(layers, random() * secondOuter);
       speed = 0.55 + 0.5 * random();
+      if (structure) {
+        const pick = random();
+        if (layer === 0) {
+          // Iron overturned: most of it rides out in the plumes, from the core past the silicon.
+          let sum = 0;
+          const chosen = plumes.find((p) => (sum += p.plume.share) > pick);
+          const knot = chosen?.knots[Math.floor(random() * PLUME_KNOTS)];
+          if (chosen && knot) {
+            scatter(dir, knot, chosen.plume.spread * 0.4);
+            r0 = random() * innerOuter;
+            // A lobe out past the silicon, densest toward its head.
+            speed = chosen.plume.speed * (0.5 + 0.5 * Math.sqrt(random()));
+          }
+        } else if (jetAxis && pick < structure.jets.share) {
+          // Silicon in the two jets, fanning out a little toward their tips.
+          const along = Math.pow(random(), 0.6);
+          scatter(dir, jetAxis, structure.jets.spread * (0.5 + along), random() < 0.5 ? 1 : -1);
+          r0 = innerOuter + random() * (secondOuter - innerOuter);
+          speed = structure.jets.speed * (0.35 + 0.65 * along);
+        }
+      }
     }
     speed *= 1 + 0.05 * gauss();
     const color: Rgb = layers[layer]?.color ?? HOT;
+    const tone = structure && layer === 0 ? structure.ironLight : 1;
     motion.set([dir.x, dir.y, dir.z, speed], i * 4);
-    look.set([color[0], color[1], color[2], r0], i * 4);
+    look.set([color[0] * tone, color[1] * tone, color[2] * tone, r0], i * 4);
   }
 
   const motionNode = instancedBufferAttribute(new InstancedBufferAttribute(motion, 4)) as unknown as Node<'vec4'>;
@@ -140,7 +213,31 @@ export function createEjecta(noise: Data3DTexture, options: EjectaOptions): Ejec
   // A lumpy outline: the speed varies smoothly with direction (vertex stage: explicit level 0).
   const lumps = texture3D(noise, direction.mul(0.21).add((options.seed % 7) * 0.13)).level(float(0)).r;
   const speed = motionNode.w.mul(lumps.sub(0.5).mul(0.5).add(1));
-  const position = centre.add(direction.mul(lookNode.w.mul(uStart).add(speed.mul(uTravel))));
+  const flown = direction.mul(lookNode.w.mul(uStart).add(speed.mul(uTravel)));
+  const uCavities = uniform(0);
+  const uExtent = uniform(1);
+  const bubbles = structure?.bubbles ?? [];
+  // The cavities: a point inside one is pushed out onto its wall (each point to its own radius within
+  // the wall's thickness), so the matter they cleared lies heaped round them. Skipped while closed.
+  const shaped =
+    bubbles.length > 0
+      ? Fn(() => {
+          const p = flown.toVar();
+          If(uCavities.greaterThan(1e-3), () => {
+            const wall = hash(instanceIndex.mul(3).add(2)).mul(0.14).add(0.86);
+            for (const bubble of bubbles) {
+              const at = new Vector3(...bubble.dir).normalize().multiplyScalar(bubble.at);
+              const c = vec3(at.x, at.y, at.z).mul(uExtent);
+              const v = p.sub(c);
+              const d = max(length(v), 1e-4);
+              const r = uExtent.mul(bubble.radius).mul(uCavities).mul(wall);
+              p.assign(select(d.lessThan(r), c.add(v.mul(r.div(d))), p));
+            }
+          });
+          return p;
+        })()
+      : flown;
+  const position = centre.add(shaped);
   const luck = hash(instanceIndex.mul(3));
   const knot = hash(instanceIndex.mul(3).add(1)).greaterThan(0.985);
   const outer = mix(float(1), smoothstep(0.45, 1.05, speed).mul(1.6), uShell);
@@ -185,6 +282,8 @@ export function createEjecta(noise: Data3DTexture, options: EjectaOptions): Ejec
       uLight.value = state.light;
       uSize.value = state.sizePx;
       extent = state.start + state.travel;
+      uExtent.value = extent;
+      uCavities.value = state.cavities ?? 0;
       sprite.visible = state.light > 1e-3;
     },
     setCount(n) {

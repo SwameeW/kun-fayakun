@@ -12,37 +12,37 @@
   "tiers": {
     "low": {
       "width": 1024,
-      "bytes": 3076615,
+      "bytes": 2994882,
       "budgetBytes": 8000000,
       "published": true
     },
     "medium": {
       "width": 2048,
-      "bytes": 11281080,
+      "bytes": 10938872,
       "budgetBytes": 24000000,
       "published": true
     },
     "high": {
       "width": 4096,
-      "bytes": 60783941,
+      "bytes": 59349685,
       "budgetBytes": 110000000,
       "published": true
     },
     "ultra": {
       "width": 8192,
-      "bytes": 147329837,
+      "bytes": 140636897,
       "budgetBytes": 250000000,
       "published": true
     }
   },
-  "committedBytes": 193030292,
+  "committedBytes": 184479155,
   "bodies": {
     "earth": {
       "longitude": "east longitude (Greenwich at u = 0.5), as in the source maps (-180 to 180 from the left edge)",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
-      "caption": "A composite of several epochs: land and sea ice July 2004, clouds 2001, night lights 2016.",
+      "caption": "A composite of several epochs: land July 2004, clouds and sea ice 22 September 2025, night lights 2016.",
       "maps": {
         "day": {
           "kind": "colour",
@@ -62,11 +62,11 @@
         },
         "clouds": {
           "kind": "grey",
-          "description": "Cloud cover (2001 composite; the poles from thermal infrared, so Antarctica reads as cloud).",
+          "description": "Cloud cover of 22 September 2025 (VIIRS), with that day's sea ice, which the day map lacks; none over the ice sheets, where cloud cannot be told from ice in visible light.",
           "channels": {
-            "r": "R8, cloud opacity 0..1 (linear)."
+            "r": "R8, cloud cover 0..1 (linear), seen from afar as opacity smoothstep(0.08, 0.9, cover) x 0.97, the curve src/explore/bodies/earth.ts reads it with."
           },
-          "sourceId": "nasa-blue-marble-clouds-2002"
+          "sourceId": "nasa-gibs-viirs-2025-09-22"
         },
         "water": {
           "kind": "grey",
@@ -468,10 +468,10 @@
       "levels": 11,
       "codec": "r8",
       "colorSpace": "linear",
-      "bytes": 581711,
-      "sha256": "ed1e79474b3520a1c02eb2db2aa89ad1176575ba6ff8fe1d0855363bcaaf8069",
-      "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
+      "bytes": 499978,
+      "sha256": "8087e0a9436ddc088d36d5d6b7199e7eecc28e90912dc2325d1413d27ed65f59",
+      "sourceId": "nasa-gibs-viirs-2025-09-22",
+      "credit": "NASA GIBS (ESDIS): VIIRS on Suomi NPP, NOAA-20 and NOAA-21",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
@@ -490,10 +490,10 @@
       "levels": 12,
       "codec": "r8",
       "colorSpace": "linear",
-      "bytes": 2193888,
-      "sha256": "c8c9cd3a74a96da9e73bea4162d52218686f3519b2a71828c9515eea0d5adabb",
-      "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
+      "bytes": 1851680,
+      "sha256": "75a420e0e4d8757279c0e53b854c43caf7db7b9eb8bae67eacb78ef45efb57fd",
+      "sourceId": "nasa-gibs-viirs-2025-09-22",
+      "credit": "NASA GIBS (ESDIS): VIIRS on Suomi NPP, NOAA-20 and NOAA-21",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
@@ -512,10 +512,10 @@
       "levels": 13,
       "codec": "r8",
       "colorSpace": "linear",
-      "bytes": 8231922,
-      "sha256": "a39e29ea7ecc9e0850047e80d539a12f1ab64cb62d4476505b82e230c4000cd5",
-      "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
+      "bytes": 6797666,
+      "sha256": "be455c8b95311f8997d4f50c063de0ad60cb6c1a08ba7a64fb3a4a40a9740ca4",
+      "sourceId": "nasa-gibs-viirs-2025-09-22",
+      "credit": "NASA GIBS (ESDIS): VIIRS on Suomi NPP, NOAA-20 and NOAA-21",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",
@@ -534,10 +534,10 @@
       "levels": 14,
       "codec": "r8",
       "colorSpace": "linear",
-      "bytes": 30224042,
-      "sha256": "ed827e25c5cfbc5b00a6bc8507b0c36b67f91b5ec50842fe7f71125bed6690cf",
-      "sourceId": "nasa-blue-marble-clouds-2002",
-      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
+      "bytes": 23531102,
+      "sha256": "6f798496c4e8d1f580d26d5073359ba2ee83b2c82598b624737d3362eee57ca1",
+      "sourceId": "nasa-gibs-viirs-2025-09-22",
+      "credit": "NASA GIBS (ESDIS): VIIRS on Suomi NPP, NOAA-20 and NOAA-21",
       "uAtLon0": 0.5,
       "lonIncreases": "right",
       "latitude": "geodetic (WGS 84), i.e. the latitude of the surface normal",

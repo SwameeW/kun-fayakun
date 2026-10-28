@@ -16,8 +16,12 @@ Contents
  10. Basis Universal transcoder (Apache License 2.0)
  11. intl-messageformat (BSD-3-Clause) and @formatjs dependencies (MIT)
  12. Planetary imagery and relief (public domain, CC0-1.0 and CC BY 4.0)
- 13. WebLLM (Apache License 2.0), with loglevel (MIT)
- 14. Qwen3 and Qwen3.5 language models (Apache License 2.0)
+ 13. The Living Earth: streamed imagery, live data, places and satellite.js
+ 14. The explorer's sky: stars, star names and constellations
+ 15. The explorer's small worlds: asteroids, comets, moons, rings and maps
+ 16. WebLLM (Apache License 2.0), with loglevel (MIT)
+ 17. Qwen3 and Qwen3.5 language models (Apache License 2.0)
+ 18. The film's recorded sounds (public domain and CC0)
 
 ==============================================================================
 1. This project's own code and content
@@ -1103,3 +1107,43 @@ Credit:   Qwen3 and Qwen3.5 by the Qwen Team (Alibaba Cloud), Apache License
 What they are used for: their words are shown labelled as an explanation by
 the model on this device. Facts, numbers, scripture and actions never come
 from them.
+
+==============================================================================
+18. The film's recorded sounds (public domain and CC0)
+==============================================================================
+
+The recordings in public/assets/sound/ are this project's own cuts of the
+sources below (a window of each, filtered, looped or faded, set to a common
+loudness and encoded as AAC by scripts/sound/build.py, which pins each
+original's address, byte range and sha256). Every one is in the public domain
+or dedicated to it under CC0, as its own page states; recordings whose terms
+were in any doubt were left out. The film credits them on the Sources page
+(data/sources.json, the "sound-" entries). Terms read 2026-10-28.
+
+U.S. Geological Survey (U.S. Government works, public domain; each page states
+"Sources/Usage: Public Domain"; https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits)
+          Lava lake activity from inside Halemaʻumaʻu Crater (14 February 2011),
+          USGS Hawaiian Volcano Observatory
+          Videos of lava lake in Halemaʻumaʻu overlook vent (filmed 5 October 2012, per HVO's
+          chronology; page dated 14 October 2012),
+          USGS Hawaiian Volcano Observatory (the sound only)
+          Sounds of Yellowstone, episodes 2 (Blue Mud Steam Vent), 5 (Congress
+          Pool), 9 (Mudpot at Artists' Paintpots) and 11 (Terrace Springs),
+          USGS Office of Communications (a 16 MB excerpt of each), filed with
+          the Yellowstone Volcano Observatory
+          May 3, 2025, bolide acoustic signal recorded by infrasound station in
+          Yellowstone National Park, USGS Yellowstone Volcano Observatory (the
+          sound only)
+National Park Service
+          Thunder, NPS Natural Sounds and Night Skies Division. Terms: "The
+          files are in the public domain and may be downloaded. Enjoy, and
+          please give the appropriate credit."
+          (https://www.nps.gov/subjects/sound/gallery.htm)
+Wikimedia Commons
+          Light Rain Distant Thunder July 5th 2016, by kvgarlic (Freesound
+          349454). CC0 1.0 Universal Public Domain Dedication
+          (https://creativecommons.org/publicdomain/zero/1.0/).
+          Beach sounds South Carolina, by Anthropic42 (English Wikipedia).
+          Public domain: "This work has been released into the public domain
+          by its author, Anthropic42, at the English Wikipedia project. This
+          applies worldwide."

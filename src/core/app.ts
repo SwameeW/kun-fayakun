@@ -216,8 +216,17 @@ class Engine implements KunFayakunApp {
   private pendingCapture: { lines: readonly string[]; resolve: (blob: Blob | null) => void } | null = null;
   /** A video being recorded (startRecording): its canvas, credits and recorder. */
   private recording: Recording | null = null;
-  /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms. */
+  /** The last GPU time measured (timestamp queries under ?profile=1 or ?gpuTime=1), ms per frame. */
   private lastGpuMs: number | null = null;
+  /**
+   * Frames drawn since the timestamps were last asked for, and whether an answer is awaited. The answer
+   * comes back a few frames later and is the total of every frame drawn since the one before (three's
+   * query pool): it is divided by the frames it covers, never read as one frame's time.
+   */
+  private gpuFrames = 0;
+  private gpuResolving = false;
+  /** The frame being advanced, seconds on the app's clock (ChapterContext.frameSeconds). */
+  private frameSeconds = 0;
   /** The display's frame interval, for the explorer's governor (the film's governors keep their own). */
   private readonly cadence = createFrameCadence();
   private universeGraphics: UniverseGraphics | null = null;
@@ -453,9 +462,15 @@ class Engine implements KunFayakunApp {
     const backend = (): BackendName => this.backendName;
     const quality = (): QualityProfile => this.profile;
     const reduced = (): boolean => this.reduced;
+    const frameSeconds = (): number => this.frameSeconds;
+    const i18n = this.i18n;
     return {
+      i18n,
       get renderer() {
         return renderer();
+      },
+      get frameSeconds() {
+        return frameSeconds();
       },
       get backend() {
         return backend();
@@ -630,6 +645,7 @@ class Engine implements KunFayakunApp {
 
   /** Moves the active experience (the film clock, or the explorer), the exposure and the grain on by dt seconds. */
   private advance(gfx: Graphics, dt: number): void {
+    this.frameSeconds = dt;
     // The explorer takes the frame only once the film has faded out and been removed, and gives
     // it back only after its own fade, so exactly one experience moves the scene at a time.
     const universe = this.universeHost.owns;
@@ -675,14 +691,22 @@ class Engine implements KunFayakunApp {
     const { geometries, textures } = renderer.info.memory;
     this.perf.note({ pixelRatio: gfx.handle.pixelRatio, drawCalls: renderer.info.render.drawCalls, geometries, textures, experience: this.experience });
     if (!this.timesGpu) return;
+    this.gpuFrames += 1;
+    if (this.gpuResolving) return;
+    const frames = this.gpuFrames;
+    this.gpuFrames = 0;
+    this.gpuResolving = true;
     renderer
       .resolveTimestampsAsync('render')
       .then((ms) => {
         if (typeof ms !== 'number') return;
-        this.perf.recordGpu(ms);
-        this.lastGpuMs = ms;
+        this.perf.recordGpu(ms / frames);
+        this.lastGpuMs = ms / frames;
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        this.gpuResolving = false;
+      });
   }
 
   /** What the explorer may change about the picture (made once the renderer exists). */

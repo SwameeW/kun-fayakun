@@ -3,19 +3,24 @@ import { float, hash, instanceIndex, max, min, smoothstep, uniform, vec3, cos, s
 import type { ChapterContent, ChapterContext, ChapterModule, Cue, QualityTier, SceneLabel } from '../../core/types';
 import { createNoiseVolume } from '../shared/noise-volume';
 import { createStreakField, type StreakField } from '../shared/streaks';
+import messages from '../../i18n/en.ch06.json';
 import contentJson from './content.json';
 import { createBinary, type Binary } from './binary';
-import { createEjecta, type Ejecta } from './ejecta';
+import { createEjecta, type Ejecta, type RemnantStructure } from './ejecta';
 import { STAR_LAYERS, TYPE_IA_LAYERS } from './layers';
+import { createRemnantMarks, type RemnantMarks } from './remnant';
 import { createMassiveStar, type MassiveStar } from './star';
 
 /**
  * Chapter 6, "Stars and iron": a massive star cut open to show its layers, hydrogen
  * outside down to the iron at its heart, where fusion stops. The core collapses; a shock
  * wave rebounds through the layers and a flood of neutrinos streams out; the star is torn
- * apart and its debris, coloured by element, spreads into space and cools. Elsewhere, a
- * white dwarf draws gas from a companion until it explodes as a Type Ia supernova, its
- * light fading as nickel-56 decays to cobalt and iron (the panel's decay chain).
+ * apart and its debris, coloured by element, spreads into space and cools. As it thins, the
+ * remnant's structure shows (ejecta.ts, remnant.ts): plumes of iron that have overtaken the
+ * silicon, a pair of silicon jets, cavities in the inner debris, the blast wave's faint rim
+ * ahead of it all and the neutron star left at the centre. Elsewhere, a white dwarf draws gas
+ * from a companion until it explodes as a Type Ia supernova, its light fading as nickel-56
+ * decays to cobalt and iron (the panel's decay chain).
  *
  * Flash safety: every brightening is a single eased swell of a few seconds, never
  * repeated, and the engine's exposure limiter smooths what is left; nothing flares
@@ -30,6 +35,36 @@ const TYPE_IA_CENTRE = [24, 1.5, -6] as const;
 const COLLAPSE = { fall: 0.6, breakout: 6 } as const;
 /** The core-collapse debris: final extent beyond the star (world units) and expansion time constant. */
 const REMNANT = { reach: 9, tau: 11 } as const;
+/**
+ * The remnant's structure, a composite after Cassiopeia A (the Discover card says so). Directions are
+ * in the world, chosen so that from the film's camera as the structure shows (about 37 s) the larger
+ * iron plume points down and right, under the iron tag, the smaller one up, the silicon jets run
+ * nearly level, clear of the caption below, and the cavities sit between them. Shares are of the
+ * inner matter mixed outward (STAR_LAYERS: iron or silicon); speeds are fractions of the fastest
+ * debris', so the plumes' heads run out past the silicon into the helium and the jets past the edge.
+ */
+const IRON_PLUME = [0.61, -0.75, 0.24] as const;
+const STRUCTURE: RemnantStructure = {
+  plumes: [
+    { dir: IRON_PLUME, share: 0.45, speed: 0.8, spread: 0.2 },
+    { dir: [-0.15, 0.92, -0.35], share: 0.3, speed: 0.78, spread: 0.17 },
+  ],
+  jets: { axis: [0.96, 0.27, -0.07], share: 0.5, speed: 1.9, spread: 0.045 },
+  bubbles: [
+    { dir: [0.57, 0.82, 0.07], at: 0.29, radius: 0.25 },
+    { dir: [-0.88, 0.45, -0.14], at: 0.28, radius: 0.24 },
+    { dir: [-0.35, -0.85, 0.39], at: 0.29, radius: 0.23 },
+    { dir: [0.82, -0.37, -0.45], at: 0.26, radius: 0.22 },
+  ],
+  ironLight: 0.38,
+};
+/**
+ * When it shows, in seconds after breakout (the debris' age): it comes into view as the debris cools
+ * and thins (the cavities opening, the rim and the neutron star fading in) and is complete by 38 s,
+ * before the quiet ahead of the verse; under the verse it only dims with the debris. The blast wave's
+ * rim runs this far beyond the debris' extent (relative to its travel).
+ */
+const REVEAL = { cavities: [6, 14], rim: [8, 13], star: [8.5, 12.5], rimReach: 1.32 } as const;
 const TYPE_IA = { reach: 7.5, tau: 5.5, rise: 2.6 } as const;
 /** The pair turns slowly (radians per second), placed so the companion is left of the white dwarf as the camera arrives. */
 const ORBIT = { rate: 0.05, settledBefore: 4 } as const;
@@ -108,6 +143,9 @@ export default function create(): ChapterModule {
   let typeIa: Ejecta | null = null;
   let binary: Binary | null = null;
   let neutrinos: Neutrinos | null = null;
+  let marks: RemnantMarks | null = null;
+  let tier: QualityTier = 'high';
+  let rimRadius = 0;
   let now = 0;
   let exposure = 1;
   const scratch = new Vector3();
@@ -123,10 +161,11 @@ export default function create(): ChapterModule {
     return [((projected.x + 1) / 2) * canvas.clientWidth, ((1 - projected.y) / 2) * canvas.clientHeight];
   };
 
-  const setCounts = (tier: QualityTier): void => {
-    remnant?.setCount(COUNT[tier].remnant);
-    typeIa?.setCount(COUNT[tier].typeIa);
-    neutrinos?.field.setCount(COUNT[tier].neutrinos);
+  const setCounts = (next: QualityTier): void => {
+    tier = next;
+    remnant?.setCount(COUNT[next].remnant);
+    typeIa?.setCount(COUNT[next].typeIa);
+    neutrinos?.field.setCount(COUNT[next].neutrinos);
   };
 
   /** Camera-relative direction (right, up, toward the camera), so tags spread across the screen. */
@@ -156,6 +195,7 @@ export default function create(): ChapterModule {
           fingerShare: 0.45,
           mixing: 0.14,
           seed: 1_054,
+          structure: STRUCTURE,
         });
         typeIa = createEjecta(noise, {
           name: 'ch06-type-ia',
@@ -169,8 +209,11 @@ export default function create(): ChapterModule {
         });
         binary = createBinary(noise, TYPE_IA_CENTRE);
         neutrinos = createNeutrinos(COUNT.high.neutrinos);
-        root.add(star.object, remnant.object, binary.object, typeIa.object, neutrinos.field.mesh);
+        marks = createRemnantMarks(noise, [0, 0, 0]);
+        root.add(star.object, remnant.object, marks.object, binary.object, typeIa.object, neutrinos.field.mesh);
       }
+      // The tags this chapter adds (its own strings, with its chunk).
+      c.i18n?.extend('en.ch06.json', messages);
       setCounts(c.quality.tier);
     },
 
@@ -183,7 +226,7 @@ export default function create(): ChapterModule {
     },
 
     update(t) {
-      if (!ctx || !star || !remnant || !typeIa || !binary || !neutrinos) return;
+      if (!ctx || !star || !remnant || !typeIa || !binary || !neutrinos || !marks) return;
       now = t;
       const reduced = ctx.reducedMotion;
       const since = t - times.collapse;
@@ -210,16 +253,34 @@ export default function create(): ChapterModule {
       // The debris: white-hot, swelling into view over a few seconds (no flash), then cooling and slowing.
       // While it is compact each point is dimmer, so the cloud never glares; it leaves before the pair appears.
       const age = Math.max(0, t - breakout);
-      const swell = smootherstep(breakout - 0.6, breakout + (reduced ? 3.5 : 2.4), t) * (1 - smootherstep(times.whiteDwarf - 2, times.whiteDwarf + 5, t));
+      const leaving = 1 - smootherstep(times.whiteDwarf - 2, times.whiteDwarf + 5, t);
+      const swell = smootherstep(breakout - 0.6, breakout + (reduced ? 3.5 : 2.4), t) * leaving;
       const travel = REMNANT.reach * (1 - Math.exp(-age / REMNANT.tau)) * (reduced ? 0.9 : 1);
       const compact = Math.min(1, Math.max(0.3, ((STAR_RADIUS + travel) / (STAR_RADIUS + REMNANT.reach)) ** 1.5));
+      const hush = span(verse.from - 2, verse.from + 1, verse.to - 1, verse.to + 2, t);
+      const hushed = 1 - 0.6 * hush;
+      // With reduced motion the cavities are open from the start, so they only grow with the debris.
+      const open = reduced ? 1 : smootherstep(REVEAL.cavities[0], REVEAL.cavities[1], age);
       remnant.update({
         start: STAR_RADIUS,
         travel,
         heat: 1 - smootherstep(0, 9, age),
         shell: smootherstep(6, 22, age),
-        light: swell * compact * (0.55 + 0.5 * Math.exp(-age / 4)) * (1 - 0.6 * span(verse.from - 2, verse.from + 1, verse.to - 1, verse.to + 2, t)),
+        light: swell * compact * (0.55 + 0.5 * Math.exp(-age / 4)) * hushed,
         sizePx: 2.1,
+        // Low draws the rim and the neutron star only.
+        cavities: tier === 'low' ? 0 : open,
+      });
+      // The rim and the neutron star all but go out under the verse, as the debris dims, so no ring frames the card.
+      const quiet = (1 - 0.92 * hush) * leaving;
+      const starLight = smootherstep(REVEAL.star[0], REVEAL.star[1], age) * quiet;
+      rimRadius = STAR_RADIUS + REVEAL.rimReach * travel;
+      marks.update({
+        rimRadius,
+        // Low's sparser debris, with no bloom, would leave the rim standing out more: a little fainter there.
+        rim: smootherstep(REVEAL.rim[0], REVEAL.rim[1], age) * quiet * (tier === 'low' ? 0.8 : 1),
+        star: starLight,
+        glow: tier === 'low' ? 0 : starLight,
       });
 
       // The pair, then the Type Ia.
@@ -276,14 +337,18 @@ export default function create(): ChapterModule {
       const reach = Math.min(Math.max(0, since - COLLAPSE.fall * 0.5) * NEUTRINO.speed * 0.8, STAR_RADIUS * 1.3);
       push('neutrinos', 'ui.element.neutrinos', towardScreen(-0.8, 0.55, dir).multiplyScalar(Math.max(reach, STAR_RADIUS * 1.2)), span(0.6, 1.3, 3.6, 4.6, since));
 
-      // The debris, by element: hydrogen outermost, iron mixed out from the core. Gone before the verse.
+      // The debris, by element: hydrogen outermost, iron mixed out from the core (on its larger plume,
+      // out past the silicon). Gone before the verse, with the blast wave's and the neutron star's tags.
       const debris = span(times.collapse + 13.5, times.collapse + 15.5, 39, 41, t);
       if (debris > 0) {
         push('debris-h', 'ui.element.h', remnant.pointAt(towardScreen(0.85, 0.55, dir), 0.98, scratch), debris);
         push('debris-o', 'ui.element.o', remnant.pointAt(towardScreen(-0.75, 0.6, dir), 0.62, scratch), debris);
         push('debris-si', 'ui.element.si', remnant.pointAt(towardScreen(-0.7, -0.65, dir), 0.42, scratch), debris);
-        push('debris-fe', 'ui.element.fe', remnant.pointAt(towardScreen(0.5, -0.8, dir), 0.28, scratch), debris);
+        push('debris-fe', 'ui.element.fe', remnant.pointAt(dir.set(...IRON_PLUME), 0.48, scratch), debris);
       }
+      // The blast wave's rim (upper left, clear of the caption) and the neutron star, once each has come.
+      push('blast-wave', 'ui.element.shock', towardScreen(-0.62, 0.78, dir).multiplyScalar(rimRadius), span(breakout + REVEAL.rim[1] - 1.5, breakout + REVEAL.rim[1], 39, 41, t));
+      push('neutron-star', 'ch06.tag.neutronStar', scratch.set(0, 0, 0), span(breakout + REVEAL.star[1] - 1.5, breakout + REVEAL.star[1], 39, 41, t), [84, 26]);
 
       // The pair, then the nickel-56 at the heart of the Type Ia.
       const pair = span(times.whiteDwarf + 2.5, times.whiteDwarf + 4, times.typeIa - 1.5, times.typeIa - 0.3, t);
@@ -313,12 +378,14 @@ export default function create(): ChapterModule {
       typeIa?.dispose();
       binary?.dispose();
       neutrinos?.field.dispose();
+      marks?.dispose();
       noise?.dispose();
       star = null;
       remnant = null;
       typeIa = null;
       binary = null;
       neutrinos = null;
+      marks = null;
       noise = null;
       ctx = null;
     },

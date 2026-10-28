@@ -23,16 +23,18 @@
  * is given that star's light in proportion to the sky's naked-eye stars, spread over the pixels it
  * covers. It is held in display terms with the stars as the exposure opens (far from the Sun), but
  * never lifted as the exposure closes (near the Sun, or a bright world in view): a glow over the whole
- * sky dims as a camera's would (glowLight). Through the solar filter it is not seen at all.
+ * sky dims as a camera's would (glowLight). Through the solar filter it is not seen at all, nor while
+ * a sunlit world fills the view (the explorer's `shown`: a camera exposed for its day side records no
+ * glow of the night sky).
  *
  * Cost: the Milky Way's table is worked out in the render frame itself, as the sphere's own texture
  * coordinates map it, and the zodiacal light's is read by the angle from the Sun along those same
- * coordinates, so a pixel costs two texture reads and no trigonometry. At the Low detail level it is
- * not drawn.
+ * coordinates, so a pixel costs two texture reads and, for the zodiacal light near the Sun, a little
+ * trigonometry. At the Low detail level it is not drawn.
  */
 
 import { AdditiveBlending, BackSide, DataTexture, LinearFilter, Mesh, MeshBasicNodeMaterial, RepeatWrapping, RGBAFormat, SphereGeometry, Vector3, type Node, type PerspectiveCamera } from 'three/webgpu';
-import { abs, exp, float, fract, max, texture, uniform, uv, vec2, vec3 } from 'three/tsl';
+import { abs, acos, asin, clamp, cos, exp, float, fract, max, min, select, sin, sqrt, texture, uniform, uv, vec2, vec3 } from 'three/tsl';
 
 /** The tables' resolution (the render frame's longitude by latitude; elongation in longitude by ecliptic latitude). */
 const MILKY = { width: 256, height: 128, steps: 72, reachKpc: 30 } as const;
@@ -66,14 +68,29 @@ const ZODI_90_S10 = 250;
 const S10_LIGHT = (0.05 / 0.276) * 10 ** (-0.4 * (10 - 6.5));
 /**
  * The zodiacal light's fall with the observer's distance from the Sun (au); the distances it is shown
- * between (au: coming in from, full at; full until, gone at); and how close to the Sun's direction the
- * table is trusted (degrees: nearer, the light is held at its value there, rising no further, so the
- * Sun's surroundings have a soft glow, its glare drawn over it, and no hole).
+ * between (au: coming in from, full at; full until, gone at); and how close to the Sun the table is
+ * trusted (degrees of elongation, the true angle from the Sun: nearer, its eight-bit logarithms run out
+ * of range). Nearer, the light starts from its value that far out in the same direction from the Sun
+ * (heldAt) and rises toward the Sun as the table itself does between 12 and 24 degrees, in every
+ * direction alike (ZODI_INNER_POWER), eased into one ceiling all round the Sun, twice the ecliptic's
+ * value on that circle (ZODI_CEILING, heldLight): so its contours, drawn out along the ecliptic at 24
+ * degrees, round off about the Sun as the inner zodiacal light's and the F-corona's do, and the Sun's
+ * glare is drawn over a soft glow, not a hole. (Held by ecliptic longitude alone it was a flat band 48 degrees
+ * wide from pole to pole; held in the same direction alone, a bow tie: bright wedges along the
+ * ecliptic, dark ones above and below the Sun, as bright all along each line from it.)
  */
 const ZODI_POWER = 2.3;
 const ZODI_NEAR_AU = [0.2, 0.3] as const;
 const ZODI_FAR_AU = [2.5, 3.3] as const;
 const ZODI_HELD_DEG = 24;
+/** The table's own rise toward the Sun at a fixed position angle about it: about (24 / elongation)^2.5 from 24 in to 12 degrees, along the ecliptic and across it alike. */
+const ZODI_INNER_POWER = 2.5;
+/**
+ * The most the light near the Sun is shown, as a multiple of the ecliptic's at 24 degrees (illustrative:
+ * the true light goes on rising, a thousand times that at the Sun's edge, far past what an exposure that
+ * shows the stars holds; eased into this it stays a soft glow that still brightens toward the Sun).
+ */
+const ZODI_CEILING = 2;
 /**
  * The glow's ease in once worked out (s); and the display light it must reach somewhere in view to be
  * said to show: through the tone curve's toe, about ten steps of eight bits above black.
@@ -199,6 +216,64 @@ export function skyUv(x: number, y: number, z: number, out: number[]): number[] 
   return out;
 }
 
+/**
+ * The zodiacal table's coordinates for a direction `along` (elongation in ecliptic longitude from the
+ * Sun, 0 to 1 for 0 to 180 degrees) and `lat` (|ecliptic latitude|, 0 to 1 for 0 to 90 degrees), held
+ * within ZODI_HELD_DEG of the Sun: such a direction reads the table where its own great circle from the
+ * Sun crosses that elongation (the same position angle about the Sun). `out` [along, lat].
+ */
+export function heldAt(along: number, lat: number, out: number[]): number[] {
+  const dl = along * Math.PI;
+  const b = (lat * Math.PI) / 2;
+  const cosE = Math.cos(b) * Math.cos(dl);
+  const h = (ZODI_HELD_DEG * Math.PI) / 180;
+  if (cosE <= Math.cos(h)) {
+    out[0] = along;
+    out[1] = lat;
+    return out;
+  }
+  const sinE = Math.sqrt(Math.max(1 - cosE * cosE, 1e-12));
+  const bh = Math.asin(Math.min(1, (Math.sin(b) * Math.sin(h)) / sinE));
+  out[0] = Math.acos(Math.min(1, Math.max(-1, Math.cos(h) / Math.max(Math.cos(bh), 1e-6)))) / Math.PI;
+  out[1] = bh / (Math.PI / 2);
+  return out;
+}
+
+/**
+ * The zodiacal light (S10) at a direction (table coordinates as heldAt takes them), from the table's
+ * value where heldAt reads it, `circle`: as it is beyond ZODI_HELD_DEG of the Sun; nearer, the rise
+ * toward the Sun x = circle (24 degrees / elongation)^ZODI_INNER_POWER, eased as x / (1 + (x - circle) /
+ * cap) into `cap` (ZODI_CEILING times the ecliptic's value on the circle), the same at the Sun in every
+ * direction. Continuous across the circle; brighter toward the Sun along every line from it.
+ */
+export function heldLight(circle: number, along: number, lat: number, cap: number): number {
+  const e = Math.acos(Math.min(1, Math.cos((lat * Math.PI) / 2) * Math.cos(along * Math.PI)));
+  const h = (ZODI_HELD_DEG * Math.PI) / 180;
+  if (e >= h) return circle;
+  const x = circle * (h / Math.max(e, 1e-4)) ** ZODI_INNER_POWER;
+  return x / (1 + (x - circle) / cap);
+}
+
+/** heldLight in the shader. */
+function heldLightNode(circle: Node<'float'>, along: Node<'float'>, lat: Node<'float'>, cap: number): Node<'float'> {
+  const h = (ZODI_HELD_DEG * Math.PI) / 180;
+  const e = acos(min(cos(lat.mul(Math.PI / 2)).mul(cos(along.mul(Math.PI))), 1));
+  const x = circle.mul(float(h).div(clamp(e, 1e-4, h)).pow(ZODI_INNER_POWER));
+  return x.div(x.sub(circle).div(cap).add(1));
+}
+
+/** heldAt in the shader: the table coordinates to read. */
+function heldZodiacal(along: Node<'float'>, lat: Node<'float'>): Node<'vec2'> {
+  const h = (ZODI_HELD_DEG * Math.PI) / 180;
+  const b = lat.mul(Math.PI / 2);
+  const cosE = cos(b).mul(cos(along.mul(Math.PI)));
+  const sinE = sqrt(max(float(1).sub(cosE.mul(cosE)), 1e-12));
+  const bh = asin(min(sin(b).mul(Math.sin(h)).div(sinE), 1));
+  const dl = acos(clamp(float(Math.cos(h)).div(max(cos(bh), 1e-6)), -1, 1));
+  const near = cosE.greaterThan(Math.cos(h));
+  return vec2(select(near, dl.div(Math.PI), along), select(near, bh.div(Math.PI / 2), lat));
+}
+
 export interface SkyGlowFrame {
   /** The sphere's radius (inside the far plane, behind the stars), and the camera from the Sun (render frame, km). */
   radius: number;
@@ -279,13 +354,16 @@ export function createSkyGlow(obliquity: number): SkyGlow {
   const uSunU = uniform(0);
   const uZodi = uniform(0);
   const uLight = uniform(0);
+  /** The most the zodiacal light is shown near the Sun (S10, heldLight): ZODI_CEILING times the ecliptic's ZODI_HELD_DEG from it. */
+  const zodiCap = ZODI_CEILING * (zodiacalAlong((ZODI_HELD_DEG * Math.PI) / 180, 0) / zodiacalAlong(Math.PI / 2, 0)) * ZODI_90_S10;
   const decode = (v: Node<'float'>): Node<'float'> => exp(v.mul((LOG_RANGE[1] - LOG_RANGE[0]) * Math.LN10).add(LOG_RANGE[0] * Math.LN10));
   // The Milky Way, straight from the sphere's texture coordinates; the zodiacal light by the angle from
   // the Sun's longitude along them (u is the ecliptic longitude less half a turn) and |latitude| (v).
   const at = uv();
   const milkyS10 = decode(texture(milkyTexture, at).r);
-  const along = max(abs(fract(at.x.sub(uSunU).add(0.5)).sub(0.5)).mul(2), ZODI_HELD_DEG / 180);
-  const zodiS10 = decode(texture(zodiTexture, vec2(along, abs(at.y.mul(2).sub(1)))).r);
+  const zodiAlong = abs(fract(at.x.sub(uSunU).add(0.5)).sub(0.5)).mul(2);
+  const zodiLat = abs(at.y.mul(2).sub(1));
+  const zodiS10 = heldLightNode(decode(texture(zodiTexture, heldZodiacal(zodiAlong, zodiLat)).r), zodiAlong, zodiLat, zodiCap);
   const s10 = milkyS10.add(zodiS10.mul(uZodi));
   const material = new MeshBasicNodeMaterial({ side: BackSide, transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest: true, fog: false });
   // Both in the warm white of old stars and of sunlight (display terms).
@@ -299,11 +377,14 @@ export function createSkyGlow(obliquity: number): SkyGlow {
 
   /** The glow's S10 in a render-frame direction, as the shader has it (nearest texels; for seen()). */
   const scratch = [0, 0];
+  const held = [0, 0];
   const s10At = (x: number, y: number, z: number): number => {
     const [u = 0, v = 0] = skyUv(x, y, z, scratch);
     const m = decodeCpu(milky[(Math.min(MILKY.height - 1, Math.floor(v * MILKY.height)) * MILKY.width + Math.min(MILKY.width - 1, Math.floor(u * MILKY.width))) * 4] ?? 0);
-    const a = Math.max(Math.abs(u - uSunU.value + 0.5 - Math.floor(u - uSunU.value + 0.5) - 0.5) * 2, ZODI_HELD_DEG / 180);
-    const zv = decodeCpu(zodi[(Math.min(ZODI.height - 1, Math.floor(Math.abs(v * 2 - 1) * ZODI.height)) * ZODI.width + Math.min(ZODI.width - 1, Math.floor(a * ZODI.width))) * 4] ?? 0);
+    const along = Math.abs(u - uSunU.value + 0.5 - Math.floor(u - uSunU.value + 0.5) - 0.5) * 2;
+    const [a = 0, b = 0] = heldAt(along, Math.abs(v * 2 - 1), held);
+    const circle = decodeCpu(zodi[(Math.min(ZODI.height - 1, Math.floor(b * ZODI.height)) * ZODI.width + Math.min(ZODI.width - 1, Math.floor(a * ZODI.width))) * 4] ?? 0);
+    const zv = heldLight(circle, along, Math.abs(v * 2 - 1), zodiCap);
     return m + zv * uZodi.value;
   };
   const corner = new Vector3();

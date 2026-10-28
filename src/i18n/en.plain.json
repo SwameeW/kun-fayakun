@@ -1,5 +1,5 @@
 {
-  "$comment": "The verses in plain words: explanations of what each cited verse means, following the classical commentators, written for this project and awaiting a scholar's review (REVIEW.md). Not translations of the Quran; shown labelled as explanations (src/ui/scripture.ts). Loaded with its own chunk (src/ui/plain-words.ts).",
+  "$comment": "The verses in plain words: explanations of what each cited verse means, following the classical commentators, written for this project. Not translations of the Quran; shown labelled as explanations (src/ui/scripture.ts). Loaded with its own chunk (src/ui/plain-words.ts).",
   "plain.2:117": "He brought the heavens and the earth into being when nothing like them existed. When He decides on something, He only says to it, “Be!”, and it is.",
   "plain.7:54": "Your Lord is Allah, who created the heavens and the earth in six Days, then rose above the Throne. He covers the day with the night, which follows it swiftly; and the sun, the moon and the stars are made to serve by His command. Creation and command are His alone. Blessed is Allah, Lord of all the worlds.",
   "plain.14:48": "On that Day the earth will be changed into a different earth, and the heavens too, and everyone will come out before Allah, the One, the All-Powerful.",

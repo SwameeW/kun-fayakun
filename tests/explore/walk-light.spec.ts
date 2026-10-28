@@ -22,6 +22,8 @@ import { JD, view, waitForUniverse } from '../support/universe';
 const LIVE = { timeout: 60_000 * SLOW };
 /** The canvas alone: every part of the interface hidden at once (no fade still under way). */
 const HIDE = 'body > :not(#scene), body > :not(#scene) * { visibility: hidden !important; transition: none !important; }';
+/** The Earth's ground rings (src/explore/walk/ground GROUND.levels and farLevels). */
+const RINGS = 14;
 
 test.use({ reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } });
 
@@ -538,16 +540,17 @@ test('the ground decoded to the metre: every point of every ring on the flat moc
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', lat: 23.4, lon: 25 });
   });
-  await expect.poll(async () => (await view(page))?.walk?.rings ?? 0, LIVE).toBe(11);
+  // The Earth's rings: the 11 on foot and the 3 drawn only on the way down from orbit (src/explore/walk/ground GROUND), all filled.
+  await expect.poll(async () => (await view(page))?.walk?.rings ?? 0, LIVE).toBe(RINGS);
   await expect.poll(async () => (await view(page))?.walk?.tiles.loading ?? 1, LIVE).toBe(0);
   await page.evaluate(() => {
     (window as unknown as KfHook).__kf.step(10, 1 / 60);
   });
-  const off = await page.evaluate((expected) => {
+  const off = await page.evaluate(([expected, rings]) => {
     const app = (window as unknown as KfHook).__kf.app as unknown as { scene: { getObjectByName(n: string): { geometry: { getAttribute(n: string): { array: Float32Array } } } | undefined } };
     let worst = 0;
     let points = 0;
-    for (let level = 0; level < 11; level += 1) {
+    for (let level = 0; level < rings; level += 1) {
       const ring = app.scene.getObjectByName(`explore-walk-ring-${String(level)}`);
       const above = ring?.geometry.getAttribute('above').array;
       if (!above) continue;
@@ -557,8 +560,8 @@ test('the ground decoded to the metre: every point of every ring on the flat moc
       }
     }
     return { worst, points };
-  }, MOCK_GROUND_M);
-  expect(off.points).toBeGreaterThan(11 * 2000);
+  }, [MOCK_GROUND_M, RINGS] as const);
+  expect(off.points).toBeGreaterThan(RINGS * 2000);
   expect(off.worst).toBeLessThan(1);
   expect((await view(page))?.walk?.groundM).toBeCloseTo(MOCK_GROUND_M, 3);
   expect(pageErrors).toEqual([]);

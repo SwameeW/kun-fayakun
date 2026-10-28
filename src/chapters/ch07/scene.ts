@@ -1,19 +1,23 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Group, MathUtils, PointsNodeMaterial, Sprite, Vector3, type Data3DTexture } from 'three/webgpu';
 import { dot, exp, float, max, uniform, uv, vec3 } from 'three/tsl';
 import type { ChapterContent, ChapterContext, ChapterModule, Cue, QualityTier, SceneLabel, SceneScale } from '../../core/types';
+import strings from '../../i18n/en.ch07.json';
 import { createMilkyWay, type MilkyWay } from '../ch05/milky-way';
 import { createNoiseVolume } from '../shared/noise-volume';
 import { createEarth, createSimpleBody, EARTH_TODAY, type Earth, type SimpleBody } from '../shared/planet';
+import { createFilmSun, type FilmSun } from '../shared/film-sun';
 import { createStarfield, type Starfield } from '../shared/starfield';
-import { createLivingStar, type LivingStar } from '../shared/sun';
 import contentJson from './content.json';
 import { createDisk, type Disk } from './disk';
 import { compress, julianDateNow, loadEphemeris, type Ephemeris } from './ephemeris';
+import { createJets, jetLight, JETS_TAG_KEY, type Jets } from './jets';
 import { createRings, type Rings } from './rings';
 
 /**
  * Chapter 7, "The Sun and its course": a slow crane over the protoplanetary disk, its dust
- * lanes and the gaps that growing planets clear; the Sun begins to shine (an eased swell);
+ * lanes and the gaps that growing planets clear, the newborn Sun's jets above and below it
+ * (./jets.ts, an illustration, tagged so); the Sun (the explorer's, shared/film-sun.ts)
+ * begins to shine (an eased swell) as the jets fade;
  * the disk clears and the planets remain on their real orbits, placed for today's date from
  * NASA JPL's elements and drawn as engraved rings graduated like an astrolabe; a long-lens
  * hold on the Moon shows its real phase, from JPL Horizons, as the days pass; then the view
@@ -48,6 +52,8 @@ const RATES: ReadonlyArray<readonly [number, number]> = [
 const TODAY_AT = 86;
 const MOON = { orbit: 0.16, closeUpAt: new Vector3(0, 0, -0.5), closeRadius: 0.03, radius: 0.014 } as const;
 const SUN_KELVIN = { young: 3800, main: 5772 } as const;
+/** The young Sun's light inside its dust, before it begins to shine, as a share of its full light. */
+const YOUNG_SUN_LIGHT = 0.08;
 /** The Sun is about 8.2 kpc from the Galactic centre (GRAVITY Collaboration 2019), in the model's frame at -x. */
 const SUN_KPC = 8.2;
 const KPC_PER_UNIT = { inside: 0.004, galaxy: 5 } as const;
@@ -103,8 +109,9 @@ export default function create(): ChapterModule {
   let ctx: ChapterContext | null = null;
   let noise: Data3DTexture | null = null;
   let ephemeris: Ephemeris | null = null;
-  let sun: LivingStar | null = null;
+  let sun: FilmSun | null = null;
   let disk: Disk | null = null;
+  let jets: Jets | null = null;
   let rings: Rings | null = null;
   let earth: Earth | null = null;
   let moon: SimpleBody | null = null;
@@ -163,6 +170,7 @@ export default function create(): ChapterModule {
 
     async load(c) {
       ctx = c;
+      c.i18n?.extend('en.ch07.json', strings);
       if (!sun) {
         const [volume, eph, mw] = await Promise.all([createNoiseVolume(64, 7_007), loadEphemeris(c), createMilkyWay()]);
         noise = volume;
@@ -170,7 +178,7 @@ export default function create(): ChapterModule {
         galaxy = mw;
         jdZero = julianDateNow() - elapsedDays(TODAY_AT);
         earthIndex = Math.max(0, eph.bodies.findIndex((b) => b.name === 'Earth'));
-        sun = createLivingStar(volume, SUN_RADIUS);
+        sun = createFilmSun(volume, SUN_RADIUS, c.data, c.quality.tier);
         stars = createStarfield();
         // Gaps in the disk where each planet's orbit will be (compressed radii).
         const gaps = eph.bodies.map((b) => ({
@@ -179,6 +187,7 @@ export default function create(): ChapterModule {
           depth: b.name === 'Jupiter' || b.name === 'Saturn' ? 0.92 : 0.6,
         }));
         disk = createDisk({ count: COUNT.high.disk, inner: 0.42, outer: 8.6, gaps, seed: 4_567 });
+        jets = createJets(volume, SUN_RADIUS, c.quality.tier);
         // Orbit loops for the rings, for today's elements.
         const jd = julianDateNow();
         const loops = eph.bodies.map((b, index) => {
@@ -194,10 +203,12 @@ export default function create(): ChapterModule {
           const look = LOOKS[b.name] ?? { color: [0.7, 0.7, 0.7] as [number, number, number] };
           others.push({ name: b.name, index, body: createSimpleBody(volume, RADII[b.name] ?? 0.04, { name: b.name, ...look, seed: index * 0.13 }) });
         });
-        system.add(sun.object, earth.object, moon.object, ...others.map((o) => o.body.object));
-        root.add(stars.object, disk.object, rings.field.mesh, galaxy.object, sunPath.field.mesh);
+        system.add(sun.object, jets.object, earth.object, moon.object, ...others.map((o) => o.body.object));
+        root.add(stars.object, disk.object, rings.field.mesh, galaxy.object, sunPath.field.mesh, sun.glare);
       }
       setCounts(c.quality.tier);
+      sun.setQuality(c.quality.tier);
+      jets?.setQuality(c.quality.tier);
     },
 
     enter(c) {
@@ -241,13 +252,25 @@ export default function create(): ChapterModule {
       system.position.copy(offset).multiplyScalar(shrink).add(sunWorld);
       system.scale.setScalar(shrink);
 
-      // The Sun: dim and cool inside its dust, then shining; it stays a point when the view pulls back.
+      // The Sun: dim and cool inside its dust, then shining (an eased swell over twelve seconds); its
+      // glare goes as the view pulls back to the galaxy, where the Sun is a marked point.
       const ignite = smootherstep(times.ignite, times.ignite + 12, t);
       const kelvin = SUN_KELVIN.young + (SUN_KELVIN.main - SUN_KELVIN.young) * ignite;
-      sun.update({ time: living, kelvin, light: (0.3 + 0.7 * ignite) * smootherstep(0, 3, t) });
+      sun.update({
+        time: living,
+        kelvin,
+        light: (YOUNG_SUN_LIGHT + (1 - YOUNG_SUN_LIGHT) * ignite) * smootherstep(0, 3, t),
+        glare: ignite * (1 - smootherstep(times.galaxy, times.galaxy + 5, t)),
+        camera: ctx.camera,
+        viewportPx: ctx.renderer.domElement.clientHeight,
+        widthPx: ctx.renderer.domElement.clientWidth,
+        exposure: ctx.exposure.current,
+      });
       stars.setLight((0.35 + 0.65 * smootherstep(times.clear, times.clear + 10, t)) * (1 - galaxyShare));
 
       disk.update({ time: t, light: smootherstep(0, 3, t), clearing: smootherstep(times.clear, times.clear + 12, t) });
+      // The young Sun's jets, in their own light: they fade as it begins to shine, never brightening with it.
+      jets?.update({ time: t, light: jetLight(t, times.ignite) * smootherstep(0, 3, t), reducedMotion: ctx.reducedMotion, camera: ctx.camera });
 
       // Planets on their real orbits; they come out as the disk clears, and fade as the view pulls back.
       const planetLight = smootherstep(times.clear + 2, times.clear + 10, t) * (1 - smootherstep(times.galaxy + 1, times.galaxy + 6, t));
@@ -301,6 +324,9 @@ export default function create(): ChapterModule {
       const push = (id: string, textKey: string, p: Vector3, opacity: number): void => {
         if (opacity > 0) labels.push({ id, textKey, position: [p.x, p.y, p.z], opacity });
       };
+      // The jets are an illustration, and say so while they show.
+      const canvas = ctx.renderer.domElement;
+      if (jets) push('jets', JETS_TAG_KEY, scratch, jets.tag(ctx.camera, canvas.clientWidth, canvas.clientHeight, scratch));
       // Planet names while the orrery opens, and the not-to-scale note; none during a verse.
       const names = span(times.orrery + 1, times.orrery + 3, times.moon - 1, times.moon, t);
       if (names > 0) {
@@ -329,6 +355,8 @@ export default function create(): ChapterModule {
 
     setQuality(profile) {
       setCounts(profile.tier);
+      sun?.setQuality(profile.tier);
+      jets?.setQuality(profile.tier);
     },
 
     exit() {
@@ -341,6 +369,7 @@ export default function create(): ChapterModule {
       root.removeFromParent();
       sun?.dispose();
       disk?.dispose();
+      jets?.dispose();
       rings?.dispose();
       sunPath?.dispose();
       earth?.dispose();
@@ -352,6 +381,7 @@ export default function create(): ChapterModule {
       noise?.dispose();
       sun = null;
       disk = null;
+      jets = null;
       rings = null;
       sunPath = null;
       earth = null;

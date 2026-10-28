@@ -295,7 +295,6 @@ export function createLivingEarth(app: App, f: Formatters, onGo: () => void): Li
     'div',
     { class: 'kf-living-prophets-body' },
     h('p', { class: 'kf-living-hint' }, i18n.t('ui.universe.field.prophetsIntro'), helpButton(app, 'prophets', i18n.t('ui.universe.field.prophets'))),
-    h('p', { class: 'kf-living-review' }, i18n.t('ui.universe.field.prophetsReview')),
     prophetsTour,
     prophetList,
   );

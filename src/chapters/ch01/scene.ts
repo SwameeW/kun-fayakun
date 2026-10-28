@@ -105,8 +105,12 @@ export default function create(): ChapterModule {
     return model;
   };
 
-  /** Real seconds since the previous frame, so the guard keeps working while the film is paused. */
+  /**
+   * Seconds since the previous frame, so the guard keeps working while the film is paused: the app's
+   * frame clock (real time in playback, the step under __kf.step, so captures repeat), else real time.
+   */
   const realSeconds = (): number => {
+    if (ctx?.frameSeconds !== undefined) return Math.min(MAX_FRAME_SECONDS, ctx.frameSeconds);
     const now = performance.now();
     const seconds = lastFrameMs === null ? 0 : Math.min(MAX_FRAME_SECONDS, (now - lastFrameMs) / 1000);
     lastFrameMs = now;

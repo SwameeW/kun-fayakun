@@ -10,7 +10,7 @@ import { hadithIdFor } from './hadith';
 
 const KINDS: readonly SourceKind[] = [
   'scripture-text', 'translation', 'transliteration', 'hadith-collection',
-  'font', 'dataset', 'paper', 'software', 'api',
+  'font', 'dataset', 'paper', 'software', 'api', 'recording',
 ];
 
 const REQUIRED_IDS = ['amiri-quran', 'planck-pr3-smica', 'threejs', 'intl-messageformat', 'quran-foundation-api'];

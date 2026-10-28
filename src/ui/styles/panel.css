@@ -513,3 +513,39 @@
   font-style: italic;
   color: var(--kf-text-muted);
 }
+
+/*
+ * Finding the analysis: the invitation on the stage under the verse it reads (eased in and out with
+ * the verse's cue, never a pop). Here, not with the analysis's own styles: the panel makes it on every
+ * page, and the analysis's code (and its stylesheet) loads only with a chapter that has one.
+ */
+.kf-discovery-invite {
+  display: block;
+  margin: var(--kf-space-3) auto 0;
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition:
+    opacity 600ms var(--kf-ease),
+    transform 600ms var(--kf-ease),
+    visibility 0s linear 600ms;
+}
+
+.kf-discovery-invite.is-shown {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 600ms var(--kf-ease),
+    transform 600ms var(--kf-ease),
+    visibility 0s linear 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kf-discovery-invite,
+  .kf-discovery-invite.is-shown {
+    transform: none;
+    transition: none;
+  }
+}

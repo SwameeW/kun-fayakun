@@ -57,6 +57,13 @@ const GPU_SPECS = /explore\/(?:black-holes|lab|lab-effects|lab-throw|layout-stre
 const AI_EVAL = flag('KF_AI_EVAL');
 /** Matched against absolute paths, so anchored on tests/ (a checkout may itself sit in a folder named ai-eval). */
 const AI_EVAL_SPECS = /[\\/]tests[\\/]ai-eval[\\/]/u;
+/**
+ * Before/after captures for visual work (tests/visual): every shot of the film and fixed views of the
+ * explorer, on the manual clock, with the GPU's time per view. Never part of a normal run: its project
+ * exists only with KF_VISUAL=1, and every other project ignores its folder.
+ */
+const VISUAL = flag('KF_VISUAL');
+const VISUAL_SPECS = /[\\/]tests[\\/]visual[\\/]/u;
 const MODEL_HOST_RULES = ['huggingface.co', '*.huggingface.co', 'hf.co', '*.hf.co', 'cdn.jsdelivr.net', 'raw.githubusercontent.com'].map((h) => `MAP ${h} ~NOTFOUND`).join(', ');
 
 const desktopChromium = {
@@ -79,7 +86,7 @@ export default defineConfig<KfOptions>({
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   // GPU-bound pages interfere with each other; perf runs and the real-model evaluation must be alone.
-  workers: PERF || CI || AI_EVAL ? 1 : 2,
+  workers: PERF || CI || AI_EVAL || VISUAL ? 1 : 2,
   ...(PERF ? { grep: /@perf/ } : { grepInvert: /@perf/ }),
   reporter: CI ? [['github'], ['list'], ['html', { open: 'never' }]] : [['list']],
   use: {
@@ -100,12 +107,12 @@ export default defineConfig<KfOptions>({
     { name: 'unit', testMatch: /unit\//u },
     {
       name: 'webgpu',
-      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS, ...(CI ? [GPU_SPECS] : [])],
+      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS, VISUAL_SPECS, ...(CI ? [GPU_SPECS] : [])],
       use: { ...desktopChromium, launchOptions: { args: WEBGPU_ARGS } },
     },
     {
       name: 'webgl2',
-      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS, ...(CI ? [GPU_SPECS] : [])],
+      testIgnore: [/unit\//u, MOBILE_SPECS, AI_EVAL_SPECS, VISUAL_SPECS, ...(CI ? [GPU_SPECS] : [])],
       use: { ...desktopChromium, forceWebGL: true },
     },
     // A phone (Pixel 7: 412 x 839 CSS px at DPR 2.625, touch, Android Chrome's user agent) for the
@@ -127,6 +134,17 @@ export default defineConfig<KfOptions>({
             fullyParallel: false,
             retries: 0,
             use: { ...desktopChromium, launchOptions: { args: [...WEBGPU_ARGS, `--host-resolver-rules=${MODEL_HOST_RULES}`] }, trace: 'off' as const, screenshot: 'off' as const },
+          },
+        ]
+      : []),
+    ...(VISUAL
+      ? [
+          {
+            name: 'visual',
+            testMatch: VISUAL_SPECS,
+            retries: 0,
+            // Frames uncapped (no vsync, no frame-rate limit): the time per frame is then what a view costs.
+            use: { ...desktopChromium, launchOptions: { args: [...WEBGPU_ARGS, '--disable-gpu-vsync', '--disable-frame-rate-limit'] }, trace: 'off' as const, screenshot: 'off' as const },
           },
         ]
       : []),

@@ -11,13 +11,19 @@
  *   a hole in the planet.
  * - City lights (Black Marble 2016) on the night side only, fading in through twilight and dimmed by
  *   cloud: today's Earth only (the chapters' early Earths never load them).
- * - Clouds (Blue Marble's 2001 cloud map) on their own shell 10 km up, drifting slowly (an
- *   illustrative drift: real weather moves every way). Their tops are shaded as relief (thicker cloud
- *   stands higher), thicker toward the limb where the eye looks through more of them, and they cast
- *   their shadows on the ground beside them, offset away from the Sun by their height (cloudShadows).
- * - The night side: lit faintly by the Moon from where it stands, as much as its phase gives, and by
- *   a faint glow of the night sky, both shown far brighter than they are (as the eye adapted to the
- *   dark sees a moonlit landscape) so the dark disc always reads against the stars.
+ * - Clouds (one real day, 22 September 2025, seen by NASA's VIIRS, with that day's sea ice, which the
+ *   day map lacks) on their own shell 10 km up, drifting slowly (an illustrative drift: real weather
+ *   moves every way), the more slowly the lower the view, so they
+ *   never race over the ground. The map is read through a smooth filter, so close in its texels never
+ *   show as blocks. Their tops are shaded as relief (thicker cloud stands higher), thicker toward the
+ *   limb where the eye looks through more of them, and they cast their shadows on the ground beside
+ *   them, offset away from the Sun by their height (cloudShadows).
+ * - The night side: black, but for the city lights, whenever sunlit ground is in view, as a camera
+ *   exposed for the day records it (moonlight is about 2 millionths of sunlight). Only when the night
+ *   fills the view (darkAdaptation: the lit share of the visible disc under a few percent) is it lit
+ *   faintly by the Moon from where it stands, as much as its phase gives, and by a faint glow of the
+ *   night sky, both shown far brighter than they are (as the eye adapted to the dark sees a moonlit
+ *   landscape) so the dark disc reads against the stars; the air's airglow shows with them.
  * - Close up, below the maps' texels: illustrative fine detail. Land and cloud edges take octaves
  *   of noise scaled to the bound map's texel, each fading in only once its features span a few
  *   pixels (never seen from afar, never shimmering), and the maps' own texel-scale contrast is
@@ -25,7 +31,9 @@
  * - Close in, the streamed imagery (../earth-tiles): Sentinel-2 cloudless or the day's NASA VIIRS
  *   mosaic replaces the day map wherever the view needs more detail than it holds, read at the exact
  *   point of the sphere under each pixel; the illustrative fine detail gives way to it, and the cloud
- *   shell fades so the ground shows.
+ *   shell fades around the place the view is aimed at and where its map is magnified past what it can
+ *   show (CLOUD_CLOSE: the near cloud from low orbit), so the ground there shows, staying over the
+ *   rest of the globe as far as the horizon.
  * - The air over all of it (./atmosphere).
  *
  * Every map is streamed (../assets/streaming): the first frames show each map's mean, the 1024 maps
@@ -33,14 +41,14 @@
  */
 
 import { FrontSide, Group, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3, type Data3DTexture, type Object3D, type Texture } from 'three/webgpu';
-import { clamp, dot, exp, float, max, min, mix, normalize, positionLocal, pow, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
+import { clamp, dot, exp, float, length, max, min, mix, normalize, positionLocal, pow, select, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import type { PlanetTextures } from '../assets/streaming';
 import { exactSurface, type EarthTiles } from '../earth-tiles';
 import { textureTier, type ExploreDetail } from '../detail';
 import { sunTransmittance, transmittanceToTop, type AirModel } from '../render/air';
 import { blendPremultiplied } from '../render/blending';
-import { decodeNormal, magnification, mapCoords, sampleSlot, shiftCoords, tangentFrame, type FloatNode, type MapCoords, type Vec3Node } from '../render/sampling';
-import { createAir, type AirUniforms, type ExploreAir } from './atmosphere';
+import { decodeNormal, magnification, mapCoords, sampleSlot, sampleSlotSmooth, shiftCoords, tangentFrame, type FloatNode, type MapCoords, type Vec3Node } from '../render/sampling';
+import { AIR_ORDER, createAir, deckCrossing, type AirUniforms, type CloudDeck, type ExploreAir } from './atmosphere';
 import { createClimateView } from './climate-view';
 import { createMarks, type SurfaceMark } from './marks';
 import { bumpGradient, keepOnSphere, litCosine, noiseIfKept, sphereFootprint, sunlit, tiltNormal } from './shading';
@@ -49,8 +57,29 @@ import { bumpGradient, keepOnSphere, litCosine, noiseIfKept, sphereFootprint, su
 const U_AT_LON0 = 0.5;
 /** The cloud shell's height, planet radii (about 10 km: the tops of most weather clouds). */
 const CLOUD_HEIGHT = 0.0016;
-/** The clouds' illustrative drift, turns of longitude per second (a full turn in two hours). */
+/**
+ * The clouds' illustrative drift, turns of longitude per second (a full turn in two hours) as seen from
+ * afar. Closer in it slows with the height (DRIFT_SLOWS), so it moves at about the same pace across
+ * the screen at any height instead of racing over the ground from low orbit: from 20,000 km down its
+ * speed falls in proportion to the height, to about 17 m/s at the lowest (weather's own speeds).
+ */
 const CLOUD_DRIFT = 1 / 7200;
+/** Heights (radii above the ground) below which the drift slows in proportion, and the least share of it kept. */
+const DRIFT_SLOWS = { below: 20_000 / 6371, least: 0.003 } as const;
+/**
+ * The cloud map close in, by the screen pixels one of its texels spans: read through the smooth filter
+ * from `smooth[0]` (wholly by `smooth[1]`: below that the bilinear map's texels do not show as blocks,
+ * and the smooth filter, which is not an interpolating one, would only soften it), and so magnified
+ * from `crowded[0]` (wholly by `crowded[1]`) that it can show nothing but soft blobs, where the shell
+ * gives way as the view closes in (../earth-tiles cloudsAt): from low orbit the near cloud, not the far.
+ */
+const CLOUD_CLOSE = { smooth: [6, 14], crowded: [12, 32] } as const;
+/**
+ * Pixels a cloud-map texel spans from which (fully by the second) the air's shell no longer hides its
+ * light behind the cloud deck (createAir's CloudDeck): the cloud edges' fine detail starts to show at
+ * about this magnification, and the shell, reading the map alone, would draw a halo round them.
+ */
+const CLOUD_DECK_PLAIN = [2, 6] as const;
 /** Cloud tops' reflectance (bright, slightly short of fresh snow), and how dark a cloud's shadow is on the ground. */
 const CLOUD_ALBEDO = 0.86;
 const CLOUD_SHADOW = 0.7;
@@ -73,6 +102,11 @@ const CITY = { tint: [1, 0.72, 0.42], strength: 0.9 } as const;
  * night sky's own faint glow on everything, moon or not.
  */
 const NIGHT = { moonlight: 0.03, glow: 0.006, tint: [0.72, 0.82, 1] } as const;
+/**
+ * The eye's adaptation to the dark (darkAdaptation): full while the lit share of the visible disc is
+ * under `from`, none above `to`; it follows a change of view over `seconds` (a cut is followed at once).
+ */
+const DARK = { from: 0.01, to: 0.06, seconds: 1 } as const;
 /**
  * Fine detail: amplitudes of the land's octaves (albedo, as a share), of the relief they add (radii),
  * of the cloud edges' erosion (cover units), the sharpening of the maps' texel-scale contrast, and how
@@ -140,10 +174,41 @@ export function fineDetailShown(detail: ExploreDetail, altitudeRadii: number, px
   return (Math.max(0, altitudeRadii) / Math.max(pxPerRadian, 1)) * 16 * f < 0.55;
 }
 
+/**
+ * How much of the Earth seen from `eye` (its own frame, planet radii) is in sunlight (`sun`, a unit
+ * direction): the share of the visible disc's diameter toward the Sun that lies on the day side, in
+ * the view's own perspective. From afar it is the phase's illuminated fraction, (1 + cos phase) / 2;
+ * from low orbit it counts only the cap in view, so a view of the night side alone gives 0 even when
+ * the phase angle is under 90 degrees.
+ */
+export function litShare(eye: { x: number; y: number; z: number }, sun: { x: number; y: number; z: number }): number {
+  const d = Math.max(Math.hypot(eye.x, eye.y, eye.z), 1 + 1e-6);
+  const cosPhase = Math.min(1, Math.max(-1, (eye.x * sun.x + eye.y * sun.y + eye.z * sun.z) / d));
+  // The visible cap's angular radius about the point below the eye, and where along its diameter
+  // toward the Sun the terminator falls (angles from that point, positive sunward).
+  const cap = Math.acos(1 / d);
+  const terminator = Math.acos(cosPhase) - Math.PI / 2;
+  if (terminator >= cap) return 0;
+  // A point that far from the one below the eye, as the view projects it (the tangent of its angle off the centre).
+  const projected = (angle: number): number => Math.sin(angle) / (d - Math.cos(angle));
+  const edge = projected(cap);
+  return Math.min(1, (edge - projected(Math.max(terminator, -cap))) / (2 * edge));
+}
+
+/**
+ * The eye's adaptation to the dark for a lit share (litShare): 1 while the night fills the view, 0
+ * once a few percent of the disc is in sunlight, as a camera exposed for the day sees the night side.
+ */
+export function darkAdaptation(share: number): number {
+  const t = Math.min(1, Math.max(0, (share - DARK.from) / (DARK.to - DARK.from)));
+  return 1 - t * t * (3 - 2 * t);
+}
+
 export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air: AirModel, table: { texture: Texture } | null, initial: ExploreDetail, tiles: EarthTiles | null = null): ExploreEarth {
   const object = new Group();
   object.name = 'explore-earth';
-  const uTime = uniform(0);
+  /** The clouds' own clock (seconds of drift, slowed with the height: DRIFT_SLOWS); it stops with reduced motion. */
+  const uCloudTime = uniform(0);
   const uLight = uniform(1);
   const climate = createClimateView();
   // Fresh rock and ash on land: a grey brown (illustrative); relief as the ETOPO map's is drawn.
@@ -152,10 +217,16 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   const uEye = uniform(new Vector3(0, 0, 3));
   const uMoon = uniform(new Vector3(0, 0, 1));
   const uMoonLight = uniform(0);
+  /** The eye's adaptation to the dark (darkAdaptation), eased: the night side's moonlight and glow, and the airglow, show only with it. */
+  const uDark = uniform(0);
   /** The clouds' drift as a turn of the noise's frame about the pole (cos, sin), so their detail moves with them. */
   const uDriftCos = uniform(1);
   const uDriftSin = uniform(0);
-  const airUniforms: AirUniforms = { eye: uEye, sun: uSun, light: uLight };
+  /** The cloud mesh's scale (outlineScale while the eye is above the air, else 1). */
+  const uDeckScale = uniform(1);
+  const airUniforms: AirUniforms = { eye: uEye, sun: uSun, light: uLight, airglow: uDark };
+  /** The illustrative clock at the last frame (frame.time, seconds), null before the first. */
+  let lastTime: number | null = null;
   const slot = {
     day: textures.slot('earth', 'day'),
     water: textures.slot('earth', 'water'),
@@ -174,14 +245,17 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   };
   /** The sky's diffuse light on a surface (half the air's scattered sunlight comes down), bluish. */
   const skyFill = (mu: FloatNode): Vec3Node => float(1).sub(exp(tau.negate())).mul(0.5).mul(clamp(mu.add(0.1), 0, 1));
-  /** The night side's light on a surface of normal `normal`: moonlight from the Moon's direction and the sky's glow. */
+  /**
+   * The night side's light on a surface of normal `normal`: moonlight from the Moon's direction and the
+   * sky's glow, both only as far as the eye is adapted to the dark.
+   */
   const nightLight = (normal: Vec3Node, nDotL: FloatNode, wrap: number): Vec3Node => {
     const dark = smoothstep(0.04, -0.14, nDotL);
     const moon = clamp(dot(normal, uMoon).add(wrap).div(1 + wrap), 0, 1).mul(uMoonLight);
-    return vec3(...NIGHT.tint).mul(moon.add(NIGHT.glow).mul(dark));
+    return vec3(...NIGHT.tint).mul(moon.add(NIGHT.glow).mul(dark).mul(uDark));
   };
 
-  const cloudCoords = (c: MapCoords): MapCoords => shiftCoords(c, uTime.mul(CLOUD_DRIFT));
+  const cloudCoords = (c: MapCoords): MapCoords => shiftCoords(c, uCloudTime.mul(CLOUD_DRIFT));
   /** A direction turned with the clouds' drift (the frame their fine detail is anchored in). */
   const withClouds = (d: Vec3Node): Vec3Node => vec3(d.x.mul(uDriftCos).add(d.z.mul(uDriftSin)), d.y, d.z.mul(uDriftCos).sub(d.x.mul(uDriftSin)));
 
@@ -216,21 +290,48 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     return { coords, direction };
   };
 
+  /** How far the cloud map at `c` is read through the smooth filter (0 to 1: CLOUD_CLOSE.smooth). */
+  const smoothed = (c: MapCoords): FloatNode => smoothstep(CLOUD_CLOSE.smooth[0], CLOUD_CLOSE.smooth[1], magnification(c, slot.clouds));
+  /** The cloud map at `c`: bilinear, or where it is magnified through a smooth (cubic) filter, so a texel never shows as a block. */
+  const cloudMap = (c: MapCoords): FloatNode => mix(sampleSlot(slot.clouds, c).r, sampleSlotSmooth(slot.clouds, c).r, smoothed(c));
+  /** How far the cloud map at `c` is magnified past what it can show (0 to 1: CLOUD_CLOSE.crowded). */
+  const crowded = (c: MapCoords): FloatNode => smoothstep(CLOUD_CLOSE.crowded[0], CLOUD_CLOSE.crowded[1], magnification(c, slot.clouds));
+
   /**
    * Cloud cover at map coordinates `c` (already drifted) and direction `d` (the fragment's): the
-   * map's cover with its edges broken up by fine detail where the map is magnified (strongest at half
-   * cover, none in clear sky or under solid cloud). Returns the cover and how much detail shows.
+   * map's cover (cloudMap), with its edges broken up by fine detail where the map is magnified
+   * (strongest at half cover, none in clear sky or under solid cloud). Returns the cover, the map's own
+   * (`base`) and how much detail shows.
    */
-  const cloudCover = (c: MapCoords, d: Vec3Node, footprint: FloatNode, frequencies: readonly number[]): { cover: FloatNode; shown: FloatNode } => {
-    const base = sampleSlot(slot.clouds, c).r;
-    const edges = fine(withClouds(d).add(vec3(0, uTime.mul(0.00002), 0)), footprint, frequencies, [1, 0.6, 0.4], 0.53);
+  const cloudCover = (c: MapCoords, d: Vec3Node, footprint: FloatNode, frequencies: readonly number[]): { cover: FloatNode; base: FloatNode; shown: FloatNode } => {
+    const base = cloudMap(c);
+    const edges = fine(withClouds(d).add(vec3(0, uCloudTime.mul(0.00002), 0)), footprint, frequencies, [1, 0.6, 0.4], 0.53);
     const edge = base.mul(float(1).sub(base)).mul(4);
     const cover = clamp(base.add(edges.value.mul(edge).mul(FINE.erosion)), 0, 1);
-    return { cover, shown: edges.shown };
+    return { cover, base, shown: edges.shown };
   };
   /** Opacity from eroded cover: thin haze left out, edges crisper as the detail shows. */
   const coverOpacity = (cover: FloatNode, shown: FloatNode): FloatNode =>
     smoothstep(mix(float(0.08), float(0.3), shown), mix(float(0.9), float(0.58), shown), cover).mul(0.97);
+  /** A layer of that opacity seen with the eye `up` (cosine) above its horizon: the path through it is 1 / up longer. */
+  const slanted = (flat: FloatNode, up: FloatNode): FloatNode => float(1).sub(pow(float(1).sub(min(flat, 0.999)), min(float(1).div(max(up, 0.02)), 3))).mul(0.98);
+  /** The share of the cloud shell kept at `n` (cloud map coordinates `c`): it fades close in (../earth-tiles cloudsAt) and for the climate's temperature view. */
+  const cloudsKept = (n: Vec3Node, c: MapCoords): FloatNode => (tiles ? tiles.cloudsAt(n, crowded(c)) : float(1)).mul(float(1).sub(climate.mapShare));
+
+  /**
+   * The cloud shell as the air's shell sees it (./atmosphere CloudDeck): its opacity from the map alone,
+   * where the pixel's ray meets it. Where the map is magnified enough for the clouds' fine detail to
+   * show (CLOUD_DECK_PLAIN), the shell's own pixel could not follow their eroded edges; there the eye
+   * looks down through a thin veil of air below the cloud tops and the shell leaves its light as it is.
+   */
+  const deck: CloudDeck = {
+    radius: 1 + CLOUD_HEIGHT,
+    opacity(direction, up) {
+      const c = cloudCoords(mapCoords(direction, direction.y, U_AT_LON0));
+      const plain = float(1).sub(smoothstep(CLOUD_DECK_PLAIN[0], CLOUD_DECK_PLAIN[1], magnification(c, slot.clouds)));
+      return slanted(coverOpacity(sampleSlot(slot.clouds, c).r, float(0)), up).mul(cloudsKept(direction, c)).mul(plain);
+    },
+  };
 
   /**
    * The maps' lookup warped, where they are magnified, by a fraction of a texel of smooth noise: the
@@ -295,8 +396,8 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
 
     // Cloud shadows: the cloud the sunlight crossed on its way down, CLOUD_HEIGHT up, with the same eroded edges.
     let shade: FloatNode = float(1);
-    const cloudsShown: FloatNode = tiles ? tiles.clouds : float(1);
     const cc = detail.clouds ? cloudCoords(plain) : null;
+    const cloudsShown: FloatNode = tiles && cc ? tiles.cloudsAt(n, crowded(cc)) : float(1);
     if (detail.cloudShadows && cc) {
       const slant = float(CLOUD_HEIGHT).mul(sqrt(max(float(1).sub(nDotL.mul(nDotL)), 0)).div(max(nDotL, 0.08)));
       const under = towardSun(cc, n, slant);
@@ -340,38 +441,50 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
 
   const buildClouds = (detail: ExploreDetail): MeshBasicNodeMaterial => {
     const scatter = detail.atmosphere === 'scatter';
-    const n = normalize(positionLocal);
+    // The deck's exact point under this pixel, and its outline, as the air's shell finds them (the
+    // mesh is a polygon, from above the air a little larger than the deck so its outline covers the
+    // deck's: outlineScale).
+    const ray = normalize(positionLocal.mul(uDeckScale).sub(uEye));
+    const onDeck = deckCrossing(uEye, ray, 1 + CLOUD_HEIGHT);
+    const n = onDeck.direction;
+    const point = n.mul(1 + CLOUD_HEIGHT);
     const footprint = sphereFootprint(n);
     const c = cloudCoords(mapCoords(n, n.y, U_AT_LON0));
     const frequencies = octavesFor(detail, OCTAVES[detail.tier]);
-    const { cover, shown } = cloudCover(c, n, footprint, frequencies);
-    const toEye = normalize(uEye.sub(n.mul(1 + CLOUD_HEIGHT)));
-    const up = max(dot(n, toEye), 0.02);
+    const { cover, base, shown } = cloudCover(c, n, footprint, frequencies);
     // A thin layer is more opaque seen slanting (the eye's path through it is 1 / mu longer).
-    const flat = coverOpacity(cover, shown);
-    const opacity = float(1).sub(pow(float(1).sub(min(flat, 0.999)), min(float(1).div(up), 3))).mul(0.98);
+    const opacity = slanted(coverOpacity(cover, shown), onDeck.up);
     const nDotL = dot(n, uSun);
-    // Cloud tops as relief: thicker cloud stands higher, so its sunward slopes are bright and the far ones shaded.
-    const top = tiltNormal(n, bumpGradient(positionLocal, n, cover.mul(CLOUD_RELIEF)), 1);
+    // Cloud tops as relief: thicker cloud stands higher, so its sunward slopes are bright and the far
+    // ones shaded. Where the map is magnified enough to be read smooth, the smooth map's cover shapes it
+    // (there the eroded edges' fine noise, magnified, would emboss into rock).
+    const height = mix(cover, base, smoothed(c));
+    const top = tiltNormal(n, bumpGradient(point, n, height.mul(CLOUD_RELIEF)), 1);
     const lit = clamp(dot(top, uSun).add(0.12).div(1.12), 0, 1);
     // At low sun thicker cloud toward the Sun also shades this one.
-    const ahead = sampleSlot(slot.clouds, towardSun(c, n, float(0.004)).coords).r;
+    const ahead = cloudMap(towardSun(c, n, float(0.004)).coords);
     const lowSun = float(1).sub(smoothstep(0.15, 0.6, nDotL));
-    const relief = clamp(float(1).sub(ahead.sub(cover).mul(2.2).mul(lowSun)), 0.45, 1.15);
+    const relief = clamp(float(1).sub(ahead.sub(height).mul(2.2).mul(lowSun)), 0.45, 1.15);
     const sunColour = sunAt(scatter, 1 + CLOUD_HEIGHT, nDotL).mul(sunlit(nDotL.add(0.02), 0.006));
     const light = sunColour.mul(lit).mul(relief).add(skyFill(nDotL).mul(0.6)).add(nightLight(top, nDotL, 0.2));
     let colour: Vec3Node = light.mul(CLOUD_ALBEDO).mul(uLight);
     if (scatter && table) {
-      // The air's shell dims everything behind it by the whole column down to the ground; a cloud top
-      // sits above most of that air, so it is brightened back by what lies below it along the view.
-      const aboveCloud = transmittanceToTop(air, table.texture, float(1 + CLOUD_HEIGHT), up);
-      const fromGround = transmittanceToTop(air, table.texture, float(1), up);
-      colour = colour.mul(min(aboveCloud.div(max(fromGround, 1e-3)), 3));
+      // The cloud tops are drawn after the air's shell has dimmed what lies behind them and before it
+      // adds its light (./atmosphere CloudDeck), so they are dimmed here by the air between them and the
+      // eye alone: from above the air, the way from the cloud top to the top of the air along this
+      // fragment's ray (its own ray, as the shell's pixel in front of it has it); from inside the air,
+      // on the way down to the ground (the shell is not drawn there), the way to the eye.
+      const aboveCloud = transmittanceToTop(air, table.texture, float(1 + CLOUD_HEIGHT), onDeck.up);
+      const eyeRadius = length(uEye);
+      const aboveEye = transmittanceToTop(air, table.texture, eyeRadius, max(dot(uEye.div(eyeRadius), ray.negate()), 0));
+      colour = colour.mul(aboveCloud.div(select(eyeRadius.lessThan(air.top), max(aboveEye, 1e-4), vec3(1, 1, 1))));
     }
     const material = blendPremultiplied(new MeshBasicNodeMaterial({ side: FrontSide, transparent: true, depthWrite: false, fog: false }));
-    // Close in the shell fades, so the ground the view zoomed to shows; with the day's mosaic its clouds are the real ones.
+    // Close in the shell fades around the place the view is aimed at and where its map is magnified
+    // past what it can show, so the ground there shows, and stays toward the horizon; with the day's
+    // mosaic its clouds are the real ones.
     // The clouds step aside while the climate's temperature view shows the ground.
-    const kept = (tiles ? opacity.mul(tiles.clouds) : opacity).mul(float(1).sub(climate.mapShare));
+    const kept = opacity.mul(cloudsKept(n, c)).mul(onDeck.coverage);
     material.colorNode = colour.mul(kept);
     material.opacityNode = kept;
     return material;
@@ -386,7 +499,7 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   const surfaceKey = (d: ExploreDetail): string =>
     `${d.atmosphere}|${d.normalMaps}|${d.nightLights}|${d.cloudShadows}|${d.clouds}|${OCTAVES[d.tier]}|${mapWidth(d)}`;
   const cloudKey = (d: ExploreDetail): string => `${d.atmosphere}|${OCTAVES[d.tier]}|${mapWidth(d)}`;
-  const airKey = (d: ExploreDetail): string => `${d.atmosphere}|${d.atmosphere === 'scatter' ? d.atmosphereSteps : 0}|${Math.min(d.sphereSegments, 128)}`;
+  const airKey = (d: ExploreDetail): string => `${d.atmosphere}|${d.atmosphere === 'scatter' ? d.atmosphereSteps : 0}|${Math.min(d.sphereSegments, 128)}|${d.clouds}`;
   const cached = <T>(map: Map<string, T>, key: string, build: () => T): T => {
     let value = map.get(key);
     if (!value) {
@@ -395,14 +508,24 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
     }
     return value;
   };
+  /** True where the air is marched: the cloud deck is then drawn between the shell's draws (CloudDeck), else under the air. */
+  const layered = (d: ExploreDetail): boolean => d.atmosphere === 'scatter' && table !== null;
+  const cloudOrder = (d: ExploreDetail): number => (layered(d) ? (AIR_ORDER.through + AIR_ORDER.glow) / 2 : 1);
   const surfaceFor = (d: ExploreDetail): MeshBasicNodeMaterial => cached(surfaces, surfaceKey(d), () => buildSurface(d));
   const cloudsFor = (d: ExploreDetail): MeshBasicNodeMaterial => cached(cloudMaterials, cloudKey(d), () => buildClouds(d));
-  const sphere = (radius: number, segments: number): SphereGeometry =>
-    cached(geometries, `${radius}|${segments}`, () => new SphereGeometry(radius, segments, Math.max(16, Math.round(segments / 2))));
+  const rings = (segments: number): number => Math.max(16, Math.round(segments / 2));
+  const sphere = (radius: number, segments: number): SphereGeometry => cached(geometries, `${radius}|${segments}`, () => new SphereGeometry(radius, segments, rings(segments)));
+  /**
+   * The scale that brings the middles of a sphere mesh's facets (inside the sphere through its vertices)
+   * out to that sphere: the cloud mesh so scaled covers the deck's outline, which the air's shell finds
+   * exactly (./atmosphere deckCrossing). Only while the shell is drawn (from above the air): from inside
+   * it the mesh keeps its size, so the clouds do not leave a kilometre or two above their height.
+   */
+  const outlineScale = (segments: number): number => 1 / (Math.cos(Math.PI / segments) * Math.cos(Math.PI / (2 * rings(segments))));
   const airFor = (d: ExploreDetail): ExploreAir =>
     cached(airs, airKey(d), () => {
-      const model = d.atmosphere === 'scatter' && table ? 'scatter' : 'chord';
-      return createAir(air, model, d.atmosphereSteps, table?.texture ?? null, airUniforms, Math.min(d.sphereSegments, 128));
+      const model = layered(d) ? 'scatter' : 'chord';
+      return createAir(air, model, d.atmosphereSteps, table?.texture ?? null, airUniforms, Math.min(d.sphereSegments, 128), layered(d) && d.clouds ? deck : null);
     });
   /** Disposes what a detail level does not use (kept: its own materials, geometries and air). */
   const evict = (d: ExploreDetail): void => {
@@ -434,7 +557,9 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
   surface.name = 'explore-earth-surface';
   const clouds = new Mesh(sphere(1 + CLOUD_HEIGHT, initial.sphereSegments), cloudsFor(initial));
   clouds.name = 'explore-earth-clouds';
-  clouds.renderOrder = 1;
+  clouds.renderOrder = cloudOrder(initial);
+  /** The cloud mesh's scale while the eye is above the air (outlineScale), 1 below it. */
+  let deckScale = layered(initial) ? outlineScale(initial.sphereSegments) : 1;
   clouds.visible = initial.clouds;
   let currentAir = airFor(initial);
   object.add(surface, clouds, ...currentAir.meshes);
@@ -451,17 +576,31 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       return sunAt(true, 1, mu);
     },
     update(frame, cameraWorld) {
-      uTime.value = frame.time;
       uLight.value = frame.light;
-      const turn = frame.time * CLOUD_DRIFT * 2 * Math.PI;
-      uDriftCos.value = Math.cos(turn);
-      uDriftSin.value = Math.sin(turn);
       inverse.copy(object.matrixWorld).invert();
       uSun.value.set(frame.sun.x, frame.sun.y, frame.sun.z).transformDirection(inverse);
       uMoon.value.set(frame.moon.x, frame.moon.y, frame.moon.z).transformDirection(inverse);
       uMoonLight.value = NIGHT.moonlight * frame.moonLit;
       uEye.value.copy(cameraWorld).applyMatrix4(inverse);
       object.visible = frame.light > 1e-3;
+      // This frame's step of the illustrative clock (none when it stands still, as with reduced
+      // motion; a step back, the explorer reopened, is no step).
+      const dt = lastTime === null ? 0 : frame.time - lastTime;
+      lastTime = frame.time;
+      // The clouds drift on their own clock, slowed in proportion to the height below DRIFT_SLOWS.below.
+      const height = uEye.value.length() - 1;
+      if (dt > 0) uCloudTime.value += Math.min(dt, 1) * Math.min(1, Math.max(DRIFT_SLOWS.least, height / DRIFT_SLOWS.below));
+      const turn = uCloudTime.value * CLOUD_DRIFT * 2 * Math.PI;
+      uDriftCos.value = Math.cos(turn);
+      uDriftSin.value = Math.sin(turn);
+      // The eye adapts to the dark only while the night fills the view; a cut (or a clock that stood
+      // still, as with reduced motion) takes the new view's adaptation at once.
+      const target = darkAdaptation(litShare(uEye.value, uSun.value));
+      uDark.value = dt > 0 && dt <= 1 ? uDark.value + (target - uDark.value) * (1 - Math.exp(-dt / DARK.seconds)) : target;
+      uDeckScale.value = uEye.value.length() > air.top ? deckScale : 1;
+      clouds.scale.setScalar(uDeckScale.value);
+      // With no airglow to show, its shell is not drawn at all.
+      for (const m of currentAir.meshes) if (m.name === 'explore-earth-airglow') m.visible = uDark.value > 1e-3;
     },
     setMarks(list) {
       marks.set(list);
@@ -493,7 +632,9 @@ export function createEarth(textures: PlanetTextures, noise: Data3DTexture, air:
       surface.geometry = sphere(1, detail.sphereSegments);
       clouds.material = cloudsFor(detail);
       clouds.geometry = sphere(1 + CLOUD_HEIGHT, detail.sphereSegments);
+      deckScale = layered(detail) ? outlineScale(detail.sphereSegments) : 1;
       clouds.visible = detail.clouds;
+      clouds.renderOrder = cloudOrder(detail);
       const nextAir = airFor(detail);
       if (nextAir !== currentAir) {
         object.remove(...currentAir.meshes);

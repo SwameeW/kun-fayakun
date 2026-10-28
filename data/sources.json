@@ -235,6 +235,40 @@
       }
     },
     {
+      "id": "stromgren-1939",
+      "kind": "paper",
+      "title": "The Physical State of Interstellar Hydrogen",
+      "author": "Strömgren",
+      "url": "https://doi.org/10.1086/144074",
+      "version": "ApJ 89, 526 (1939)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Strömgren, ApJ 89, 526 (1939)",
+      "notes": "Chapter 3's bubbles of ionised gas round the first stars (src/chapters/ch03/reionisation.ts) are sized as Strömgren spheres are: a star's light ionises so much gas. Their sizes and the time are illustrative, and the tag says so.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "furlanetto-2004",
+      "kind": "paper",
+      "title": "The Growth of H II Regions During Reionization",
+      "author": "Furlanetto, Zaldarriaga and Hernquist",
+      "url": "https://doi.org/10.1086/423025",
+      "version": "ApJ 613, 1 (2004)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Furlanetto, Zaldarriaga and Hernquist, ApJ 613, 1 (2004)",
+      "notes": "Chapter 3's reionisation goes from the dense regions out ('inside-out'), the bubbles meeting and merging, as in this paper's model; the film stops partway, with neutral islands left.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "sunnah-bukhari",
       "kind": "hadith-collection",
       "title": "Sahih al-Bukhari",
@@ -582,7 +616,7 @@
       "license": "Public domain (U.S. Government work). NASA Earth Observatory's image use policy: its materials may be re-published or re-used, commercially too, except where a copyright is indicated; it asks to be credited, and the only mandatory credit is NASA. Use must not imply NASA endorsement; no NASA insignia or logotype is used.",
       "licenseUrl": "https://web.archive.org/web/20250101064811/https://earthobservatory.nasa.gov/image-use-policy",
       "credit": "Blue Marble: Next Generation, Reto Stöckli, NASA Earth Observatory (NASA Goddard Space Flight Center)",
-      "notes": "The Earth's daytime colour in exploration (public/assets/planets/earth/day-*.ktx2). The base map has no topographic or bathymetric shading baked in, so relief comes only from the ETOPO 2022 normal map. Collection page: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/. The exploration Earth is a composite of several epochs (land and sea ice July 2004, clouds 2001, night lights 2016) and is captioned as such.",
+      "notes": "The Earth's daytime colour in exploration (public/assets/planets/earth/day-*.ktx2). The base map has no topographic or bathymetric shading baked in, so relief comes only from the ETOPO 2022 normal map. Collection page: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/. The base map has no sea ice: the ocean is open to the poles. The exploration Earth is a composite of several epochs (land July 2004, clouds and sea ice 22 September 2025, night lights 2016) and is captioned as such.",
       "review": {
         "reviewer": null,
         "role": null,
@@ -607,16 +641,16 @@
       }
     },
     {
-      "id": "nasa-blue-marble-clouds-2002",
+      "id": "nasa-gibs-viirs-2025-09-22",
       "kind": "dataset",
-      "title": "Blue Marble: clouds (cloud_combined_8192.tif), 2002",
-      "author": "Reto Stöckli, NASA Goddard Space Flight Center (Blue Marble 2002, MODIS data)",
-      "url": "https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif",
-      "version": "Blue Marble 2002 cloud composite, 8192 x 4096, retrieved 2026-10-23",
-      "license": "Public domain (U.S. Government work). NASA Earth Observatory's image use policy: its materials may be re-published or re-used, commercially too, except where a copyright is indicated; it asks to be credited, and the only mandatory credit is NASA. Use must not imply NASA endorsement; no NASA insignia or logotype is used.",
-      "licenseUrl": "https://web.archive.org/web/20250101064811/https://earthobservatory.nasa.gov/image-use-policy",
-      "credit": "NASA Goddard Space Flight Center Image by Reto Stöckli (land surface, shallow water, clouds). Enhancements by Robert Simmon (ocean color, compositing, 3D globes, animation). Data and technical support: MODIS Land Group; MODIS Science Data Support Team; MODIS Atmosphere Group; MODIS Ocean Group",
-      "notes": "The cloud layer of the exploration Earth (public/assets/planets/earth/clouds-*.ktx2): two days of visible imagery plus thermal infrared over the poles, from 2001 (so Antarctica reads as cloud-bright). Credit as printed on the archived Visible Earth record 57747 (https://web.archive.org/web/20250109030918/https://visibleearth.nasa.gov/images/57747/blue-marble-clouds), up to its \"Additional data\" clause, which names the topography, Antarctica and city-light layers. Fallback copy: http://web.archive.org/web/20260318202426/https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif.",
+      "title": "VIIRS Corrected Reflectance, true colour, 22 September 2025: Suomi NPP, NOAA-20 and NOAA-21 (NASA GIBS)",
+      "author": "NASA Earth Science Data and Information System (ESDIS), Global Imagery Browse Services (GIBS); VIIRS on Suomi NPP (NASA and NOAA), NOAA-20 and NOAA-21 (NOAA JPSS)",
+      "url": "https://nasa-gibs.github.io/gibs-api-docs/",
+      "version": "Daily mosaics of 2025-09-22 from the GIBS WMS (EPSG:4326, best available), true colour (bands I1, M4, M3) read at 16384 x 8192, NDSI snow cover at 4096 x 2048, retrieved 2026-10-28",
+      "license": "CC0 / public domain. NASA's Earth science data use guidance: ESDIS content (imagery, data, products) is generally not copyrighted, and data from NASA-led missions without a marked restriction are licensed as Creative Commons Zero (CC0); NOAA-20 and NOAA-21 are NOAA satellites (JPSS), whose data are U.S. Government works. NASA asks to be acknowledged as the source, and use must not imply NASA endorsement.",
+      "licenseUrl": "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance",
+      "credit": "NASA GIBS (ESDIS): VIIRS on Suomi NPP, NOAA-20 and NOAA-21",
+      "notes": "The cloud layer of the exploration Earth (public/assets/planets/earth/clouds-*.ktx2), with the sea ice of the same day, which the July 2004 day map lacks. Made by scripts/planets/build.py from GIBS's daily true-colour mosaics of the three satellites (layers VIIRS_NOAA20_, VIIRS_SNPP_ and VIIRS_NOAA21_CorrectedReflectance_TrueColor): whiteness is the darkest of a pixel's three bands as reflectance (cloud is white, bright ground coloured); the median of the three satellites, which cross the same sea minutes apart, drops the sunglint each has down the middle of its orbits; opacity is the share of the way from the ground's own whiteness (the day map's, or open sea's) to thick cloud's. None is drawn over the ice sheets the day map shows white, nor over the day's clear-sky snow on land (layers VIIRS_NOAA20_ and VIIRS_SNPP_NDSI_Snow_Cover), where visible light cannot tell cloud from snow. Poleward of the imagery (about 83 N and 75 S, where the equinox Sun was too low) open water is filled as opaque pack ice and cloud. Thin smoke and dust over dark ground count as faint cloud. Acknowledgement GIBS asks for: \"We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).\"",
       "review": {
         "reviewer": null,
         "role": null,
@@ -1525,6 +1559,125 @@
       }
     },
     {
+      "id": "hughes-2000-cas-a",
+      "kind": "paper",
+      "title": "Nucleosynthesis and Mixing in Cassiopeia A",
+      "author": "J. P. Hughes, C. E. Rakowski, D. N. Burrows and P. O. Slane (2000), ApJ 528, L109",
+      "url": "https://doi.org/10.1086/312438",
+      "version": "arXiv:astro-ph/9910474, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Hughes et al. (2000)",
+      "notes": "In parts of Cassiopeia A, iron-rich debris from explosive silicon burning lies outside the silicon-rich debris: the explosion turned over part of the star’s core, probably in plumes rising from its convection. Chapter 6 shows it as the iron plumes out past the silicon.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hwang-2004-cas-a",
+      "kind": "paper",
+      "title": "A Million Second Chandra View of Cassiopeia A",
+      "author": "U. Hwang, J. M. Laming et al. (2004), ApJ 615, L117",
+      "url": "https://doi.org/10.1086/426186",
+      "version": "arXiv:astro-ph/0409760, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Hwang et al. (2004)",
+      "notes": "Silicon-rich debris in a bipolar structure: a jet to the north-east and its counterpart to the south-west, chemically alike. Chapter 6 shows them as the pair of silicon jets.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "milisavljevic-fesen-2015-cas-a",
+      "kind": "paper",
+      "title": "The Bubble-like Interior of the Core-Collapse Supernova Remnant Cassiopeia A",
+      "author": "D. Milisavljevic and R. A. Fesen (2015), Science 347, 526",
+      "url": "https://doi.org/10.1126/science.1261949",
+      "version": "arXiv:1501.07283, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Milisavljevic & Fesen (2015)",
+      "notes": "A 3D map of the inner, unshocked debris of Cassiopeia A: bubble-like cavities joined to the rings of its bright outer shell, which may have come from outward plumes of debris rich in radioactive nickel-56 (its iron-56 perhaps still inside them). Chapter 6 shows them as the cavities in the inner debris.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "gotthelf-2001-cas-a",
+      "kind": "paper",
+      "title": "Chandra Detection of the Forward and Reverse Shocks in Cassiopeia A",
+      "author": "E. V. Gotthelf, B. Koralesky, L. Rudnick, T. W. Jones, U. Hwang and R. Petre (2001), ApJ 552, L39",
+      "url": "https://doi.org/10.1086/320250",
+      "version": "arXiv:astro-ph/0104161, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Gotthelf et al. (2001)",
+      "notes": "Cassiopeia A’s blast wave (its forward shock): a faint thin rim of X-rays about 2.7 arcminutes in radius, outside the bright shell of debris; the reverse shock lies at about two thirds of its radius. Chapter 6 shows it as the faint rim ahead of the debris.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "ho-heinke-2009-cas-a",
+      "kind": "paper",
+      "title": "A Neutron Star with a Carbon Atmosphere in the Cassiopeia A Supernova Remnant",
+      "author": "W. C. G. Ho and C. O. Heinke (2009), Nature 462, 71",
+      "url": "https://doi.org/10.1038/nature08525",
+      "version": "arXiv:0911.0672, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Ho & Heinke (2009)",
+      "notes": "The compact X-ray source at the centre of Cassiopeia A is a very young neutron star, about 330 years old.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "pavlov-luna-2009-cas-a",
+      "kind": "paper",
+      "title": "A Dedicated Chandra ACIS Observation of the Central Compact Object in the Cassiopeia A Supernova Remnant",
+      "author": "G. G. Pavlov and G. J. M. Luna (2009), ApJ 703, 910",
+      "url": "https://doi.org/10.1088/0004-637X/703/1/910",
+      "version": "arXiv:0905.3190, read 2026-10-28",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Pavlov & Luna (2009)",
+      "notes": "No extended emission (no wind nebula) is seen round the central compact object of Cassiopeia A, and no significant pulsations.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "hester-2008-crab",
+      "kind": "paper",
+      "title": "The Crab Nebula: An Astrophysical Chimera",
+      "author": "J. J. Hester (2008), Annual Review of Astronomy and Astrophysics 46, 127",
+      "url": "https://doi.org/10.1146/annurev.astro.45.051806.110608",
+      "version": "ARA&A 46, 127-155 (2008)",
+      "license": "Facts only: what the remnant shows, credited",
+      "licenseUrl": null,
+      "credit": "Hester (2008)",
+      "notes": "The Crab Nebula glows with synchrotron light from the wind of particles its young pulsar drives, its wisps changing over days. Chapter 6 shows a faint, still glow of this kind round the neutron star.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "planck-2018-cosmology",
       "kind": "paper",
       "title": "Planck 2018 results. VI. Cosmological parameters (table 2)",
@@ -1739,6 +1892,176 @@
       "licenseUrl": null,
       "credit": "Small worlds and the sky's glow: models after the papers named here",
       "notes": "Values typed from these papers are listed with their references in scripts/smallbodies/build.py and src/explore/worlds/glow.ts; the Milky Way's and the zodiacal light's glows are models, and the explorer's readout says so.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-lava-lake-2011",
+      "kind": "recording",
+      "title": "Lava lake activity from inside Halemaʻumaʻu Crater (Kīlauea summit vent, 14 February 2011)",
+      "author": "USGS Hawaiian Volcano Observatory",
+      "url": "https://www.usgs.gov/media/audio/lava-lake-activity-inside-halemaumau-crater",
+      "version": "MP3, 128 kbps, 44.1 kHz, stereo, 26.7 s (sha256 23c3d75f…b382), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Lava lake sound: USGS Hawaiian Volcano Observatory",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/audio/2011Feb14_Hmm%20vent%20sounds.mp3. The churning is lava releasing gas; the pops are rocks falling into the lake. Chapter 8's lava, slowed a little. Made into public/assets/sound/lava.m4a by scripts/sound/build.py, which records the original's address and sha256: 0.5-18.5 s (the big rockfall at 19.2 s left out), mono, high-passed at 70 Hz, a 16 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-overlook-vent-2012",
+      "kind": "recording",
+      "title": "Videos of lava lake in Halemaʻumaʻu overlook vent (filmed 5 October 2012, per HVO's chronology; page dated 14 October 2012): the vent walls crackling",
+      "author": "USGS Hawaiian Volcano Observatory",
+      "url": "https://www.usgs.gov/media/videos/videos-lava-lake-halemaumau-overlook-vent",
+      "version": "MP4 video, AAC 128 kbps, 44.1 kHz, stereo, 21.4 s (sha256 8b8d04f4…bc1d), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Crackling lava vent: USGS Hawaiian Volcano Observatory",
+      "notes": "File: https://usgs-ocapsv2-public-input-media.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/video/multimediaFile-409.mp4. The sound of rock in the vent walls cracking as it heats; only the sound is used. Chapter 8's lava crust and Chapter 10's Big Rip, as short grains. Made into public/assets/sound/crackle.m4a by scripts/sound/build.py, which records the original's address and sha256: the sound taken out with afconvert, 8.1-21.1 s (after the wind on the microphone), mono, high-passed at 200 Hz.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-mudpot-artists-paintpots",
+      "kind": "recording",
+      "title": "Mudpot at Artists' Paintpots: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 9",
+      "author": "USGS Office of Communications",
+      "url": "https://www.usgs.gov/media/audio/mudpot-artists-paintpots-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, stereo, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 de8437b8…f823), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Mudpot sound: USGS Office of Communications, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Mud%20Pool.mp3. A Sounds of Yellowstone podcast episode (5 November 2023); the page says 'By Office of Communications' and files it with the Yellowstone Volcano Observatory. Chapter 8's lava bubbling: the mud's plops slowed an octave, as thick lava's. Made into public/assets/sound/mud.m4a by scripts/sound/build.py, which records the original's address and sha256: 348-380 s of the excerpt (clear of wind bumps on the microphone), mono, high-passed at 80 Hz, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-congress-pool",
+      "kind": "recording",
+      "title": "Congress Pool: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 5",
+      "author": "USGS Office of Communications",
+      "url": "https://www.usgs.gov/media/audio/congress-pool-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 83bbeb49…1965), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Congress Pool sound: USGS Office of Communications, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Congress%20Pool.mp3. A Sounds of Yellowstone podcast episode (5 November 2023); the page says 'By Office of Communications' and files it with the Yellowstone Volcano Observatory. A roiling pool in Norris Geyser Basin; Chapter 6's convection inside a star, slowed more than an octave. Made into public/assets/sound/roil.m4a by scripts/sound/build.py, which records the original's address and sha256: 376-408 s of the excerpt, mono, high-passed at 40 Hz, low-passed at 5 kHz, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-blue-mud-steam-vent",
+      "kind": "recording",
+      "title": "Blue Mud Steam Vent: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 2",
+      "author": "USGS Office of Communications",
+      "url": "https://www.usgs.gov/media/audio/blue-mud-steam-vent-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, stereo, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 17696b27…44f7), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Steam vent sound: USGS Office of Communications, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Blue%20Mud%20Steam%20Vent.mp3. A Sounds of Yellowstone podcast episode (5 November 2023); the page says 'By Office of Communications' and files it with the Yellowstone Volcano Observatory. The hiss of gas falling onto a white dwarf (Chapter 6), of dust in the young Sun's disk (Chapter 7) and of the Big Rip (Chapter 10), filtered. Made into public/assets/sound/steam.m4a by scripts/sound/build.py, which records the original's address and sha256: 125-157 s of the excerpt, mono, high-passed at 100 Hz, its puffs held to 8 dB over the hiss, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-terrace-springs",
+      "kind": "recording",
+      "title": "Terrace Springs: Sounds of Yellowstone (ASMR, Sleep, Concentration), Episode 11",
+      "author": "USGS Office of Communications",
+      "url": "https://www.usgs.gov/media/audio/terrace-springs-sounds-yellowstone-asmr-sleep-concentration",
+      "version": "MP3, 256 kbps, 48 kHz, stereo, 8 h; a 16 MB excerpt (bytes 200000000-215999999, about 1 h 44 min in; sha256 15de1472…63dc), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Terrace Springs sound: USGS Office of Communications, Sounds of Yellowstone",
+      "notes": "File: https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/audio/Terrace%20Springs.mp3. A Sounds of Yellowstone podcast episode (5 November 2023); the page says 'By Office of Communications' and files it with the Yellowstone Volcano Observatory. Carbon dioxide bubbling up through a hot spring; Chapter 9's bubbles in the first ocean and its rise to the surface, slowed and heard through water. Made into public/assets/sound/bubbles.m4a by scripts/sound/build.py, which records the original's address and sha256: 70-102 s of the excerpt, mono, its 60 Hz and 120 Hz hum notched, a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-commons-light-rain-2016",
+      "kind": "recording",
+      "title": "Light Rain Distant Thunder July 5th 2016",
+      "author": "kvgarlic (Freesound 349454), via Wikimedia Commons",
+      "url": "https://commons.wikimedia.org/wiki/File:Light_Rain_Distant_Thunder_July_5th_2016.wav",
+      "version": "WAV, 32-bit float, 48 kHz, stereo, 110.1 s (sha256 aa85a4aa…51cb), retrieved 2026-10-28",
+      "license": "CC0 1.0 Universal Public Domain Dedication (stated on the Commons page and on the Freesound page, https://freesound.org/people/kvgarlic/sounds/349454/)",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "credit": "Rain: kvgarlic (CC0)",
+      "notes": "File: https://upload.wikimedia.org/wikipedia/commons/b/b6/Light_Rain_Distant_Thunder_July_5th_2016.wav. Chapter 8's rain on the young Earth; the distant thunder and the bird elsewhere in the recording are left out. Made into public/assets/sound/rain.m4a by scripts/sound/build.py, which records the original's address and sha256: 36-68 s, stereo, high-passed at 160 Hz (under the drops on the windscreen), a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-commons-beach-south-carolina",
+      "kind": "recording",
+      "title": "Beach sounds South Carolina (Litchfield Beach, 25 December 2003)",
+      "author": "Anthropic42 (English Wikipedia), via Wikimedia Commons",
+      "url": "https://commons.wikimedia.org/wiki/File:Beach_sounds_South_Carolina.ogg",
+      "version": "Ogg Vorbis, about 137 kbps, 44.1 kHz, stereo, 61.6 s (sha256 d81d1a4e…59d7), retrieved 2026-10-28",
+      "license": "Public domain: 'This work has been released into the public domain by its author, Anthropic42, at the English Wikipedia project. This applies worldwide.' (Commons, PD-user)",
+      "licenseUrl": null,
+      "credit": "Sea: Anthropic42 (public domain)",
+      "notes": "File: https://upload.wikimedia.org/wikipedia/commons/0/04/Beach_sounds_South_Carolina.ogg. Chapter 8's first seas and Chapter 9's sea, near and far. Made into public/assets/sound/surf.m4a by scripts/sound/build.py, which records the original's address and sha256: 15-49 s, a 2 ms tick at 44.485 s repaired, stereo, high-passed at 60 Hz, low-passed at 8 kHz, cut at the waves' troughs into a 30 s loop.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-nps-thunder",
+      "kind": "recording",
+      "title": "Thunder (NPS Sound Gallery)",
+      "author": "National Park Service, Natural Sounds and Night Skies Division",
+      "url": "https://www.nps.gov/subjects/sound/sounds-thunder.htm",
+      "version": "MP3, 128 kbps, 44.1 kHz, mono, 46.0 s (sha256 54d6a7fc…0a49), retrieved 2026-10-28",
+      "license": "Public domain: 'The files are in the public domain and may be downloaded. Enjoy, and please give the appropriate credit.' (NPS Sound Gallery, https://www.nps.gov/subjects/sound/gallery.htm)",
+      "licenseUrl": "https://www.nps.gov/subjects/sound/gallery.htm",
+      "credit": "Thunder: National Park Service, Natural Sounds and Night Skies Division",
+      "notes": "File: https://www.nps.gov/nps-audiovideo/legacy/mp3/nri/avElement/nri-Thunder.mp3. Never heard as a storm: slowed and darkened into the low swells (a star's collapse and its Type Ia, the Sun's ignition, the giant impact), and played backwards for the Big Crunch's gathering rumble. Made into public/assets/sound/thunder.m4a by scripts/sound/build.py, which records the original's address and sha256: 3.5-33.5 s (after the crack), mono, faded in over 1 s and out over 6 s.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "sound-usgs-bolide-2025",
+      "kind": "recording",
+      "title": "May 3, 2025, bolide acoustic signal recorded by infrasound station in Yellowstone National Park",
+      "author": "USGS Yellowstone Volcano Observatory",
+      "url": "https://www.usgs.gov/media/videos/may-3-2025-bolide-acoustic-signal-recorded-infrasound-station-yellowstone-national",
+      "version": "MP4 video, AAC, 44.1 kHz, stereo, 6.0 s (sha256 fcd1c31e…8b77), retrieved 2026-10-28",
+      "license": "Public domain (a U.S. Government work; the page states 'Sources/Usage: Public Domain')",
+      "licenseUrl": "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+      "credit": "Meteor airburst: USGS Yellowstone Volcano Observatory",
+      "notes": "File: https://usgs-ocapsv2-public-input-media.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/video/WY_YNB_01_HDF_10x_2.mp4. The infrasound of a meteor exploding in the atmosphere, sped up ten times into hearing; only the sound is used. Chapter 8's bombardment and giant impact, as distant thuds. Made into public/assets/sound/bolide.m4a by scripts/sound/build.py, which records the original's address and sha256: the sound taken out with afconvert, 3.0-5.5 s, mono, faded in and out.",
       "review": {
         "reviewer": null,
         "role": null,
