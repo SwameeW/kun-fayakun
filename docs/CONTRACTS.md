@@ -864,22 +864,34 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   (`src/ai/engine/generations.ts`, `createGenerations(source)`) a `generate` first ends the
   generation under way: interrupted, its step under way finished, its iterator returned (the lock
   let go); a stopped stream's pieces up to the stop and its usage still come to its pulls. A stop
-  for a generation not yet started, or not yet pulled, is kept there and the generation is never
-  started (WebLLM clears its interrupt on a generation's first step). The page's engine
+  for a generation not yet pulled, or not yet started, is kept there and the generation is never
+  started (WebLLM clears its interrupt on a generation's first step). The page sends its stop for a
+  generation once the worker has said it started (a stop names the stream, whose id comes with that
+  answer), so only the first of those is the page's; the second is the worker's API alone. The
+  worker watches the loaded model's `GPUDevice.lost` (`deviceOf(engine, modelId)` in
+  `src/ai/engine/worker-handler.ts`, where WebLLM 0.2.86 keeps it), and every generation that fails
+  after the loss is sent as `device-lost`, whatever WebLLM's error names (it never names the
+  device); a failure that comes before the loss is told waits up to 250 ms for it. A device lost as
+  its model is freed or loaded again is not told. The page's engine
   (`loadWebLLM` in `src/ai/engine/webllm.ts`) asks for a generation only once the one before it has
   ended; `interrupt()` stops the one under way and any waiting, a stop that comes while the worker
   starts one included; `unload()` ends them as stopped. While it waits on the worker during a
   generation it pings it (`WATCH`: every 5 s); a ping unanswered for 30 s or a step over 5 minutes
   ends the worker and the generation (finish `error`, `lastError` saying which, a console warning).
   `lastError` is that of the last generation to end (null when it did not fail); `lost` is set once
-  the engine can no longer generate (the watch ended its worker, or a generation lost the GPU
-  device), and `LanguageEngine.lost` (optional) says so for any engine. The orchestrator's turns ask
-  for one generation at a time too (`ask`, `confirm` and `use` stop the turn under way first), and
-  the engine state stays `busy` until the last has ended. A generation that ends in error on an
+  the engine can no longer generate (the watch ended its worker, or a generation ended
+  `device-lost`), and `LanguageEngine.lost` (optional) says so for any engine. The orchestrator's
+  turns ask for one generation at a time too (`ask`, `confirm` and `use` stop the turn under way
+  first), and the engine state stays `busy` until the last has ended. A generation that ends in error on an
   engine that is `lost` lets the engine go: it is unloaded, the engine state reads `error` with that
-  EngineError, `ai.mind.announce.engineLost` is announced, and the guide answers until a model is
-  chosen again (a plan that ended in an engine error shows `ai.mind.notice.engineError`, as an
-  answer does).
+  EngineError, and the guide answers until a model is chosen again (a plan that ended in an engine
+  error shows `ai.mind.notice.engineError`, as an answer does). `ai.mind.announce.engineLost` is
+  said ahead of the announcement that ends the turn, in that same announcement: the page's live
+  region (`src/ui/announcer.ts`) writes only the last of announcements made within 60 ms of each
+  other. Where that turn was stopped before its generation ended, it is said alone once the model
+  is let go, or with the end of a question asked over it; a model chosen (`use`, `attach`) drops
+  it. Announcements name a catalogue model as the panel does (`ModelSpec.name`), any other engine
+  by its `model`.
 - **How a model reads its prompt** (`src/ai/engine/prefill.ts`, docs/AI-INTELLIGENCE.md §6). A
   `load` message carries a `PrefillSetting` (`chunkTokens`, null for none; `yieldBetween`), the
   model's own from `prefillFor(model)` unless the evaluation gives another; after every load the
@@ -899,7 +911,9 @@ visitor's browser only: no API key, account, subscription or hosted inference.
   nothing a visitor does reaches it). `useScripted` switches the running assistant to the
   scripted engine (`src/ai/engine/scripted.ts`: replies written in the test, matched on the last
   user message and the format; `options.delayMs` between streamed words; `options.stopMs`, how long
-  a stopped reply takes to end, as a model's does), labelled `scripted`, and resolves to its counts:
+  a stopped reply takes to end, as a model's does; a reply marked `loses` ends the engine instead,
+  as a model whose worker ended: finish `error`, `lost` set, every generation after it an error),
+  labelled `scripted`, and resolves to its counts:
   `running` (generations under way now) and `mostAtOnce`.
   `evaluate({ router: 'first' | 'skip', prefill? })` is the real-model evaluation's alone (`tests/ai-eval`):
   from then on every generation is recorded as a `GenerationRecord` (`src/ai/types.ts`: the turn,

@@ -43,7 +43,8 @@ export const NO_PREFILL_SETTING: PrefillSetting = { chunkTokens: null, yieldBetw
  * compiled), 512, 256 and 128, with and without the wait, for Qwen3 0.6B and 1.7B and Qwen3.5 4B
  * and 9B (docs/AI-EVALUATION.md, "Reading the prompt in smaller pieces"). At 128 with the wait the
  * explorer's longest frame while the standard tier (Qwen3.5 4B) wrote fell from 1.0–1.6 s (as
- * compiled) to 133–167 ms, for 8–12% longer to the first token; without the wait 128 left it at
+ * compiled) to 133–167 ms, for 8–11% longer to a plan's first token and 11–14% to an answer's (8–14%
+ * in all, docs/AI-EVALUATION.md, "The setting"); without the wait 128 left it at
  * 183–233 ms, and 256 at 300–417 ms either way. The 4B gave the same result in all 144 cases, twice.
  */
 export const PREFILL_CHUNK_TOKENS = 128;
