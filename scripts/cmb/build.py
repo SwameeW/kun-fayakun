@@ -7,6 +7,7 @@ Steps (each reads the previous step's output from .cache/cmb-work):
     encode         mip levels -> public/assets/cmb/*.ktx2, decoded back for checks
     preview        annotated previews of the PNG and of the decoded KTX2 files
     manifest       public/assets/cmb/cmb.json
+    polarisation   Q, U -> the line texture and public/assets/cmb/cmb-polarisation.json (polarisation.py)
 """
 
 from __future__ import annotations
@@ -87,6 +88,16 @@ def step_manifest() -> None:
     print(f"wrote {out}")
 
 
+def step_polarisation() -> None:
+    import polarisation
+
+    report = polarisation.build_polarisation()
+    write_json(config.WORK / "polarisation-report.json", report)
+    out = config.PUBLIC / polarisation.MANIFEST_NAME
+    write_json(out, polarisation.build_manifest(report))
+    print(f"wrote {out}")
+
+
 STEPS = {
     "verify-source": step_verify_source,
     "grid": step_grid,
@@ -95,6 +106,7 @@ STEPS = {
     "preview": step_preview,
     "temperature": step_temperature,
     "manifest": step_manifest,
+    "polarisation": step_polarisation,
 }
 
 
