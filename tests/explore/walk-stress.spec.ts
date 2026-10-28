@@ -6,7 +6,8 @@
  * hand moves, Space jumps without pausing time, Q and E turn, the pad steps aside and runs); the way
  * back to orbit always on screen and every control inside the window at 1280 x 800, 1440 x 900 and
  * 2000 x 1300 (the phone's sizes are tests/explore/mobile.spec's); a landing whose ground never comes
- * says so and offers Retry; a walk asked for during a trip waits for the arrival; and the horizon level
+ * says so and offers Retry; coming down to ground that has loaded says where and how high, not
+ * that it is loading; a walk asked for during a trip waits for the arrival; and the horizon level
  * at any look up or down, the navigator open or folded (the light and the ground's decoding are
  * tests/explore/walk-light.spec's). Mocked flat terrain at 1,000 m.
  */
@@ -460,6 +461,9 @@ test('landing (and a landing that never comes): a click on the view takes no poi
     (window as unknown as KfHook).__kf.app.earthCommand({ kind: 'walk', ...a });
   }, HERE);
   await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('landing');
+  // The ground really is loading: said so, with no height to come down to.
+  expect((await walkView(page))?.comingDownKm).toBeNull();
+  await expect(page.getByTestId('walk-title')).toHaveText('Landing: the ground here is loading…');
   const box = await page.locator('canvas').first().boundingBox();
   if (!box) throw new Error('no canvas');
   const centre = { x: box.x + box.width / 2, y: box.y + box.height / 3 };
@@ -619,14 +623,22 @@ test.describe('with motion, the way down', () => {
     await ask();
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await expect.poll(onTheWay, LIVE).toBe(true);
+    // Said as it is (the ground has loaded): coming down over the place, and the camera's height above its ground.
+    const coming = await walkView(page);
+    expect(coming?.comingDownKm ?? -1).toBeGreaterThan(1);
+    expect(coming?.comingDownKm ?? Infinity).toBeLessThan(150);
+    expect(await page.getByTestId('walk-title').textContent()).toBe('Coming down over 23.4° N, 25° E');
+    expect(await page.getByTestId('walk-brief').textContent()).toMatch(/^[\d.,]+\u00a0km above the ground$/u);
     // W held on the way: no step taken.
     await page.keyboard.down('KeyW');
     await page.waitForTimeout(800);
     const held = await view(page);
     await page.keyboard.up('KeyW');
     if (held?.walk?.state === 'landing') expect(held.walk.walkedM).toBe(0);
-    // Then at the eye, 1.7 m over the mocked ground at 1,000 m: walking.
+    // Then at the eye, 1.7 m over the mocked ground at 1,000 m: walking, and no longer coming down.
     await expect.poll(async () => (await walkView(page))?.state, LIVE).toBe('walking');
+    expect((await walkView(page))?.comingDownKm).toBeNull();
+    await expect(page.getByTestId('walk-title')).toHaveText('On foot on the Earth');
     expect((await view(page))?.altitudeKm ?? Infinity).toBeLessThan(1.1);
     // Back to orbit, then down again, and Esc on the way: the walk ends at once and the camera climbs back.
     await page.keyboard.press('Escape');

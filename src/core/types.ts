@@ -1121,6 +1121,13 @@ export interface UniverseWalk {
    * back-off: the walk lands as soon as some arrive).
    */
   state: 'landing' | 'walking' | 'unavailable';
+  /**
+   * Once the ground under the walker has loaded and until the camera is the walker's eye (the glide
+   * down to the lowest orbit, the dip, and with motion the way down through the air), how far the
+   * camera is above that ground (km); null before the ground has loaded, and on foot. The state reads
+   * 'landing' all that while.
+   */
+  comingDownKm: number | null;
   /** Landed on coarser heights than the walk asks for (the finer ones did not load in time; they still may). */
   coarse: boolean;
   world: WalkableWorld;

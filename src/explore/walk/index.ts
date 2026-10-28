@@ -167,6 +167,8 @@ export function createWalk(setup: WalkSetup): Walk {
   let metered: number | null = null;
   /** How far the eye has adapted to the day (./light dayAdaptation, set as placed): the airless sky's glare on the stars eases in by it. */
   let day = 0;
+  /** Landed, and the camera not yet the walker's eye: how far it is above the ground it is coming down to (km, set as placed; null otherwise). */
+  let comingDownKm: number | null = null;
   const footStars: FootStars = { light: 1, knee: 0 };
   const sunTint: [number, number, number] = [1, 1, 1];
 
@@ -193,6 +195,7 @@ export function createWalk(setup: WalkSetup): Walk {
       walker = createWalker(lat, lon, 0, heading);
       walker.pitch = Math.max(-WALK.maxPitch, Math.min(WALK.maxPitch, pitch));
       landed = false;
+      comingDownKm = null;
       waited = 0;
       coarse = false;
       ground.reset(walker.lat, walker.lon);
@@ -204,6 +207,7 @@ export function createWalk(setup: WalkSetup): Walk {
       landed = false;
       metered = null;
       day = 0;
+      comingDownKm = null;
       ground.object.visible = false;
       sky.mesh.visible = false;
     },
@@ -254,6 +258,9 @@ export function createWalk(setup: WalkSetup): Walk {
       // the globe.
       ground.object.visible = show && frame.shown;
       sky.mesh.visible = show && frame.shown;
+      // Landed and still coming down (the glide, the dip, the way down through the air): the camera's
+      // height above the ground under the walker, for the readout (on the way down it is right over it).
+      comingDownKm = s && show && !frame.eye ? Math.max(0, Math.hypot(frame.centre.x, frame.centre.y, frame.centre.z) - world.radiusKm - s.groundM / 1000) : null;
       if (!s || !show) return;
       if (table && !table.baked) table.bake(frame.renderer);
       // The sky from the camera (on foot the walker's eye; on the way down, wherever in or above the air
@@ -286,6 +293,7 @@ export function createWalk(setup: WalkSetup): Walk {
       const under = footing(s.lat, s.lon);
       return {
         state: landed ? 'walking' : waited >= LANDING.unavailableS && !under ? 'unavailable' : 'landing',
+        comingDownKm,
         coarse,
         world: world.name,
         lat: s.lat,

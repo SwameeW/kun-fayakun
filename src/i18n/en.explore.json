@@ -193,6 +193,8 @@
   "ui.universe.walk.label": "On foot",
   "ui.universe.walk.title": "On foot on the Earth",
   "ui.universe.walk.landing": "Landing: the ground here is loading…",
+  "ui.universe.walk.comingDown": "Coming down over {place}",
+  "ui.universe.walk.comingDownHeight": "{height} above the ground",
   "ui.universe.walk.landed": "{title}. The keys W A S D walk, Space jumps, and Esc goes back to orbit.",
   "ui.universe.walk.landedTouch": "{title}. The pad walks and jumps, a finger drawn across the view looks round, and Back to orbit is at the top left.",
   "ui.universe.walk.brief": "{metres} m · Sun {sun}° · {time}",
