@@ -564,3 +564,161 @@ test('the two-body laboratory opens on its star, the Earth’s tiles aimed at no
   await expect.poll(() => settledOn(page), LIVE).toBe('earth');
   expect(pageErrors).toEqual([]);
 });
+
+test('a real world removed that the camera is not on leaves the follow of the laboratory’s own body as it was', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(180_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await pause(page);
+  const rock = await command(page, { kind: 'addState', relativeTo: 'earth', posKm: [30_000, 0, 0], velKmS: [0, 3.6, 0], massKg: 1e19, radiusKm: 100, name: 'Rock' });
+  const rockId = rock?.ok ? (rock.created[0] ?? '') : '';
+  expect(rockId).not.toBe('');
+  await expect.poll(async () => (await command(page, { kind: 'follow', id: rockId }))?.ok, LIVE).toBe(true);
+  await expect.poll(() => settledOn(page), LIVE).toBe(`lab:${rockId}`);
+  // Mars removed: it shrinks away and is hidden; every frame for three seconds, the camera still on the rock, going nowhere.
+  const frames = page.evaluate(async () => {
+    const kf = (window as unknown as KfHook).__kf;
+    const out: Array<{ focus: string; travelling: boolean }> = [];
+    const start = performance.now();
+    while (performance.now() - start < 3000) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const v = kf.universe.state();
+      if (v) out.push({ focus: v.focus, travelling: v.travelling });
+    }
+    return out;
+  });
+  expect((await command(page, { kind: 'remove', id: 'mars' }))?.ok).toBe(true);
+  const run = await frames;
+  expect((await lab(page))?.bodies.some((b) => b.id === 'mars')).toBe(false);
+  expect(run.length).toBeGreaterThan(30);
+  expect(run.filter((f) => f.focus !== `lab:${rockId}` || f.travelling)).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test.describe('with motion', () => {
+  test.use({ reducedMotion: 'no-preference' });
+
+  /**
+   * Each frame for `ms`: the focus, the trip, the mode, the distance to the focus, the camera's distance from the Sun's
+   * surface (in a laboratory of its own, the Sun its star stands in for; km), whether an experiment runs, and its events.
+   */
+  const record = (page: Page, ms: number) =>
+    page.evaluate(async (wait) => {
+      const kf = (window as unknown as KfHook).__kf;
+      const out: Array<{ focus: string; travelling: boolean; mode: string; distanceKm: number; sunKm: number; lab: boolean; events: number }> = [];
+      const start = performance.now();
+      while (performance.now() - start < wait) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const v = kf.universe.state();
+        if (v) out.push({ focus: v.focus, travelling: v.travelling, mode: v.mode, distanceKm: v.distanceKm, sunKm: v.bodies.find((b) => b.id === 'sun')?.distanceKm ?? 0, lab: v.lab !== null, events: v.lab?.events.length ?? 0 });
+      }
+      return out;
+    }, ms);
+
+  test('the flight keys while a laboratory of its own’s planet is followed fly on by the planet: never to the star, nor by a hidden world', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(180_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await openLab(page);
+    await preset(page, 'two');
+    await expect.poll(() => settledOn(page), LIVE).toBe('sun');
+    await pause(page);
+    expect((await command(page, { kind: 'follow', id: 'planet' }))?.ok).toBe(true);
+    await expect.poll(() => settledOn(page), LIVE).toBe('lab:planet');
+    await page.waitForTimeout(500);
+    const framed = (await view(page))?.distanceKm ?? 0;
+    // W held for half a second, then a second more: on every frame the camera by the planet, flying freely, no trip begun.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    const frames = record(page, 1500);
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(500);
+    await page.keyboard.up('KeyW');
+    const run = await frames;
+    expect(run.length).toBeGreaterThan(30);
+    expect(run.filter((f) => f.focus !== 'lab:planet' || f.travelling)).toEqual([]);
+    expect(run[run.length - 1]?.mode).toBe('flight');
+    expect(Math.max(...run.map((f) => f.distanceKm))).toBeLessThan(1.5 * framed);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('flying freely in a laboratory of its own where a hidden world stands: the camera flies on, by a body the experiment shows', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(180_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await openLab(page);
+    await preset(page, 'two');
+    await expect.poll(() => settledOn(page), LIVE).toBe('sun');
+    await pause(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    // Put beside the hidden Earth (at the experiment's epoch, J2000), then W: the camera flies freely by the nearest body
+    // drawn (the star, its stand-in Sun or the planet, each about an au away), never anchored to the Earth, which would send it to the star.
+    await place(page, { body: 'earth', distanceKm: 6371 + 30_000 });
+    await page.keyboard.down('KeyW');
+    await page.waitForTimeout(300);
+    const run = await record(page, 1000);
+    await page.keyboard.up('KeyW');
+    expect(run.length).toBeGreaterThan(20);
+    expect(run.filter((f) => f.focus === 'earth' || f.travelling || f.mode !== 'flight')).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('a followed body that breaks up while the camera is on its way to it hands the camera to what is left: flown to and framed', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(240_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await openLab(page);
+    await preset(page, 'two');
+    await expect.poll(() => settledOn(page), LIVE).toBe('sun');
+    await pause(page);
+    // A rock 500 km in radius 12,000 km from the planet's centre, closing at 40 km/s: it strikes about two seconds after a minute a second begins.
+    const rock = await command(page, { kind: 'addState', relativeTo: 'planet', posKm: [-12_000, 0, 0], velKmS: [40, 0, 0], massKg: 1.57e21, radiusKm: 500, name: 'Impactor' });
+    const rockId = rock?.ok ? (rock.created[0] ?? '') : '';
+    expect(rockId).not.toBe('');
+    // Followed from the star (a trip of several seconds), the clock running at once.
+    const frames = record(page, 20_000);
+    await command(page, { kind: 'follow', id: rockId });
+    await page.evaluate(() => {
+      (window as unknown as KfHook).__kf.app.universeTime({ kind: 'rate', rate: 60 });
+    });
+    const run = await frames;
+    const struck = (await lab(page))?.events.find((e) => e.absorbed === rockId);
+    expect(struck?.survivor).toBe('planet');
+    // It struck while the camera was still on its way (the case this holds), and the camera went on to the planet and framed it.
+    const at = run.findIndex((f) => f.events > 0);
+    expect(at).toBeGreaterThan(0);
+    expect(run[at]?.travelling).toBe(true);
+    expect(run[at]?.focus).toBe(`lab:${rockId}`);
+    await expect.poll(() => settledOn(page), LIVE).toBe('lab:planet');
+    const end = await view(page);
+    expect(end?.mode).toBe('orbit');
+    expect(end?.distanceKm ?? Infinity).toBeLessThan(10 * 6371);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('leaving a laboratory of its own while its planet is followed: the camera keeps its place by the Sun its star stood in for, then flies to the Earth', async ({ page, kf, pageErrors }) => {
+    test.setTimeout(180_000 * SLOW);
+    await kf.open('/universe/earth', { query: { jd: JD } });
+    await waitForUniverse(page);
+    await openLab(page);
+    await preset(page, 'two');
+    await expect.poll(() => settledOn(page), LIVE).toBe('sun');
+    await pause(page);
+    expect((await command(page, { kind: 'follow', id: 'planet' }))?.ok).toBe(true);
+    await expect.poll(() => settledOn(page), LIVE).toBe('lab:planet');
+    // Back, every frame recorded: from the last frame of the experiment to the first after it, the camera's distance from
+    // the Sun kept (to a ten-thousandth of an au, the trip to the Earth just begun); over the next five frames, as that trip
+    // gathers pace, no step in it larger than a thousandth of an au.
+    const frames = record(page, 1500);
+    await page.getByTestId('lab-back').click();
+    const run = await frames;
+    const left = run.findIndex((f) => !f.lab);
+    expect(left).toBeGreaterThan(0);
+    const steps = run.slice(left - 1, left + 6).map((f, k, a) => (k === 0 ? 0 : Math.abs(f.sunKm - (a[k - 1] ?? f).sunKm)));
+    expect(steps[1]).toBeLessThan(AU / 10_000);
+    expect(Math.max(...steps)).toBeLessThan(AU / 1000);
+    expect(run[left]?.focus).not.toMatch(/^lab:/u);
+    await expect.poll(() => settledOn(page), LIVE).toBe('earth');
+    expect(pageErrors).toEqual([]);
+  });
+});

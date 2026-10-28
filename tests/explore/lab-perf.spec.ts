@@ -63,7 +63,8 @@ for (const detail of ['high', 'low'] as const) {
     const drawn = (await page.evaluate(() => (window as unknown as KfHook).__kf.universe.labDraw?.())) as { dust: { particles: number } } | null;
     // The camera following the breakup's first piece of debris (or, should it fall back meanwhile, the body it merged into).
     const piece = ((await lab(page))?.bodies ?? []).map((b) => b.id).find((id) => /^debris-\d+-1$/u.test(id)) ?? null;
-    if (piece) await command(page, { kind: 'follow', id: piece });
+    expect(piece, 'the breakup’s first piece of debris').toMatch(/^debris-\d+-1$/u);
+    await command(page, { kind: 'follow', id: piece ?? '' });
     await page.waitForTimeout(500);
     await expect.poll(async () => (await view(page))?.travelling, LIVE).toBe(false);
     const followed = await stats(page, 8);

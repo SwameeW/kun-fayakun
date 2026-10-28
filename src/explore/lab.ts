@@ -130,8 +130,8 @@ export interface Lab {
   view(): UniverseLab | null;
   /**
    * Where the camera should go now, once: a body asked to be followed; when the body it is on (`focus`)
-   * merged away or broke up, its survivor or largest piece (./sim/nbody heir); else, when one of the ten
-   * merged away or was removed, its survivor or the Sun.
+   * merged away or broke up, its survivor or largest piece (./sim/nbody heir), and when it is one of the
+   * ten removed, the Sun; else null (a body it is not on that went changes nothing).
    */
   takeRefocus(focus: FocusId): FocusId | null;
   /**
@@ -496,8 +496,10 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
   let status: UniverseLab['status'] = null;
   let saveRequest = 0;
   const saveWaiters = new Map<number, (s: Scenario) => void>();
-  let refocus: BodyId | null = null;
-  /** A body asked to be followed (its focus id), and each body merged away or broken up since the camera last asked: the one that goes on for it. */
+  /**
+   * A body asked to be followed (its focus id), and each body merged away or broken up since the camera last asked: the
+   * one that goes on for it (for one of the ten removed, the Sun).
+   */
   let followAsked: FocusId | null = null;
   const heirs = new Map<string, string>();
   /**
@@ -988,8 +990,6 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
           selected = e.survivor;
           requestPrediction();
         }
-        const b = builtIn(e.absorbed);
-        if (b) refocus = builtIn(e.survivor) ?? 'sun';
         heirs.set(e.absorbed, heir(e, (id) => msg.radius[msg.ids.indexOf(id)] ?? 0));
       }
       // A body just added or duplicated is chosen at once; a snapshot taken before the worker had the edit does not have it yet.
@@ -2124,7 +2124,7 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
         if (seedScenario?.persistentIds?.includes(c.id)) return;
         edit({ kind: 'remove', id: c.id });
         if (selected === c.id) selected = null;
-        if (builtIn(c.id)) refocus = 'sun';
+        if (builtIn(c.id)) heirs.set(c.id, 'sun');
         return;
       case 'seek':
         // Back (or on) to a checkpoint, paused there: the moment gone back to stays to be looked at. Only a whole
@@ -3143,13 +3143,13 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
       };
     },
     takeRefocus(focus) {
-      // The body the camera is on merged away or broke up: on with what goes on for it (and for that, if it went too).
+      // The body the camera is on merged away, broke up or (one of the ten) was removed: on with what goes on for it (and for that, if it
+      // went too). One it is not on changes nothing.
       let id = focus.startsWith('lab:') ? focus.slice(4) : focus;
       const went = heirs.has(id);
       for (let hops = 0; heirs.has(id) && hops < MAX_BODIES; hops += 1) id = heirs.get(id) ?? id;
-      const r = followAsked ?? (went ? (builtIn(id) ?? `lab:${id}`) : refocus);
+      const r = followAsked ?? (went ? (builtIn(id) ?? `lab:${id}`) : null);
       followAsked = null;
-      refocus = null;
       heirs.clear();
       return r;
     },

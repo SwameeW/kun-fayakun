@@ -181,7 +181,15 @@ function withLab(system: SolarSystem, lab: Array<{ id: `lab:${string}`; radiusKm
   const known: NavBody[] = lab.map((b) => ({ id: b.id, radiusKm: b.radiusKm, boundKm: b.radiusKm, minAltitudeKm: Math.max(0.02 * b.radiusKm, 0.003), fill: 0.6, view: { azimuth: 0.85, latitude: 0.12, litFace: false }, position: km(...b.at), pole: km(0, 1, 0) }));
   const all: NavBody[] = [...ten, ...known];
   // A body gone keeps its last place for a lookup (a trip from it starts there), and leaves the list the camera keeps out of.
-  const w: NavWorld = { all, sun: system.bodies.sun.position, body: (id) => all.find((b) => b.id === id) ?? known.find((b) => b.id === id) ?? (all[0] as NavBody) };
+  const w: NavWorld = {
+    all,
+    sun: system.bodies.sun.position,
+    body(id) {
+      const found = all.find((b) => b.id === id) ?? known.find((b) => b.id === id);
+      if (!found) throw new Error(`no body ${id}`);
+      return found;
+    },
+  };
   return {
     w,
     bodies: known,
@@ -261,4 +269,40 @@ test('a laboratory body that goes is let go of: the camera stays where it is, fl
   expect(nav.mode).toBe('flight');
   expect(pose.dim).toBe(1);
   expect(steepest).toBeLessThan(0.1);
+});
+
+test('a body asked for while the camera flies to one that goes (a merger’s survivor) is flown to from where the camera lets go, and framed', () => {
+  const { system } = setup();
+  const earth = system.bodies.earth.position;
+  const { w, drop } = withLab(system, [
+    { id: 'lab:rock', radiusKm: 250, at: [earth.x + 600_000, earth.y, earth.z] },
+    { id: 'lab:moonlet', radiusKm: 1000, at: [earth.x + 600_000, earth.y, earth.z + 20_000] },
+  ]);
+  const nav = new Navigator('earth');
+  nav.begin(w, 'earth', false);
+  const pose = out();
+  nav.update(w, 1 / 60, pose);
+  nav.flyTo(w, 'lab:rock');
+  for (let k = 0; k < 60; k += 1) nav.update(w, 1 / 60, pose);
+  // On the way, the moonlet asked for (waiting for the trip), then the rock goes.
+  nav.flyTo(w, 'lab:moonlet');
+  expect(nav.tripState?.to).toBe('lab:rock');
+  const before = { ...pose.position };
+  drop('lab:rock');
+  nav.release(w);
+  expect(nav.tripState?.to).toBe('lab:moonlet');
+  nav.update(w, 1 / 60, pose);
+  // No jump: on from where the camera was (it had been going at most a few hundred km a frame).
+  expect(distance(pose.position, before)).toBeLessThan(1000);
+  for (let k = 0; k < 900 && nav.travelling; k += 1) nav.update(w, 1 / 60, pose);
+  const moonlet = w.body('lab:moonlet');
+  expect(nav.focus).toBe('lab:moonlet');
+  expect(nav.mode).toBe('orbit');
+  expect(distance(pose.position, moonlet.position) / nav.framingKm(moonlet)).toBeCloseTo(1, 2);
+  // Let go of on leaving (now), nothing asked for is kept: the camera stays, flying freely.
+  nav.flyTo(w, 'earth');
+  nav.flyTo(w, 'lab:moonlet');
+  nav.release(w, true);
+  expect(nav.travelling).toBe(false);
+  expect(nav.mode).toBe('flight');
 });

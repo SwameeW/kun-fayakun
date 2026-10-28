@@ -584,19 +584,21 @@ export class Navigator {
   /**
    * Lets go of the body in view once it has gone (a laboratory's body removed, or the experiment left):
    * the camera stays exactly where it is, at rest in free flight by the nearest body. A trip coasts to
-   * rest as Esc leaves it; a reduced-motion cut first finishes (call again after, so the light never
-   * steps), unless `now` (the experiment left: the whole scene changes at once anyway).
+   * rest as Esc leaves it, and a body asked for after it (a merger's survivor) is flown to from there; a
+   * reduced-motion cut first finishes (call again after, so the light never steps). With `now` (the
+   * experiment left: the whole scene changes at once anyway) a cut ends too, and nothing asked for is kept.
    */
   release(world: NavWorld, now = false): void {
     const kind = this.trip?.kind;
     if (!now && (kind === 'cut' || kind === 'uncut')) return;
-    if (kind === 'travel') {
-      this.cancelTravel(world);
-      return;
+    const next = now ? null : this.queued;
+    if (kind === 'travel') this.cancelTravel(world);
+    else {
+      this.trip = null;
+      this.queued = null;
+      this.beginFlight(world);
     }
-    this.trip = null;
-    this.queued = null;
-    this.beginFlight(world);
+    if (next) this.flyTo(world, next);
   }
 
   /** Leaves free flight to orbit the body the camera is nearest (O, or the interface's button). */

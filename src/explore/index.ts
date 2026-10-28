@@ -387,8 +387,9 @@ export default function create(): UniverseModule {
   let dots: Impostors | null = null;
   let glare: SunGlare | null = null;
   let input: ExploreInput | null = null;
+  /** The camera's bodies: one NavWorld for the explorer's life (the input holds it), its list kept up to date in place (relist). */
   let world: NavWorld | null = null;
-  /** The laboratory's bodies as `world` last listed them (Lab.navRevision). */
+  /** The laboratory's bodies and the ten it hides as `world` last listed them (Lab.navRevision, and a bit for each one hidden). */
   let navFor = -1;
   let range = { startJd: 0, endJd: Infinity };
   /** JPL's tables' own spans (positions beyond them come from the published theories: UniverseTime.beyond). */
@@ -787,7 +788,7 @@ export default function create(): UniverseModule {
           governor?.holdOff();
           worlds = w;
           root.add(w.object);
-          if (system) world = navBodies(system);
+          relist();
           // The layer and the detail level chosen meanwhile (the governor may have changed it while they came).
           w.setLayer(worldsLayer);
           w.setDetail(detail);
@@ -1313,12 +1314,12 @@ export default function create(): UniverseModule {
       }
       for (const c of labQueue.splice(0)) void lab.command(c);
     } else if (!wantLab && lab.active) {
+      // The camera on one of the experiment's own bodies (or on its way from one) is let go of where it is, by the nearest of the
+      // ten it showed (in a laboratory of its own, the Sun its star stood in for), never by one it hid at its epoch.
+      if (world && (isLabBody(nav.focus) || (navOut.from !== null && isLabBody(navOut.from)))) nav.release({ ...world, all: world.all.filter((b) => !b.id.includes(':')) }, true);
       lab.stop();
       hiddenBodies.clear();
-      // The camera on one of the experiment's own bodies (or on its way from one): it stays where it is, by the nearest of the real ones.
-      navFor = lab.navRevision;
-      world = navBodies(system);
-      if (isLabBody(nav.focus) || (navOut.from !== null && isLabBody(navOut.from))) nav.release(world, true);
+      relist();
       if (beforeLab) {
         timeRate = beforeLab.rate;
         timePaused = beforeLab.paused;
@@ -1328,6 +1329,11 @@ export default function create(): UniverseModule {
         markerSet = beforeLab.markers;
       }
       beforeLab = null;
+      // The real bodies back at the explorer's date at once, the camera carried with the one it is by (as with a body it
+      // orbits), so that a trip the address asks for next starts from where they and the camera are, not the experiment's places.
+      system.update(jdTdb);
+      worlds?.advance(jdTdb);
+      if (world) nav.update(world, 0, navOut);
     }
   };
 
@@ -1766,15 +1772,18 @@ export default function create(): UniverseModule {
     // In the laboratory the experiment puts the worlds where it has them (their turn still the IAU models').
     if (lab?.active) {
       lab.applyBuiltIns(sys, hiddenBodies);
-      // Its own bodies changed (one added, merged, broken up or removed; another experiment): the camera's bodies listed again.
-      if (lab.navRevision !== navFor) {
-        navFor = lab.navRevision;
-        world = navBodies(sys);
+      // Its own bodies changed (one added, merged, broken up or removed; another experiment), or the ten it hides: the camera's bodies listed again.
+      let listed = lab.navRevision * 1024;
+      for (const id of hiddenBodies) listed += 2 ** BODY_IDS.indexOf(id);
+      if (listed !== navFor) {
+        navFor = listed;
+        relist();
       }
       const on = nav.focus;
       const refocus = lab.takeRefocus(on);
       if (refocus && !hiddenBodies.has(refocus as BodyId)) nav.flyTo(world, refocus);
-      // One of its own followed, gone with nothing to go on with (removed): the follow ends where the camera is.
+      // One of its own in view, gone: let go of where the camera is (removed), or flown on from there to what goes on for it
+      // (a merger's survivor, asked for while the trip to the one that went was under way).
       else if (isLabBody(on)) {
         if (!lab.navBodies().includes(world.body(on))) nav.release(world);
       }
@@ -2957,8 +2966,7 @@ export default function create(): UniverseModule {
     });
     const byId = new Map(list.map((b) => [b.id, b]));
     return {
-      // The camera keeps out of every one: the ten, the worlds and, in an experiment, the laboratory's own.
-      all: [...list, ...(worlds?.navList() ?? []), ...(lab?.active ? lab.navBodies() : [])],
+      all: [],
       sun: sys.bodies.sun.position,
       body(id) {
         const found = byId.get(id) ?? worlds?.nav(id) ?? lab?.nav(id);
@@ -2966,6 +2974,19 @@ export default function create(): UniverseModule {
         return found;
       },
     };
+  };
+
+  /**
+   * The bodies the camera keeps out of and flies freely by, listed again in place: the ten (in an experiment those it
+   * shows, and the Sun, which a laboratory of its own's star stands in for), the worlds (not drawn in an experiment),
+   * and the laboratory's own. Hidden ones would be unseen walls, at the experiment's epoch.
+   */
+  const relist = (): void => {
+    if (!world) return;
+    const all = world.all as NavBody[];
+    all.length = 0;
+    for (const id of BODY_IDS) if (id === 'sun' || !hiddenBodies.has(id)) all.push(world.body(id));
+    all.push(...(lab?.active ? lab.navBodies() : (worlds?.navList() ?? [])));
   };
 
   const steer = (command: UniverseSteer): boolean => {
@@ -3005,6 +3026,7 @@ export default function create(): UniverseModule {
       labInputs = { planets, moon, physical };
       skyData = skyFile;
       world = navBodies(system);
+      relist();
       ringSphere.innerKm = physical.saturnRings.innerKm;
       ringSphere.outerKm = physical.saturnRings.outerKm;
 
