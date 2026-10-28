@@ -1,0 +1,4 @@
+{
+  "$comment": "Chapter 3's own strings (its scene's tags), loaded with the chapter's chunk (src/chapters/ch03/scene.ts, i18n.extend), not with the shell.",
+  "ch03.hud.ionisedGas": "Gas ionised by the first stars (illustration; time compressed)"
+}

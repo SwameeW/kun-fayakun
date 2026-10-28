@@ -252,6 +252,40 @@
       }
     },
     {
+      "id": "stromgren-1939",
+      "kind": "paper",
+      "title": "The Physical State of Interstellar Hydrogen",
+      "author": "Strömgren",
+      "url": "https://doi.org/10.1086/144074",
+      "version": "ApJ 89, 526 (1939)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Strömgren, ApJ 89, 526 (1939)",
+      "notes": "Chapter 3's bubbles of ionised gas round the first stars (src/chapters/ch03/reionisation.ts) are sized as Strömgren spheres are: a star's light ionises so much gas. Their sizes and the time are illustrative, and the tag says so.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
+      "id": "furlanetto-2004",
+      "kind": "paper",
+      "title": "The Growth of H II Regions During Reionization",
+      "author": "Furlanetto, Zaldarriaga and Hernquist",
+      "url": "https://doi.org/10.1086/423025",
+      "version": "ApJ 613, 1 (2004)",
+      "license": "Cited for a scientific statement; not redistributed",
+      "licenseUrl": null,
+      "credit": "Furlanetto, Zaldarriaga and Hernquist, ApJ 613, 1 (2004)",
+      "notes": "Chapter 3's reionisation goes from the dense regions out ('inside-out'), the bubbles meeting and merging, as in this paper's model; the film stops partway, with neutral islands left.",
+      "review": {
+        "reviewer": null,
+        "role": null,
+        "date": null
+      }
+    },
+    {
       "id": "sunnah-bukhari",
       "kind": "hadith-collection",
       "title": "Sahih al-Bukhari",

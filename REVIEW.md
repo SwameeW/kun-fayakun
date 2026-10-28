@@ -188,6 +188,19 @@ scholarly text or science text change later, that area needs review again.
     the directions are measured, where lines start and their spacing are not
     (said on the card). The legend says "Lines: direction of polarisation
     (Planck)"; the temperature colours are unchanged under them.
+- Chapter 3: reionisation, drawn as an illustration and tagged "Gas ionised
+  by the first stars (illustration; time compressed)", kept apart from the
+  dark matter's false colour (`src/chapters/ch03/reionisation.ts`): bubbles
+  round the first stars sized as Strömgren spheres (a star ionises so much
+  gas, counted in the web's Lagrangian coordinates), growing from the knots
+  out and merging (Furlanetto, Zaldarriaga & Hernquist 2004), the film
+  stopping at about 40% ionised with neutral islands left. Check that this
+  partial stage, and the time compressed into it, read honestly against the
+  chapter's era (100 to 200 million years) and Chapter 4's (from about a
+  billion), and the Discover card's numbers: Planck 2018 VI's optical depth
+  0.0561 ± 0.0071 and midpoint z = 7.82 ± 0.71 (tanh model, the BAO column,
+  as universe.age), about 657 million years; the end by z ≈ 5.3 (Bosman et
+  al. 2022), about 1.1 billion years.
 - Open questions must be presented as open; the science layer must never be
   presented as an interpretation of a verse.
 

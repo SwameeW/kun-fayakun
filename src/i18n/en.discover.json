@@ -43,6 +43,8 @@
   "discover.ch03.stars.text": "The first stars lit in the knots, perhaps {early} to {late} million years after the beginning. None has been seen directly yet; these are illustrations.",
   "discover.ch03.galaxies.title": "The first galaxies",
   "discover.ch03.galaxies.text": "The James Webb Space Telescope now sees galaxies from about {age} million years after the beginning, and today’s galaxy surveys measure the web itself.",
+  "discover.ch03.reionisation.title": "The dark ages end",
+  "discover.ch03.reionisation.text": "The first stars’ ultraviolet light stripped the electrons from the hydrogen around them, and bubbles of ionised gas grew and merged. Planck measured how much of the first light those freed electrons scattered (an optical depth of {tau}): the gas was half ionised near redshift {zMid}, about {ageMid} million years after the beginning. The light of distant quasars shows its last neutral islands were gone by about redshift {zEnd}, around {ageEnd} billion years after it. The film shows only the start, far faster than it was; the bubbles are an illustration.",
   "discover.ch03.process": "Let gravity work",
   "discover.ch03.process.start": "Nearly smooth",
   "discover.ch03.process.end": "A web of galaxies",

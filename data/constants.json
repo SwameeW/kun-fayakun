@@ -277,6 +277,71 @@
       }
     },
     {
+      "id": "reionisation.opticalDepth",
+      "description": "Thomson scattering optical depth of the cosmic microwave background to reionisation, base-ΛCDM, 68% interval. Planck 2018 VI, Table 2, column TT,TE,EE+lowE+lensing+BAO; the same column as universe.age. The column without BAO gives 0.0544 ± 0.0073 (the abstract's 0.054 ± 0.007).",
+      "value": 0.0561,
+      "uncertainty": 0.0071,
+      "unit": "",
+      "qualifier": "assuming the standard ΛCDM model",
+      "citation": {
+        "text": "Planck Collaboration 2020, A&A 641, A6 (Planck 2018 results VI), Table 2, TT,TE,EE+lowE+lensing+BAO",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-28"
+      }
+    },
+    {
+      "id": "reionisation.midpoint.redshift",
+      "description": "Redshift at which the intergalactic hydrogen was half reionised, base-ΛCDM, 68% interval, for a tanh-shaped reionisation history (helium's first reionisation at the same time). Planck 2018 VI, Table 2, column TT,TE,EE+lowE+lensing+BAO; the column without BAO gives 7.67 ± 0.73.",
+      "value": 7.82,
+      "uncertainty": 0.71,
+      "unit": "",
+      "qualifier": "midpoint, for a tanh-shaped history; assuming the standard ΛCDM model",
+      "citation": {
+        "text": "Planck Collaboration 2020, A&A 641, A6 (Planck 2018 results VI), Table 2, TT,TE,EE+lowE+lensing+BAO",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-28"
+      }
+    },
+    {
+      "id": "reionisation.midpoint.age",
+      "description": "Cosmic age at the midpoint of reionisation, z = 7.82 (reionisation.midpoint.redshift)",
+      "value": 657,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "derived from z = 7.82",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 7.82",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-28"
+      }
+    },
+    {
+      "id": "reionisation.end.redshift",
+      "description": "Redshift by which hydrogen reionisation had ended: the scatter in the Lyman-alpha optical depth of the XQR-30 quasars is larger than a fully ionised intergalactic medium allows until at least z = 5.3, so the last neutral islands lasted until about then.",
+      "value": 5.3,
+      "uncertainty": null,
+      "unit": "",
+      "qualifier": "about; from the Lyman-alpha forest of distant quasars",
+      "citation": {
+        "text": "Bosman et al. 2022, MNRAS 514, 55, \"Hydrogen reionization ends by z = 5.3: Lyman-α optical depth measured by the XQR-30 sample\", title and abstract",
+        "url": "https://doi.org/10.1093/mnras/stac1046",
+        "accessed": "2026-10-28"
+      }
+    },
+    {
+      "id": "reionisation.end.age",
+      "description": "Cosmic age at the end of reionisation, z = 5.3 (reionisation.end.redshift); the paper's abstract says about 1.1 billion years",
+      "value": 1088,
+      "uncertainty": null,
+      "unit": "Myr",
+      "qualifier": "derived from z = 5.3",
+      "citation": {
+        "text": "Derived with the Planck 2018 cosmology (astropy Planck18: Planck Collaboration 2020, A&A 641, A6, Table 2, TT,TE,EE+lowE+lensing+BAO) at z = 5.3",
+        "url": "https://doi.org/10.1051/0004-6361/201833910",
+        "accessed": "2026-10-28"
+      }
+    },
+    {
       "id": "hubble.planck",
       "description": "Hubble constant from the Planck CMB, assuming base ΛCDM",
       "value": 67.4,
