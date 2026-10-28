@@ -748,6 +748,8 @@ export function createLab(ephemeris: Ephemeris, physical: PhysicalFile, earthMas
     send({ type: 'load', generation, scenario: structuredClone(scenario) });
     sendRun();
     requestPrediction();
+    // A copy or a share link asked for as the scenario was replaced is of the new one: the old one's answer is dropped.
+    for (const requestId of saveWaiters.keys()) send({ type: 'save', generation, requestId });
   };
 
   /** The time (s) from simulated time `t` to the prediction's nearest encounter or merger still to come (infinite for none). */
