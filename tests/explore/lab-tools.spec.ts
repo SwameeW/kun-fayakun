@@ -4,11 +4,12 @@
  * held; a name, a hold, undo and redo; a push, a whole orbit by elements, a rotation; the prediction's
  * accuracy and its encounters; Lagrange points and a body put at L4; the palette of real bodies;
  * placing with the pointer and dragging the velocity arrow; frames, measurements, a quantity followed,
- * the library, a link that opens the experiment again, and several bodies at once.
+ * the library, a link that opens the experiment again, and several bodies at once; the camera following
+ * and framing the laboratory's own bodies (docs/SANDBOX-ROADMAP.md W1.9).
  */
 import type { Page } from '@playwright/test';
-import type { UniverseLab } from '../../src/core/types';
-import { expect, test } from '../support/fixtures';
+import type { LabCommand, LabEditResult, UniverseLab } from '../../src/core/types';
+import { expect, test, type KfHook } from '../support/fixtures';
 import { SLOW } from '../support/env';
 import { JD, place, view, waitForUniverse } from '../support/universe';
 
@@ -18,6 +19,12 @@ const AU = 149_597_870.7;
 test.use({ reducedMotion: 'reduce' });
 
 const lab = async (page: Page): Promise<UniverseLab | null> => (await view(page))?.lab ?? null;
+const command = (page: Page, c: LabCommand): Promise<LabEditResult | undefined> => page.evaluate((x) => (window as unknown as KfHook).__kf.universe.lab?.(x), c);
+/** Settled on a body: the view's focus, and no trip under way. */
+const settledOn = async (page: Page): Promise<string | null> => {
+  const v = await view(page);
+  return v && !v.travelling ? v.focus : null;
+};
 const body = async (page: Page, id: string) => (await lab(page))?.bodies.find((b) => b.id === id) ?? null;
 
 async function openLab(page: Page): Promise<void> {
@@ -419,5 +426,141 @@ test('the tides tear a moon apart: the Moon sent inside the Earth’s Roche limi
   await expect.poll(async () => (await lab(page))?.bodies.filter((b) => b.id.startsWith('moon-piece-')).length, LIVE).toBe(8);
   await expect.poll(async () => (await lab(page))?.swarms.find((w) => w.id.startsWith('dust-moon'))?.primary, LIVE).toBe('earth');
   expect((await lab(page))?.bodies.some((b) => b.id === 'moon')).toBe(false);
+  expect(pageErrors).toEqual([]);
+});
+
+test('the camera follows and frames the laboratory’s own bodies: by the keyboard; a body that breaks up hands it to the largest of what is left, one that merges to its survivor; a piece kept framed as it flies, the camera above every body', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(300_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await preset(page, 'two');
+  await pause(page);
+  // A Mars-mass body 20,000 km from the planet, closing at 40 km/s: Leinhardt and Stewart's erosion regime (as lab.spec's breakup).
+  expect((await command(page, { kind: 'addState', relativeTo: 'planet', posKm: [-20_000, 1500, 0], velKmS: [40, 0, 0], massKg: 6.4e23, radiusKm: 3390, name: 'Impactor' }))?.ok).toBe(true);
+  await expect.poll(async () => (await lab(page))?.bodies.length, LIVE).toBe(3);
+  // Followed by the keyboard: from Remove, Tab reaches Follow and Enter presses it; the readout names it and measures from it.
+  await choose(page, 'body-1');
+  await page.getByTestId('lab-remove').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('lab-follow')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => settledOn(page), LIVE).toBe('lab:body-1');
+  await expect(page.getByTestId('universe-readout')).toContainText('Impactor');
+  const near = await view(page);
+  expect((near?.distanceKm ?? 0) - (near?.altitudeKm ?? 0)).toBeCloseTo(3390, 0);
+  // At a minute a second it strikes the planet and breaks up: the camera goes on with the planet's remnant, the largest of what is left.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.evaluate(() => {
+    (window as unknown as KfHook).__kf.app.universeTime({ kind: 'rate', rate: 60 });
+  });
+  await expect(page.getByTestId('lab-history')).toContainText(/Impactor struck Planet at [\d.]+ km\/s: erosion/, LIVE);
+  await expect.poll(() => (view(page).then((v) => v?.focus)), LIVE).toBe('lab:planet');
+  await pause(page);
+  // Its first piece of debris, followed with the inspector's button.
+  const breakup = (await lab(page))?.events.find((e) => e.kind === 'fragment');
+  expect(breakup?.absorbed).toBe('body-1');
+  const pieces = ((await lab(page))?.bodies ?? []).map((b) => b.id).filter((id) => /^debris-\d+-\d+$/u.test(id));
+  const piece = pieces.find((id) => id.endsWith('-1')) ?? pieces[0] ?? '';
+  expect(piece).toMatch(/^debris-\d+-1$/u);
+  await choose(page, piece);
+  await page.getByTestId('lab-follow').click();
+  await expect.poll(() => settledOn(page), LIVE).toBe(`lab:${piece}`);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const framed = (await view(page))?.distanceKm ?? 0;
+  const from = (await body(page, piece))?.distanceKm ?? 0;
+  // Ten seconds of its flight at a minute a second, every frame: the distance within 5% of its framing, the camera above every body of the experiment.
+  const run = await page.evaluate(async () => {
+    const kf = (window as unknown as KfHook).__kf;
+    kf.universe.labDraw?.();
+    kf.app.universeTime({ kind: 'rate', rate: 60 });
+    const out: Array<{ focus: string; distanceKm: number; lowestKm: number | null; at: [number, number, number] }> = [];
+    const start = performance.now();
+    while (performance.now() - start < 10_000) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const v = kf.universe.state();
+      const d = kf.universe.labDraw?.() as { lowestKm: number | null } | null;
+      if (v) out.push({ focus: v.focus, distanceKm: v.distanceKm, lowestKm: d?.lowestKm ?? null, at: [v.camera.x, v.camera.y, v.camera.z] });
+    }
+    return out;
+  });
+  await pause(page);
+  expect(run.length).toBeGreaterThan(100);
+  expect(run.filter((r) => r.focus !== `lab:${piece}`)).toEqual([]);
+  const spread = Math.max(...run.map((r) => Math.abs(r.distanceKm / framed - 1)));
+  expect(spread).toBeLessThan(0.05);
+  expect(Math.min(...run.map((r) => r.lowestKm ?? Infinity))).toBeGreaterThan(0);
+  // It flew (from the planet by a fifth of the camera's distance from it at least: four times what the framing allows), and the camera went with it.
+  expect(Math.abs(((await body(page, piece))?.distanceKm ?? 0) - from)).toBeGreaterThan(0.2 * framed);
+  const [x0 = 0, y0 = 0, z0 = 0] = run[0]?.at ?? [];
+  const [x1 = 0, y1 = 0, z1 = 0] = run[run.length - 1]?.at ?? [];
+  expect(Math.hypot(x1 - x0, y1 - y0, z1 - z0)).toBeGreaterThan(0.2 * framed);
+  // A stone falling straight on to the planet below the escape speed (about 6 km/s at contact) merges: the camera following it goes on with the planet.
+  const stone = await command(page, { kind: 'addState', relativeTo: 'planet', posKm: [-8000, 0, 0], velKmS: [3, 0, 0], massKg: 1.571e12, radiusKm: 0.5, name: 'Stone' });
+  const stoneId = stone?.ok ? (stone.created[0] ?? '') : '';
+  expect(stoneId).not.toBe('');
+  await expect.poll(async () => (await command(page, { kind: 'follow', id: stoneId }))?.ok, LIVE).toBe(true);
+  await expect.poll(() => settledOn(page), LIVE).toBe(`lab:${stoneId}`);
+  // Down to the ground with it, every frame: held above the planet's floor as the stone goes in, above every body.
+  const fall = await page.evaluate(async (id) => {
+    const kf = (window as unknown as KfHook).__kf;
+    kf.universe.labDraw?.();
+    kf.app.universeTime({ kind: 'rate', rate: 60 });
+    let lowest = Infinity;
+    let frames = 0;
+    const start = performance.now();
+    while (performance.now() - start < 60_000 && !kf.universe.state()?.lab?.events.some((e) => e.absorbed === id)) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      lowest = Math.min(lowest, (kf.universe.labDraw?.() as { lowestKm: number | null } | null)?.lowestKm ?? Infinity);
+      frames += 1;
+    }
+    return { lowest, frames };
+  }, stoneId);
+  expect(fall.frames).toBeGreaterThan(30);
+  expect(fall.lowest).toBeGreaterThan(0);
+  await expect.poll(async () => (await lab(page))?.events.find((e) => e.absorbed === stoneId)?.kind, LIVE).toBe('merge');
+  await expect.poll(() => (view(page).then((v) => v?.focus)), LIVE).toBe('lab:planet');
+  expect(pageErrors).toEqual([]);
+});
+
+test('the two-body laboratory opens on its star, the Earth’s tiles aimed at nothing; its planet followed, named and measured; a body removed lets the camera go where it is; leaving, the real bodies are flown to as ever', async ({ page, kf, pageErrors }) => {
+  test.setTimeout(240_000 * SLOW);
+  await kf.open('/universe/earth', { query: { jd: JD } });
+  await waitForUniverse(page);
+  await openLab(page);
+  await preset(page, 'two');
+  // On its star, the hidden Sun standing in (as built: docs/SANDBOX-ROADMAP.md W1.9), the readout naming it; the Earth hidden, its tiles streaming nothing.
+  await expect.poll(() => settledOn(page), LIVE).toBe('sun');
+  await expect(page.getByTestId('universe-readout')).toHaveText(/^Star\d/u, LIVE);
+  await expect.poll(async () => (await view(page))?.imagery?.clear.zoom, LIVE).toBe(-1);
+  expect((await view(page))?.imagery?.showing).toEqual({ clear: false, today: false });
+  await pause(page);
+  // Its planet, followed: named and measured as itself (the Earth's size, from its own centre).
+  await choose(page, 'planet');
+  await page.getByTestId('lab-follow').click();
+  await expect.poll(() => settledOn(page), LIVE).toBe('lab:planet');
+  await expect(page.getByTestId('universe-readout')).toHaveText(/^Planet\d/u, LIVE);
+  const on = await view(page);
+  expect((on?.distanceKm ?? 0) - (on?.altitudeKm ?? 0)).toBeCloseTo(6371, -1);
+  expect((await view(page))?.imagery?.showing.clear).toBe(false);
+  // A rock beside it, followed, then removed: the follow ends where the camera is, flying freely (paused: nothing moves).
+  const rock = await command(page, { kind: 'addState', relativeTo: 'planet', posKm: [30_000, 0, 0], velKmS: [0, 3.6, 0], massKg: 1e19, radiusKm: 100, name: 'Rock' });
+  const rockId = rock?.ok ? (rock.created[0] ?? '') : '';
+  await expect.poll(async () => (await command(page, { kind: 'follow', id: rockId }))?.ok, LIVE).toBe(true);
+  await expect.poll(() => settledOn(page), LIVE).toBe(`lab:${rockId}`);
+  const before = (await view(page))?.camera;
+  expect((await command(page, { kind: 'remove', id: rockId }))?.ok).toBe(true);
+  await expect.poll(async () => (await view(page))?.mode, LIVE).toBe('flight');
+  const after = await view(page);
+  expect(after?.focus).not.toBe(`lab:${rockId}`);
+  expect(Math.hypot((after?.camera.x ?? 0) - (before?.x ?? 0), (after?.camera.y ?? 0) - (before?.y ?? 0), (after?.camera.z ?? 0) - (before?.z ?? 0))).toBeLessThan(1);
+  // Following the planet again, then leaving: the camera by a real body, and the Earth flown to from the navigator.
+  await command(page, { kind: 'follow', id: 'planet' });
+  await expect.poll(() => settledOn(page), LIVE).toBe('lab:planet');
+  await page.getByTestId('lab-back').click();
+  await expect.poll(async () => (await view(page))?.lab ?? null, LIVE).toBeNull();
+  expect((await view(page))?.focus).not.toMatch(/^lab:/u);
+  await page.getByTestId('universe-bodies').getByRole('button', { name: 'Earth', exact: true }).click();
+  await expect.poll(() => settledOn(page), LIVE).toBe('earth');
   expect(pageErrors).toEqual([]);
 });

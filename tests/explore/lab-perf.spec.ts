@@ -2,7 +2,8 @@
  * The laboratory's frame budget (docs/SANDBOX-ROADMAP.md 5.2, W1.0): at High, 1440 x 900 at a device
  * pixel ratio of 2, a ring of 2,000 particles about the Earth and a belt of 2,000 about the Sun (4,000,
  * the most an experiment holds) while a Mars breaks up on the Earth with its fireball, debris and plume:
- * 60 frames a second with the 99th percentile frame under 20 ms; and the same at Low. Then the lab
+ * 60 frames a second with the 99th percentile frame under 20 ms, and the same with the camera following
+ * the breakup's first piece of debris (docs/SANDBOX-ROADMAP.md W1.9); and the same at Low. Then the lab
  * without its effects' cost: the median frame rate with everything within 15 per cent of a quiet
  * experiment's, and of the same experiment with its effects switched off (the A/B switches,
  * window.__kf.universe.labEffects), the GPU's geometry and texture counts and the JavaScript heap after a
@@ -60,12 +61,21 @@ for (const detail of ['high', 'low'] as const) {
     await expect.poll(async () => (await lab(page))?.events.some((e) => e.kind === 'fragment'), LIVE).toBe(true);
     const breakup = await stats(page, 8);
     const drawn = (await page.evaluate(() => (window as unknown as KfHook).__kf.universe.labDraw?.())) as { dust: { particles: number } } | null;
-    const numbers = { detail, quiet: { fps: quiet.medianFps, p99: quiet.p99FrameMs }, bare: { fps: bare.medianFps, p99: bare.p99FrameMs }, ringed: { fps: ringed.medianFps, p99: ringed.p99FrameMs }, breakup: { fps: breakup.medianFps, p99: breakup.p99FrameMs, gpuMs: breakup.gpuMedianMs, frames: breakup.frames }, particles: drawn?.dust.particles };
+    // The camera following the breakup's first piece of debris (or, should it fall back meanwhile, the body it merged into).
+    const piece = ((await lab(page))?.bodies ?? []).map((b) => b.id).find((id) => /^debris-\d+-1$/u.test(id)) ?? null;
+    if (piece) await command(page, { kind: 'follow', id: piece });
+    await page.waitForTimeout(500);
+    await expect.poll(async () => (await view(page))?.travelling, LIVE).toBe(false);
+    const followed = await stats(page, 8);
+    const on = (await view(page))?.focus;
+    const numbers = { detail, quiet: { fps: quiet.medianFps, p99: quiet.p99FrameMs }, bare: { fps: bare.medianFps, p99: bare.p99FrameMs }, ringed: { fps: ringed.medianFps, p99: ringed.p99FrameMs }, breakup: { fps: breakup.medianFps, p99: breakup.p99FrameMs, gpuMs: breakup.gpuMedianMs, frames: breakup.frames }, followed: { fps: followed.medianFps, p99: followed.p99FrameMs, piece, on }, particles: drawn?.dust.particles };
     console.log(JSON.stringify(numbers));
     testInfo.annotations.push({ type: 'perf', description: JSON.stringify(numbers) });
     if (flag('PERF_ASSERT')) {
       expect(breakup.medianFps).toBeGreaterThanOrEqual(58);
       expect(breakup.p99FrameMs).toBeLessThan(20);
+      expect(followed.medianFps).toBeGreaterThanOrEqual(58);
+      expect(followed.p99FrameMs).toBeLessThan(20);
       expect(ringed.medianFps).toBeGreaterThanOrEqual(0.85 * quiet.medianFps);
       expect(ringed.medianFps).toBeGreaterThanOrEqual(0.85 * bare.medianFps);
     }
