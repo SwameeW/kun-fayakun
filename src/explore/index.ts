@@ -79,7 +79,7 @@ import { ATLAS, MAKKAH_FRAME, site, SITES, type FieldPlace } from './field-notes
 import { centralAngle, loadPlaces, type Place } from './field-notes/places';
 import { createQuakeLayer, type QuakeLayer } from './living/quakes';
 import { createSatelliteLayer, type SatelliteLayer } from './living/satellites';
-import { fineDetailShown } from './bodies/earth';
+import { darkAdaptation, fineDetailShown, litShare } from './bodies/earth';
 import { craterDetailShown } from './bodies/moon';
 import { createSunGlare, visibleShare, type SunGlare } from './bodies/glare';
 import { createImpostors, type ImpostorDot, type Impostors } from './bodies/impostor';
@@ -2572,12 +2572,15 @@ export default function create(): UniverseModule {
         const pxPerRadian = viewportPx / (2 * Math.tan(MathUtils.degToRad(DEFAULT_FOV / 2)));
         if (fineDetailShown(bodies.detail, altitude / system.specs.earth.radiusKm, pxPerRadian)) notes.push('fine-detail');
         notes.push('cloud-drift');
-        // The night side only when some of it is in view (the camera not straight over the noon side).
+        // The night side is brightened only while the night fills the view (the eye adapted to the dark,
+        // as the Earth draws it); with daylight in view it is black, as a camera exposed for the day sees it.
         const e = placed.earth;
         const s = placed.sun;
-        const toCamera = -(e.rel.x * (s.rel.x - e.rel.x) + e.rel.y * (s.rel.y - e.rel.y) + e.rel.z * (s.rel.z - e.rel.z));
-        const cos = toCamera / Math.max(1e-9, e.distance * Math.hypot(s.rel.x - e.rel.x, s.rel.y - e.rel.y, s.rel.z - e.rel.z));
-        if (cos < 0.85) notes.push('night-side');
+        const radius = system.specs.earth.radiusKm;
+        const eye = { x: -e.rel.x / radius, y: -e.rel.y / radius, z: -e.rel.z / radius };
+        const sunward = { x: s.rel.x - e.rel.x, y: s.rel.y - e.rel.y, z: s.rel.z - e.rel.z };
+        const length = Math.max(1e-9, Math.hypot(sunward.x, sunward.y, sunward.z));
+        if (darkAdaptation(litShare(eye, { x: sunward.x / length, y: sunward.y / length, z: sunward.z / length })) > 0.05) notes.push('night-side');
         return notes;
       }
       case 'moon': {

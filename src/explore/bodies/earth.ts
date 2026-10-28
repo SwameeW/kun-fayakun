@@ -11,8 +11,9 @@
  *   a hole in the planet.
  * - City lights (Black Marble 2016) on the night side only, fading in through twilight and dimmed by
  *   cloud: today's Earth only (the chapters' early Earths never load them).
- * - Clouds (Blue Marble's 2001 cloud map) on their own shell 10 km up, drifting slowly (an
- *   illustrative drift: real weather moves every way), the more slowly the lower the view, so they
+ * - Clouds (one real day, 22 September 2025, seen by NASA's VIIRS, with that day's sea ice, which the
+ *   day map lacks) on their own shell 10 km up, drifting slowly (an illustrative drift: real weather
+ *   moves every way), the more slowly the lower the view, so they
  *   never race over the ground. The map is read through a smooth filter, so close in its texels never
  *   show as blocks. Their tops are shaded as relief (thicker cloud stands higher), thicker toward the
  *   limb where the eye looks through more of them, and they cast their shadows on the ground beside
