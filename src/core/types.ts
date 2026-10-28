@@ -372,6 +372,11 @@ export interface ChapterContext {
    * tests that build a context by hand.
    */
   readonly frameSeconds?: number;
+  /**
+   * The app's messages, for a chapter to add its own with its chunk (i18n.extend) rather than the
+   * shell's: its tags' textKeys then resolve. Absent in tests that build a context by hand.
+   */
+  readonly i18n?: I18n;
   /** The app's sound (src/core/audio.ts): its ambient bus is silenced under a recitation. Absent in tests that build a context by hand. */
   audio?: AudioBuses;
 }

@@ -463,7 +463,9 @@ class Engine implements KunFayakunApp {
     const quality = (): QualityProfile => this.profile;
     const reduced = (): boolean => this.reduced;
     const frameSeconds = (): number => this.frameSeconds;
+    const i18n = this.i18n;
     return {
+      i18n,
       get renderer() {
         return renderer();
       },
