@@ -14,7 +14,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page, Route } from '@playwright/test';
 import type { ChapterContent, ChapterId } from '../src/core/types';
 import { chapterContent } from './support/data';
-import { SLOW } from './support/env';
+import { NEEDS_GPU, NO_GPU, SLOW } from './support/env';
 import { expect, test, type FilmSoundState, type KfHook } from './support/fixtures';
 import { waitForUniverse } from './support/universe';
 
@@ -85,6 +85,8 @@ test('every recording the score plays is there and decodes, each the length its 
 });
 
 test('a recording slow to come silences only its own layer: the made sound and the one-shots play on time without it, and a stalled download is let go', async ({ page, kf, pageErrors }) => {
+  // Chapter 8 plays while Chapter 6's sound is rendered beside it: in software rendering (CI) past its time limit.
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(180_000 * SLOW);
   // Every recording held back, as on a connection that has stalled, until the test lets them go.
   const held: Route[] = [];

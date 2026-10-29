@@ -535,7 +535,8 @@ test('the small worlds on a phone: opened from the sheet, searched, a world flow
 });
 
 test('on foot on a phone: Forward held walks, a finger looks round, Jump jumps, every control a touch target, nothing wider than the screen', async ({ page, kf, pageErrors }) => {
-  // In software rendering (CI) on a phone's screen every frame of the walk is slow: about fifteen minutes in all.
+  // In software rendering (CI) on a phone's screen every frame of the walk is slow: the landing alone ran past its limit.
+  test.skip(NO_GPU, NEEDS_GPU);
   test.setTimeout(450_000 * SLOW);
   await kf.open('/universe/earth', { query: { jd: JD } });
   await waitForUniverse(page);

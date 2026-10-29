@@ -39,14 +39,14 @@ const MOBILE_SPECS = /explore\/mobile\.spec\.ts|ai-panel-mobile\.spec\.ts/u;
 
 /**
  * Specs that are GPU-heavy throughout (the laboratory and its effects, walks, the small worlds, the
- * stars and black holes, the time machine's and the layout's stress runs): left out of CI, where every
+ * stars and black holes, the time machine's and the layout's stress runs, the Earth's air from orbit at high detail): left out of CI, where every
  * frame is drawn in software. On CI (2026-10-28) a frame there took seconds and a screenshot about 20 s,
  * so 14 of the 20 shards ran past two hours and the rest failed on their time limits or on counts of
  * frames a GPU draws; on the next run the 2.5 million stars did the same. They run on GPU machines
  * before every release (README, "Review process"), as do single tests elsewhere skipped on CI with
  * NEEDS_GPU or NEEDS_REAL_FRAMES (tests/support/env.ts).
  */
-const GPU_SPECS = /explore\/(?:black-holes|lab|lab-effects|lab-throw|layout-stress|small-worlds|stars|stars-camera|time-stress|walk-light|walk-stress)\.spec\.ts/u;
+const GPU_SPECS = /explore\/(?:air-orbit|black-holes|lab|lab-effects|lab-throw|layout-stress|small-worlds|stars|stars-camera|time-stress|walk-light|walk-stress)\.spec\.ts/u;
 
 /**
  * The real-model evaluation (tests/ai-eval, docs/AI-INTELLIGENCE.md §9): local only, never CI, and
